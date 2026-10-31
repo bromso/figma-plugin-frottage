@@ -301,6 +301,11 @@ export function createApplier(api: PluginAPI) {
     return FALLBACK;
   }
 
+  /** Only http(s) pages are linked, whatever the plan says. */
+  function isWebLink(href: string): boolean {
+    return /^https?:\/\//i.test(href);
+  }
+
   function runProps(node: TextNode, run: PlanRun, start: number, end: number) {
     node.setRangeFontName(start, end, usableFont(run.fontName));
     node.setRangeFontSize(start, end, run.fontSize);
@@ -313,6 +318,17 @@ export function createApplier(api: PluginAPI) {
     node.setRangeLetterSpacing(start, end, { unit: "PIXELS", value: run.letterSpacing });
     node.setRangeTextDecoration(start, end, run.decoration);
     node.setRangeTextCase(start, end, run.textCase);
+    if (run.href !== undefined && isWebLink(run.href)) {
+      try {
+        node.setRangeHyperlink(start, end, { type: "URL", value: run.href });
+      } catch {
+        // Figma rejected the URL: the run stays, without its link.
+        return;
+      }
+      // Figma restyles linked text (blue, underlined), so put the page's colour and decoration back.
+      node.setRangeFills(start, end, [{ type: "SOLID", color: run.color, opacity: run.opacity }]);
+      node.setRangeTextDecoration(start, end, run.decoration);
+    }
   }
 
   const validWeight = (n: number) => Number.isFinite(n) && n >= 0;

@@ -129,6 +129,8 @@ const textRun = z.object({
   decoration: z.string(),
   transform: z.string(),
   align: z.string(),
+  /** Cleaned http(s) target of the link the text sits in; no query, fragment or userinfo. */
+  href: z.string().optional(),
 });
 
 const textNode = z.object({

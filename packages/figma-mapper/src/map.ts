@@ -117,6 +117,19 @@ function mapAlign(align: string | undefined): "LEFT" | "CENTER" | "RIGHT" | "JUS
   return ALIGN[(align ?? "left") as keyof typeof ALIGN] ?? "LEFT";
 }
 
+/** Only web pages get a Figma link; the capture has already dropped query, fragment and userinfo. */
+function linkTarget(href: string | undefined): string | undefined {
+  if (!href) return undefined;
+  try {
+    const u = new URL(href);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return undefined;
+    if (u.username || u.password) return undefined;
+    return href;
+  } catch {
+    return undefined;
+  }
+}
+
 function mapDecoration(d: string): PlanRun["decoration"] {
   if (d.includes("underline")) return "UNDERLINE";
   if (d.includes("line-through")) return "STRIKETHROUGH";
@@ -217,6 +230,7 @@ export function mapCapture(
       const start = Math.max(0, Math.min(r.start, len));
       const end = Math.max(0, Math.min(r.end, len));
       if (!(end > start)) continue;
+      const href = options.hyperlinks ? linkTarget(r.href) : undefined;
       valid.push({
         start,
         end,
@@ -228,6 +242,7 @@ export function mapCapture(
         opacity: r.color.a,
         decoration: mapDecoration(r.decoration),
         textCase: mapCase(r.transform),
+        ...(href ? { href } : {}),
       });
     }
     // Cover the whole string with no gaps or overlaps: the applier sets every

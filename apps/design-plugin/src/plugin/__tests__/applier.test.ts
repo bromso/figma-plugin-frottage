@@ -762,3 +762,89 @@ test("an svg frame whose setup fails is removed and counted", async () => {
   expect(r.failedOps).toBe(1);
   expect(f.node(r.rootId).children).toHaveLength(0);
 });
+
+const linkedRuns = (...parts: [number, number, string?][]) =>
+  parts.map(([s, e, href]) => ({ ...run(s, e, inter), ...(href ? { href } : {}) }));
+
+test("setRangeHyperlink is called per linked run, only over that range", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a"),
+    textOp(
+      "t",
+      "a",
+      linkedRuns([0, 2], [2, 4, "https://a.test/x"], [4, 5], [5, 99, "https://a.test/y"])
+    ),
+  ]);
+  expect((await a.end()).failedOps).toBe(0);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  const links = t.ranges.filter((r: any) => r.m === "setRangeHyperlink");
+  // The run at 5-99 starts at the end of the 5-character text, so it is empty and never linked.
+  expect(links.map((r: any) => [r.s, r.e, r.v])).toEqual([
+    [2, 4, { type: "URL", value: "https://a.test/x" }],
+  ]);
+});
+
+test("a link is set after fonts and fills, and fills and decoration are reapplied", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), textOp("t", "a", linkedRuns([0, 5, "https://a.test/x"]))]);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  const order = t.ranges.map((r: any) => r.m);
+  const at = order.indexOf("setRangeHyperlink");
+  expect(at).toBeGreaterThan(order.indexOf("setRangeFontName"));
+  expect(at).toBeGreaterThan(order.indexOf("setRangeFills"));
+  expect(order.slice(at + 1)).toEqual(["setRangeFills", "setRangeTextDecoration"]);
+});
+
+test("a rejected URL drops only the link; the run keeps its style", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a"),
+    textOp("t", "a", linkedRuns([0, 2, "not a url"], [2, 5, "https://a.test/ok"])),
+  ]);
+  expect((await a.end()).failedOps).toBe(0);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  expect(t.ranges.filter((r: any) => r.m === "setRangeFontSize")).toHaveLength(2);
+  expect(
+    t.ranges.filter((r: any) => r.m === "setRangeHyperlink" && r.v).map((r: any) => r.v.value)
+  ).toEqual(["https://a.test/ok"]);
+});
+
+test("runs with no href set no hyperlink", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), textOp("t", "a", [run(0, 5, inter)])]);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  expect(t.ranges.some((r: any) => r.m === "setRangeHyperlink")).toBe(false);
+});
+
+test("a javascript: href that reaches the applier is not set", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), textOp("t", "a", linkedRuns([0, 5, "javascript:alert(1)"]))]);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  expect(t.ranges.some((r: any) => r.m === "setRangeHyperlink")).toBe(false);
+});
+
+test("a link running past the text is clamped", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a"),
+    textOp("t", "a", linkedRuns([0, 2], [2, 99, "https://a.test/x"])),
+  ]);
+  expect((await a.end()).failedOps).toBe(0);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  expect(
+    t.ranges.filter((r: any) => r.m === "setRangeHyperlink").map((r: any) => [r.s, r.e])
+  ).toEqual([[2, 5]]);
+});

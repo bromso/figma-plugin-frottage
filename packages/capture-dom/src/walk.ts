@@ -284,6 +284,38 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
   }
 
+  /** The stored target of the nearest enclosing `<a href>`, only when it is a real http(s) page. */
+  function linkOf(el: Element | null): string | undefined {
+    for (let cur = el; cur; cur = cur.parentElement ?? null) {
+      if (cur.localName !== "a" || cur.namespaceURI !== XHTML || !cur.hasAttribute("href"))
+        continue;
+      const raw = (cur.getAttribute("href") ?? "").trim();
+      if (raw === "" || raw.startsWith("#")) return undefined;
+      try {
+        const u = new URL((cur as HTMLAnchorElement).href);
+        if (u.protocol !== "http:" && u.protocol !== "https:") return undefined;
+        // A same-page `#anchor` has no target once the fragment is cleaned away.
+        const here = new URL(doc.URL);
+        if (
+          u.hash &&
+          u.href.slice(0, u.href.length - u.hash.length) === here.href.replace(/#.*$/s, "")
+        ) {
+          return undefined;
+        }
+        return cleanUrl(u.href);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
+  const withLink = (run: Run, el: Element): Run => {
+    const href = linkOf(el);
+    if (href !== undefined) run.href = href;
+    return run;
+  };
+
   const sameStyle = (a: Run, b: Run) => {
     const { start: _s1, end: _e1, ...x } = a;
     const { start: _s2, end: _e2, ...y } = b;
@@ -465,7 +497,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         rects.push(pageBox(r));
       }
       if (!any) return;
-      append(piece, runOf(s, 0, 0));
+      append(piece, withLink(runOf(s, 0, 0), parentEl));
     };
 
     const addPseudo = (p: Pseudo) => {
@@ -481,7 +513,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       if (!piece) return;
       const lineH = px(s.lineHeight) || px(s.fontSize) * 1.2;
       rects.push({ x: 0, y: 0, w: measure(piece, s), h: round2(lineH), gen: p.which });
-      append(piece, runOf(s, 0, 0));
+      append(piece, withLink(runOf(s, 0, 0), parent));
     };
 
     const addNodes = (nodes: Iterable<Item>, styleEl: Element) => {
@@ -504,7 +536,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
                 break;
               }
             }
-            append("\n", runOf(cs(e), 0, 0));
+            append("\n", withLink(runOf(cs(e), 0, 0), e));
           } else {
             addNodes(inlineItems(e), e);
           }

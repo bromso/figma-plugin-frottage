@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Links</title>
+<style>
+body { margin: 0; padding: 16px; font: 14px/20px Arial, sans-serif; color: #111; width: 600px; }
+a.block { display: block; width: 300px; }
+</style>
+</head>
+<body>
+<p id="inline">Read the <a href="https://example.com/docs?token=SECRET-Q#SECRET-H">docs</a> today</p>
+<p id="nested">See <a href="/guide"><b>bold</b> and <em>slanted</em></a> now</p>
+<p id="split">Plain <a href="https://example.com/a">one</a><a href="https://example.com/b">two</a> end</p>
+<p id="same">Same <a href="https://example.com/x">one</a> <a href="https://example.com/x">two</a></p>
+<a class="block" id="block" href="https://example.com/block">Whole block link</a>
+<p id="bad">
+  <a href="javascript:alert(1)">js</a>
+  <a href="mailto:a@b.co">mail</a>
+  <a href="tel:123">tel</a>
+  <a href="#top">frag</a>
+  <a href="">empty</a>
+  <a>nohref</a>
+</p>
+</body>
+</html>

@@ -320,6 +320,7 @@ export function fakeFigma(opts: Options = {}) {
         "setRangeLetterSpacing",
         "setRangeTextDecoration",
         "setRangeTextCase",
+        "setRangeHyperlink",
       ]) {
         t[m] = (s: number, e: number, v: any) => {
           calls.push(m);
@@ -327,6 +328,11 @@ export function fakeFigma(opts: Options = {}) {
           if (s < 0 || e > chars.length) throw new Error(`range ${s}-${e} out of bounds`);
           if (m === "setRangeFontName" && !loaded.has(fontId(v))) {
             throw new Error(`font not loaded: ${fontId(v)}`);
+          }
+          // Like Figma, only a URL or node target is accepted, and a URL must parse.
+          if (m === "setRangeHyperlink" && v !== null) {
+            if (v?.type !== "URL" || typeof v.value !== "string") throw new Error("bad hyperlink");
+            new URL(v.value);
           }
           if (!t.ranges) t.ranges = [];
           t.ranges.push({ m, s, e, v });

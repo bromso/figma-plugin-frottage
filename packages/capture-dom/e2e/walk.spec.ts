@@ -1096,3 +1096,50 @@ test("captures the first class token, unless it looks hashed or unsafe", async (
   }
   expect([...seen].some((v) => v.includes("evil.test"))).toBe(false);
 });
+
+const slice = (n: Extract<CaptureNode, { kind: "text" }>) =>
+  n.runs.map((r) => ({ t: n.text.slice(r.start, r.end), href: r.href }));
+
+test("an inline link stores its href on its run only", async ({ page }) => {
+  const c = await capture(page, "links.html");
+  expect(slice(findText(c, "Read the"))).toEqual([
+    { t: "Read the ", href: undefined },
+    { t: "docs", href: "https://example.com/docs" },
+    { t: " today", href: undefined },
+  ]);
+});
+
+test("a link keeps no query string, fragment or userinfo", async ({ page }) => {
+  const json = JSON.stringify(await capture(page, "links.html"));
+  expect(json).not.toContain("SECRET-Q");
+  expect(json).not.toContain("SECRET-H");
+});
+
+test("a link's nested inline elements inherit it, and runs split at link boundaries", async ({
+  page,
+}) => {
+  const c = await capture(page, "links.html");
+  const nested = slice(findText(c, "See "));
+  expect(nested.filter((r) => r.href).map((r) => r.t.trim())).toEqual(["bold", "and", "slanted"]);
+  expect(nested.every((r) => !r.href || r.href.endsWith("/guide"))).toBe(true);
+  expect(slice(findText(c, "Plain"))).toEqual([
+    { t: "Plain ", href: undefined },
+    { t: "one", href: "https://example.com/a" },
+    { t: "two", href: "https://example.com/b" },
+    { t: " end", href: undefined },
+  ]);
+});
+
+test("a block link puts its href on every run of its text", async ({ page }) => {
+  const t = findText(await capture(page, "links.html"), "Whole block link");
+  expect(t.runs.length).toBeGreaterThan(0);
+  expect(t.runs.every((r) => r.href === "https://example.com/block")).toBe(true);
+  expect(t.runs[0]?.end).toBe(t.text.length);
+});
+
+test("javascript, mailto, tel, fragment-only and empty links store no href", async ({ page }) => {
+  const c = await capture(page, "links.html");
+  const t = findText(c, "js");
+  expect(t.runs.some((r) => r.href !== undefined)).toBe(false);
+  expect(JSON.stringify(t)).not.toContain("javascript");
+});

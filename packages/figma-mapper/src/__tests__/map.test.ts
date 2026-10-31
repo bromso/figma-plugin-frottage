@@ -633,3 +633,58 @@ describe("mapCapture options", () => {
     expect(names.every((n) => n === "div")).toBe(true);
   });
 });
+
+describe("hyperlinks", () => {
+  const linked = (hrefs: (string | undefined)[], text = "abcdefghij") =>
+    withText(
+      textNode("t", {
+        text,
+        runs: hrefs.map((href, i) =>
+          run({ start: i * 3, end: Math.min(i * 3 + 3, text.length), ...(href ? { href } : {}) })
+        ),
+      })
+    );
+  const hrefs = (c: Parameters<typeof mapCapture>[0], opts = DEFAULT_IMPORT_OPTIONS) => {
+    const o = mapCapture(c, inter, opts).ops.find((x) => x.op === "text") as TextPlanOp;
+    return o.runs.map((r) => [r.start, r.end, r.href]);
+  };
+  test("a link covering part of a text block links only that range", () => {
+    expect(hrefs(linked([undefined, "https://example.com/a", undefined, undefined]))).toEqual([
+      [0, 3, undefined],
+      [3, 6, "https://example.com/a"],
+      [6, 9, undefined],
+      [9, 10, undefined],
+    ]);
+  });
+  test("a block link applies to every run of its text", () => {
+    const u = "https://example.com/b";
+    expect(hrefs(linked([u, u, u, u])).every((r) => r[2] === u)).toBe(true);
+  });
+  test("javascript, mailto, tel, data, fragment and empty links are not set", () => {
+    const bad = ["javascript:alert(1)", "mailto:a@b.co", "tel:1", "data:text/html,x", "#top", ""];
+    for (const b of bad) {
+      expect(hrefs(linked([b, "https://example.com/ok"], "abcdef")).map((r) => r[2])).toEqual([
+        undefined,
+        "https://example.com/ok",
+      ]);
+    }
+  });
+  test("http and https are kept", () => {
+    expect(
+      hrefs(linked(["http://a.test/x", "https://a.test/y"], "abcdef")).map((r) => r[2])
+    ).toEqual(["http://a.test/x", "https://a.test/y"]);
+  });
+  test("hyperlinks off puts no href on any run", () => {
+    const plan = mapCapture(linked(["https://example.com/a"], "abc"), inter, {
+      ...DEFAULT_IMPORT_OPTIONS,
+      hyperlinks: false,
+    });
+    expect(JSON.stringify(plan)).not.toContain("href");
+  });
+  test("a link on a non-text element does not reach the plan", () => {
+    const c = cap(
+      el("root", [0, 0], [el("x", [0, 0], [], { semantic: { tag: "a", href: "https://e.test/" } })])
+    );
+    expect(JSON.stringify(mapCapture(c, inter))).not.toContain("e.test");
+  });
+});

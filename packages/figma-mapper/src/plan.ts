@@ -36,6 +36,8 @@ export type PlanRun = {
   opacity: number;
   decoration: "NONE" | "UNDERLINE" | "STRIKETHROUGH";
   textCase: "ORIGINAL" | "UPPER" | "LOWER" | "TITLE";
+  /** An http(s) link for this range; absent when the text has none or hyperlinks are off. */
+  href?: string;
 };
 
 export type PlanTrack = { type: "FIXED" | "FLEX" | "HUG"; value: number };

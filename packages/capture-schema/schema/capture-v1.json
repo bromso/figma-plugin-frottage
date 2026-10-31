@@ -1030,6 +1030,9 @@
                   },
                   "align": {
                     "type": "string"
+                  },
+                  "href": {
+                    "type": "string"
                   }
                 },
                 "required": [
