@@ -1,0 +1,27 @@
+{
+  "name": "@repo/capture-schema",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./json-schema": "./src/json-schema.ts",
+    "./hash": "./src/hash.ts"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "types": "tsc --noEmit",
+    "generate": "bun src/json-schema.ts --write"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.4.0",
+    "fflate": "0.8.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}

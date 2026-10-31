@@ -1,25 +1,23 @@
 {
-  "name": "figma-plugin-template",
-  "description": "Figma/FigJam plugin boilerplate with React, Bun, TypeScript, and Turborepo monorepo",
+  "name": "frottage",
+  "description": "Import rendered web pages into editable Figma designs",
   "private": true,
   "license": "MIT",
   "author": "Jonas Bröms",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bromso/figma-plugin-template"
+    "url": "https://github.com/bromso/figma-plugin-frottage"
   },
   "keywords": [
     "figma",
     "figma-plugin",
-    "figjam",
     "react",
     "typescript",
     "turborepo",
     "monorepo",
     "bun",
     "biome",
-    "boilerplate",
-    "template"
+    "chrome-extension"
   ],
   "engines": {
     "node": ">=22.22.1",

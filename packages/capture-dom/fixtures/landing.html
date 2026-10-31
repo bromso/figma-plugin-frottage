@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbit - Ship product analytics faster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0f172a;
+  --muted: #64748b;
+  --brand: #4f46e5;
+  --brand-soft: #eef2ff;
+  --surface: #ffffff;
+  --canvas: #f8fafc;
+  --line: #e2e8f0;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Inter, sans-serif; color: var(--ink); background: var(--canvas); line-height: 1.5; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 20px 64px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.logo { font-weight: 700; font-size: 22px; color: var(--brand); }
+nav { display: flex; gap: 32px; }
+nav a { color: var(--muted); text-decoration: none; font-weight: 500; font-size: 15px; }
+.btn { background: var(--brand); color: var(--surface); border: 0; border-radius: 8px; padding: 10px 20px; font: 600 15px Inter, sans-serif; }
+.btn.ghost { background: var(--surface); color: var(--brand); }
+.hero { text-align: center; padding: 96px 64px 72px; background: var(--brand-soft); }
+.hero h1 { font-size: 56px; line-height: 1.1; margin: 0 auto 20px; max-width: 760px; letter-spacing: -0.02em; }
+.hero p { font-size: 20px; color: var(--muted); max-width: 560px; margin: 0 auto 32px; }
+.hero .actions { display: flex; justify-content: center; gap: 12px; }
+.cards { display: flex; gap: 24px; padding: 72px 64px 32px; }
+.card { flex: 1; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
+.card .icon { width: 44px; height: 44px; border-radius: 12px; background: var(--brand-soft); color: var(--brand); display: flex; align-items: center; justify-content: center; font-weight: 700; margin-bottom: 16px; }
+.card h3 { margin: 0 0 8px; font-size: 20px; }
+.card p { margin: 0; color: var(--muted); }
+.logos { background: var(--surface); display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; padding: 48px 64px; }
+.logos div { background: var(--canvas); border: 1px solid var(--line); border-radius: 12px; padding: 24px; text-align: center; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; }
+.tags { background: var(--surface); display: flex; flex-wrap: wrap; gap: 10px; padding: 16px 64px 72px; }
+.tags span { background: var(--canvas); border: 1px solid var(--line); color: var(--ink); border-radius: 999px; padding: 6px 14px; font-size: 14px; }
+.tags span.hot { background: var(--brand-soft); color: var(--brand); border-color: var(--brand-soft); }
+.tags span.on { background: var(--brand); color: var(--surface); border-color: var(--brand); }
+footer { display: flex; justify-content: space-between; padding: 32px 64px; background: var(--ink); color: var(--line); font-size: 14px; }
+footer b { color: var(--surface); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Orbit</div>
+  <nav><a href="#">Product</a><a href="#">Pricing</a><a href="#">Docs</a><a href="#">Customers</a></nav>
+  <button class="btn">Get started</button>
+</header>
+<section class="hero">
+  <h1>Product analytics your whole team will actually use</h1>
+  <p>Orbit turns raw events into answers. Set up in minutes, query in plain language.</p>
+  <div class="actions"><button class="btn">Start free trial</button><button class="btn ghost">Book a demo</button></div>
+</section>
+<section class="cards">
+  <div class="card"><div class="icon">1</div><h3>Instant funnels</h3><p>Build conversion funnels without writing a single query.</p></div>
+  <div class="card"><div class="icon">2</div><h3>Live dashboards</h3><p>Share real-time boards that update as your users move.</p></div>
+  <div class="card"><div class="icon">3</div><h3>Privacy first</h3><p>EU hosting, consent aware tracking and configurable retention.</p></div>
+</section>
+<section class="logos">
+  <div>NORTHWIND</div><div>ACME CO</div><div>GLOBEX</div><div>INITECH</div>
+  <div>UMBRELLA</div><div>HOOLI</div><div>STARK</div><div>WAYNE</div>
+</section>
+<section class="tags">
+  <span class="on">Funnels</span><span class="hot">Retention</span><span>Cohorts</span><span class="hot">Experiments</span><span>Session replay</span><span>Feature flags</span><span>SQL access</span><span>Alerts</span><span>Warehouse sync</span><span>Data governance</span>
+</section>
+<footer><span><b>Orbit</b> Analytics Inc.</span><span>Terms &middot; Privacy &middot; Status</span></footer>
+</body>
+</html>

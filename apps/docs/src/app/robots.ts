@@ -8,6 +8,6 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: "/",
     },
-    sitemap: "https://bromso.github.io/figma-plugin-template/sitemap.xml",
+    sitemap: "https://bromso.github.io/figma-plugin-frottage/sitemap.xml",
   };
 }

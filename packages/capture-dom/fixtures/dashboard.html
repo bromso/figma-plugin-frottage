@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbit Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #111827;
+  --muted: #6b7280;
+  --brand: #0d9488;
+  --brand-soft: #ccfbf1;
+  --danger: #dc2626;
+  --surface: #ffffff;
+  --canvas: #f3f4f6;
+  --line: #e5e7eb;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Inter, sans-serif; color: var(--ink); background: var(--canvas); display: flex; min-height: 100vh; }
+aside { width: 240px; flex: none; background: var(--ink); color: var(--line); padding: 24px 16px; }
+aside .brand { color: var(--surface); font-weight: 700; font-size: 20px; margin: 0 8px 24px; }
+aside a { display: block; padding: 10px 12px; border-radius: 8px; color: var(--line); text-decoration: none; font-size: 14px; margin-bottom: 4px; }
+aside a.active { border-left: 3px solid var(--brand-soft); background: var(--brand); color: var(--surface); }
+main { flex-grow: 1; padding: 32px; }
+h1 { color: var(--ink); margin: 0 0 4px; font-size: 26px; }
+.sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+.stats { display: flex; gap: 16px; margin-bottom: 24px; }
+.stat { flex: 1; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; position: relative; }
+.stat .label { color: var(--muted); font-size: 13px; }
+.stat .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+.stat .delta { color: var(--brand); font-size: 13px; font-weight: 600; }
+.stat .delta.down { color: var(--danger); }
+.badge { position: absolute; top: 12px; right: 12px; background: var(--brand-soft); color: var(--brand); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+.panel { background: var(--surface); border-radius: 12px; padding: 24px; box-shadow: 0 8px 24px rgba(17, 24, 39, 0.12); }
+.panel h2 { color: var(--ink); display: flex; align-items: center; gap: 8px; font-size: 16px; margin: 0 0 16px; }
+.panel h2 svg { color: var(--brand); background: var(--brand-soft); border-radius: 6px; padding: 4px; }
+.stat .delta { background: var(--brand-soft); padding: 0 6px; border-radius: 4px; display: inline-block; }
+.stat .delta.down { background: var(--canvas); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; border-top: 2px solid var(--danger); color: var(--muted); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+td { background: var(--canvas); padding: 12px; border-bottom: 1px solid var(--line); }
+td.num { font-variant-numeric: tabular-nums; }
+.pos { color: var(--brand); font-weight: 600; }
+.neg { color: var(--danger); font-weight: 600; }
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand">Orbit</div>
+  <a class="active" href="#">Overview</a><a href="#">Funnels</a><a href="#">Retention</a><a href="#">Segments</a><a href="#">Settings</a>
+</aside>
+<main>
+  <h1>Overview</h1>
+  <p class="sub">Last 30 days across all projects</p>
+  <div class="stats">
+    <div class="stat"><span class="badge">New</span><div class="label">Active users</div><div class="value">48,210</div><div class="delta">+12.4%</div></div>
+    <div class="stat"><div class="label">Conversion</div><div class="value">3.8%</div><div class="delta">+0.6%</div></div>
+    <div class="stat"><div class="label">Churn</div><div class="value">1.9%</div><div class="delta down">-0.3%</div></div>
+    <div class="stat"><div class="label">Avg. session</div><div class="value">6m 12s</div><div class="delta down">-4.1%</div></div>
+  </div>
+  <div class="panel">
+    <h2>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
+      Top pages
+    </h2>
+    <table>
+      <thead><tr><th>Page</th><th>Visitors</th><th>Bounce</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td>/pricing</td><td class="num">12,480</td><td class="num">32%</td><td class="pos">+8.2%</td></tr>
+        <tr><td>/docs/getting-started</td><td class="num">9,115</td><td class="num">21%</td><td class="pos">+3.1%</td></tr>
+        <tr><td>/blog/funnels</td><td class="num">6,742</td><td class="num">54%</td><td class="neg">-5.6%</td></tr>
+        <tr><td>/signup</td><td class="num">4,380</td><td class="num">18%</td><td class="pos">+1.4%</td></tr>
+        <tr><td>/changelog</td><td class="num">2,019</td><td class="num">47%</td><td class="neg">-2.2%</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+</body>
+</html>

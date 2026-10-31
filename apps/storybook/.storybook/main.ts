@@ -13,7 +13,7 @@ const config: StorybookConfig = {
   async viteFinal(config) {
     return mergeConfig(config, {
       plugins: [tailwindcss()],
-      base: process.env.GITHUB_PAGES === "true" ? "/figma-plugin-template/storybook/" : "/",
+      base: process.env.GITHUB_PAGES === "true" ? "/figma-plugin-frottage/storybook/" : "/",
       resolve: {
         alias: {
           "@": path.resolve(__dirname, "../../../packages/ui/src"),

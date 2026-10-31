@@ -1,0 +1,5 @@
+{
+  "root": false,
+  "extends": "//",
+  "files": { "includes": ["**", "!e2e/__snapshots__", "!fixtures/*.html", "!test-results"] }
+}

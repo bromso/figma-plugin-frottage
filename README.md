@@ -1,7 +1,7 @@
-# figma-plugin-template
+# Frottage
 
-[![CI](https://github.com/bromso/figma-plugin-template/actions/workflows/ci.yml/badge.svg)](https://github.com/bromso/figma-plugin-template/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/github/license/bromso/figma-plugin-template)](LICENSE)
+[![CI](https://github.com/bromso/figma-plugin-frottage/actions/workflows/ci.yml/badge.svg)](https://github.com/bromso/figma-plugin-frottage/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/bromso/figma-plugin-frottage)](LICENSE)
 ![Bun](https://img.shields.io/badge/bun-1.4-f9f1e1?logo=bun)
 ![TypeScript](https://img.shields.io/badge/typescript-7-3178c6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/react-19-61dafb?logo=react&logoColor=black)
@@ -10,7 +10,9 @@
 ![Storybook](https://img.shields.io/badge/storybook-10-ff4785?logo=storybook&logoColor=white)
 ![Figma](https://img.shields.io/badge/figma-plugin-a259ff?logo=figma&logoColor=white)
 
-Figma/FigJam plugin boilerplate with React, Bun, TypeScript, and Turborepo monorepo.
+Frottage imports rendered web pages into editable Figma designs. A Chrome extension captures the page; the Figma plugin turns the capture into native layers. Built with React, Bun, TypeScript and a Turborepo monorepo.
+
+> Phase 1 is in progress: capture a page with the Chrome extension, then open the `.frottage` file in the plugin.
 
 ## Features
 
@@ -26,9 +28,9 @@ Figma/FigJam plugin boilerplate with React, Bun, TypeScript, and Turborepo monor
 ## Quick Start
 
 ```bash
-# Clone the template
-git clone https://github.com/bromso/figma-plugin-template.git
-cd figma-plugin-template
+# Clone the repository
+git clone https://github.com/bromso/figma-plugin-frottage.git
+cd figma-plugin-frottage
 
 # Install dependencies
 bun install
@@ -42,11 +44,15 @@ bun run dev
 ```
 apps/
   design-plugin/  — Figma plugin app (build.ts bundles to dist/)
+  chrome-extension/ — Chrome extension that captures a page into a .frottage file
   storybook/      — Storybook component documentation
   docs/           — Documentation site (Next.js + Fumadocs, port 3000)
 packages/
   common/         — Shared types and network events (@repo/common)
   ui/             — UI components, styles, and app shell (@repo/ui)
+  capture-schema/ — Capture schema, validation and the .frottage container
+  capture-dom/    — DOM walker that produces a capture in the page
+  figma-mapper/   — Maps a capture to Figma layer plans
 ```
 
 Packages are **JIT source-only** — they export raw TypeScript with no build step. Use `@repo/*` workspace imports for cross-package references.
@@ -71,7 +77,7 @@ Packages are **JIT source-only** — they export raw TypeScript with no build st
 The plugin runs as **two separate processes** that communicate via message passing:
 
 - **Plugin side** (`apps/design-plugin/src/plugin/`) — Runs in Figma's sandbox with access to the Figma API (`figma.*`). No DOM access. Entry: `plugin.ts`.
-- **UI side** (`packages/ui/src/`) — Runs in an iframe. React app with shadcn/ui components. Entry: `main.tsx` → `app.tsx`; `app.tsx` is the sampler laid out like a Figma properties panel.
+- **UI side** (`packages/ui/src/`) — Runs in an iframe. React app with shadcn/ui components. Entry: `main.tsx` → `app.tsx`; `app.tsx` is the import screen.
 - **Common** (`packages/common/src/`) — Shared between both sides. Contains network event type definitions.
 
 ### Messaging
@@ -98,8 +104,8 @@ Edit `apps/design-plugin/figma.manifest.ts` to set your plugin name, ID, and per
 
 ```ts
 export default {
-  name: "My Plugin",
-  id: "your-plugin-id-from-figma",
+  name: "Frottage",
+  id: "frottage-dev",
   documentAccess: "dynamic-page",
   networkAccess: { allowedDomains: ["none"] },
   // ...

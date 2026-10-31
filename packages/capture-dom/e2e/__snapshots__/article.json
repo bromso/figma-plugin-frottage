@@ -1,0 +1,8519 @@
+{
+ "schemaVersion": 1,
+ "tool": {
+  "name": "frottage",
+  "version": "test"
+ },
+ "source": {
+  "url": "http://localhost:4173/article.html",
+  "title": "A Slow Week on the Coast",
+  "viewport": {
+   "w": 1280,
+   "h": 800
+  },
+  "devicePixelRatio": 1,
+  "colorScheme": "light"
+ },
+ "tokens": [
+  "--accent",
+  "--ink",
+  "--line",
+  "--muted",
+  "--paper"
+ ],
+ "warnings": [],
+ "root": {
+  "id": "n0",
+  "paintOrder": 0,
+  "visible": true,
+  "opacity": 1,
+  "blendMode": "normal",
+  "semantic": {
+   "tag": "html"
+  },
+  "kind": "element",
+  "style": {
+   "backgroundColor": {
+    "r": 0.91,
+    "g": 0.88,
+    "b": 0.84,
+    "a": 1
+   },
+   "backgroundImages": [],
+   "borders": {
+    "top": {
+     "width": 0,
+     "color": {
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "a": 1
+     },
+     "style": "none"
+    },
+    "right": {
+     "width": 0,
+     "color": {
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "a": 1
+     },
+     "style": "none"
+    },
+    "bottom": {
+     "width": 0,
+     "color": {
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "a": 1
+     },
+     "style": "none"
+    },
+    "left": {
+     "width": 0,
+     "color": {
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "a": 1
+     },
+     "style": "none"
+    }
+   },
+   "borderRadius": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "boxShadows": [],
+   "filters": [],
+   "overflow": "visible"
+  },
+  "layout": {
+   "display": "block",
+   "position": "static",
+   "padding": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "margin": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "order": 0,
+   "grow": 0,
+   "shrink": 1
+  },
+  "children": [
+   {
+    "id": "n1",
+    "paintOrder": 1,
+    "visible": true,
+    "opacity": 1,
+    "blendMode": "normal",
+    "semantic": {
+     "tag": "body"
+    },
+    "kind": "element",
+    "style": {
+     "backgroundColor": {
+      "r": 0.91,
+      "g": 0.88,
+      "b": 0.84,
+      "a": 1
+     },
+     "backgroundImages": [],
+     "borders": {
+      "top": {
+       "width": 0,
+       "color": {
+        "r": 0.11,
+        "g": 0.1,
+        "b": 0.09,
+        "a": 1
+       },
+       "style": "none"
+      },
+      "right": {
+       "width": 0,
+       "color": {
+        "r": 0.11,
+        "g": 0.1,
+        "b": 0.09,
+        "a": 1
+       },
+       "style": "none"
+      },
+      "bottom": {
+       "width": 0,
+       "color": {
+        "r": 0.11,
+        "g": 0.1,
+        "b": 0.09,
+        "a": 1
+       },
+       "style": "none"
+      },
+      "left": {
+       "width": 0,
+       "color": {
+        "r": 0.11,
+        "g": 0.1,
+        "b": 0.09,
+        "a": 1
+       },
+       "style": "none"
+      }
+     },
+     "borderRadius": [
+      0,
+      0,
+      0,
+      0
+     ],
+     "boxShadows": [],
+     "filters": [],
+     "overflow": "visible"
+    },
+    "layout": {
+     "display": "block",
+     "position": "static",
+     "padding": [
+      0,
+      0,
+      0,
+      0
+     ],
+     "margin": [
+      0,
+      0,
+      0,
+      0
+     ],
+     "order": 0,
+     "grow": 0,
+     "shrink": 1
+    },
+    "children": [
+     {
+      "id": "n2",
+      "paintOrder": 2,
+      "visible": true,
+      "opacity": 1,
+      "blendMode": "normal",
+      "semantic": {
+       "tag": "article"
+      },
+      "kind": "element",
+      "style": {
+       "backgroundColor": {
+        "r": 1,
+        "g": 0.98,
+        "b": 0.96,
+        "a": 1
+       },
+       "backgroundImages": [],
+       "borders": {
+        "top": {
+         "width": 0,
+         "color": {
+          "r": 0.11,
+          "g": 0.1,
+          "b": 0.09,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "right": {
+         "width": 0,
+         "color": {
+          "r": 0.11,
+          "g": 0.1,
+          "b": 0.09,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "bottom": {
+         "width": 0,
+         "color": {
+          "r": 0.11,
+          "g": 0.1,
+          "b": 0.09,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "left": {
+         "width": 0,
+         "color": {
+          "r": 0.11,
+          "g": 0.1,
+          "b": 0.09,
+          "a": 1
+         },
+         "style": "none"
+        }
+       },
+       "borderRadius": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "boxShadows": [],
+       "filters": [],
+       "overflow": "visible"
+      },
+      "layout": {
+       "display": "block",
+       "position": "static",
+       "padding": [
+        64,
+        24,
+        96,
+        24
+       ],
+       "margin": [
+        0,
+        280,
+        0,
+        280
+       ],
+       "order": 0,
+       "grow": 0,
+       "shrink": 1
+      },
+      "children": [
+       {
+        "id": "n3",
+        "paintOrder": 3,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.71,
+          "g": 0.33,
+          "b": 0.04,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 1,
+            "g": 0.98,
+            "b": 0.96,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 1,
+            "g": 0.98,
+            "b": 0.96,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 1,
+            "g": 0.98,
+            "b": 0.96,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 1,
+            "g": 0.98,
+            "b": 0.96,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          4,
+          4,
+          4,
+          4
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "inline-block",
+         "position": "static",
+         "padding": [
+          2,
+          10,
+          2,
+          10
+         ],
+         "margin": [
+          0,
+          0,
+          12,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n4",
+          "kind": "text",
+          "paintOrder": 4,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Travel",
+          "runs": [
+           {
+            "start": 0,
+            "end": 6,
+            "weight": 600,
+            "style": "normal",
+            "size": 13,
+            "lineHeight": null,
+            "letterSpacing": 1.3,
+            "color": {
+             "r": 1,
+             "g": 0.98,
+             "b": 0.96,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "uppercase",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n5",
+        "paintOrder": 5,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "h1",
+         "headingLevel": 1
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          16,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n6",
+          "kind": "text",
+          "paintOrder": 6,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "h1"
+          },
+          "text": "A Slow Week on the Coast",
+          "runs": [
+           {
+            "start": 0,
+            "end": 24,
+            "weight": 700,
+            "style": "normal",
+            "size": 48,
+            "lineHeight": 53.76,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n7",
+        "paintOrder": 7,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.47,
+            "g": 0.44,
+            "b": 0.42,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.47,
+            "g": 0.44,
+            "b": 0.42,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.91,
+            "g": 0.88,
+            "b": 0.84,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.47,
+            "g": 0.44,
+            "b": 0.42,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          24,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          40,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n8",
+          "kind": "text",
+          "paintOrder": 8,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "By Maren Holt · 14 minute read",
+          "runs": [
+           {
+            "start": 0,
+            "end": 30,
+            "weight": 500,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": null,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.47,
+             "g": 0.44,
+             "b": 0.42,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n9",
+        "paintOrder": 9,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "h2",
+         "headingLevel": 2
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.91,
+            "g": 0.88,
+            "b": 0.84,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          16,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          56,
+          0,
+          16,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n10",
+          "kind": "text",
+          "paintOrder": 10,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "h2"
+          },
+          "text": "Chasing the morning light",
+          "runs": [
+           {
+            "start": 0,
+            "end": 25,
+            "weight": 700,
+            "style": "normal",
+            "size": 30,
+            "lineHeight": 37.5,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n11",
+        "paintOrder": 11,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          12,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n12",
+          "kind": "text",
+          "paintOrder": 12,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "The first thing visitors notice is the light. It arrives low and sideways, turning wet stone the colour of honey, and for twenty minutes every window along the quay burns like a lantern.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 186,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n13",
+        "paintOrder": 13,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          28,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n14",
+          "kind": "text",
+          "paintOrder": 14,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Local cooks will tell you the morning is the only honest time to shop. By ten the best produce is gone, the tourists arrive in loud, cheerful clusters, and prices drift upward with the heat.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 190,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n15",
+        "paintOrder": 15,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          18,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n16",
+          "kind": "text",
+          "paintOrder": 16,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "None of this is a secret, exactly. It is simply unadvertised, passed from neighbour to neighbour in the way that useful things often are, and that is part of what makes it worth the early alarm.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 194,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n17",
+        "paintOrder": 17,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          36,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n18",
+          "kind": "text",
+          "paintOrder": 18,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Walk inland and the road begins to climb. Within an hour the sea becomes a bright strip behind you, and the terraces take over, stacked like the pages of an enormous, patient book.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 180,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n19",
+        "paintOrder": 19,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          22,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n20",
+          "kind": "text",
+          "paintOrder": 20,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Farmers here have worked the same slopes for centuries. Their walls are dry stone, their tools are modest, and their patience with questions from strangers is, on the whole, remarkable.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 185,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n21",
+        "paintOrder": 21,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "figure"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          32,
+          0,
+          32,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n22",
+          "paintOrder": 22,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "img",
+           "alt": "Harbour illustration"
+          },
+          "kind": "image",
+          "sourceUrl": "data:image/svg+xml;base64,PHN2Zy",
+          "fit": "fill",
+          "objectPosition": "50% 50%",
+          "borders": {
+           "top": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           },
+           "right": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           },
+           "bottom": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           },
+           "left": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           }
+          },
+          "borderRadius": [
+           6,
+           6,
+           6,
+           6
+          ],
+          "box": {
+           "x": 304,
+           "y": 950.7,
+           "w": 672,
+           "h": 337
+          }
+         },
+         {
+          "id": "n23",
+          "paintOrder": 23,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "figcaption"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            8,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n24",
+            "kind": "text",
+            "paintOrder": 24,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "figcaption"
+            },
+            "text": "The harbour at first light.",
+            "runs": [
+             {
+              "start": 0,
+              "end": 27,
+              "weight": 500,
+              "style": "normal",
+              "size": 13,
+              "lineHeight": null,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.47,
+               "g": 0.44,
+               "b": 0.42,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n25",
+        "paintOrder": 25,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          12,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n26",
+          "kind": "text",
+          "paintOrder": 26,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "The first thing visitors notice is the light. It arrives low and sideways, turning wet stone the colour of honey, and for twenty minutes every window along the quay burns like a lantern.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 186,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n27",
+        "paintOrder": 27,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          28,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n28",
+          "kind": "text",
+          "paintOrder": 28,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Local cooks will tell you the morning is the only honest time to shop. By ten the best produce is gone, the tourists arrive in loud, cheerful clusters, and prices drift upward with the heat.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 190,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n29",
+        "paintOrder": 29,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          18,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n30",
+          "kind": "text",
+          "paintOrder": 30,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "None of this is a secret, exactly. It is simply unadvertised, passed from neighbour to neighbour in the way that useful things often are, and that is part of what makes it worth the early alarm.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 194,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n31",
+        "paintOrder": 31,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          36,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n32",
+          "kind": "text",
+          "paintOrder": 32,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Walk inland and the road begins to climb. Within an hour the sea becomes a bright strip behind you, and the terraces take over, stacked like the pages of an enormous, patient book.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 180,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n33",
+        "paintOrder": 33,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          22,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n34",
+          "kind": "text",
+          "paintOrder": 34,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Farmers here have worked the same slopes for centuries. Their walls are dry stone, their tools are modest, and their patience with questions from strangers is, on the whole, remarkable.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 185,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n35",
+        "paintOrder": 35,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "h2",
+         "headingLevel": 2
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.91,
+            "g": 0.88,
+            "b": 0.84,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          16,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          56,
+          0,
+          16,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n36",
+          "kind": "text",
+          "paintOrder": 36,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "h2"
+          },
+          "text": "What the market knows",
+          "runs": [
+           {
+            "start": 0,
+            "end": 21,
+            "weight": 700,
+            "style": "normal",
+            "size": 30,
+            "lineHeight": 37.5,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n37",
+        "paintOrder": 37,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          28,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n38",
+          "kind": "text",
+          "paintOrder": 38,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "The first thing visitors notice is the light. It arrives low and sideways, turning wet stone the colour of honey, and for twenty minutes every window along the quay burns like a lantern.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 186,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n39",
+        "paintOrder": 39,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          18,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n40",
+          "kind": "text",
+          "paintOrder": 40,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Local cooks will tell you the morning is the only honest time to shop. By ten the best produce is gone, the tourists arrive in loud, cheerful clusters, and prices drift upward with the heat.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 190,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n41",
+        "paintOrder": 41,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          36,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n42",
+          "kind": "text",
+          "paintOrder": 42,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "None of this is a secret, exactly. It is simply unadvertised, passed from neighbour to neighbour in the way that useful things often are, and that is part of what makes it worth the early alarm.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 194,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n43",
+        "paintOrder": 43,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          22,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n44",
+          "kind": "text",
+          "paintOrder": 44,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Walk inland and the road begins to climb. Within an hour the sea becomes a bright strip behind you, and the terraces take over, stacked like the pages of an enormous, patient book.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 180,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n45",
+        "paintOrder": 45,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          12,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n46",
+          "kind": "text",
+          "paintOrder": 46,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Farmers here have worked the same slopes for centuries. Their walls are dry stone, their tools are modest, and their patience with questions from strangers is, on the whole, remarkable.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 185,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n47",
+        "paintOrder": 47,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "figure"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          32,
+          0,
+          32,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n48",
+          "paintOrder": 48,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "img",
+           "alt": "Terraces illustration"
+          },
+          "kind": "image",
+          "sourceUrl": "data:image/svg+xml;base64,PHN2Zy",
+          "fit": "fill",
+          "objectPosition": "50% 50%",
+          "borders": {
+           "top": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           },
+           "right": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           },
+           "bottom": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           },
+           "left": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           }
+          },
+          "borderRadius": [
+           6,
+           6,
+           6,
+           6
+          ],
+          "box": {
+           "x": 304,
+           "y": 2668.11,
+           "w": 672,
+           "h": 337
+          }
+         },
+         {
+          "id": "n49",
+          "paintOrder": 49,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "figcaption"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            8,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n50",
+            "kind": "text",
+            "paintOrder": 50,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "figcaption"
+            },
+            "text": "Terraces above the village.",
+            "runs": [
+             {
+              "start": 0,
+              "end": 27,
+              "weight": 500,
+              "style": "normal",
+              "size": 13,
+              "lineHeight": null,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.47,
+               "g": 0.44,
+               "b": 0.42,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n51",
+        "paintOrder": 51,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          28,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n52",
+          "kind": "text",
+          "paintOrder": 52,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "The first thing visitors notice is the light. It arrives low and sideways, turning wet stone the colour of honey, and for twenty minutes every window along the quay burns like a lantern.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 186,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n53",
+        "paintOrder": 53,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          18,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n54",
+          "kind": "text",
+          "paintOrder": 54,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Local cooks will tell you the morning is the only honest time to shop. By ten the best produce is gone, the tourists arrive in loud, cheerful clusters, and prices drift upward with the heat.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 190,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n55",
+        "paintOrder": 55,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          36,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n56",
+          "kind": "text",
+          "paintOrder": 56,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "None of this is a secret, exactly. It is simply unadvertised, passed from neighbour to neighbour in the way that useful things often are, and that is part of what makes it worth the early alarm.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 194,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n57",
+        "paintOrder": 57,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          22,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n58",
+          "kind": "text",
+          "paintOrder": 58,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Walk inland and the road begins to climb. Within an hour the sea becomes a bright strip behind you, and the terraces take over, stacked like the pages of an enormous, patient book.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 180,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n59",
+        "paintOrder": 59,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          12,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n60",
+          "kind": "text",
+          "paintOrder": 60,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Farmers here have worked the same slopes for centuries. Their walls are dry stone, their tools are modest, and their patience with questions from strangers is, on the whole, remarkable.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 185,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n61",
+        "paintOrder": 61,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "h2",
+         "headingLevel": 2
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.91,
+            "g": 0.88,
+            "b": 0.84,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          16,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          56,
+          0,
+          16,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n62",
+          "kind": "text",
+          "paintOrder": 62,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "h2"
+          },
+          "text": "Up into the terraces",
+          "runs": [
+           {
+            "start": 0,
+            "end": 20,
+            "weight": 700,
+            "style": "normal",
+            "size": 30,
+            "lineHeight": 37.5,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n63",
+        "paintOrder": 63,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          18,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n64",
+          "kind": "text",
+          "paintOrder": 64,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "The first thing visitors notice is the light. It arrives low and sideways, turning wet stone the colour of honey, and for twenty minutes every window along the quay burns like a lantern.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 186,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n65",
+        "paintOrder": 65,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          36,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n66",
+          "kind": "text",
+          "paintOrder": 66,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Local cooks will tell you the morning is the only honest time to shop. By ten the best produce is gone, the tourists arrive in loud, cheerful clusters, and prices drift upward with the heat.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 190,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n67",
+        "paintOrder": 67,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          22,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n68",
+          "kind": "text",
+          "paintOrder": 68,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "None of this is a secret, exactly. It is simply unadvertised, passed from neighbour to neighbour in the way that useful things often are, and that is part of what makes it worth the early alarm.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 194,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n69",
+        "paintOrder": 69,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          12,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n70",
+          "kind": "text",
+          "paintOrder": 70,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Walk inland and the road begins to climb. Within an hour the sea becomes a bright strip behind you, and the terraces take over, stacked like the pages of an enormous, patient book.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 180,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n71",
+        "paintOrder": 71,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          28,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n72",
+          "kind": "text",
+          "paintOrder": 72,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Farmers here have worked the same slopes for centuries. Their walls are dry stone, their tools are modest, and their patience with questions from strangers is, on the whole, remarkable.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 185,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n73",
+        "paintOrder": 73,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "figure"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          32,
+          0,
+          32,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n74",
+          "paintOrder": 74,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "img",
+           "alt": "Market illustration"
+          },
+          "kind": "image",
+          "sourceUrl": "data:image/svg+xml;base64,PHN2Zy",
+          "fit": "fill",
+          "objectPosition": "50% 50%",
+          "borders": {
+           "top": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           },
+           "right": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           },
+           "bottom": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           },
+           "left": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           }
+          },
+          "borderRadius": [
+           6,
+           6,
+           6,
+           6
+          ],
+          "box": {
+           "x": 304,
+           "y": 4379.52,
+           "w": 672,
+           "h": 337
+          }
+         },
+         {
+          "id": "n75",
+          "paintOrder": 75,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "figcaption"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            8,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n76",
+            "kind": "text",
+            "paintOrder": 76,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "figcaption"
+            },
+            "text": "The Saturday market square.",
+            "runs": [
+             {
+              "start": 0,
+              "end": 27,
+              "weight": 500,
+              "style": "normal",
+              "size": 13,
+              "lineHeight": null,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.47,
+               "g": 0.44,
+               "b": 0.42,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n77",
+        "paintOrder": 77,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          18,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n78",
+          "kind": "text",
+          "paintOrder": 78,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "The first thing visitors notice is the light. It arrives low and sideways, turning wet stone the colour of honey, and for twenty minutes every window along the quay burns like a lantern.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 186,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n79",
+        "paintOrder": 79,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          36,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n80",
+          "kind": "text",
+          "paintOrder": 80,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Local cooks will tell you the morning is the only honest time to shop. By ten the best produce is gone, the tourists arrive in loud, cheerful clusters, and prices drift upward with the heat.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 190,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n81",
+        "paintOrder": 81,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          22,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n82",
+          "kind": "text",
+          "paintOrder": 82,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "None of this is a secret, exactly. It is simply unadvertised, passed from neighbour to neighbour in the way that useful things often are, and that is part of what makes it worth the early alarm.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 194,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n83",
+        "paintOrder": 83,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          12,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n84",
+          "kind": "text",
+          "paintOrder": 84,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Walk inland and the road begins to climb. Within an hour the sea becomes a bright strip behind you, and the terraces take over, stacked like the pages of an enormous, patient book.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 180,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n85",
+        "paintOrder": 85,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          28,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n86",
+          "kind": "text",
+          "paintOrder": 86,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Farmers here have worked the same slopes for centuries. Their walls are dry stone, their tools are modest, and their patience with questions from strangers is, on the whole, remarkable.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 185,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n87",
+        "paintOrder": 87,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "h2",
+         "headingLevel": 2
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.91,
+            "g": 0.88,
+            "b": 0.84,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          16,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          56,
+          0,
+          16,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n88",
+          "kind": "text",
+          "paintOrder": 88,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "h2"
+          },
+          "text": "The slow road home",
+          "runs": [
+           {
+            "start": 0,
+            "end": 18,
+            "weight": 700,
+            "style": "normal",
+            "size": 30,
+            "lineHeight": 37.5,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n89",
+        "paintOrder": 89,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          36,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n90",
+          "kind": "text",
+          "paintOrder": 90,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "The first thing visitors notice is the light. It arrives low and sideways, turning wet stone the colour of honey, and for twenty minutes every window along the quay burns like a lantern.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 186,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n91",
+        "paintOrder": 91,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          22,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n92",
+          "kind": "text",
+          "paintOrder": 92,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Local cooks will tell you the morning is the only honest time to shop. By ten the best produce is gone, the tourists arrive in loud, cheerful clusters, and prices drift upward with the heat.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 190,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n93",
+        "paintOrder": 93,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          12,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n94",
+          "kind": "text",
+          "paintOrder": 94,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "None of this is a secret, exactly. It is simply unadvertised, passed from neighbour to neighbour in the way that useful things often are, and that is part of what makes it worth the early alarm.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 194,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n95",
+        "paintOrder": 95,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          28,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n96",
+          "kind": "text",
+          "paintOrder": 96,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Walk inland and the road begins to climb. Within an hour the sea becomes a bright strip behind you, and the terraces take over, stacked like the pages of an enormous, patient book.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 180,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n97",
+        "paintOrder": 97,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          18,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n98",
+          "kind": "text",
+          "paintOrder": 98,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Farmers here have worked the same slopes for centuries. Their walls are dry stone, their tools are modest, and their patience with questions from strangers is, on the whole, remarkable.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 185,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n99",
+        "paintOrder": 99,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "figure"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          32,
+          0,
+          32,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n100",
+          "paintOrder": 100,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "img",
+           "alt": "Harbour illustration"
+          },
+          "kind": "image",
+          "sourceUrl": "data:image/svg+xml;base64,PHN2Zy",
+          "fit": "fill",
+          "objectPosition": "50% 50%",
+          "borders": {
+           "top": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           },
+           "right": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           },
+           "bottom": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           },
+           "left": {
+            "width": 1,
+            "color": {
+             "r": 0.91,
+             "g": 0.88,
+             "b": 0.84,
+             "a": 1
+            },
+            "style": "solid"
+           }
+          },
+          "borderRadius": [
+           6,
+           6,
+           6,
+           6
+          ],
+          "box": {
+           "x": 304,
+           "y": 6084.92,
+           "w": 672,
+           "h": 337
+          }
+         },
+         {
+          "id": "n101",
+          "paintOrder": 101,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "figcaption"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.47,
+              "g": 0.44,
+              "b": 0.42,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            8,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n102",
+            "kind": "text",
+            "paintOrder": 102,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "figcaption"
+            },
+            "text": "The harbour at first light.",
+            "runs": [
+             {
+              "start": 0,
+              "end": 27,
+              "weight": 500,
+              "style": "normal",
+              "size": 13,
+              "lineHeight": null,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.47,
+               "g": 0.44,
+               "b": 0.42,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n103",
+        "paintOrder": 103,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          36,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n104",
+          "kind": "text",
+          "paintOrder": 104,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "The first thing visitors notice is the light. It arrives low and sideways, turning wet stone the colour of honey, and for twenty minutes every window along the quay burns like a lantern.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 186,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n105",
+        "paintOrder": 105,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          22,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n106",
+          "kind": "text",
+          "paintOrder": 106,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Local cooks will tell you the morning is the only honest time to shop. By ten the best produce is gone, the tourists arrive in loud, cheerful clusters, and prices drift upward with the heat.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 190,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n107",
+        "paintOrder": 107,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          12,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n108",
+          "kind": "text",
+          "paintOrder": 108,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "None of this is a secret, exactly. It is simply unadvertised, passed from neighbour to neighbour in the way that useful things often are, and that is part of what makes it worth the early alarm.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 194,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n109",
+        "paintOrder": 109,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          28,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n110",
+          "kind": "text",
+          "paintOrder": 110,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Walk inland and the road begins to climb. Within an hour the sea becomes a bright strip behind you, and the terraces take over, stacked like the pages of an enormous, patient book.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 180,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n111",
+        "paintOrder": 111,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          18,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n112",
+          "kind": "text",
+          "paintOrder": 112,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Farmers here have worked the same slopes for centuries. Their walls are dry stone, their tools are modest, and their patience with questions from strangers is, on the whole, remarkable.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 185,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n113",
+        "paintOrder": 113,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "blockquote"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.11,
+          "g": 0.1,
+          "b": 0.09,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 1,
+            "g": 0.98,
+            "b": 0.96,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 1,
+            "g": 0.98,
+            "b": 0.96,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 1,
+            "g": 0.98,
+            "b": 0.96,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 4,
+           "color": {
+            "r": 0.71,
+            "g": 0.33,
+            "b": 0.04,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          16,
+          24,
+          16,
+          24
+         ],
+         "margin": [
+          40,
+          0,
+          40,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n114",
+          "kind": "text",
+          "paintOrder": 114,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "blockquote"
+          },
+          "text": "“You do not find the place by arriving. You find it by staying long enough to be bored, and then to be surprised.”",
+          "runs": [
+           {
+            "start": 0,
+            "end": 114,
+            "weight": 400,
+            "style": "italic",
+            "size": 24,
+            "lineHeight": 40.8,
+            "letterSpacing": 0,
+            "color": {
+             "r": 1,
+             "g": 0.98,
+             "b": 0.96,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n115",
+        "paintOrder": 115,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "h2",
+         "headingLevel": 2
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.91,
+            "g": 0.88,
+            "b": 0.84,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          16,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          56,
+          0,
+          16,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n116",
+          "kind": "text",
+          "paintOrder": 116,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "h2"
+          },
+          "text": "What to pack",
+          "runs": [
+           {
+            "start": 0,
+            "end": 12,
+            "weight": 700,
+            "style": "normal",
+            "size": 30,
+            "lineHeight": 37.5,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n117",
+        "paintOrder": 117,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "ul"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          24
+         ],
+         "margin": [
+          0,
+          0,
+          24,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n118",
+          "paintOrder": 118,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "li"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "list-item",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            6,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n119",
+            "kind": "text",
+            "paintOrder": 119,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "li"
+            },
+            "text": "Sturdy walking shoes with real grip",
+            "runs": [
+             {
+              "start": 0,
+              "end": 35,
+              "weight": 400,
+              "style": "normal",
+              "size": 19,
+              "lineHeight": 32.3,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.11,
+               "g": 0.1,
+               "b": 0.09,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "id": "n120",
+          "paintOrder": 120,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "li"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "list-item",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            6,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n121",
+            "kind": "text",
+            "paintOrder": 121,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "li"
+            },
+            "text": "A light wool layer for the evenings",
+            "runs": [
+             {
+              "start": 0,
+              "end": 35,
+              "weight": 400,
+              "style": "normal",
+              "size": 19,
+              "lineHeight": 32.3,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.11,
+               "g": 0.1,
+               "b": 0.09,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "id": "n122",
+          "paintOrder": 122,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "li"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "list-item",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            6,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n123",
+            "kind": "text",
+            "paintOrder": 123,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "li"
+            },
+            "text": "A refillable bottle and a paper map",
+            "runs": [
+             {
+              "start": 0,
+              "end": 35,
+              "weight": 400,
+              "style": "normal",
+              "size": 19,
+              "lineHeight": 32.3,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.11,
+               "g": 0.1,
+               "b": 0.09,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "id": "n124",
+          "paintOrder": 124,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "li"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "list-item",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            6,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n125",
+            "kind": "text",
+            "paintOrder": 125,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "li"
+            },
+            "text": "Cash, for the market and the ferry",
+            "runs": [
+             {
+              "start": 0,
+              "end": 34,
+              "weight": 400,
+              "style": "normal",
+              "size": 19,
+              "lineHeight": 32.3,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.11,
+               "g": 0.1,
+               "b": 0.09,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "id": "n126",
+          "paintOrder": 126,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "li"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.11,
+              "g": 0.1,
+              "b": 0.09,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "list-item",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            6,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n127",
+            "kind": "text",
+            "paintOrder": 127,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "li"
+            },
+            "text": "A book you are willing to finish",
+            "runs": [
+             {
+              "start": 0,
+              "end": 32,
+              "weight": 400,
+              "style": "normal",
+              "size": 19,
+              "lineHeight": 32.3,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.11,
+               "g": 0.1,
+               "b": 0.09,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n128",
+        "paintOrder": 128,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.11,
+            "g": 0.1,
+            "b": 0.09,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          20,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n129",
+          "kind": "text",
+          "paintOrder": 129,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Go in the shoulder season, book nothing you cannot cancel, and leave one day entirely empty. That empty day is usually the one you remember.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 140,
+            "weight": 400,
+            "style": "normal",
+            "size": 19,
+            "lineHeight": 32.3,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.11,
+             "g": 0.1,
+             "b": 0.09,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n130",
+        "paintOrder": 130,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.91,
+            "g": 0.88,
+            "b": 0.84,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.47,
+            "g": 0.44,
+            "b": 0.42,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.47,
+            "g": 0.44,
+            "b": 0.42,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.47,
+            "g": 0.44,
+            "b": 0.42,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          16,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          48,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n131",
+          "kind": "text",
+          "paintOrder": 131,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Maren Holt writes about slow travel. Read more in the archive.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 54,
+            "weight": 500,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": null,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.47,
+             "g": 0.44,
+             "b": 0.42,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           },
+           {
+            "start": 54,
+            "end": 61,
+            "weight": 500,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": null,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.71,
+             "g": 0.33,
+             "b": 0.04,
+             "a": 1
+            },
+            "decoration": "underline",
+            "transform": "none",
+            "align": "left"
+           },
+           {
+            "start": 61,
+            "end": 62,
+            "weight": 500,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": null,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.47,
+             "g": 0.44,
+             "b": 0.42,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; padding: 32px; font: 14px/1.4 "Definitely Not Installed", serif; background: #fff; color: #111; }
+form { width: 320px; display: flex; flex-direction: column; gap: 12px; }
+input, select, textarea { width: 320px; height: 36px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font: inherit; background: #fff; }
+textarea { height: 72px; }
+.gone { display: none; }
+.zero { width: 0; height: 0; overflow: hidden; }
+.zero-visible { width: 0; height: 0; }
+.zero-visible span { display: block; width: 100px; height: 20px; background: #f00; }
+</style>
+</head>
+<body>
+<form>
+  <label for="u">Email</label>
+  <input id="u" type="text" value="ada@example.com" placeholder="you@example.com">
+  <input id="e" type="text" placeholder="Search the docs">
+  <input id="p" type="password" value="hunter2-do-not-capture">
+  <input id="p2" type="text" autocomplete="current-password" value="hunter2-do-not-capture">
+  <input id="p3" type="text" autocomplete="new-password" value="hunter2-do-not-capture">
+  <input id="pw" type="password" placeholder="Password">
+  <input id="card" name="card" type="text" placeholder="Card number">
+  <input id="attr" type="text" value="ATTR-VALUE-NOT-READ">
+  <input type="hidden" value="HIDDEN-INPUT-VALUE">
+  <select id="s"><option>First</option><option selected>Second option</option></select>
+  <textarea id="t" placeholder="Notes">Some notes</textarea>
+  <button type="submit">Sign in</button>
+  <div class="gone">HIDDEN-TEXT</div>
+  <div class="zero">ZERO-AREA-TEXT</div>
+  <p class="br">foo <br>bar</p>
+  <div class="zero-visible"><span>Overflowing child</span></div>
+</form>
+<script>
+  // A show-password toggle: the field becomes type=text and still holds the secret.
+  const pw = document.getElementById("pw");
+  pw.value = "TOGGLED-SECRET-VALUE";
+  pw.type = "text";
+  document.getElementById("card").value = "CARD-TYPED-4111";
+  document.getElementById("t").value = "TEXTAREA-TYPED-VALUE";
+</script>
+</body>
+</html>

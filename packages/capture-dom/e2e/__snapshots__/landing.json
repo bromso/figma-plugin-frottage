@@ -1,0 +1,6184 @@
+{
+ "schemaVersion": 1,
+ "tool": {
+  "name": "frottage",
+  "version": "test"
+ },
+ "source": {
+  "url": "http://localhost:4173/landing.html",
+  "title": "Orbit - Ship product analytics faster",
+  "viewport": {
+   "w": 1280,
+   "h": 800
+  },
+  "devicePixelRatio": 1,
+  "colorScheme": "light"
+ },
+ "tokens": [
+  "--brand",
+  "--brand-soft",
+  "--canvas",
+  "--ink",
+  "--line",
+  "--muted",
+  "--surface"
+ ],
+ "warnings": [],
+ "root": {
+  "id": "n0",
+  "paintOrder": 0,
+  "visible": true,
+  "opacity": 1,
+  "blendMode": "normal",
+  "semantic": {
+   "tag": "html"
+  },
+  "kind": "element",
+  "style": {
+   "backgroundColor": {
+    "r": 0.97,
+    "g": 0.98,
+    "b": 0.99,
+    "a": 1
+   },
+   "backgroundImages": [],
+   "borders": {
+    "top": {
+     "width": 0,
+     "color": {
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "a": 1
+     },
+     "style": "none"
+    },
+    "right": {
+     "width": 0,
+     "color": {
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "a": 1
+     },
+     "style": "none"
+    },
+    "bottom": {
+     "width": 0,
+     "color": {
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "a": 1
+     },
+     "style": "none"
+    },
+    "left": {
+     "width": 0,
+     "color": {
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "a": 1
+     },
+     "style": "none"
+    }
+   },
+   "borderRadius": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "boxShadows": [],
+   "filters": [],
+   "overflow": "visible"
+  },
+  "layout": {
+   "display": "block",
+   "position": "static",
+   "padding": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "margin": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "order": 0,
+   "grow": 0,
+   "shrink": 1
+  },
+  "children": [
+   {
+    "id": "n1",
+    "paintOrder": 1,
+    "visible": true,
+    "opacity": 1,
+    "blendMode": "normal",
+    "semantic": {
+     "tag": "body"
+    },
+    "kind": "element",
+    "style": {
+     "backgroundColor": {
+      "r": 0.97,
+      "g": 0.98,
+      "b": 0.99,
+      "a": 1
+     },
+     "backgroundImages": [],
+     "borders": {
+      "top": {
+       "width": 0,
+       "color": {
+        "r": 0.06,
+        "g": 0.09,
+        "b": 0.16,
+        "a": 1
+       },
+       "style": "none"
+      },
+      "right": {
+       "width": 0,
+       "color": {
+        "r": 0.06,
+        "g": 0.09,
+        "b": 0.16,
+        "a": 1
+       },
+       "style": "none"
+      },
+      "bottom": {
+       "width": 0,
+       "color": {
+        "r": 0.06,
+        "g": 0.09,
+        "b": 0.16,
+        "a": 1
+       },
+       "style": "none"
+      },
+      "left": {
+       "width": 0,
+       "color": {
+        "r": 0.06,
+        "g": 0.09,
+        "b": 0.16,
+        "a": 1
+       },
+       "style": "none"
+      }
+     },
+     "borderRadius": [
+      0,
+      0,
+      0,
+      0
+     ],
+     "boxShadows": [],
+     "filters": [],
+     "overflow": "visible"
+    },
+    "layout": {
+     "display": "block",
+     "position": "static",
+     "padding": [
+      0,
+      0,
+      0,
+      0
+     ],
+     "margin": [
+      0,
+      0,
+      0,
+      0
+     ],
+     "order": 0,
+     "grow": 0,
+     "shrink": 1
+    },
+    "children": [
+     {
+      "id": "n2",
+      "paintOrder": 2,
+      "visible": true,
+      "opacity": 1,
+      "blendMode": "normal",
+      "semantic": {
+       "tag": "header",
+       "landmark": "banner"
+      },
+      "kind": "element",
+      "style": {
+       "backgroundColor": {
+        "r": 1,
+        "g": 1,
+        "b": 1,
+        "a": 1
+       },
+       "backgroundImages": [],
+       "borders": {
+        "top": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "right": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "bottom": {
+         "width": 1,
+         "color": {
+          "r": 0.89,
+          "g": 0.91,
+          "b": 0.94,
+          "a": 1
+         },
+         "style": "solid"
+        },
+        "left": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        }
+       },
+       "borderRadius": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "boxShadows": [],
+       "filters": [],
+       "overflow": "visible"
+      },
+      "layout": {
+       "display": "flex",
+       "position": "static",
+       "padding": [
+        20,
+        64,
+        20,
+        64
+       ],
+       "margin": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "order": 0,
+       "grow": 0,
+       "shrink": 1,
+       "flexDirection": "row",
+       "flexWrap": "nowrap",
+       "justifyContent": "space-between",
+       "alignItems": "center",
+       "gap": [
+        0,
+        0
+       ]
+      },
+      "children": [
+       {
+        "id": "n3",
+        "paintOrder": 3,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.31,
+            "g": 0.27,
+            "b": 0.9,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.31,
+            "g": 0.27,
+            "b": 0.9,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.31,
+            "g": 0.27,
+            "b": 0.9,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.31,
+            "g": 0.27,
+            "b": 0.9,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n4",
+          "kind": "text",
+          "paintOrder": 4,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "div"
+          },
+          "text": "Orbit",
+          "runs": [
+           {
+            "start": 0,
+            "end": 5,
+            "weight": 700,
+            "style": "normal",
+            "size": 22,
+            "lineHeight": 33,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.31,
+             "g": 0.27,
+             "b": 0.9,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n5",
+        "paintOrder": 5,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "nav",
+         "landmark": "navigation"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.06,
+            "g": 0.09,
+            "b": 0.16,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.06,
+            "g": 0.09,
+            "b": 0.16,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.06,
+            "g": 0.09,
+            "b": 0.16,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.06,
+            "g": 0.09,
+            "b": 0.16,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "flex",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1,
+         "flexDirection": "row",
+         "flexWrap": "nowrap",
+         "justifyContent": "normal",
+         "alignItems": "normal",
+         "gap": [
+          32,
+          32
+         ]
+        },
+        "children": [
+         {
+          "id": "n6",
+          "paintOrder": 6,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "a",
+           "href": "http://localhost:4173/landing.html"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n7",
+            "kind": "text",
+            "paintOrder": 7,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "a"
+            },
+            "text": "Product",
+            "runs": [
+             {
+              "start": 0,
+              "end": 7,
+              "weight": 500,
+              "style": "normal",
+              "size": 15,
+              "lineHeight": 22.5,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.39,
+               "g": 0.45,
+               "b": 0.55,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "id": "n8",
+          "paintOrder": 8,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "a",
+           "href": "http://localhost:4173/landing.html"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n9",
+            "kind": "text",
+            "paintOrder": 9,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "a"
+            },
+            "text": "Pricing",
+            "runs": [
+             {
+              "start": 0,
+              "end": 7,
+              "weight": 500,
+              "style": "normal",
+              "size": 15,
+              "lineHeight": 22.5,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.39,
+               "g": 0.45,
+               "b": 0.55,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "id": "n10",
+          "paintOrder": 10,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "a",
+           "href": "http://localhost:4173/landing.html"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n11",
+            "kind": "text",
+            "paintOrder": 11,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "a"
+            },
+            "text": "Docs",
+            "runs": [
+             {
+              "start": 0,
+              "end": 4,
+              "weight": 500,
+              "style": "normal",
+              "size": 15,
+              "lineHeight": 22.5,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.39,
+               "g": 0.45,
+               "b": 0.55,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "id": "n12",
+          "paintOrder": 12,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "a",
+           "href": "http://localhost:4173/landing.html"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n13",
+            "kind": "text",
+            "paintOrder": 13,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "a"
+            },
+            "text": "Customers",
+            "runs": [
+             {
+              "start": 0,
+              "end": 9,
+              "weight": 500,
+              "style": "normal",
+              "size": 15,
+              "lineHeight": 22.5,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.39,
+               "g": 0.45,
+               "b": 0.55,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n14",
+        "paintOrder": 14,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "button"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.31,
+          "g": 0.27,
+          "b": 0.9,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          8,
+          8,
+          8,
+          8
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          10,
+          20,
+          10,
+          20
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n15",
+          "kind": "text",
+          "paintOrder": 15,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "button"
+          },
+          "text": "Get started",
+          "runs": [
+           {
+            "start": 0,
+            "end": 11,
+            "weight": 600,
+            "style": "normal",
+            "size": 15,
+            "lineHeight": null,
+            "letterSpacing": 0,
+            "color": {
+             "r": 1,
+             "g": 1,
+             "b": 1,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "center"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "n16",
+      "paintOrder": 16,
+      "visible": true,
+      "opacity": 1,
+      "blendMode": "normal",
+      "semantic": {
+       "tag": "section"
+      },
+      "kind": "element",
+      "style": {
+       "backgroundColor": {
+        "r": 0.93,
+        "g": 0.95,
+        "b": 1,
+        "a": 1
+       },
+       "backgroundImages": [],
+       "borders": {
+        "top": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "right": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "bottom": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "left": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        }
+       },
+       "borderRadius": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "boxShadows": [],
+       "filters": [],
+       "overflow": "visible"
+      },
+      "layout": {
+       "display": "block",
+       "position": "static",
+       "padding": [
+        96,
+        64,
+        72,
+        64
+       ],
+       "margin": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "order": 0,
+       "grow": 0,
+       "shrink": 1
+      },
+      "children": [
+       {
+        "id": "n17",
+        "paintOrder": 17,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "h1",
+         "headingLevel": 1
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.06,
+            "g": 0.09,
+            "b": 0.16,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.06,
+            "g": 0.09,
+            "b": 0.16,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.06,
+            "g": 0.09,
+            "b": 0.16,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.06,
+            "g": 0.09,
+            "b": 0.16,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          196,
+          20,
+          196
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n18",
+          "kind": "text",
+          "paintOrder": 18,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "h1"
+          },
+          "text": "Product analytics your whole team will actually use",
+          "runs": [
+           {
+            "start": 0,
+            "end": 51,
+            "weight": 700,
+            "style": "normal",
+            "size": 56,
+            "lineHeight": 61.6,
+            "letterSpacing": -1.12,
+            "color": {
+             "r": 0.06,
+             "g": 0.09,
+             "b": 0.16,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "center"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n19",
+        "paintOrder": 19,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.39,
+            "g": 0.45,
+            "b": 0.55,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.39,
+            "g": 0.45,
+            "b": 0.55,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.39,
+            "g": 0.45,
+            "b": 0.55,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.39,
+            "g": 0.45,
+            "b": 0.55,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          296,
+          32,
+          296
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n20",
+          "kind": "text",
+          "paintOrder": 20,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "Orbit turns raw events into answers. Set up in minutes, query in plain language.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 80,
+            "weight": 400,
+            "style": "normal",
+            "size": 20,
+            "lineHeight": 30,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.39,
+             "g": 0.45,
+             "b": 0.55,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "center"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n21",
+        "paintOrder": 21,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.06,
+            "g": 0.09,
+            "b": 0.16,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.06,
+            "g": 0.09,
+            "b": 0.16,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.06,
+            "g": 0.09,
+            "b": 0.16,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.06,
+            "g": 0.09,
+            "b": 0.16,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "flex",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1,
+         "flexDirection": "row",
+         "flexWrap": "nowrap",
+         "justifyContent": "center",
+         "alignItems": "normal",
+         "gap": [
+          12,
+          12
+         ]
+        },
+        "children": [
+         {
+          "id": "n22",
+          "paintOrder": 22,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "button"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0.31,
+            "g": 0.27,
+            "b": 0.9,
+            "a": 1
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            8,
+            8,
+            8,
+            8
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            10,
+            20,
+            10,
+            20
+           ],
+           "margin": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n23",
+            "kind": "text",
+            "paintOrder": 23,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "button"
+            },
+            "text": "Start free trial",
+            "runs": [
+             {
+              "start": 0,
+              "end": 16,
+              "weight": 600,
+              "style": "normal",
+              "size": 15,
+              "lineHeight": null,
+              "letterSpacing": 0,
+              "color": {
+               "r": 1,
+               "g": 1,
+               "b": 1,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "center"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "id": "n24",
+          "paintOrder": 24,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "button"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 1,
+            "g": 1,
+            "b": 1,
+            "a": 1
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            8,
+            8,
+            8,
+            8
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            10,
+            20,
+            10,
+            20
+           ],
+           "margin": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n25",
+            "kind": "text",
+            "paintOrder": 25,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "button"
+            },
+            "text": "Book a demo",
+            "runs": [
+             {
+              "start": 0,
+              "end": 11,
+              "weight": 600,
+              "style": "normal",
+              "size": 15,
+              "lineHeight": null,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.31,
+               "g": 0.27,
+               "b": 0.9,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "center"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "n26",
+      "paintOrder": 26,
+      "visible": true,
+      "opacity": 1,
+      "blendMode": "normal",
+      "semantic": {
+       "tag": "section"
+      },
+      "kind": "element",
+      "style": {
+       "backgroundColor": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 0
+       },
+       "backgroundImages": [],
+       "borders": {
+        "top": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "right": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "bottom": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "left": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        }
+       },
+       "borderRadius": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "boxShadows": [],
+       "filters": [],
+       "overflow": "visible"
+      },
+      "layout": {
+       "display": "flex",
+       "position": "static",
+       "padding": [
+        72,
+        64,
+        32,
+        64
+       ],
+       "margin": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "order": 0,
+       "grow": 0,
+       "shrink": 1,
+       "flexDirection": "row",
+       "flexWrap": "nowrap",
+       "justifyContent": "normal",
+       "alignItems": "normal",
+       "gap": [
+        24,
+        24
+       ]
+      },
+      "children": [
+       {
+        "id": "n27",
+        "paintOrder": 27,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 1,
+          "g": 1,
+          "b": 1,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          16,
+          16,
+          16,
+          16
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          28,
+          28,
+          28,
+          28
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 1,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n28",
+          "paintOrder": 28,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "div"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0.93,
+            "g": 0.95,
+            "b": 1,
+            "a": 1
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            12,
+            12,
+            12,
+            12
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "flex",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            16,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1,
+           "flexDirection": "row",
+           "flexWrap": "nowrap",
+           "justifyContent": "center",
+           "alignItems": "center",
+           "gap": [
+            0,
+            0
+           ]
+          },
+          "children": [
+           {
+            "id": "n29",
+            "kind": "text",
+            "paintOrder": 29,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "div"
+            },
+            "text": "1",
+            "runs": [
+             {
+              "start": 0,
+              "end": 1,
+              "weight": 700,
+              "style": "normal",
+              "size": 16,
+              "lineHeight": 24,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.31,
+               "g": 0.27,
+               "b": 0.9,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ],
+          "box": {
+           "x": 93,
+           "y": 619.19,
+           "w": 44,
+           "h": 44
+          }
+         },
+         {
+          "id": "n30",
+          "paintOrder": 30,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "h3",
+           "headingLevel": 3
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.06,
+              "g": 0.09,
+              "b": 0.16,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.06,
+              "g": 0.09,
+              "b": 0.16,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.06,
+              "g": 0.09,
+              "b": 0.16,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.06,
+              "g": 0.09,
+              "b": 0.16,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            8,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n31",
+            "kind": "text",
+            "paintOrder": 31,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "h3"
+            },
+            "text": "Instant funnels",
+            "runs": [
+             {
+              "start": 0,
+              "end": 15,
+              "weight": 700,
+              "style": "normal",
+              "size": 20,
+              "lineHeight": 30,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.06,
+               "g": 0.09,
+               "b": 0.16,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "id": "n32",
+          "paintOrder": 32,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n33",
+            "kind": "text",
+            "paintOrder": 33,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "p"
+            },
+            "text": "Build conversion funnels without writing a single query.",
+            "runs": [
+             {
+              "start": 0,
+              "end": 56,
+              "weight": 400,
+              "style": "normal",
+              "size": 16,
+              "lineHeight": 24,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.39,
+               "g": 0.45,
+               "b": 0.55,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n34",
+        "paintOrder": 34,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 1,
+          "g": 1,
+          "b": 1,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          16,
+          16,
+          16,
+          16
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          28,
+          28,
+          28,
+          28
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 1,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n35",
+          "paintOrder": 35,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "div"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0.93,
+            "g": 0.95,
+            "b": 1,
+            "a": 1
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            12,
+            12,
+            12,
+            12
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "flex",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            16,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1,
+           "flexDirection": "row",
+           "flexWrap": "nowrap",
+           "justifyContent": "center",
+           "alignItems": "center",
+           "gap": [
+            0,
+            0
+           ]
+          },
+          "children": [
+           {
+            "id": "n36",
+            "kind": "text",
+            "paintOrder": 36,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "div"
+            },
+            "text": "2",
+            "runs": [
+             {
+              "start": 0,
+              "end": 1,
+              "weight": 700,
+              "style": "normal",
+              "size": 16,
+              "lineHeight": 24,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.31,
+               "g": 0.27,
+               "b": 0.9,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ],
+          "box": {
+           "x": 485,
+           "y": 619.19,
+           "w": 44,
+           "h": 44
+          }
+         },
+         {
+          "id": "n37",
+          "paintOrder": 37,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "h3",
+           "headingLevel": 3
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.06,
+              "g": 0.09,
+              "b": 0.16,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.06,
+              "g": 0.09,
+              "b": 0.16,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.06,
+              "g": 0.09,
+              "b": 0.16,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.06,
+              "g": 0.09,
+              "b": 0.16,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            8,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n38",
+            "kind": "text",
+            "paintOrder": 38,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "h3"
+            },
+            "text": "Live dashboards",
+            "runs": [
+             {
+              "start": 0,
+              "end": 15,
+              "weight": 700,
+              "style": "normal",
+              "size": 20,
+              "lineHeight": 30,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.06,
+               "g": 0.09,
+               "b": 0.16,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "id": "n39",
+          "paintOrder": 39,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n40",
+            "kind": "text",
+            "paintOrder": 40,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "p"
+            },
+            "text": "Share real-time boards that update as your users move.",
+            "runs": [
+             {
+              "start": 0,
+              "end": 54,
+              "weight": 400,
+              "style": "normal",
+              "size": 16,
+              "lineHeight": 24,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.39,
+               "g": 0.45,
+               "b": 0.55,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n41",
+        "paintOrder": 41,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 1,
+          "g": 1,
+          "b": 1,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          16,
+          16,
+          16,
+          16
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          28,
+          28,
+          28,
+          28
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 1,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n42",
+          "paintOrder": 42,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "div"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0.93,
+            "g": 0.95,
+            "b": 1,
+            "a": 1
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.31,
+              "g": 0.27,
+              "b": 0.9,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            12,
+            12,
+            12,
+            12
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "flex",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            16,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1,
+           "flexDirection": "row",
+           "flexWrap": "nowrap",
+           "justifyContent": "center",
+           "alignItems": "center",
+           "gap": [
+            0,
+            0
+           ]
+          },
+          "children": [
+           {
+            "id": "n43",
+            "kind": "text",
+            "paintOrder": 43,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "div"
+            },
+            "text": "3",
+            "runs": [
+             {
+              "start": 0,
+              "end": 1,
+              "weight": 700,
+              "style": "normal",
+              "size": 16,
+              "lineHeight": 24,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.31,
+               "g": 0.27,
+               "b": 0.9,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ],
+          "box": {
+           "x": 877,
+           "y": 619.19,
+           "w": 44,
+           "h": 44
+          }
+         },
+         {
+          "id": "n44",
+          "paintOrder": 44,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "h3",
+           "headingLevel": 3
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.06,
+              "g": 0.09,
+              "b": 0.16,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.06,
+              "g": 0.09,
+              "b": 0.16,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.06,
+              "g": 0.09,
+              "b": 0.16,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.06,
+              "g": 0.09,
+              "b": 0.16,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            8,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n45",
+            "kind": "text",
+            "paintOrder": 45,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "h3"
+            },
+            "text": "Privacy first",
+            "runs": [
+             {
+              "start": 0,
+              "end": 13,
+              "weight": 700,
+              "style": "normal",
+              "size": 20,
+              "lineHeight": 30,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.06,
+               "g": 0.09,
+               "b": 0.16,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "id": "n46",
+          "paintOrder": 46,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "kind": "element",
+          "style": {
+           "backgroundColor": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           },
+           "backgroundImages": [],
+           "borders": {
+            "top": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "right": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "bottom": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            },
+            "left": {
+             "width": 0,
+             "color": {
+              "r": 0.39,
+              "g": 0.45,
+              "b": 0.55,
+              "a": 1
+             },
+             "style": "none"
+            }
+           },
+           "borderRadius": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "boxShadows": [],
+           "filters": [],
+           "overflow": "visible"
+          },
+          "layout": {
+           "display": "block",
+           "position": "static",
+           "padding": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "margin": [
+            0,
+            0,
+            0,
+            0
+           ],
+           "order": 0,
+           "grow": 0,
+           "shrink": 1
+          },
+          "children": [
+           {
+            "id": "n47",
+            "kind": "text",
+            "paintOrder": 47,
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "normal",
+            "semantic": {
+             "tag": "p"
+            },
+            "text": "EU hosting, consent aware tracking and configurable retention.",
+            "runs": [
+             {
+              "start": 0,
+              "end": 62,
+              "weight": 400,
+              "style": "normal",
+              "size": 16,
+              "lineHeight": 24,
+              "letterSpacing": 0,
+              "color": {
+               "r": 0.39,
+               "g": 0.45,
+               "b": 0.55,
+               "a": 1
+              },
+              "decoration": "none",
+              "transform": "none",
+              "align": "left"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "n48",
+      "paintOrder": 48,
+      "visible": true,
+      "opacity": 1,
+      "blendMode": "normal",
+      "semantic": {
+       "tag": "section"
+      },
+      "kind": "element",
+      "style": {
+       "backgroundColor": {
+        "r": 1,
+        "g": 1,
+        "b": 1,
+        "a": 1
+       },
+       "backgroundImages": [],
+       "borders": {
+        "top": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "right": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "bottom": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "left": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        }
+       },
+       "borderRadius": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "boxShadows": [],
+       "filters": [],
+       "overflow": "visible"
+      },
+      "layout": {
+       "display": "grid",
+       "position": "static",
+       "padding": [
+        48,
+        64,
+        48,
+        64
+       ],
+       "margin": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "order": 0,
+       "grow": 0,
+       "shrink": 1,
+       "justifyContent": "normal",
+       "alignItems": "normal",
+       "gap": [
+        24,
+        24
+       ]
+      },
+      "children": [
+       {
+        "id": "n49",
+        "paintOrder": 49,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          12,
+          12,
+          12,
+          12
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          24,
+          24,
+          24,
+          24
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n50",
+          "kind": "text",
+          "paintOrder": 50,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "div"
+          },
+          "text": "NORTHWIND",
+          "runs": [
+           {
+            "start": 0,
+            "end": 9,
+            "weight": 600,
+            "style": "normal",
+            "size": 16,
+            "lineHeight": 24,
+            "letterSpacing": 0.96,
+            "color": {
+             "r": 0.39,
+             "g": 0.45,
+             "b": 0.55,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "center"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n51",
+        "paintOrder": 51,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          12,
+          12,
+          12,
+          12
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          24,
+          24,
+          24,
+          24
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n52",
+          "kind": "text",
+          "paintOrder": 52,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "div"
+          },
+          "text": "ACME CO",
+          "runs": [
+           {
+            "start": 0,
+            "end": 7,
+            "weight": 600,
+            "style": "normal",
+            "size": 16,
+            "lineHeight": 24,
+            "letterSpacing": 0.96,
+            "color": {
+             "r": 0.39,
+             "g": 0.45,
+             "b": 0.55,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "center"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n53",
+        "paintOrder": 53,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          12,
+          12,
+          12,
+          12
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          24,
+          24,
+          24,
+          24
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n54",
+          "kind": "text",
+          "paintOrder": 54,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "div"
+          },
+          "text": "GLOBEX",
+          "runs": [
+           {
+            "start": 0,
+            "end": 6,
+            "weight": 600,
+            "style": "normal",
+            "size": 16,
+            "lineHeight": 24,
+            "letterSpacing": 0.96,
+            "color": {
+             "r": 0.39,
+             "g": 0.45,
+             "b": 0.55,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "center"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n55",
+        "paintOrder": 55,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          12,
+          12,
+          12,
+          12
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          24,
+          24,
+          24,
+          24
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n56",
+          "kind": "text",
+          "paintOrder": 56,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "div"
+          },
+          "text": "INITECH",
+          "runs": [
+           {
+            "start": 0,
+            "end": 7,
+            "weight": 600,
+            "style": "normal",
+            "size": 16,
+            "lineHeight": 24,
+            "letterSpacing": 0.96,
+            "color": {
+             "r": 0.39,
+             "g": 0.45,
+             "b": 0.55,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "center"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n57",
+        "paintOrder": 57,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          12,
+          12,
+          12,
+          12
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          24,
+          24,
+          24,
+          24
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n58",
+          "kind": "text",
+          "paintOrder": 58,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "div"
+          },
+          "text": "UMBRELLA",
+          "runs": [
+           {
+            "start": 0,
+            "end": 8,
+            "weight": 600,
+            "style": "normal",
+            "size": 16,
+            "lineHeight": 24,
+            "letterSpacing": 0.96,
+            "color": {
+             "r": 0.39,
+             "g": 0.45,
+             "b": 0.55,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "center"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n59",
+        "paintOrder": 59,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          12,
+          12,
+          12,
+          12
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          24,
+          24,
+          24,
+          24
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n60",
+          "kind": "text",
+          "paintOrder": 60,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "div"
+          },
+          "text": "HOOLI",
+          "runs": [
+           {
+            "start": 0,
+            "end": 5,
+            "weight": 600,
+            "style": "normal",
+            "size": 16,
+            "lineHeight": 24,
+            "letterSpacing": 0.96,
+            "color": {
+             "r": 0.39,
+             "g": 0.45,
+             "b": 0.55,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "center"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n61",
+        "paintOrder": 61,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          12,
+          12,
+          12,
+          12
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          24,
+          24,
+          24,
+          24
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n62",
+          "kind": "text",
+          "paintOrder": 62,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "div"
+          },
+          "text": "STARK",
+          "runs": [
+           {
+            "start": 0,
+            "end": 5,
+            "weight": 600,
+            "style": "normal",
+            "size": 16,
+            "lineHeight": 24,
+            "letterSpacing": 0.96,
+            "color": {
+             "r": 0.39,
+             "g": 0.45,
+             "b": 0.55,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "center"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n63",
+        "paintOrder": 63,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "div"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          12,
+          12,
+          12,
+          12
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          24,
+          24,
+          24,
+          24
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n64",
+          "kind": "text",
+          "paintOrder": 64,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "div"
+          },
+          "text": "WAYNE",
+          "runs": [
+           {
+            "start": 0,
+            "end": 5,
+            "weight": 600,
+            "style": "normal",
+            "size": 16,
+            "lineHeight": 24,
+            "letterSpacing": 0.96,
+            "color": {
+             "r": 0.39,
+             "g": 0.45,
+             "b": 0.55,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "center"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "n65",
+      "paintOrder": 65,
+      "visible": true,
+      "opacity": 1,
+      "blendMode": "normal",
+      "semantic": {
+       "tag": "section"
+      },
+      "kind": "element",
+      "style": {
+       "backgroundColor": {
+        "r": 1,
+        "g": 1,
+        "b": 1,
+        "a": 1
+       },
+       "backgroundImages": [],
+       "borders": {
+        "top": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "right": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "bottom": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "left": {
+         "width": 0,
+         "color": {
+          "r": 0.06,
+          "g": 0.09,
+          "b": 0.16,
+          "a": 1
+         },
+         "style": "none"
+        }
+       },
+       "borderRadius": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "boxShadows": [],
+       "filters": [],
+       "overflow": "visible"
+      },
+      "layout": {
+       "display": "flex",
+       "position": "static",
+       "padding": [
+        16,
+        64,
+        72,
+        64
+       ],
+       "margin": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "order": 0,
+       "grow": 0,
+       "shrink": 1,
+       "flexDirection": "row",
+       "flexWrap": "wrap",
+       "justifyContent": "normal",
+       "alignItems": "normal",
+       "gap": [
+        10,
+        10
+       ]
+      },
+      "children": [
+       {
+        "id": "n66",
+        "paintOrder": 66,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "span"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.31,
+          "g": 0.27,
+          "b": 0.9,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.31,
+            "g": 0.27,
+            "b": 0.9,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.31,
+            "g": 0.27,
+            "b": 0.9,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.31,
+            "g": 0.27,
+            "b": 0.9,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.31,
+            "g": 0.27,
+            "b": 0.9,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          999,
+          999,
+          999,
+          999
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          14,
+          6,
+          14
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n67",
+          "kind": "text",
+          "paintOrder": 67,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "span"
+          },
+          "text": "Funnels",
+          "runs": [
+           {
+            "start": 0,
+            "end": 7,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 1,
+             "g": 1,
+             "b": 1,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n68",
+        "paintOrder": 68,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "span"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.93,
+          "g": 0.95,
+          "b": 1,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.93,
+            "g": 0.95,
+            "b": 1,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.93,
+            "g": 0.95,
+            "b": 1,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.93,
+            "g": 0.95,
+            "b": 1,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.93,
+            "g": 0.95,
+            "b": 1,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          999,
+          999,
+          999,
+          999
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          14,
+          6,
+          14
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n69",
+          "kind": "text",
+          "paintOrder": 69,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "span"
+          },
+          "text": "Retention",
+          "runs": [
+           {
+            "start": 0,
+            "end": 9,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.31,
+             "g": 0.27,
+             "b": 0.9,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n70",
+        "paintOrder": 70,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "span"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          999,
+          999,
+          999,
+          999
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          14,
+          6,
+          14
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n71",
+          "kind": "text",
+          "paintOrder": 71,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "span"
+          },
+          "text": "Cohorts",
+          "runs": [
+           {
+            "start": 0,
+            "end": 7,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.06,
+             "g": 0.09,
+             "b": 0.16,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n72",
+        "paintOrder": 72,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "span"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.93,
+          "g": 0.95,
+          "b": 1,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.93,
+            "g": 0.95,
+            "b": 1,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.93,
+            "g": 0.95,
+            "b": 1,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.93,
+            "g": 0.95,
+            "b": 1,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.93,
+            "g": 0.95,
+            "b": 1,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          999,
+          999,
+          999,
+          999
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          14,
+          6,
+          14
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n73",
+          "kind": "text",
+          "paintOrder": 73,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "span"
+          },
+          "text": "Experiments",
+          "runs": [
+           {
+            "start": 0,
+            "end": 11,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.31,
+             "g": 0.27,
+             "b": 0.9,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n74",
+        "paintOrder": 74,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "span"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          999,
+          999,
+          999,
+          999
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          14,
+          6,
+          14
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n75",
+          "kind": "text",
+          "paintOrder": 75,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "span"
+          },
+          "text": "Session replay",
+          "runs": [
+           {
+            "start": 0,
+            "end": 14,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.06,
+             "g": 0.09,
+             "b": 0.16,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n76",
+        "paintOrder": 76,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "span"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          999,
+          999,
+          999,
+          999
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          14,
+          6,
+          14
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n77",
+          "kind": "text",
+          "paintOrder": 77,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "span"
+          },
+          "text": "Feature flags",
+          "runs": [
+           {
+            "start": 0,
+            "end": 13,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.06,
+             "g": 0.09,
+             "b": 0.16,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n78",
+        "paintOrder": 78,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "span"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          999,
+          999,
+          999,
+          999
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          14,
+          6,
+          14
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n79",
+          "kind": "text",
+          "paintOrder": 79,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "span"
+          },
+          "text": "SQL access",
+          "runs": [
+           {
+            "start": 0,
+            "end": 10,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.06,
+             "g": 0.09,
+             "b": 0.16,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n80",
+        "paintOrder": 80,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "span"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          999,
+          999,
+          999,
+          999
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          14,
+          6,
+          14
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n81",
+          "kind": "text",
+          "paintOrder": 81,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "span"
+          },
+          "text": "Alerts",
+          "runs": [
+           {
+            "start": 0,
+            "end": 6,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.06,
+             "g": 0.09,
+             "b": 0.16,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n82",
+        "paintOrder": 82,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "span"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          999,
+          999,
+          999,
+          999
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          14,
+          6,
+          14
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n83",
+          "kind": "text",
+          "paintOrder": 83,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "span"
+          },
+          "text": "Warehouse sync",
+          "runs": [
+           {
+            "start": 0,
+            "end": 14,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.06,
+             "g": 0.09,
+             "b": 0.16,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n84",
+        "paintOrder": 84,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "span"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0.97,
+          "g": 0.98,
+          "b": 0.99,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          999,
+          999,
+          999,
+          999
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          14,
+          6,
+          14
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n85",
+          "kind": "text",
+          "paintOrder": 85,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "span"
+          },
+          "text": "Data governance",
+          "runs": [
+           {
+            "start": 0,
+            "end": 15,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.06,
+             "g": 0.09,
+             "b": 0.16,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "n86",
+      "paintOrder": 86,
+      "visible": true,
+      "opacity": 1,
+      "blendMode": "normal",
+      "semantic": {
+       "tag": "footer",
+       "landmark": "contentinfo"
+      },
+      "kind": "element",
+      "style": {
+       "backgroundColor": {
+        "r": 0.06,
+        "g": 0.09,
+        "b": 0.16,
+        "a": 1
+       },
+       "backgroundImages": [],
+       "borders": {
+        "top": {
+         "width": 0,
+         "color": {
+          "r": 0.89,
+          "g": 0.91,
+          "b": 0.94,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "right": {
+         "width": 0,
+         "color": {
+          "r": 0.89,
+          "g": 0.91,
+          "b": 0.94,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "bottom": {
+         "width": 0,
+         "color": {
+          "r": 0.89,
+          "g": 0.91,
+          "b": 0.94,
+          "a": 1
+         },
+         "style": "none"
+        },
+        "left": {
+         "width": 0,
+         "color": {
+          "r": 0.89,
+          "g": 0.91,
+          "b": 0.94,
+          "a": 1
+         },
+         "style": "none"
+        }
+       },
+       "borderRadius": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "boxShadows": [],
+       "filters": [],
+       "overflow": "visible"
+      },
+      "layout": {
+       "display": "flex",
+       "position": "static",
+       "padding": [
+        32,
+        64,
+        32,
+        64
+       ],
+       "margin": [
+        0,
+        0,
+        0,
+        0
+       ],
+       "order": 0,
+       "grow": 0,
+       "shrink": 1,
+       "flexDirection": "row",
+       "flexWrap": "nowrap",
+       "justifyContent": "space-between",
+       "alignItems": "normal",
+       "gap": [
+        0,
+        0
+       ]
+      },
+      "children": [
+       {
+        "id": "n87",
+        "paintOrder": 87,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "span"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n88",
+          "kind": "text",
+          "paintOrder": 88,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "span"
+          },
+          "text": "Orbit Analytics Inc.",
+          "runs": [
+           {
+            "start": 0,
+            "end": 5,
+            "weight": 700,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 1,
+             "g": 1,
+             "b": 1,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           },
+           {
+            "start": 5,
+            "end": 20,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.89,
+             "g": 0.91,
+             "b": 0.94,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n89",
+        "paintOrder": 89,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "span"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.89,
+            "g": 0.91,
+            "b": 0.94,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n90",
+          "kind": "text",
+          "paintOrder": 90,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "span"
+          },
+          "text": "Terms · Privacy · Status",
+          "runs": [
+           {
+            "start": 0,
+            "end": 24,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 21,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.89,
+             "g": 0.91,
+             "b": 0.94,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

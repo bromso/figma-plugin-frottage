@@ -3,7 +3,7 @@ import { source } from "@/lib/source";
 
 export const dynamic = "force-static";
 
-const BASE_URL = "https://bromso.github.io/figma-plugin-template";
+const BASE_URL = "https://bromso.github.io/figma-plugin-frottage";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const pages = source.getPages();

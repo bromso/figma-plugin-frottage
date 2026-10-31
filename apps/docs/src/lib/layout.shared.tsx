@@ -11,11 +11,11 @@ export function baseOptions(): BaseLayoutProps {
         </>
       ),
     },
-    githubUrl: "https://github.com/bromso/figma-plugin-template",
+    githubUrl: "https://github.com/bromso/figma-plugin-frottage",
     links: [
       {
         text: "Storybook",
-        url: "https://bromso.github.io/figma-plugin-template/storybook",
+        url: "https://bromso.github.io/figma-plugin-frottage/storybook",
       },
     ],
   };

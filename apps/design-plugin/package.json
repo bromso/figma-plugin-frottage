@@ -8,7 +8,8 @@
     "dev:ui-only": "bun ../../packages/ui/src/index.html",
     "types": "tsc --noEmit",
     "analyze": "NODE_ENV=production bun build.ts --analyze",
-    "lint": "biome check ."
+    "lint": "biome check .",
+    "test": "bun test src"
   },
   "dependencies": {
     "@repo/common": "workspace:*",
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.142.0",
+    "@repo/figma-mapper": "workspace:*",
     "@types/bun": "^1.4.4",
     "bun-plugin-tailwind": "^0.1.2",
     "tailwindcss": "^4.3.3",
