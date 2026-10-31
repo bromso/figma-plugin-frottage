@@ -318,6 +318,24 @@ describe("CaptureRun", () => {
       expect(last(f.statuses)).toMatchObject({ state: "error" });
     });
 
+    test("an oversized chunk is refused before it is decoded", () => {
+      const f = setup({ maxAssetBytes: 6 });
+      f.run.start("r1");
+      // Not valid base64: a decode would throw a different error.
+      f.run.onChunk("r1", {
+        type: "chunk",
+        kind: "asset",
+        key: H1,
+        index: 0,
+        total: 1,
+        data: "!".repeat(40),
+      });
+      expect(last(f.statuses)).toMatchObject({
+        state: "error",
+        message: expect.stringContaining("more image data"),
+      });
+    });
+
     test("asset chunks restart the no-progress timer", () => {
       t.run.onChunk("r1", {
         type: "chunk",

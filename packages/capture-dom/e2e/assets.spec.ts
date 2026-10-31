@@ -44,8 +44,9 @@ type Result = {
   progress: number;
 };
 
-async function runAssets(page: Page, file: string): Promise<Result> {
+async function runAssets(page: Page, file: string, setup?: () => void): Promise<Result> {
   await page.goto(`/${file}`);
+  if (setup) await page.evaluate(setup);
   await page.addScriptTag({ content: bundle });
   const json = await page.evaluate(async () => {
     const h = (globalThis as unknown as Hook).__frottageCapture;
@@ -200,3 +201,56 @@ test("every asset is listed once and the capture still parses", async ({ page })
   expect(new Set(r.capture.assets.map((a) => a.hash)).size).toBe(r.capture.assets.length);
   expect([...r.assets.keys()].sort()).toEqual(r.capture.assets.map((a) => a.hash).sort());
 });
+
+test("a JPEG with an EXIF rotation is re-encoded so its size matches how it is shown", async ({
+  page,
+}) => {
+  const a = assetFor(await runAssets(page, "images.html"), "exif");
+  expect(a.mime).toBe("image/jpeg");
+  expect([a.width, a.height]).toEqual([20, 40]);
+});
+
+test("a shared 2 MB data URI background is not repeated in capture.json and is stored once", async ({
+  page,
+}) => {
+  const r = await runAssets(page, "landing.html", () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 700;
+    canvas.height = 700;
+    const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
+    const data = ctx.createImageData(700, 700);
+    for (let i = 0; i < data.data.length; i += 65536) {
+      crypto.getRandomValues(data.data.subarray(i, i + 65536));
+    }
+    for (let i = 3; i < data.data.length; i += 4) data.data[i] = 255;
+    ctx.putImageData(data, 0, 0);
+    const url = canvas.toDataURL("image/png");
+    if (url.length < 1_500_000) throw new Error(`data URL only ${url.length} chars`);
+    for (let i = 0; i < 40; i++) {
+      const d = document.createElement("div");
+      d.style.cssText = `width:20px;height:20px;background-image:url("${url}")`;
+      document.body.append(d);
+    }
+  });
+  const json = JSON.stringify(r.capture);
+  expect(json.length).toBeLessThan(2_000_000);
+  expect(json).not.toContain("base64,AAAA");
+  const layers = bgLayersAll(r.capture);
+  expect(layers.length).toBe(40);
+  expect(new Set(layers.map((l) => l.assetHash)).size).toBe(1);
+  expect(layers[0]?.css.length).toBeLessThan(200);
+  expect(r.capture.assets.length).toBe(1);
+  expect(r.assets.size).toBe(1);
+  expect(r.capture.assets[0]?.sourceUrl.length).toBeLessThan(200);
+});
+
+function bgLayersAll(c: Capture) {
+  const out: Extract<CaptureNode, { kind: "element" }>["style"]["backgroundImages"] = [];
+  const go = (n: CaptureNode) => {
+    if (n.kind !== "element") return;
+    out.push(...n.style.backgroundImages);
+    for (const child of n.children) go(child);
+  };
+  go(c.root);
+  return out;
+}

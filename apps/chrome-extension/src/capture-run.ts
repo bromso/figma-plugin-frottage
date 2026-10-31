@@ -22,12 +22,17 @@ export type RunDeps = {
   now: () => Date;
   /** No-progress timeout. */
   timeoutMs: number;
-  /** Most image bytes accepted from the page. Default 256 MiB, the import limit. */
+  /** Most image bytes accepted from the page. Default 180 MiB, as in the page's budget. */
   maxAssetBytes?: number;
 };
 
+/** Decoded size of base64 text, without decoding it. */
+const decodedSize = (b64: string) =>
+  Math.floor((b64.length * 3) / 4) - (b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0);
+
 const SHA256_HEX = /^[0-9a-f]{64}$/;
-const MAX_ASSET_BYTES = 256 * 1024 * 1024;
+/** 180 MiB of images plus up to 64 MiB of capture.json stays under the 256 MiB import limit. */
+const MAX_ASSET_BYTES = 180 * 1024 * 1024;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -84,12 +89,14 @@ export class CaptureRun {
       asm = new AssetAssembler();
       this.assembling.set(chunk.key, asm);
     }
+    // Count the chunk before decoding it, so an oversized one is never allocated.
+    const limit = this.deps.maxAssetBytes ?? MAX_ASSET_BYTES;
+    const tooMuch = () => new Error("The page sent more image data than the limit allows");
+    if (this.assetBytes + decodedSize(chunk.data) > limit) throw tooMuch();
     const before = asm.size;
     const bytes = asm.add(chunk.index, chunk.total, chunk.data);
     this.assetBytes += asm.size - before;
-    if (this.assetBytes > (this.deps.maxAssetBytes ?? MAX_ASSET_BYTES)) {
-      throw new Error("The page sent more image data than the limit allows");
-    }
+    if (this.assetBytes > limit) throw tooMuch();
     if (bytes) {
       this.assembling.delete(chunk.key);
       this.assets.set(chunk.key, bytes);

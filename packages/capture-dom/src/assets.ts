@@ -7,6 +7,7 @@ import type {
 } from "@repo/capture-schema";
 // The hash module has no Zod, so this file can run in the page's isolated world.
 import { sha256Hex } from "@repo/capture-schema/hash";
+import { dataUrlOf, resetDataUrls, shortDataUrl } from "./data-urls";
 
 type Warning = Capture["warnings"][number];
 type Layer = ElementNode["style"]["backgroundImages"][number];
@@ -32,15 +33,18 @@ export type AssetDeps = {
   concurrency?: number;
   /** Per-image limit for fetch plus decode. Default 15 s. */
   timeoutMs?: number;
-  /** Stop collecting once the stored bytes would pass this. Default 200 MiB. */
+  /** Stop collecting once the stored bytes would pass this. Default 180 MiB. */
   budgetBytes?: number;
 };
 
 export const MAX_IMAGE_SIDE = 4096;
-export const ASSET_BUDGET_BYTES = 200 * 1024 * 1024;
+/**
+ * Image bytes kept under the 256 MiB import limit with room for capture.json (up to 64 MiB):
+ * 180 + 64 < 256. The extension's run-side cap uses the same figure.
+ */
+export const ASSET_BUDGET_BYTES = 180 * 1024 * 1024;
 const CONCURRENCY = 6;
 const TIMEOUT_MS = 15_000;
-const SHORT_URL = 200;
 
 class Failure extends Error {
   constructor(
@@ -51,17 +55,13 @@ class Failure extends Error {
   }
 }
 
-/** A data: URL can be megabytes; the capture keeps only its head. */
-function shortUrl(url: string): string {
-  if (!url.startsWith("data:") || url.length <= SHORT_URL) return url;
-  return `${url.slice(0, 64)}…[${url.length} chars]`;
-}
-
 const URL_IN_CSS = /url\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^)\s]*))\s*\)/;
 
 /** The first url() in a computed `background-image` layer, or null (gradients, unparsable image-set). */
-function urlOfLayer(css: string): string | null {
-  const m = URL_IN_CSS.exec(css);
+function urlOfLayer(layer: Layer): string | null {
+  const full = dataUrlOf(layer);
+  if (full) return full;
+  const m = URL_IN_CSS.exec(layer.css);
   const raw = m?.[1] ?? m?.[2] ?? m?.[3];
   return raw ? raw.replace(/\\(.)/g, "$1") : null;
 }
@@ -78,7 +78,7 @@ function gather(root: CaptureNode): Ref[] {
     if (node.kind === "element") {
       for (const layer of node.style.backgroundImages) {
         if (layer.type === "image" && !layer.assetHash) {
-          refs.push({ kind: "background", url: urlOfLayer(layer.css), element: node, layer });
+          refs.push({ kind: "background", url: urlOfLayer(layer), element: node, layer });
         }
       }
       node.children.forEach((child, index) => {
@@ -96,7 +96,7 @@ function gather(root: CaptureNode): Ref[] {
         stack.push(node.children[i] as CaptureNode);
     }
     if ("sourceUrl" in node && typeof node.sourceUrl === "string") {
-      node.sourceUrl = shortUrl(node.sourceUrl);
+      node.sourceUrl = shortDataUrl(node.sourceUrl);
     }
   }
   return refs;
@@ -204,9 +204,13 @@ export async function collectAssets(capture: Capture, deps: AssetDeps): Promise<
     else warnings.set(code, { first: { code, nodeId, detail }, count: 1 });
   };
   const lost = (id: string, url: string | null, r: Extract<Loaded, { ok: false }>) => {
-    const what = url ? shortUrl(url) : "an image-set";
+    const what = url ? shortDataUrl(url) : "an image-set";
     if (r.code === "asset-limit")
-      warn("asset-limit", id, `The 200 MiB image limit was reached; ${what} was not captured`);
+      warn(
+        "asset-limit",
+        id,
+        `The ${Math.floor(budget / 1048576)} MiB image limit was reached; ${what} was not captured`
+      );
     else if (r.code === "image-blocked")
       warn("image-blocked", id, `Could not read ${what}: ${r.detail}`);
     else warn("image-failed", id, `Could not decode ${what}: ${r.detail}`);
@@ -253,7 +257,7 @@ export async function collectAssets(capture: Capture, deps: AssetDeps): Promise<
       mime: r.n.mime,
       width: r.n.width,
       height: r.n.height,
-      sourceUrl: shortUrl(url),
+      sourceUrl: shortDataUrl(url),
       ...(r.n.downscaledFrom ? { downscaledFrom: r.n.downscaledFrom } : {}),
     });
   }
@@ -265,6 +269,7 @@ export async function collectAssets(capture: Capture, deps: AssetDeps): Promise<
 
   const assets = new Map<string, Uint8Array>();
   for (const hash of seen) assets.set(hash, bytesByHash.get(hash) as Uint8Array);
+  resetDataUrls();
   return { capture, assets };
 }
 
@@ -277,24 +282,137 @@ export async function browserFetchBytes(url: string, signal?: AbortSignal): Prom
   return res.blob();
 }
 
-type Kind = "png" | "jpeg" | "gif" | "svg" | "other";
+export type Kind = "png" | "jpeg" | "gif" | "webp" | "svg" | "other";
 
-function sniff(head: Uint8Array, type: string): Kind {
+/** Bytes read from the start of an image to find its size and orientation. */
+const HEAD_BYTES = 256 * 1024;
+/** Above this many pixels an image is refused: its decode alone could crash the tab. */
+export const MAX_PIXELS = 100_000_000;
+
+export function sniff(head: Uint8Array, type: string): Kind {
   const at = (i: number) => head[i] ?? 0;
   if (at(0) === 0x89 && at(1) === 0x50 && at(2) === 0x4e && at(3) === 0x47) return "png";
   if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return "jpeg";
   if (at(0) === 0x47 && at(1) === 0x49 && at(2) === 0x46 && at(3) === 0x38) return "gif";
-  const text = new TextDecoder().decode(head);
+  if (
+    at(0) === 0x52 &&
+    at(1) === 0x49 &&
+    at(2) === 0x46 &&
+    at(3) === 0x46 && // RIFF
+    at(8) === 0x57 &&
+    at(9) === 0x45 &&
+    at(10) === 0x42 &&
+    at(11) === 0x50 // WEBP
+  ) {
+    return "webp";
+  }
+  const text = new TextDecoder().decode(head.subarray(0, 512));
   if (type === "image/svg+xml" || /<svg[\s>]/i.test(text)) return "svg";
   return "other";
 }
 
-async function encodePng(source: CanvasImageSource, w: number, h: number): Promise<Uint8Array> {
+export type Header = { w: number; h: number; orientation: number };
+
+/** Size (and, for JPEG, EXIF orientation 1-8) from the file header alone; null when unreadable. */
+export function readHeader(head: Uint8Array, kind: Kind): Header | null {
+  const at = (i: number) => head[i] ?? 0;
+  const be16 = (i: number) => (at(i) << 8) | at(i + 1);
+  const le16 = (i: number) => at(i) | (at(i + 1) << 8);
+  const be32 = (i: number) =>
+    ((at(i) << 24) | (at(i + 1) << 16) | (at(i + 2) << 8) | at(i + 3)) >>> 0;
+  const ok = (w: number, h: number, orientation = 1): Header | null =>
+    w > 0 && h > 0 ? { w, h, orientation } : null;
+
+  if (kind === "png") return head.length >= 24 ? ok(be32(16), be32(20)) : null;
+  if (kind === "gif") return head.length >= 10 ? ok(le16(6), le16(8)) : null;
+  if (kind === "webp") {
+    if (head.length < 25) return null;
+    const fourcc = String.fromCharCode(at(12), at(13), at(14), at(15));
+    if (fourcc === "VP8X" && head.length >= 30) {
+      const w = 1 + (at(24) | (at(25) << 8) | (at(26) << 16));
+      return ok(w, 1 + (at(27) | (at(28) << 8) | (at(29) << 16)));
+    }
+    if (fourcc === "VP8L" && at(20) === 0x2f) {
+      const bits = (at(21) | (at(22) << 8) | (at(23) << 16) | (at(24) << 24)) >>> 0;
+      return ok((bits & 0x3fff) + 1, ((bits >>> 14) & 0x3fff) + 1);
+    }
+    if (
+      fourcc === "VP8 " &&
+      head.length >= 30 &&
+      at(23) === 0x9d &&
+      at(24) === 0x01 &&
+      at(25) === 0x2a
+    ) {
+      return ok(le16(26) & 0x3fff, le16(28) & 0x3fff);
+    }
+    return null;
+  }
+  if (kind === "jpeg") {
+    let orientation = 1;
+    let i = 2;
+    while (i + 4 <= head.length) {
+      if (at(i) !== 0xff) return null;
+      const marker = at(i + 1);
+      if (marker === 0xff) {
+        i++;
+        continue;
+      }
+      if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+        i += 2;
+        continue;
+      }
+      const len = be16(i + 2);
+      if (marker === 0xe1 && at(i + 4) === 0x45 && at(i + 5) === 0x78) {
+        orientation = exifOrientation(head, i + 10, i + 2 + len) ?? orientation;
+      }
+      const sof =
+        marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+      if (sof) return ok(be16(i + 7), be16(i + 5), orientation);
+      if (marker === 0xda) return null;
+      i += 2 + len;
+    }
+    return null;
+  }
+  return null;
+}
+
+/** Orientation tag (0x0112) from a TIFF block starting at `tiff`, or null. */
+function exifOrientation(head: Uint8Array, tiff: number, end: number): number | null {
+  const at = (i: number) => head[i] ?? 0;
+  const little = at(tiff) === 0x49;
+  const u16 = (i: number) => (little ? at(i) | (at(i + 1) << 8) : (at(i) << 8) | at(i + 1));
+  const u32 = (i: number) =>
+    little
+      ? (at(i) | (at(i + 1) << 8) | (at(i + 2) << 16) | (at(i + 3) << 24)) >>> 0
+      : ((at(i) << 24) | (at(i + 1) << 16) | (at(i + 2) << 8) | at(i + 3)) >>> 0;
+  if (u16(tiff + 2) !== 0x2a) return null;
+  const ifd = tiff + u32(tiff + 4);
+  if (ifd + 2 > end) return null;
+  const count = u16(ifd);
+  for (let n = 0; n < count; n++) {
+    const entry = ifd + 2 + n * 12;
+    if (entry + 12 > end) return null;
+    if (u16(entry) === 0x0112) {
+      const v = u16(entry + 8);
+      return v >= 1 && v <= 8 ? v : null;
+    }
+  }
+  return null;
+}
+
+async function encode(
+  source: CanvasImageSource,
+  w: number,
+  h: number,
+  type: "image/png" | "image/jpeg" = "image/png"
+): Promise<Uint8Array> {
   const canvas = new OffscreenCanvas(w, h);
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("No 2D canvas");
   ctx.drawImage(source, 0, 0, w, h);
-  const out = await canvas.convertToBlob({ type: "image/png" });
+  const out = await canvas.convertToBlob(
+    type === "image/jpeg" ? { type, quality: 0.95 } : { type }
+  );
   return new Uint8Array(await out.arrayBuffer());
 }
 
@@ -333,7 +451,7 @@ async function rasteriseSvg(blob: Blob, hint?: { w: number; h: number }): Promis
       h = nh || 150;
     }
     const size = fitWithin(w, h);
-    const bytes = await encodePng(img, size.w, size.h);
+    const bytes = await encode(img, size.w, size.h);
     return { bytes, mime: "image/png", width: size.w, height: size.h };
   } finally {
     URL.revokeObjectURL(url);
@@ -342,38 +460,68 @@ async function rasteriseSvg(blob: Blob, hint?: { w: number; h: number }): Promis
 
 /**
  * PNG, JPEG and GIF keep their bytes (an animated GIF stays animated) unless a side exceeds
- * 4096. Anything else the browser can decode (WebP, AVIF, BMP, ...) becomes a PNG at its natural
- * size; SVG becomes a PNG at twice its display size. All are capped at 4096 per side.
+ * 4096 or a JPEG carries an EXIF rotation. Anything else the browser can decode (WebP, AVIF, BMP,
+ * ...) becomes a PNG at its natural size; SVG becomes a PNG at twice its display size. All are
+ * capped at 4096 per side.
+ *
+ * The header is read first: above 100 megapixels the image is refused, and for sides over 4096 the
+ * decode is asked for the reduced size, so a 20000 x 20000 image is never decoded in full. An
+ * unreadable header falls back to a plain decode.
+ *
+ * A JPEG whose EXIF orientation is not 1 is re-encoded (JPEG, quality 0.95) from the oriented
+ * bitmap, so the stored size and pixels agree with how Figma and browsers display it. The cost is
+ * one lossy generation; a PNG would avoid that but is several times larger for photos.
  */
 export async function browserNormalise(
   blob: Blob,
   hint?: { w: number; h: number }
 ): Promise<Normalised> {
-  const head = new Uint8Array(await blob.slice(0, 512).arrayBuffer());
+  const head = new Uint8Array(await blob.slice(0, HEAD_BYTES).arrayBuffer());
   const kind = sniff(head, blob.type);
   if (kind === "svg") return rasteriseSvg(blob, hint);
-  const bitmap = await createImageBitmap(blob);
+  const header = readHeader(head, kind);
+  let natural: { w: number; h: number } | null = null;
+  let rotated = false;
+  if (header) {
+    if (header.w * header.h > MAX_PIXELS) {
+      throw new Error(`Image is ${header.w} x ${header.h}, over ${MAX_PIXELS / 1e6} megapixels`);
+    }
+    rotated = kind === "jpeg" && header.orientation > 1;
+    natural =
+      rotated && header.orientation >= 5
+        ? { w: header.h, h: header.w }
+        : { w: header.w, h: header.h };
+  }
+  const target = natural ? fitWithin(natural.w, natural.h) : null;
+  const bitmap = await createImageBitmap(
+    blob,
+    target?.scaled
+      ? { resizeWidth: target.w, resizeHeight: target.h, resizeQuality: "high" }
+      : undefined
+  );
   try {
-    const { width, height } = bitmap;
-    if (
-      (kind === "png" || kind === "jpeg" || kind === "gif") &&
-      Math.max(width, height) <= MAX_IMAGE_SIDE
-    ) {
+    // Without a header, or if resizing was not honoured, size comes from the bitmap itself.
+    const from = natural ?? { w: bitmap.width, h: bitmap.height };
+    const size = fitWithin(bitmap.width, bitmap.height);
+    const scaled = target?.scaled === true || size.scaled;
+    const passthrough =
+      (kind === "png" || kind === "jpeg" || kind === "gif") && !scaled && !rotated;
+    if (passthrough) {
       return {
         bytes: new Uint8Array(await blob.arrayBuffer()),
         mime: `image/${kind}`,
-        width,
-        height,
+        width: bitmap.width,
+        height: bitmap.height,
       };
     }
-    const size = fitWithin(width, height);
-    const bytes = await encodePng(bitmap, size.w, size.h);
+    const type = rotated ? "image/jpeg" : "image/png";
+    const bytes = await encode(bitmap, size.w, size.h, type);
     return {
       bytes,
-      mime: "image/png",
+      mime: type,
       width: size.w,
       height: size.h,
-      ...(size.scaled ? { downscaledFrom: { w: width, h: height } } : {}),
+      ...(scaled ? { downscaledFrom: { w: from.w, h: from.h } } : {}),
     };
   } finally {
     bitmap.close();

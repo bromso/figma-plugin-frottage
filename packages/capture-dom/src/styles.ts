@@ -1,5 +1,6 @@
 import type { ElementNode } from "@repo/capture-schema";
 import { parseComputedColor, type Rgba } from "./color";
+import { rememberDataUrl, shortenDataUrls } from "./data-urls";
 
 type Style = ElementNode["style"];
 type Layout = ElementNode["layout"];
@@ -96,8 +97,12 @@ export function parseBackgroundImages(cs: CSSStyleDeclaration): BackgroundImage[
   const positions = splitTop(cs.backgroundPosition);
   const repeats = splitTop(cs.backgroundRepeat);
   const out: BackgroundImage[] = [];
-  splitTop(value).forEach((layer, i) => {
+  // Data URLs are swapped for short tokens first: they can be megabytes and must not be kept
+  // in `css` (repeated per element) nor split character by character.
+  const shortened = shortenDataUrls(value);
+  splitTop(shortened.text).forEach((rawLayer, i) => {
     const pick = (list: string[]) => list[i % Math.max(list.length, 1)];
+    const { css: layer, full } = shortened.restore(rawLayer);
     const base = {
       css: layer,
       size: pick(sizes),
@@ -134,7 +139,9 @@ export function parseBackgroundImages(cs: CSSStyleDeclaration): BackgroundImage[
         ...(stops ? { stops } : {}),
       });
     } else if (layer.startsWith("url(") || layer.startsWith("image-set(")) {
-      out.push({ type: "image", ...base });
+      const entry: BackgroundImage = { type: "image", ...base };
+      if (full !== undefined) rememberDataUrl(entry, full);
+      out.push(entry);
     }
   });
   return out;
