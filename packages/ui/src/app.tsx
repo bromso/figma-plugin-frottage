@@ -6,9 +6,11 @@ const MORE_THAN_ONE = "You dropped more than one file. Frottage imported the fir
 
 function Report({
   state,
+  notice,
   headingRef,
 }: {
   state: Extract<ImportState, { step: "done" }>;
+  notice: string;
   headingRef: React.Ref<HTMLParagraphElement>;
 }) {
   const { report, failedOps, missingImages } = state;
@@ -18,6 +20,7 @@ function Report({
     ["Images", report.images],
     ["Placeholders", report.placeholders],
   ];
+  if (report.downscaledImages > 0) rows.push(["Images downscaled", report.downscaledImages]);
   if (failedOps > 0) rows.push(["Failed layers", failedOps]);
   if (missingImages > 0) rows.push(["Missing images", missingImages]);
   return (
@@ -25,6 +28,7 @@ function Report({
       <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">
         Import complete
       </SectionTitle>
+      {notice && <p className="text-figma-text-secondary">{notice}</p>}
       <dl className="flex flex-col">
         {rows.map(([label, count]) => (
           <div key={label} className="flex h-6 items-center justify-between">
@@ -181,7 +185,7 @@ function App({ port }: { port?: ImportPort }) {
 
       {state.step === "done" && (
         <>
-          <Report state={state} headingRef={headingRef} />
+          <Report state={state} notice={notice} headingRef={headingRef} />
           <Button variant="secondary" onClick={reset}>
             Import another file
           </Button>

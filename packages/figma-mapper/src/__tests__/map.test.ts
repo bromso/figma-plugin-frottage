@@ -381,6 +381,13 @@ describe("mapCapture", () => {
     );
     expect(op.y).toBe(7);
   });
+  test("counts downscaled images", () => {
+    const asset = { hash: "h", mime: "image/png", width: 1, height: 1, sourceUrl: "u" };
+    const c = cap(el("root", [0, 0]));
+    expect(mapCapture(c, inter).report.downscaledImages).toBe(0);
+    c.assets = [asset, { ...asset, downscaledFrom: { w: 9, h: 9 } }];
+    expect(mapCapture(c, inter).report.downscaledImages).toBe(1);
+  });
   test("carries the capture's warnings", () => {
     const c = cap(el("root", [0, 0]));
     c.warnings = [{ code: "w", detail: "careful" }];

@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../app";
-import { fakePort, frottageFile } from "../import/__tests__/helpers";
+import { downscaledFile, fakePort, frottageFile } from "../import/__tests__/helpers";
 
 describe("App (import screen)", () => {
   it("has a labelled file input with no accept filter", () => {
@@ -24,6 +24,29 @@ describe("App (import screen)", () => {
     expect(screen.queryByText("Missing images")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Import another file" }));
     expect(screen.getByRole("button", { name: /Choose a file/ })).toBeInTheDocument();
+  });
+
+  it("shows the multi-file notice inside the done report", async () => {
+    render(<App port={fakePort()} />);
+    const input = screen.getByLabelText("Choose a .frottage file");
+    fireEvent.change(input, {
+      target: { files: [frottageFile(1), frottageFile(1, 1, "second.frottage")] },
+    });
+    expect(await screen.findByText("Import complete")).toBeInTheDocument();
+    expect(screen.getByText(/more than one file/)).toBeInTheDocument();
+  });
+
+  it("shows the downscaled image count only when there is one", async () => {
+    const user = userEvent.setup();
+    render(<App port={fakePort()} />);
+    const input = screen.getByLabelText("Choose a .frottage file");
+    await user.upload(input, await downscaledFile());
+    expect(await screen.findByText("Images downscaled")).toBeInTheDocument();
+    expect(screen.getByText("Images downscaled").nextSibling).toHaveTextContent("1");
+    await user.click(screen.getByRole("button", { name: "Import another file" }));
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await screen.findByText("Import complete");
+    expect(screen.queryByText("Images downscaled")).toBeNull();
   });
 
   it("renders a failure in an alert as plain text", async () => {
@@ -84,7 +107,7 @@ describe("App (import screen)", () => {
       );
     });
     await screen.findByText("Import complete");
-    expect(screen.queryByText(/more than one file/)).toBeNull();
+    expect(screen.getByText(/more than one file/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Import another file" }));
     expect(screen.queryByText(/more than one file/)).toBeNull();
   });

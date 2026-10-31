@@ -140,6 +140,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     texts: 0,
     images: 0,
     placeholders: 0,
+    downscaledImages: capture.assets.filter((a) => a.downscaledFrom).length,
     substitutedFonts: [] as { from: string; to: string }[],
     warnings: capture.warnings.map((w) => w.detail),
   };

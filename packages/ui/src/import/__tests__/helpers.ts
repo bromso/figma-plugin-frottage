@@ -104,6 +104,7 @@ export type FakePort = ImportPort & {
   batchSizes: number[];
   endResult: { rootId: string; failedOps: number; missingImages?: number };
   failOn?: "batch" | "end";
+  beginMeta?: Parameters<ImportPort["begin"]>[0];
 };
 
 export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular" }]): FakePort {
@@ -115,8 +116,9 @@ export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular"
       port.log.push("listFonts");
       return fonts;
     },
-    async begin() {
+    async begin(meta) {
       port.log.push("begin");
+      port.beginMeta = meta;
     },
     async image() {
       port.log.push("image");
@@ -142,7 +144,7 @@ export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular"
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 
 /** A file with one image node; `keyFor` decides the asset's map key. */
-export async function imageFile(good: boolean): Promise<File> {
+export async function imageFile(good: boolean, edit?: (capture: Capture) => void): Promise<File> {
   const key = good ? sha256Hex(PNG) : "a".repeat(64);
   const capture = captureWithTexts(0);
   (capture.root as { children: CaptureNode[] }).children = [
@@ -157,6 +159,29 @@ export async function imageFile(good: boolean): Promise<File> {
       borders: { top: noBorder, right: noBorder, bottom: noBorder, left: noBorder },
     } as CaptureNode,
   ];
+  edit?.(capture);
   const bytes = packFrottage(capture, new Map([[key, PNG]]));
   return new File([bytes as BlobPart], "img.frottage");
+}
+
+/** A file whose one image was downscaled during capture. */
+export function downscaledFile(): Promise<File> {
+  return imageFile(true, (capture) => {
+    capture.assets.push({
+      hash: sha256Hex(PNG),
+      mime: "image/png",
+      width: 4096,
+      height: 82,
+      sourceUrl: "https://example.com/huge.png",
+      downscaledFrom: { w: 5000, h: 100 },
+    });
+  });
+}
+
+/** A file of one text layer whose source title and URL are set by the test. */
+export function namedFile(title: string, url: string): File {
+  const capture = captureWithTexts(1);
+  capture.source.title = title;
+  capture.source.url = url;
+  return new File([packFrottage(capture, new Map()) as BlobPart], "page.frottage");
 }

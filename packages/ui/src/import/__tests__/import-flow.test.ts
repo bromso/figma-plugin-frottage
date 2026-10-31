@@ -1,7 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { FrottageFileError } from "@repo/capture-schema";
-import { type ImportState, messageForError, runImport } from "../import-flow";
-import { fakePort, frottageFile, imageFile } from "./helpers";
+import { type ImportState, messageForError, runImport, yieldToPaint } from "../import-flow";
+import { fakePort, frottageFile, imageFile, namedFile } from "./helpers";
 
 async function run(file: File, port = fakePort()) {
   const states: ImportState[] = [];
@@ -17,7 +17,45 @@ describe("messageForError", () => {
   });
 });
 
+describe("yieldToPaint", () => {
+  const original = globalThis.requestAnimationFrame;
+  afterEach(() => {
+    globalThis.requestAnimationFrame = original;
+  });
+
+  test("moves on when the hidden iframe never fires requestAnimationFrame", async () => {
+    globalThis.requestAnimationFrame = () => 0;
+    const outcome = await Promise.race([
+      yieldToPaint().then(() => "resumed"),
+      new Promise((r) => setTimeout(() => r("stalled"), 1000)),
+    ]);
+    expect(outcome).toBe("resumed");
+  });
+
+  test("resumes soon after a frame without waiting out the fallback", async () => {
+    globalThis.requestAnimationFrame = (fn) => {
+      queueMicrotask(() => fn(0));
+      return 0;
+    };
+    const start = performance.now();
+    await yieldToPaint();
+    expect(performance.now() - start).toBeLessThan(80);
+  });
+});
+
 describe("runImport", () => {
+  test.each([
+    ["Pricing | Acme", "https://acme.example/pricing", "Pricing | Acme"],
+    ["  Spaced  ", "https://acme.example/", "Spaced"],
+    ["", "https://acme.example/pricing", "acme.example"],
+    ["   ", "http://localhost:4173/a", "localhost"],
+    ["", "file:///a/b.html", "Frottage import"],
+    ["", "not a url", "Frottage import"],
+  ])("title %p at %s names the root %p", async (title, url, name) => {
+    const { port } = await run(namedFile(title, url));
+    expect(port.beginMeta?.name).toBe(name);
+  });
+
   test("sends images before ops, and ops in batches of 50", async () => {
     const port = fakePort();
     await runImport(frottageFile(119), port, () => {});

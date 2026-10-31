@@ -30,6 +30,7 @@ export function createApplier(api: PluginAPI) {
   let active = false;
   let page: PageNode | null = null;
   let root: FrameNode | null = null;
+  let rootName = "";
   let rootX = 0;
   let rootAttempted = false;
   let pending: SceneNode | null = null;
@@ -50,6 +51,7 @@ export function createApplier(api: PluginAPI) {
       }
     }
     root = null;
+    rootName = "";
     page = null;
     active = false;
     rootAttempted = false;
@@ -76,6 +78,7 @@ export function createApplier(api: PluginAPI) {
     reset();
     api.commitUndo();
     active = true;
+    rootName = meta.name;
     page = api.currentPage;
     await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
     fallbackOk = loadedFonts.has(fontKey(FALLBACK));
@@ -190,7 +193,8 @@ export function createApplier(api: PluginAPI) {
   }
 
   function buildFrame(op: Extract<PlanOp, { op: "frame" }>, parent: FrameNode | null) {
-    const node = newFrame(parent, op.name, op.w, op.h);
+    const name = parent ? op.name : rootName || op.name;
+    const node = newFrame(parent, name, op.w, op.h);
     node.clipsContent = op.clips;
     node.fills = paints(op.fills);
     setRadius(node, op.radius);

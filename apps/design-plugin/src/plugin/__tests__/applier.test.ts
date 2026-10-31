@@ -80,6 +80,24 @@ test("applies frames and text in order under one root", async () => {
   expect(r.failedOps).toBe(0);
 });
 
+test("the root layer takes the import's name, not its tag", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin({ ...meta, name: "Pricing | Acme" });
+  await a.applyBatch([frame("a"), frame("b", "a")]);
+  const r = await a.end();
+  expect(f.node(r.rootId).name).toBe("Pricing | Acme");
+  expect(f.node(r.rootId).children[0].name).toBe("b");
+});
+
+test("an empty import name keeps the root op's name", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin({ ...meta, name: "" });
+  await a.applyBatch([frame("a")]);
+  expect(f.node((await a.end()).rootId).name).toBe("a");
+});
+
 test("loads every font before any text", async () => {
   const f = fakeFigma();
   const a = createApplier(f.figma);
@@ -310,7 +328,7 @@ test("an import with no root op returns an empty rootId and counts a failure", a
 });
 
 test("a failed root op is counted once and fails its children", async () => {
-  const f = fakeFigma({ failOn: "a" });
+  const f = fakeFigma({ failOn: meta.name });
   const a = createApplier(f.figma);
   await a.begin(meta);
   await a.applyBatch([frame("a"), frame("b", "a")]);

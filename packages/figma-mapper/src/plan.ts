@@ -104,6 +104,8 @@ export type ImportReport = {
   texts: number;
   images: number;
   placeholders: number;
+  /** Images stored smaller than the page had them, to stay within Figma's 4096 px per side. */
+  downscaledImages: number;
   substitutedFonts: { from: string; to: string }[];
   warnings: string[];
 };

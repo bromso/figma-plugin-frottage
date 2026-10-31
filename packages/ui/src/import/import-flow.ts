@@ -1,4 +1,4 @@
-import { FrottageFileError, unpackFrottage } from "@repo/capture-schema";
+import { type Capture, FrottageFileError, unpackFrottage } from "@repo/capture-schema";
 import { sha256Hex } from "@repo/capture-schema/hash";
 import {
   batchOps,
@@ -36,15 +36,33 @@ export const MAX_FILE_BYTES = 300 * 1024 * 1024;
 
 const SHA256_KEY = /^[0-9a-f]{64}$/i;
 
-/** Let the browser paint and handle input; safe where requestAnimationFrame is absent. */
+/** A hidden iframe gets no animation frames, so the import never waits longer than this for one. */
+const PAINT_WAIT_MS = 100;
+
+/** Let the browser paint and handle input; safe where requestAnimationFrame is absent or stalled. */
 export function yieldToPaint(): Promise<void> {
   return new Promise((resolve) => {
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(() => setTimeout(resolve));
-    } else {
+    if (typeof requestAnimationFrame !== "function") {
       setTimeout(resolve);
+      return;
     }
+    const fallback = setTimeout(resolve, PAINT_WAIT_MS);
+    requestAnimationFrame(() => {
+      clearTimeout(fallback);
+      setTimeout(resolve);
+    });
   });
+}
+
+/** The root layer's name: the page title, else its hostname, never anything from the query. */
+function importName({ title, url }: Capture["source"]): string {
+  const name = title.trim();
+  if (name) return name;
+  try {
+    return new URL(url).hostname || "Frottage import";
+  } catch {
+    return "Frottage import";
+  }
 }
 
 async function verifyAssets(assets: Map<string, Uint8Array>): Promise<void> {
@@ -76,7 +94,7 @@ export async function runImport(
 
     // Set first: a begin that fails halfway may still have created state to cancel.
     begun = true;
-    await port.begin({ name: capture.source.title, fonts: plan.fonts, totalOps: total });
+    await port.begin({ name: importName(capture.source), fonts: plan.fonts, totalOps: total });
 
     for (const hash of plan.assetHashes) {
       const data = assets.get(hash);
