@@ -14,7 +14,8 @@ export type FrottageErrorCode =
   | "invalid-capture"
   | "newer-version"
   | "missing-asset"
-  | "too-deep";
+  | "too-deep"
+  | "corrupt-asset";
 
 const DEFAULT_MESSAGES: Record<FrottageErrorCode, string> = {
   "not-a-frottage-file": "This is not a .frottage file",
@@ -24,6 +25,7 @@ const DEFAULT_MESSAGES: Record<FrottageErrorCode, string> = {
   "newer-version": "The capture was made by a newer version of Frottage",
   "missing-asset": "The capture references a missing asset",
   "too-deep": "The capture is nested too deeply",
+  "corrupt-asset": "An image in the file does not match its checksum",
 };
 
 const MAX_MESSAGE_CHARS = 500;
