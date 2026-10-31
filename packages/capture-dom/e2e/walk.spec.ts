@@ -90,7 +90,8 @@ function findElement(c: Capture, tag: string) {
  * - element style and layout values: colours, gradients, borders, radii, shadows, filters,
  *   overflow, display, padding, margin, flex values
  * - box values only for squares of 8px or more (fixed CSS sizes such as the 44px icon) and for
- *   images, whose width and height attributes fix them; every other box is dropped
+ *   images, whose width and height attributes fix them; every other box is dropped, placeholders
+ *   included, since an inline SVG sits on a baseline and its y follows the font metrics
  * - source.url, title, viewport (set by the test), devicePixelRatio, colorScheme, warnings,
  *   and the names (not values) of the custom properties
  * Dropped: capturedAt, the fonts list and run family (both depend on which fonts are installed),
@@ -110,7 +111,8 @@ function normalise(c: Capture): unknown {
     const { box, ...rest } = n as CaptureNode & {
       box: { x: number; y: number; w: number; h: number };
     };
-    const keepBox = n.kind === "image" || (box.w === box.h && box.w >= 8);
+    const keepBox =
+      n.kind === "image" || (n.kind !== "placeholder" && box.w === box.h && box.w >= 8);
     const base: Record<string, unknown> = { ...rest, ...(keepBox ? { box } : {}) };
     if (n.kind === "text") {
       base.lines = undefined;

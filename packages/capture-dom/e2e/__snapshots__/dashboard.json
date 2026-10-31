@@ -3694,13 +3694,7 @@
              "tag": "svg"
             },
             "kind": "placeholder",
-            "placeholderKind": "blocked-image",
-            "box": {
-             "x": 296,
-             "y": 265,
-             "w": 20,
-             "h": 20
-            }
+            "placeholderKind": "blocked-image"
            },
            {
             "id": "n54",
