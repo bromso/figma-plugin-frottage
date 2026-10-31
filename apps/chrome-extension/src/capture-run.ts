@@ -1,5 +1,5 @@
 import type { Capture } from "@repo/capture-schema";
-import { ChunkAssembler, type ChunkMessage } from "./chunks";
+import { AssetAssembler, ChunkAssembler, type ChunkMessage } from "./chunks";
 import { captureFilename } from "./page";
 
 export type RunStatus =
@@ -22,7 +22,12 @@ export type RunDeps = {
   now: () => Date;
   /** No-progress timeout. */
   timeoutMs: number;
+  /** Most image bytes accepted from the page. Default 256 MiB, the import limit. */
+  maxAssetBytes?: number;
 };
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+const MAX_ASSET_BYTES = 256 * 1024 * 1024;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -35,6 +40,10 @@ export class CaptureRun {
   private active = false;
   private capture: ChunkAssembler | null = null;
   private captureText: string | null = null;
+  /** Assets still arriving, by hash, and the finished ones. */
+  private assembling = new Map<string, AssetAssembler>();
+  private assets = new Map<string, Uint8Array>();
+  private assetBytes = 0;
   private timer: unknown;
   status: RunStatus = { state: "idle" };
 
@@ -46,17 +55,19 @@ export class CaptureRun {
     this.active = true;
     this.capture = new ChunkAssembler();
     this.captureText = null;
+    this.resetAssets();
     this.set({ state: "capturing" });
     this.arm();
   }
 
   onChunk(runId: string, chunk: ChunkMessage): void {
     if (!this.mine(runId)) return;
-    if (chunk.kind !== "capture") {
-      this.fail("Unexpected image data from the page");
-      return;
-    }
     try {
+      if (chunk.kind === "asset") {
+        this.onAssetChunk(chunk);
+        this.arm();
+        return;
+      }
       const text = this.capture?.add(chunk.index, chunk.total, chunk.data);
       if (text != null) this.captureText = text;
       this.arm();
@@ -65,8 +76,32 @@ export class CaptureRun {
     }
   }
 
+  private onAssetChunk(chunk: ChunkMessage): void {
+    if (!SHA256_HEX.test(chunk.key)) throw new Error("Image data has an invalid key");
+    if (this.assets.has(chunk.key)) throw new Error("Image data was sent twice");
+    let asm = this.assembling.get(chunk.key);
+    if (!asm) {
+      asm = new AssetAssembler();
+      this.assembling.set(chunk.key, asm);
+    }
+    const before = asm.size;
+    const bytes = asm.add(chunk.index, chunk.total, chunk.data);
+    this.assetBytes += asm.size - before;
+    if (this.assetBytes > (this.deps.maxAssetBytes ?? MAX_ASSET_BYTES)) {
+      throw new Error("The page sent more image data than the limit allows");
+    }
+    if (bytes) {
+      this.assembling.delete(chunk.key);
+      this.assets.set(chunk.key, bytes);
+    }
+  }
+
   onEnd(runId: string): void {
     if (!this.mine(runId)) return;
+    if (this.assembling.size > 0) {
+      this.fail("The page finished before sending all of its image data");
+      return;
+    }
     const text = this.captureText;
     if (text == null) {
       this.fail("The page finished before sending the whole capture");
@@ -133,11 +168,18 @@ export class CaptureRun {
     this.timer = undefined;
   }
 
+  private resetAssets(): void {
+    this.assembling = new Map();
+    this.assets = new Map();
+    this.assetBytes = 0;
+  }
+
   private fail(msg: string): void {
     this.clear();
     this.active = false;
     this.capture = null;
     this.captureText = null;
+    this.resetAssets();
     this.set({ state: "error", message: msg });
   }
 
@@ -145,7 +187,14 @@ export class CaptureRun {
     let url: string | null = null;
     try {
       const capture = this.deps.parse(text);
-      const bytes = this.deps.pack(capture, new Map());
+      // Pack exactly the images the capture lists; a missing one would leave a dangling hash.
+      const listed = new Map<string, Uint8Array>();
+      for (const { hash } of capture.assets) {
+        const data = this.assets.get(hash);
+        if (!data) throw new Error("image data is missing for an asset in the capture");
+        listed.set(hash, data);
+      }
+      const bytes = this.deps.pack(capture, listed);
       url = this.deps.makeBlobUrl(bytes);
       const filename = captureFilename(capture.source.url, this.deps.now());
       this.set({ state: "saving" });
@@ -158,6 +207,7 @@ export class CaptureRun {
       if (url) this.deps.revokeUrl(url);
       this.capture = null;
       this.captureText = null;
+      this.resetAssets();
     }
   }
 }

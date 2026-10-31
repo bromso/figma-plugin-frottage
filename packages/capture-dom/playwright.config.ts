@@ -11,6 +11,7 @@ export default defineConfig({
     deviceScaleFactor: 1,
     colorScheme: "light",
   },
+  // serve.ts also opens :4174, the no-CORS image origin used by assets.spec.ts.
   webServer: {
     command: "bun fixtures/serve.ts",
     url: "http://localhost:4173",

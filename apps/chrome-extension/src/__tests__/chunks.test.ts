@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { CHUNK_BYTES, ChunkAssembler, splitIntoChunks } from "../chunks";
+import {
+  AssetAssembler,
+  assetChunks,
+  base64ToBytes,
+  bytesToBase64,
+  CHUNK_BYTES,
+  ChunkAssembler,
+  splitIntoChunks,
+} from "../chunks";
 
 function reassemble(chunks: string[], order: number[]): string | null {
   const a = new ChunkAssembler();
@@ -74,5 +82,60 @@ describe("chunks", () => {
     expect(() => a.add(5, 3, "a")).toThrow();
     expect(() => a.add(1, 4, "a")).toThrow();
     expect(() => new ChunkAssembler().add(0, 0, "a")).toThrow();
+  });
+});
+
+describe("asset chunks", () => {
+  const sample = (n: number) => Uint8Array.from({ length: n }, (_, i) => (i * 31 + 7) % 256);
+
+  test("base64 matches btoa and round-trips, including odd lengths", () => {
+    for (const n of [0, 1, 2, 3, 4, 100, 49_152, 49_153, 150_001]) {
+      const bytes = sample(n);
+      const b64 = bytesToBase64(bytes);
+      expect(b64).toBe(Buffer.from(bytes).toString("base64"));
+      expect(base64ToBytes(b64)).toEqual(bytes);
+    }
+  });
+
+  test("an asset splits into chunks that reassemble to the same bytes, in any order", () => {
+    const bytes = sample(1000);
+    const chunks = [...assetChunks(bytes, 99)];
+    expect(chunks.length).toBeGreaterThan(5);
+    const a = new AssetAssembler();
+    let out: Uint8Array | null = null;
+    for (const c of [...chunks].reverse()) out = a.add(c.index, c.total, c.data) ?? out;
+    expect(out).toEqual(bytes);
+  });
+
+  test("an empty asset is one empty chunk", () => {
+    expect([...assetChunks(new Uint8Array())]).toEqual([{ index: 0, total: 1, data: "" }]);
+  });
+
+  test("a default chunk stays under the message limit once serialised", () => {
+    const bytes = sample(30_000_000);
+    const sizes = [...assetChunks(bytes)].map(
+      (c) =>
+        new TextEncoder().encode(
+          JSON.stringify({
+            type: "chunk",
+            kind: "asset",
+            key: "k".repeat(64),
+            index: c.index,
+            total: c.total,
+            data: c.data,
+          })
+        ).length
+    );
+    expect(sizes.length).toBe(3);
+    expect(Math.max(...sizes)).toBeLessThanOrEqual(CHUNK_BYTES);
+  });
+
+  test("the assembler rejects bad indexes, changed totals and invalid base64", () => {
+    expect(() => new AssetAssembler().add(2, 2, "AAAA")).toThrow();
+    const a = new AssetAssembler();
+    a.add(0, 2, "AAAA");
+    expect(() => a.add(1, 3, "AAAA")).toThrow();
+    expect(() => a.add(0, 2, "AAAA")).toThrow(/duplicate/i);
+    expect(() => new AssetAssembler().add(0, 1, "!!!!")).toThrow();
   });
 });

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { CaptureRun, type RunDeps, type RunStatus } from "../capture-run";
-import { splitIntoChunks } from "../chunks";
+import { assetChunks, splitIntoChunks } from "../chunks";
 
-const CAPTURE = { source: { url: "https://example.com/p" } };
+const CAPTURE = { source: { url: "https://example.com/p" }, assets: [] };
 
 function setup(over: Partial<RunDeps> = {}) {
   const statuses: RunStatus[] = [];
@@ -216,9 +216,119 @@ describe("CaptureRun", () => {
     expect(last(t.statuses)).toMatchObject({ state: "capturing" });
   });
 
-  test("asset chunks are rejected until assets are supported", () => {
-    t.run.onChunk("r1", { type: "chunk", kind: "asset", key: "ab", index: 0, total: 1, data: "x" });
-    expect(last(t.statuses)).toMatchObject({ state: "error" });
+  describe("assets", () => {
+    const H1 = "a".repeat(64);
+    const H2 = "b".repeat(64);
+    const withAssets = (hashes: string[]) =>
+      JSON.stringify({ ...CAPTURE, assets: hashes.map((hash) => ({ hash })) });
+    const sendAsset = (run: CaptureRun, key: string, bytes: Uint8Array, step = 4) => {
+      for (const c of assetChunks(bytes, step)) {
+        run.onChunk("r1", { type: "chunk", kind: "asset", key, ...c });
+      }
+    };
+
+    test("asset bytes are decoded and handed to pack by hash", async () => {
+      const packed: Array<Map<string, Uint8Array>> = [];
+      const f = setup({
+        pack: (_c, assets) => {
+          packed.push(assets);
+          return new Uint8Array([1]);
+        },
+      });
+      f.run.start("r1");
+      sendAsset(f.run, H1, new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]));
+      sendAsset(f.run, H2, new Uint8Array([9]));
+      sendCapture(f.run, "r1", withAssets([H1, H2]));
+      f.run.onEnd("r1");
+      await tick();
+      expect(last(f.statuses)).toMatchObject({ state: "saved" });
+      expect([...(packed[0]?.keys() ?? [])]).toEqual([H1, H2]);
+      expect(packed[0]?.get(H1)).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]));
+    });
+
+    test("bytes the capture does not list are not packed", async () => {
+      const packed: Array<Map<string, Uint8Array>> = [];
+      const f = setup({
+        pack: (_c, assets) => {
+          packed.push(assets);
+          return new Uint8Array([1]);
+        },
+      });
+      f.run.start("r1");
+      sendAsset(f.run, H1, new Uint8Array([1]));
+      sendCapture(f.run, "r1", withAssets([]));
+      f.run.onEnd("r1");
+      await tick();
+      expect(packed[0]?.size).toBe(0);
+    });
+
+    test("an asset key that is not a SHA-256 hash is rejected", () => {
+      t.run.onChunk("r1", {
+        type: "chunk",
+        kind: "asset",
+        key: "ab",
+        index: 0,
+        total: 1,
+        data: "AAAA",
+      });
+      expect(last(t.statuses)).toMatchObject({ state: "error" });
+    });
+
+    test("a listed asset that never arrived fails the run", () => {
+      sendCapture(t.run, "r1", withAssets([H1]));
+      t.run.onEnd("r1");
+      expect(last(t.statuses)).toMatchObject({
+        state: "error",
+        message: expect.stringContaining("image data"),
+      });
+    });
+
+    test("an asset cut off mid-transfer fails the run", () => {
+      t.run.onChunk("r1", {
+        type: "chunk",
+        kind: "asset",
+        key: H1,
+        index: 0,
+        total: 2,
+        data: "AAAA",
+      });
+      sendCapture(t.run, "r1", withAssets([]));
+      t.run.onEnd("r1");
+      expect(last(t.statuses)).toMatchObject({ state: "error" });
+    });
+
+    test("invalid base64 fails the run", () => {
+      t.run.onChunk("r1", {
+        type: "chunk",
+        kind: "asset",
+        key: H1,
+        index: 0,
+        total: 1,
+        data: "!!!!",
+      });
+      expect(last(t.statuses)).toMatchObject({ state: "error" });
+    });
+
+    test("too many asset bytes fail the run", () => {
+      const f = setup({ maxAssetBytes: 6 });
+      f.run.start("r1");
+      sendAsset(f.run, H1, new Uint8Array(5));
+      expect(last(f.statuses)).toMatchObject({ state: "capturing" });
+      sendAsset(f.run, H2, new Uint8Array(5));
+      expect(last(f.statuses)).toMatchObject({ state: "error" });
+    });
+
+    test("asset chunks restart the no-progress timer", () => {
+      t.run.onChunk("r1", {
+        type: "chunk",
+        kind: "asset",
+        key: H1,
+        index: 0,
+        total: 2,
+        data: "AAAA",
+      });
+      expect(t.timers.size).toBe(1);
+    });
   });
 
   test("a second start while running is refused", () => {

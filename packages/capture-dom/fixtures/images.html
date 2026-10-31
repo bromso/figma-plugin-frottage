@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Images</title>
+    <style>
+      body { margin: 0; padding: 16px; font: 14px/1.4 Arial, sans-serif; }
+      img, .bg { display: block; margin-bottom: 8px; }
+      .bg { width: 160px; height: 60px; background-size: cover; background-position: center; background-repeat: no-repeat; }
+      .tile { background-size: 20px 20px; background-repeat: repeat; }
+    </style>
+  </head>
+  <body>
+    <h1>Images</h1>
+    <img id="local-png" src="/assets/photo.png" width="120" height="80" alt="local-png" />
+    <img id="local-webp" src="/assets/photo.webp" width="120" height="80" alt="local-webp" />
+    <img id="huge" src="/assets/huge.png" width="500" height="10" alt="huge" />
+    <img id="local-gif" src="/assets/dot.gif" width="10" height="10" alt="local-gif" />
+    <img id="local-svg" src="/assets/logo.svg" width="40" height="40" alt="local-svg" />
+    <img id="dup-a" src="/assets/photo.png?copy=a" width="60" height="40" alt="dup-a" />
+    <img id="dup-b" src="/assets/photo.png?copy=b" width="60" height="40" alt="dup-b" />
+    <img id="blocked" src="http://localhost:4174/assets/photo.png" width="90" height="60" alt="blocked" />
+    <div id="bg-local" class="bg" style="background-image: url('/assets/photo.png')"></div>
+    <div id="bg-tile" class="bg tile" style="background-image: url('/assets/photo.png?copy=tile')"></div>
+    <div id="bg-blocked" class="bg" style="background-image: url('http://localhost:4174/assets/photo.png')"></div>
+    <img id="data-uri" width="8" height="8" alt="data-uri"
+      src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" />
+  </body>
+</html>
