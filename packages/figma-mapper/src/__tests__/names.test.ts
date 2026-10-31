@@ -154,11 +154,86 @@ describe("fallbacks", () => {
     expect(layerName(elem(), [], o)).toBe("Div");
   });
   test("isReadableName", () => {
-    for (const bad of ["Div", "Span", "Frame", "div.flex", "Component 5", "Text", "Svg"]) {
+    for (const bad of [
+      "Div",
+      "Span",
+      "Frame",
+      "div.flex",
+      "Component 5",
+      "Item 2",
+      "Text",
+      "Svg",
+      "Btn",
+    ]) {
       expect(isReadableName(bad)).toBe(false);
     }
-    for (const good of ["Hero", "Link - Pricing", "Item 2", "Sign up"]) {
+    for (const good of ["Hero", "Link - Pricing", "Sign up"]) {
       expect(isReadableName(good)).toBe(true);
     }
+  });
+});
+
+describe("fix round 1", () => {
+  test("20,000 sibling divs are named in under a second", () => {
+    const sibs = Array.from({ length: 20000 }, (_, i) => ({ ...elem(), id: `d${i}` }));
+    const t = performance.now();
+    const names = sibs.map((n) => layerName(n, sibs, o));
+    expect(performance.now() - t).toBeLessThan(1000);
+    expect(names[0]).toBe("Item 1");
+    expect(names[19999]).toBe("Item 20000");
+  });
+  test("bare utilities are not names", () => {
+    for (const c of [
+      "btn",
+      "truncate",
+      "shrink",
+      "underline",
+      "uppercase",
+      "rounded",
+      "sr-only",
+      "inline-flex",
+      "antialiased",
+      "transform",
+      "hidden",
+      "table",
+      "contents",
+    ]) {
+      expect(layerName(elem({ className: c }), [], o)).toBe("Div");
+    }
+  });
+  test("only the element that opens with the heading takes its name", () => {
+    const h = elem({ tag: "h1", headingLevel: 1 }, [words("Hi there", "h1")]);
+    const inner = { ...elem({}, [h]), id: "in" };
+    const mid = { ...elem({}, [inner]), id: "mid" };
+    const outer = { ...elem({}, [mid]), id: "out" };
+    expect(layerName(inner, [], o)).toBe("Card - Hi there");
+    expect(layerName(mid, [], o)).toBe("Div");
+    expect(layerName(outer, [], o)).toBe("Div");
+  });
+  test("a provider custom element is a plain frame", () => {
+    const page = elem({ tag: "vcdk-theme-provider" }, [words("Hello", "p")]);
+    expect(layerName(page, [], o)).toBe("Frame");
+  });
+  test("a custom element with a lot of text takes no text suffix", () => {
+    const kids = Array.from({ length: 60 }, (_, i) => words(`t${i}`, "p", `t${i}`));
+    expect(layerName(elem({ tag: "x-shell" }, [words("One", "p"), ...kids]), [], o)).toBe("Shell");
+  });
+  test("clip never splits a surrogate pair", () => {
+    const n = layerName(words("😀".repeat(60)), [], o);
+    expect(Array.from(n).length).toBe(40);
+    expect(n).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])/);
+  });
+  test("an emoji-only label is kept", () => {
+    expect(layerName(words("🔥"), [], o)).toBe("🔥");
+  });
+  test("leading + # and @ stay", () => {
+    expect(layerName(words("+12 new"), [], o)).toBe("+12 new");
+    expect(layerName(words("#1 pick"), [], o)).toBe("#1 pick");
+    expect(layerName(words("@jonas"), [], o)).toBe("@jonas");
+  });
+  test("a readable id names the layer after the class", () => {
+    expect(layerName(elem({ id: "pricing" }), [], o)).toBe("Pricing");
+    expect(layerName(elem({ id: "pricing", className: "hero" }), [], o)).toBe("Hero");
+    expect(layerName(elem({ id: "css-1x2y3z" }), [], o)).toBe("Div");
   });
 });

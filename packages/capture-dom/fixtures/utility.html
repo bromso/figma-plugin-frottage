@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Utility classes</title>
+<style>
+  body { margin: 0; font: 16px/1.5 Inter, sans-serif; }
+  .flex { display: flex; } .items-center { align-items: center; } .gap-4 { gap: 16px; }
+  .p-4 { padding: 16px; } .mt-2 { margin-top: 8px; } .rounded-lg { border-radius: 8px; }
+  .bg-white { background: #fff; } .shadow-md { box-shadow: 0 2px 6px rgba(0,0,0,.2); }
+  .w-full { width: 100%; } .grid { display: grid; } .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .css-1x2y3z { padding: 8px; background: #eef; } .sc-abc123 { display: flex; gap: 8px; }
+  .jsx-9f8e7d { padding: 4px; } .truncate { overflow: hidden; } .btn { padding: 8px 12px; background: #36f; color: #fff; }
+  .text-sm { font-size: 14px; } .font-bold { font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="css-1x2y3z">
+  <div class="flex items-center gap-4 p-4">
+    <div class="sc-abc123"><div class="rounded-lg shadow-md p-4"><span class="truncate">Logo</span></div></div>
+    <nav class="flex gap-4"><a class="btn" href="#">Home</a><a class="btn" href="#">Pricing</a><a class="btn" href="#">Docs</a></nav>
+  </div>
+  <div class="grid grid-cols-3 gap-4 p-4">
+    <div class="bg-white rounded-lg shadow-md p-4"><h3 class="font-bold">Fast</h3><p class="text-sm mt-2">Builds in seconds.</p></div>
+    <div class="bg-white rounded-lg shadow-md p-4"><h3 class="font-bold">Simple</h3><p class="text-sm mt-2">One config file.</p></div>
+    <div class="bg-white rounded-lg shadow-md p-4"><h3 class="font-bold">Safe</h3><p class="text-sm mt-2">Typed end to end.</p></div>
+  </div>
+  <div class="jsx-9f8e7d"><div class="p-4"><div class="flex"><div class="w-full"></div></div></div></div>
+  <div class="flex gap-4 p-4"><div class="p-4 bg-white"></div><div class="p-4 bg-white"></div></div>
+  <footer class="p-4 text-sm">Copyright 2026</footer>
+</div>
+</body>
+</html>

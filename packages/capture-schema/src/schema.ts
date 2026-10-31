@@ -99,6 +99,8 @@ const semantic = z.object({
   alt: z.string().optional(),
   // The first class token, when it reads as a name: never hashed, never longer than 40.
   className: z.string().max(40).optional(),
+  // The element id, under the same filters as className.
+  id: z.string().max(40).optional(),
 });
 
 const common = {

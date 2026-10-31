@@ -147,9 +147,36 @@ const CLASS_STOP = new Set([
   "auto",
   "static",
   "bold",
+  "root",
+  "app",
+  "layout",
+  "page",
+  "provider",
+  "truncate",
+  "shrink",
+  "grow",
+  "underline",
+  "uppercase",
+  "lowercase",
+  "capitalize",
+  "rounded",
+  "antialiased",
+  "transform",
+  "table",
+  "contents",
+  "italic",
+  "border",
+  "shadow",
+  "ring",
+  "outline",
+  "transition",
+  "invisible",
+  "collapse",
+  "isolate",
+  "btn",
 ]);
 const UTILITY =
-  /^-?(?:m|p|w|h|gap|text|bg|border|rounded|flex|grid|col|row|items|justify|self|space|font|leading|tracking|min|max|top|left|right|bottom|z|order|opacity|shadow|overflow|ring|inset|basis|grow|shrink|display|d|align|float|object|cursor|transition|duration|translate|rotate|scale|sm|md|lg|xl|container|is|has|u|js)[xytrbl]?[-_]/i;
+  /^-?(?:inline|block|sr|no|not|pointer|select|whitespace|break|line|outline|decoration|list|divide|place|aspect|columns|fill|stroke|backdrop|filter|blur|mix|animate|will|appearance|resize|snap|touch|transform|table|truncate|underline|uppercase|rounded|antialiased)(?:[-_]|$)|^-?(?:m|p|w|h|gap|text|bg|border|rounded|flex|grid|col|row|items|justify|self|space|font|leading|tracking|min|max|top|left|right|bottom|z|order|opacity|shadow|overflow|ring|inset|basis|grow|shrink|display|d|align|float|object|cursor|transition|duration|translate|rotate|scale|sm|md|lg|xl|container|is|has|u|js)[xytrbl]?[-_]/i;
 const HASH_PREFIX = /^(?:css|sc|jsx|svelte|astro|emotion|styled|chakra|mui)[-_]/i;
 
 /** A class token that looks generated: it mixes digits and letters, or carries a CSS-in-JS prefix. */
@@ -161,6 +188,8 @@ function looksHashed(token: string): boolean {
 function classWords(raw: string | undefined): string | null {
   if (!raw || raw.length > MAX || !/^[A-Za-z][\w-]*$/.test(raw)) return null;
   if (looksHashed(raw) || CLASS_STOP.has(raw.toLowerCase()) || UTILITY.test(raw)) return null;
+  // Abbreviations such as `btn`, `wrp` or `hdr` are not names.
+  if (/^[^aeiouy]+$/i.test(raw)) return null;
   const words = raw
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .split(/[-_]+/)
@@ -173,23 +202,34 @@ function classWords(raw: string | undefined): string | null {
 const sentence = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 function strip(s: string): string {
-  return s
-    .replace(/\s+/g, " ")
-    .replace(/^[^\p{L}\p{N}"'“$€£(]+/u, "")
-    .replace(/[\s\-–—.,:;!?|/\\…]+$/, "");
+  const flat = s.replace(/\s+/g, " ").trim();
+  const head = flat.replace(/^[^\p{L}\p{N}"'“$€£(+#@]+/u, "");
+  // An emoji-only label stays as it is.
+  const body = head === "" ? flat : head;
+  return body.replace(/[\s\-–—.,:;!?|/\\…]+$/, "") || body;
 }
+
+const segmenter =
+  typeof Intl !== "undefined" && "Segmenter" in Intl
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : null;
+
+const graphemes = (s: string): string[] =>
+  segmenter ? Array.from(segmenter.segment(s), (g) => g.segment) : Array.from(s);
 
 /** Whitespace collapsed, trailing punctuation gone, cut on a word at 40 characters, no ellipsis. */
 function clip(raw: string): string {
   const s = strip(raw);
   if (s.length <= MAX) return s;
-  const head = s.slice(0, MAX);
+  const parts = graphemes(s);
+  if (parts.length <= MAX) return s;
+  const head = parts.slice(0, MAX);
   let cut = head;
-  if (!/\s/.test(s.charAt(MAX))) {
+  if (!/^\s$/.test(parts[MAX] as string)) {
     const space = head.lastIndexOf(" ");
     if (space > 0) cut = head.slice(0, space);
   }
-  return strip(cut);
+  return strip(cut.join(""));
 }
 
 type Found = { texts: string[]; heading: string | undefined; complete: boolean };
@@ -218,22 +258,38 @@ function scan(node: CaptureNode): Found {
   return found;
 }
 
-const signature = (n: CaptureNode): string =>
-  `${n.kind}:${n.semantic.tag}:${n.semantic.className ?? ""}`;
+const numbering = new WeakMap<CaptureNode[], Map<string, number>>();
 
+/** Position among same-tag siblings, for tags that occur more than once; built once per array. */
 function repeatIndex(node: CaptureNode, siblings: CaptureNode[]): number | null {
-  const sig = signature(node);
-  const group = siblings.filter((s) => signature(s) === sig);
-  if (group.length < 2) return null;
-  const at = group.findIndex((s) => s.id === node.id);
-  return at < 0 ? null : at + 1;
+  let map = numbering.get(siblings);
+  if (!map) {
+    const total = new Map<string, number>();
+    for (const n of siblings) total.set(n.semantic.tag, (total.get(n.semantic.tag) ?? 0) + 1);
+    const seen = new Map<string, number>();
+    map = new Map();
+    for (const n of siblings) {
+      const tag = n.semantic.tag;
+      const k = (seen.get(tag) ?? 0) + 1;
+      seen.set(tag, k);
+      if ((total.get(tag) ?? 0) > 1) map.set(n.id, k);
+    }
+    numbering.set(siblings, map);
+  }
+  return map.get(node.id) ?? null;
 }
 
-function customName(tag: string): string | null {
+const MEANINGLESS = new Set(["provider", "wrapper", "root", "app", "container", "layout"]);
+
+/** The words of a custom element, or null for a plain tag; `meaningless` for providers and the like. */
+function customName(tag: string): { name: string; meaningless: boolean } | null {
   if (!tag.includes("-") || tag.startsWith("::")) return null;
   const parts = tag.split("-").filter(Boolean);
   const rest = parts.length > 1 && (parts[0] as string).length <= 5 ? parts.slice(1) : parts;
-  return sentence(rest.join(" ").toLowerCase());
+  return {
+    name: sentence(rest.join(" ").toLowerCase()),
+    meaningless: rest.some((w) => MEANINGLESS.has(w.toLowerCase())),
+  };
 }
 
 const join = (prefix: string, text: string | undefined): string =>
@@ -243,8 +299,24 @@ function tagWord(tag: string): string {
   const known = TAGS[tag];
   if (known) return known;
   if (/^h[1-6]$/.test(tag)) return tag.toUpperCase();
+  if (customName(tag)?.meaningless) return "Frame";
   const bare = tag.replace(/^[^a-zA-Z0-9]+/, "");
   return bare ? sentence(bare) : "Frame";
+}
+
+/** The heading this element opens with: its first meaningful child is, or holds, the heading. */
+function leadingHeading(node: ElementNode): string | undefined {
+  for (const child of node.children) {
+    if (child.kind === "text") {
+      const t = strip(child.text);
+      if (!t) continue;
+      return /^h[1-6]$/.test(child.semantic.tag) ? t : undefined;
+    }
+    if (child.kind !== "element") continue;
+    if (/^h[1-6]$/.test(child.semantic.tag)) return scan(child).texts[0];
+    return undefined;
+  }
+  return undefined;
 }
 
 function elementName(node: ElementNode, siblings: CaptureNode[]): string {
@@ -263,18 +335,22 @@ function elementName(node: ElementNode, siblings: CaptureNode[]): string {
   if (label) return role && role !== "Heading" ? join(role, label) : label;
   if (role) return role;
   const custom = customName(tag);
-  if (custom) {
+  if (custom && !custom.meaningless) {
     const found = scan(node);
-    return join(custom, found.texts.length === 1 ? found.texts[0] : undefined);
+    return join(
+      custom.name,
+      found.complete && found.texts.length === 1 ? found.texts[0] : undefined
+    );
   }
-  const cls = classWords(s.className);
+  const cls = classWords(s.className) ?? classWords(s.id);
   if (cls) return cls;
   if (tag === "li") {
     const n = repeatIndex(node, siblings);
     return n === null ? "Item" : `Item ${n}`;
   }
   const found = scan(node);
-  if (found.heading) {
+  const heading = leadingHeading(node);
+  if (heading) {
     const kind =
       tag === "section"
         ? "Section"
@@ -283,9 +359,15 @@ function elementName(node: ElementNode, siblings: CaptureNode[]): string {
           : node.box.w < 480
             ? "Card"
             : "Section";
-    return join(kind, found.heading);
+    return join(kind, heading);
   }
-  if (found.texts.length === 1 && found.complete && !TAGS[tag])
+  if (
+    found.texts.length === 1 &&
+    found.complete &&
+    !found.heading &&
+    !TAGS[tag] &&
+    !customName(tag)?.meaningless
+  )
     return clip(found.texts[0] as string);
   const n = TAGS[tag] ? null : repeatIndex(node, siblings);
   if (n !== null) return `Item ${n}`;
@@ -345,7 +427,9 @@ const BARE = new Set([
 export function isReadableName(name: string): boolean {
   const n = name.trim().toLowerCase();
   if (n === "" || BARE.has(n)) return false;
-  if (/^component \d+$/.test(n)) return false;
+  if (/^[^aeiouy\s]{1,5}$/i.test(n)) return false;
+  // A number alone tells nothing: `Item 3` says where, not what.
+  if (/^(?:component|item|frame|group) \d+$/.test(n)) return false;
   if (/^[a-z][a-z0-9-]*\.[\w-]+$/.test(n)) return false;
   return true;
 }
