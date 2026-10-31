@@ -1,0 +1,198 @@
+---
+title: UI Components
+description: The 49 components available for your plugin's interface, and how they fit Figma's UI3 design.
+---
+
+## Overview
+
+The template includes 49 UI components that look native inside Figma: 45 from [shadcn/ui](https://ui.shadcn.com) and four custom Figma components. They are styled with Tailwind CSS 4 to Figma's UI3 design and take their colors from Figma's theme; see [Theming and the UI3 Look](/docs/guides/theming).
+
+Import them from `@repo/ui`:
+
+```tsx
+import { Button, Input, Select } from "@repo/ui";
+```
+
+Run `bun run storybook` to browse every component in light and dark; the `UI3` section compares the kit-matched components with Figma's own.
+
+## Inventory
+
+| Group | Components |
+| --- | --- |
+| Inputs | Button, Calendar, Checkbox, Input, InputGroup, InputOTP, RadioGroup, Select, Slider, Switch, Textarea, Toggle, ToggleGroup |
+| Data display | Avatar, Badge, Card, Carousel, Chart, Icon, Label, Table, Tooltip, Type |
+| Feedback | Alert, AlertDialog, Dialog, Drawer, Progress, Sheet, Skeleton, Sonner |
+| Layout | AspectRatio, Resizable, ScrollArea, Separator |
+| Navigation | Breadcrumb, ContextMenu, DropdownMenu, Menubar, NavigationMenu, Pagination, Tabs |
+| Surfaces | Accordion, Collapsible, Command, HoverCard, Popover |
+| Custom Figma | Icon, IconButton, SectionTitle, Type (Icon and Type are filed under Data display in Storybook) |
+
+Names are families; `packages/ui/src/index.ts` lists the exact exports (for example Sonner is `Toaster`, Chart is `ChartContainer`). Sixteen components are edited to match the UI3 kit exactly: Button, Input, Textarea, Checkbox, RadioGroup, Switch, Select, Tabs, Badge, Tooltip, DropdownMenu, ContextMenu, Menubar, Command, Dialog and AlertDialog. The others share the same tokens and scale.
+
+## Input components
+
+### Button
+
+```tsx
+<Button onClick={handleClick}>Create</Button>
+<Button variant="secondary">Cancel</Button>
+<Button variant="outline">Settings</Button>
+<Button variant="destructive">Delete</Button>
+<Button size="lg">Large</Button>
+<Button disabled>Loading…</Button>
+```
+
+Variants: `default`, `secondary`, `outline`, `ghost`, `destructive`, `link`. Sizes: `default` (24 px), `lg` (32 px), `sm`/`xs` (20 px), `icon` (24 px square), `icon-sm`/`icon-xs` (20 px), `icon-lg` (32 px).
+
+### Input and Textarea
+
+```tsx
+<Input placeholder="Layer name" aria-label="Layer name" value={name} onChange={e => setName(e.target.value)} />
+<Input size="lg" placeholder="Large field" />
+<Textarea placeholder="Description" rows={2} />
+```
+
+### Select
+
+```tsx
+<Select value={selected} onValueChange={setSelected}>
+  <SelectTrigger className="w-full" aria-label="Sizing"><SelectValue placeholder="Choose…" /></SelectTrigger>
+  <SelectContent>
+    <SelectItem value="fill">Fill container</SelectItem>
+    <SelectItem value="hug">Hug contents</SelectItem>
+  </SelectContent>
+</Select>
+```
+
+The list is dark in both themes, like Figma's own dropdowns. `Input` and `SelectTrigger` take `size="lg"` (32 px); `SelectTrigger` also has `size="sm"` (20 px).
+
+### Checkbox, Switch, RadioGroup
+
+Put them on 24 px rows with a `Label`:
+
+```tsx
+<div className="flex h-6 items-center gap-2">
+  <Checkbox id="clip" checked={clip} onCheckedChange={setClip} />
+  <Label htmlFor="clip">Clip content</Label>
+</div>
+<div className="flex h-6 items-center gap-2">
+  <Switch id="auto" checked={auto} onCheckedChange={setAuto} />
+  <Label htmlFor="auto">Auto layout</Label>
+</div>
+<RadioGroup value={choice} onValueChange={setChoice}>
+  <div className="flex h-6 items-center gap-2">
+    <RadioGroupItem value="a" id="r1" />
+    <Label htmlFor="r1">Option A</Label>
+  </div>
+</RadioGroup>
+```
+
+## Display components
+
+### Icon
+
+```tsx
+<Icon name="lucide:plus" />
+<Icon name="lucide:info" className="text-figma-icon-secondary" />
+```
+
+Built-in icons: `lucide:plus`, `lucide:info`, `lucide:star`, `lucide:ellipsis` (the `ICONS` export lists them). To add more, call `registerIcons()` with an Iconify collection and add each name to `StaticIconNameMap` via `declare module "@repo/ui" { interface StaticIconNameMap { "lucide:trash": true } }` in a file that imports from `@repo/ui` (for example `import type {} from "@repo/ui";`, otherwise the declaration replaces the real types instead of extending them); without it `<Icon name>` will not type-check.
+
+### Badge
+
+```tsx
+<Badge>Default</Badge>
+<Badge variant="secondary">New</Badge>
+<Badge variant="destructive">Error</Badge>
+```
+
+### Type and SectionTitle
+
+```tsx
+<SectionTitle>Layer</SectionTitle>
+<Type size="small">Body text</Type>
+<Type as="h2" size="large" weight="bold">Heading</Type>
+```
+
+`SectionTitle` is the 32 px section header used in the template's sample app (`packages/ui/src/app.tsx`). `Type` uses the UI3 scale (`xsmall` 9 px, `small` 11 px, `large` 13 px, `xlarge` 15 px); for new UI prefer the Tailwind text utilities from the theming guide.
+
+### Alert
+
+```tsx
+<Alert>
+  <AlertDescription>Select at least one layer.</AlertDescription>
+</Alert>
+```
+
+## Overlay components
+
+### Dialog
+
+```tsx
+<Dialog>
+  <DialogTrigger asChild><Button variant="secondary">Rename…</Button></DialogTrigger>
+  <DialogContent>
+    <DialogHeader><DialogTitle>Rename layers</DialogTitle></DialogHeader>
+    <div className="flex min-h-0 flex-col gap-2 overflow-y-auto p-4">
+      <DialogDescription>Give the selected layers a new name.</DialogDescription>
+      <Input placeholder="New name" aria-label="New name" />
+    </div>
+    <DialogFooter>
+      <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
+      <DialogClose asChild><Button>Rename</Button></DialogClose>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+```
+
+Dialogs are 320 px wide (`size="lg"` is 480 px) with a 40 px header and footer; you pad the body.
+
+### DropdownMenu and Tooltip
+
+```tsx
+<DropdownMenu>
+  <DropdownMenuTrigger asChild><IconButton iconProps={{ name: "lucide:ellipsis" }} aria-label="More" /></DropdownMenuTrigger>
+  <DropdownMenuContent align="end">
+    <DropdownMenuItem>Copy<DropdownMenuShortcut>⌘C</DropdownMenuShortcut></DropdownMenuItem>
+  </DropdownMenuContent>
+</DropdownMenu>
+
+<Tooltip>
+  <TooltipTrigger asChild><IconButton size="icon-sm" iconProps={{ name: "lucide:info" }} aria-label="More info" /></TooltipTrigger>
+  <TooltipContent>Tooltip text</TooltipContent>
+</Tooltip>
+```
+
+Both are dark in both themes. Wrap the app in `TooltipProvider` once.
+
+## Layout components
+
+### Tabs and Accordion
+
+```tsx
+<Tabs defaultValue="design">
+  <TabsList>
+    <TabsTrigger value="design">Design</TabsTrigger>
+    <TabsTrigger value="proto">Prototype</TabsTrigger>
+  </TabsList>
+  <TabsContent value="design">…</TabsContent>
+</Tabs>
+
+<Accordion type="single" collapsible>
+  <AccordionItem value="advanced">
+    <AccordionTrigger>Advanced</AccordionTrigger>
+    <AccordionContent>Content here</AccordionContent>
+  </AccordionItem>
+</Accordion>
+```
+
+## Styling
+
+All components accept `className`. Use the `figma-*` color utilities and the layout conventions from the [theming guide](/docs/guides/theming): 24 px rows, 8 px gutters, `border-figma-border` dividers, `text-figma-text-secondary` for secondary copy. Never hard-code a color.
+
+```tsx
+<section className="flex flex-col gap-2 border-b border-figma-border p-2 pb-4">
+  <SectionTitle>Actions</SectionTitle>
+  <Button className="w-full">Create</Button>
+</section>
+```

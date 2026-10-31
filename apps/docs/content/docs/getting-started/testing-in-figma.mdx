@@ -1,0 +1,46 @@
+---
+title: Testing in Figma
+description: How to load and test your plugin in the Figma desktop app.
+---
+
+## Loading your plugin
+
+After running `bun run build`, follow these steps:
+
+1. Open the **Figma desktop app** (not the browser version)
+2. Open any Figma file
+3. Go to **Plugins > Development > Import plugin from manifest...**
+4. Navigate to your project folder: `apps/design-plugin/dist/`
+5. Select **manifest.json**
+
+Your plugin now appears under **Plugins > Development**.
+
+## Running the plugin
+
+Click **Plugins > Development > [Your Plugin Name]** to launch it. A window will appear with your plugin's UI.
+
+## Making changes
+
+After editing code:
+
+1. Run `bun run build` (or keep `bun run dev` running for auto-rebuild)
+2. In Figma, close the plugin window
+3. Re-launch the plugin — it loads the latest build automatically
+
+You do **not** need to re-import the manifest after the first time.
+
+## Debugging
+
+- **Plugin console:** In Figma, go to **Plugins > Development > Show/Hide console**. This shows messages from the plugin side (the code that talks to Figma).
+- **UI console:** UI-side `console.log` output appears in the same console.
+
+## Common issues
+
+**Plugin doesn't appear after import:**
+Make sure you're selecting `apps/design-plugin/dist/manifest.json`, not the `figma.manifest.ts` source file.
+
+**Changes don't show up:**
+Run `bun run build` again. If using `bun run dev`, wait a moment for the rebuild to finish.
+
+**Plugin window is blank:**
+Check the plugin console for errors. A blank window usually means a JavaScript error during startup.

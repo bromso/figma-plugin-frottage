@@ -1,0 +1,47 @@
+---
+title: Agents
+description: How AI helpers work together behind the scenes to build your Figma plugin.
+---
+
+## What are agents?
+
+When you describe a plugin to Claude, it doesn't do everything alone. It sends specialized helpers — called **agents** — to handle different parts of the job. Each agent is good at one thing, and they work together to deliver your finished plugin.
+
+Think of it like a small team: one person reads the blueprint, another writes the code, and a third checks the work.
+
+## How agents build your plugin
+
+Here's what happens behind the scenes when you say something like *"Build a plugin that renames selected layers to lowercase"*:
+
+### 1. Understanding your idea
+
+Claude starts by figuring out exactly what you need. It asks clarifying questions if anything is ambiguous — just like a designer would before starting a project.
+
+### 2. Exploring the codebase
+
+An **explorer agent** scans the project files to understand the current state — what code already exists, what components are available, and where changes need to happen.
+
+### 3. Writing the code
+
+An **implementer agent** writes the actual plugin code. It creates the Figma API logic, the React UI, and the message types that connect them. It follows the patterns already established in the template.
+
+### 4. Reviewing the work
+
+A **reviewer agent** checks the code for mistakes, missing pieces, and quality issues. If something isn't right, the implementer fixes it before you ever see it.
+
+### 5. Building and testing
+
+Claude runs the build process to make sure everything compiles without errors. If the build fails, it diagnoses and fixes the problem automatically.
+
+## You don't need to manage agents
+
+Agents work automatically — you never need to tell Claude which agent to use or how to coordinate them. Just describe what you want and let Claude handle the rest.
+
+The only time you'll notice agents is in Claude's status messages, where you might see things like "Exploring codebase..." or "Reviewing implementation..." as different helpers take turns.
+
+## What makes agents useful
+
+- **Fresh perspective** — Each agent starts with a clean slate, so mistakes don't carry over
+- **Specialized knowledge** — The reviewer catches issues the implementer might miss
+- **Parallel work** — Some agents can work at the same time, making things faster
+- **Quality checks** — Your code gets reviewed before it's presented to you

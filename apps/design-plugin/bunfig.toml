@@ -1,0 +1,6 @@
+# Used by `bun run dev:ui-only` (Bun's dev server with HMR). This serves the UI
+# standalone, outside Figma's plugin sandbox, so postMessage round-trips to the
+# plugin side do not work there. Production builds pass the plugin explicitly in
+# build.ts.
+[serve.static]
+plugins = ["bun-plugin-tailwind"]

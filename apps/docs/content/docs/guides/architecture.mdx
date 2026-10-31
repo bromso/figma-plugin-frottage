@@ -1,0 +1,60 @@
+---
+title: Architecture
+description: How Figma plugins work — the two-process model and message passing.
+---
+
+## Two separate processes
+
+A Figma plugin runs as **two separate programs** that talk to each other:
+
+```
+Plugin Process                    UI Process
+(talks to Figma)                  (shows the interface)
+                    ◄─ messages ─►
+apps/design-plugin/               packages/ui/src/
+  src/plugin/                       app.tsx
+    plugin.ts                       app.network.tsx
+    plugin.network.ts               main.tsx
+```
+
+### Plugin process
+
+- **What it can do:** Access the Figma API — select layers, change colors, create shapes, export images
+- **What it can't do:** Show any UI or use HTML/CSS (it has no DOM)
+- **Where the code lives:** `apps/design-plugin/src/plugin/`
+
+### UI process
+
+- **What it can do:** Show buttons, inputs, and other UI components using React
+- **What it can't do:** Directly access the Figma API
+- **Where the code lives:** `packages/ui/src/`
+
+### Why two processes?
+
+Figma isolates the plugin's UI in a sandboxed iframe for security. The plugin code runs in Figma's own JavaScript environment. They communicate by sending messages back and forth.
+
+## Message passing
+
+When the user clicks a button in the UI, it sends a message to the plugin process, which then performs the Figma action.
+
+See [Messaging](/docs/guides/messaging) for details on how to define and send messages.
+
+## Project structure
+
+```
+apps/
+  design-plugin/    — The Figma plugin (builds to dist/)
+  storybook/        — Interactive component gallery
+  docs/             — This documentation site
+packages/
+  common/           — Shared message type definitions
+  ui/               — UI components and the plugin's interface
+```
+
+## Build output
+
+When you run `bun run build`, three files are created in `apps/design-plugin/dist/`:
+
+- **`index.html`** — The plugin's UI, with all JavaScript and CSS bundled into one file
+- **`plugin.js`** — The plugin's Figma API code
+- **`manifest.json`** — Tells Figma about your plugin (name, entry points)

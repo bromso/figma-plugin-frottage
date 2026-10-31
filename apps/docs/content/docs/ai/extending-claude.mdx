@@ -1,0 +1,145 @@
+---
+title: Extending Claude
+description: Optional tools and servers you can add to give Claude more capabilities.
+---
+
+## Beyond the defaults
+
+This template comes with three MCP servers pre-configured — [Figma](/docs/ai/mcp-servers#figma), [Context7](/docs/ai/mcp-servers#context7), and [Sequential Thinking](/docs/ai/mcp-servers#sequential-thinking). But you can add more to give Claude additional abilities.
+
+This page covers optional servers you can install when you need them. Each one is independent — pick only what's useful for your workflow.
+
+Two ways to add a server:
+
+- **Shared with the repository**: add it to `.mcp.json` at the project root. Anyone who clones the repo gets it after approving it once.
+- **Just for you**: run `claude mcp add` from the terminal. The server is stored in your personal Claude Code config, outside the repository, which is where API keys belong.
+
+## GitHub
+
+Let Claude manage pull requests, issues, and repositories directly. Useful if you're collaborating with others or tracking work on GitHub.
+
+**What it does:**
+- Create and review pull requests
+- Open, close, and comment on issues
+- Search repositories and read code
+- Manage branches and workflows
+
+### Setup
+
+GitHub hosts an official remote MCP server. Create a [personal access token](https://github.com/settings/personal-access-tokens) with the repository permissions you want Claude to have, export it in your shell (for example `export GITHUB_PAT="github_pat_..."` in `~/.zshrc`), then add the server to your personal config:
+
+```bash
+claude mcp add --scope local --transport http github https://api.githubcopilot.com/mcp/ --header "Authorization: Bearer $GITHUB_PAT"
+```
+
+The shell substitutes the token when you run the command, so it is stored in your personal Claude Code config; re-run the command after rotating it. Start Claude Code and type `/mcp` to check that `github` is connected.
+
+### Try it
+
+> "Create an issue titled 'Add dark mode support' in this repo"
+
+---
+
+## Playwright
+
+Give Claude a web browser. It can navigate pages, click buttons, fill forms, and take screenshots. Useful for testing your plugin's documentation site or automating web tasks.
+
+**What it does:**
+- Open web pages and interact with elements
+- Take screenshots and read page content
+- Fill forms and click buttons
+- Run automated browser tests
+
+### Setup
+
+No API key needed, so it can be shared. Add to `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp"]
+    }
+  }
+}
+```
+
+Restart Claude Code and approve the new server when asked.
+
+### Try it
+
+> "Open localhost:6006 and take a screenshot of the Storybook homepage"
+
+---
+
+## Exa
+
+Semantic web search — smarter than keyword search. Claude can find relevant articles, documentation, and examples based on meaning, not just matching words.
+
+**What it does:**
+- Search the web using natural language queries
+- Find similar pages to a given URL
+- Get full page contents for research
+- Better results than keyword search for technical topics
+
+### Setup
+
+1. Get an API key from [Exa](https://exa.ai)
+2. Add the server to your personal config so the key stays out of git:
+
+```bash
+claude mcp add --scope local exa -e EXA_API_KEY=your-api-key-here -- npx -y exa-mcp-server
+```
+
+3. Restart Claude Code
+
+### Try it
+
+> "Search for examples of Figma plugins that use the Variables API"
+
+---
+
+## Memory
+
+Persistent memory across sessions. Claude can save and recall information using a knowledge graph, so it remembers decisions, preferences, and context between conversations.
+
+**What it does:**
+- Remember project decisions and technical choices
+- Recall user preferences across sessions
+- Build a knowledge graph of relationships between concepts
+- Persist context that would otherwise be lost when a session ends
+
+### Setup
+
+No API key needed. Add to `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    }
+  }
+}
+```
+
+Memory is stored locally in a `memory.jsonl` file. Restart Claude Code and approve the new server when asked.
+
+### Try it
+
+> "Remember that we decided to use a blue color scheme for this plugin"
+
+---
+
+## Adding servers to your config
+
+A few tips:
+
+- **Servers with API keys** belong in your personal config via `claude mcp add --scope local` (this project only) or `--scope user` (all your projects). If a shared server needs a key, reference an environment variable in `.mcp.json` with `"${NAME}"` (or `"${NAME:-default}"` to fall back to a default) rather than pasting the key.
+- **Servers without API keys** can go in `.mcp.json` — shared with anyone who clones the repo
+- **`.claude/settings.json` cannot define servers**; Claude Code reads server definitions only from `.mcp.json` and your personal config
+- **Restart Claude Code** after changing `.mcp.json` and approve new servers when prompted; `/mcp` shows what is loaded
+
+Browse more servers at the [MCP Server Registry](https://registry.modelcontextprotocol.io) or the [official servers repository](https://github.com/modelcontextprotocol/servers).

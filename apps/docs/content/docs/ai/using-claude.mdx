@@ -1,0 +1,57 @@
+---
+title: Using Claude
+description: How to describe your plugin idea to Claude and get a working result.
+---
+
+## Getting started
+
+1. Open this project in [Claude Code](https://claude.ai/code)
+2. Describe what you want your plugin to do
+3. Claude asks a few clarifying questions
+4. Claude generates the code, builds it, and gives you installation instructions
+
+## Example prompts
+
+Here are real prompts that work:
+
+### Simple plugins
+
+> "Build a plugin that renames all selected layers to lowercase"
+
+> "I want a plugin that counts how many text layers are on the current page and shows the number"
+
+> "Make a plugin with a color picker that applies the chosen color to all selected frames"
+
+### More complex plugins
+
+> "Build a plugin that lets me select multiple text layers, choose a font from a dropdown, and apply it to all of them"
+
+> "I want a plugin that exports every top-level frame on the current page as a separate PNG file"
+
+> "Create a plugin with a sidebar that shows a list of all components in the file, with a search box to filter them"
+
+### Changing an existing plugin
+
+> "Add a settings panel with a toggle for 'include hidden layers'"
+
+> "Change the button color to blue and make the window wider"
+
+> "My plugin crashes when nothing is selected — add an error message instead"
+
+## Tips for good results
+
+1. **Be specific about what you want** — "rename layers" is better than "do something with layers"
+2. **Describe the UI you imagine** — "a form with two inputs and a submit button"
+3. **Mention edge cases** — "show an error if nothing is selected"
+4. **Iterate** — if the first result isn't perfect, describe what to change
+
+## What Claude does behind the scenes
+
+When you describe a plugin, Claude:
+1. Modifies `packages/common/src/networkSides.ts` (message types)
+2. Modifies `apps/design-plugin/src/plugin/plugin.network.ts` (Figma API handlers)
+3. Modifies `packages/ui/src/app.tsx` (the plugin's UI)
+4. Modifies `apps/design-plugin/figma.manifest.ts` (plugin name)
+5. Rewrites `packages/ui/src/__tests__/App.test.tsx` for the new UI
+6. Runs `bun run build`, `bun run types`, `bun run lint` and `bun run test` to verify everything works
+7. Prints step-by-step Figma installation instructions

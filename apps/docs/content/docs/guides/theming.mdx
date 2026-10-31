@@ -1,0 +1,113 @@
+---
+title: Theming and the UI3 Look
+description: How the components take Figma's colors, what the figma-* utilities are, and the sizes the UI3 design uses.
+---
+
+## Where the colors come from
+
+The plugin opens its window with `themeColors: true`:
+
+```ts
+figma.showUI(__html__, {
+  width: 320,
+  height: 480,
+  themeColors: true,
+  title: "My Plugin",
+});
+```
+
+(Simplified from `apps/design-plugin/src/plugin/plugin.ts`, which has one call per editor type; both pass `themeColors: true`.)
+
+With that flag Figma injects its own color variables (`--figma-color-bg`, `--figma-color-text`, `--figma-color-border` and some 200 more) into the plugin iframe and sets a `figma-light` or `figma-dark` class on `<html>`. When the user switches Figma's theme, the variables change and the plugin follows without a reload.
+
+`packages/ui/src/styles.css` turns those variables into the component tokens:
+
+```css
+/* light palette, with the UI3 kit value as fallback */
+:root {
+  --ui3-bg: var(--figma-color-bg, #ffffff);
+  --ui3-text: var(--figma-color-text, rgba(0, 0, 0, 0.9));
+  /* … */
+}
+
+/* dark palette: Storybook and tests use .dark, Figma uses html.figma-dark */
+.dark,
+html.figma-dark {
+  --ui3-bg: var(--figma-color-bg, #2c2c2c);
+  --ui3-text: var(--figma-color-text, #ffffff);
+  /* … */
+}
+```
+
+Inside Figma the `--figma-color-*` value wins. Outside Figma, in Storybook, tests or a plain browser, the fallback applies: the UI3 kit's light or dark value, which approximates what Figma injects.
+
+The tokens are exposed to Tailwind as `--color-figma-*`, which gives you the `figma-*` utilities described below. The shadcn aliases (`bg-background`, `text-foreground`, `text-muted-foreground`, `border-border`, `bg-primary` and so on) point at the same tokens, so every shadcn component is themed as well.
+
+Plugin code that needs the current theme (for example to pick an image) can call `useFigmaTheme()` from `@repo/ui`; it returns `"light"` or `"dark"` and updates when Figma switches the `figma-dark` class (outside Figma it also treats a `dark` class on `<html>`, which Storybook sets, as dark).
+
+## Which tokens bind, and which are static
+
+Figma documents variables for the bg, text, border and icon families. The template binds to those. It documents nothing for menus, tooltips or translucent borders, so those tokens are not bound to Figma and keep the UI3 kit's values: the same in both themes, except `bg-menu-selected` and `border-translucent`, which have a light and a dark value. That is the intended look: Figma's own menus and tooltips are dark whether the app is light or dark.
+
+| Family | Binds to Figma | Static (not bound to Figma) |
+| --- | --- | --- |
+| Backgrounds | `bg`, `bg-secondary`, `bg-tertiary`, `bg-hover`, `bg-pressed`, `bg-selected`, `bg-disabled`, `bg-brand`, `bg-brand-hover`, `bg-brand-pressed`, `bg-danger`, `bg-danger-hover` | `bg-menu`, `bg-menu-hover`, `bg-menu-selected`, `bg-tooltip` |
+| Text | `text`, `text-secondary`, `text-tertiary`, `text-disabled`, `text-brand`, `text-onbrand`, `text-danger`, `text-ondanger` | `text-menu`, `text-menu-secondary`, `text-menu-danger`, `text-menu-disabled`, `text-tooltip`, `text-tooltip-secondary` |
+| Borders | `border`, `border-strong`, `border-selected`, `border-selected-strong`, `border-danger` | `border-translucent`, `border-menu` |
+| Icons | `icon`, `icon-secondary`, `icon-brand`, `icon-onbrand` | `icon-menu` |
+
+The full table with the fallback values, and a console snippet that prints the variables Figma injects into a running plugin, lives in [`packages/ui/src/figma-variables.md`](https://github.com/bromso/figma-plugin-template/blob/master/packages/ui/src/figma-variables.md).
+
+## The figma-* utilities
+
+Every token is a Tailwind color, so it works with any color utility: `bg-figma-bg-secondary`, `text-figma-text-secondary`, `border-figma-border`, `ring-figma-border-selected`, `fill-figma-bg-tooltip`.
+
+```tsx
+<section className="border-b border-figma-border p-2">
+  <p className="text-figma-text-secondary">Nothing selected</p>
+</section>
+```
+
+Use a `figma-*` utility when the kit names the surface you want: a secondary text color, the panel divider, the hover background. Use the shadcn alias when a shadcn component already applies it for you; there is no need to override `bg-background` on a `Dialog`. Never write a hex color or an `rgba()` value in a component; it will not follow the theme.
+
+Menus, dropdowns, select lists, context menus, the menubar, the command palette and tooltips are dark in both themes. They use the static `figma-*-menu` and `figma-*-tooltip` tokens, so do not wrap them in `dark:` variants or give them light backgrounds.
+
+## Sizes, type and radii
+
+The components follow Figma's UI3 kit, which is denser than the shadcn defaults.
+
+| What | Value |
+| --- | --- |
+| Control height | 24 px (`h-6`) by default; `size="lg"` is 32 px (`h-8`); buttons also have `sm` and `xs` at 20 px |
+| Body text | `text-sm`, 11 px on a 16 px line, weight 450 (`font-medium`) |
+| Emphasis | `font-semibold`, weight 550; `font-bold`, weight 600 |
+| Larger text | `text-lg` 13 px, `text-xl` 15 px; `text-xs` is 9 px and is only for very small labels such as chart ticks (badges use `text-sm`) |
+| Letter spacing | `tracking-ui3` (0.005 em) on labels and controls |
+| Radius | `rounded-md` and `rounded-lg` are 5 px (controls, rows, badges); `rounded-xl` is 13 px (menus, dialogs); `rounded-sm` is 2 px |
+| Shadows | `shadow-tooltip`, `shadow-menu`, `shadow-dialog` |
+| Font | Inter (Latin subset), as a variable font inlined into the plugin bundle |
+| Icons | Lucide icons are drawn with a 1.5 px stroke to match Figma's 1 px icons |
+
+The `Type` component uses the same scale (`xsmall` 9 px, `small` 11 px, `large` 13 px, `xlarge` 15 px); prefer the Tailwind text utilities above for new UI.
+
+## Laying out a panel
+
+`packages/ui/src/app.tsx` is the reference layout and the plugin's default screen. It reads like a Figma properties panel. The components themselves are listed in [UI Components](/docs/guides/ui-components).
+
+- The window is 320 × 480. A `Dialog` is 320 px wide by default and 480 px with `size="lg"`, but never wider than the window minus 16 px on each side, so in the default window it is 288 px wide.
+- A 40 px header (`h-10 border-b border-figma-border px-2`) holds the tabs and an icon button.
+- Sections are separated by 1 px dividers (`border-b border-figma-border`) and padded 8 px (`p-2`, with `pb-4` at the bottom).
+- Inputs, checkboxes, radios and switches sit on 24 px rows (`flex h-6 items-center gap-2`).
+- The root is `flex h-full flex-col`; the tab content scrolls (`min-h-0 overflow-y-auto`) so the header stays fixed.
+
+Copy that structure for new screens rather than starting from a padded card.
+
+## Checking parity in Storybook
+
+Start Storybook with:
+
+```bash
+bun run storybook
+```
+
+The toolbar has a light/dark toggle that flips the `dark` class on the preview. The `UI3` section holds twelve parity stories (Badge, Button, Checkbox, Command, Dialog, Input, Menu, Radio, Select, Switch, Tabs, Tooltip). Each renders the component in both themes next to a screenshot of the matching component from the UI3 kit, so you can see where the implementation diverges. Components that open in a portal (menus, selects, tooltips, dialogs) render once and are compared with the toolbar toggle.

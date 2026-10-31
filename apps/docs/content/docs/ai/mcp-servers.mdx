@@ -1,0 +1,162 @@
+---
+title: MCP Servers
+description: Configure Model Context Protocol servers to give Claude access to Figma files and up-to-date documentation.
+---
+
+## What are MCP servers?
+
+MCP (Model Context Protocol) servers extend what Claude can do by connecting it to external tools and data sources. Instead of copying and pasting information into your conversation, MCP servers let Claude access it directly.
+
+This template comes with three MCP servers pre-configured in `.mcp.json` at the repository root, which is the file Claude Code reads for project-wide servers:
+
+- **Figma** — Claude can read your Figma files, inspect layers, and extract design tokens (via Figma's official remote MCP server)
+- **Context7** — Claude gets up-to-date library documentation so it doesn't use outdated APIs
+- **Sequential Thinking** — Claude reasons through complex problems step-by-step
+
+The first time you start an interactive Claude Code session in the project, it asks you to approve these servers; that is a security check for servers that arrive with a repository. Approve them once and they load in every session. Type `/mcp` inside Claude Code to see their status.
+
+## Figma
+
+The Figma MCP server lets Claude read your design files directly. Copy a link to a frame or layer in Figma, paste it into the conversation, and Claude can inspect its layers, styles, variables and structure.
+
+The template uses [Figma's official remote server](https://developers.figma.com/docs/figma-mcp-server/remote-server-installation/). It runs on Figma's side, so there is nothing to install, no Figma desktop app requirement and no API key to manage. This is its entry in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "figma": {
+      "type": "http",
+      "url": "https://mcp.figma.com/mcp"
+    }
+  }
+}
+```
+
+### Signing in
+
+1. Start Claude Code in the project and approve the servers if asked.
+2. Type `/mcp`, select **figma** and choose **Authenticate**.
+3. A browser page opens; click **Allow access**.
+4. Back in Claude Code you should see "Authentication successful. Connected to figma".
+
+You sign in once per machine with your own Figma account. Nothing about your account is stored in the repository.
+
+### Who can use it
+
+The remote server works on every Figma plan, Starter included, but how much depends on your seat. Full and Dev seats on paid plans get a daily allowance of read calls; View and Collab seats, and everyone on the Starter plan, get a small monthly allowance. Figma publishes the current numbers on its [rate limits page](https://developers.figma.com/docs/figma-mcp-server/rate-limits-access/) and may change them.
+
+### Figma's skills (optional)
+
+Figma also ships a Claude Code plugin that bundles the same server with skills for common workflows, such as turning a design into code. If you want those skills, install it from the terminal:
+
+```bash
+claude plugin install figma@claude-plugins-official
+```
+
+Then restart Claude Code, type `/plugin`, open the **Installed** tab, select **figma** and sign in. The plugin is a personal install and does not change the repository.
+
+### Verifying it works
+
+Start a Claude Code session and paste a Figma link:
+
+> "Look at this Figma frame: https://www.figma.com/design/abc123/MyFile?node-id=1-2"
+
+If you are signed in, Claude describes the frame. If not, the `figma` server shows as needing authentication in `/mcp`.
+
+## Context7
+
+Context7 fetches live documentation for libraries and frameworks. When Claude writes code that uses a library, Context7 ensures it references the current API — not a version from its training data.
+
+### Configuration
+
+No setup needed. Context7 works out of the box; this is its entry in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    }
+  }
+}
+```
+
+Context7 is maintained by [Upstash](https://upstash.com) and supports most popular JavaScript/TypeScript libraries.
+
+## Sequential Thinking
+
+Sequential Thinking helps Claude break down complex problems into step-by-step reasoning. Instead of jumping to a solution, Claude works through the logic one piece at a time — which leads to better results for tricky plugin features.
+
+### Configuration
+
+No setup needed. Sequential Thinking works out of the box; this is its entry in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    }
+  }
+}
+```
+
+This is especially useful when your plugin needs complex logic, like transforming data between formats or handling multiple edge cases.
+
+## Troubleshooting
+
+### The servers never appear
+
+Make sure you approved them when Claude Code asked on first start. Run `/mcp` inside Claude Code to see the list and their status, or `claude mcp list` from the terminal. If you declined by mistake, run `claude mcp reset-project-choices` and start Claude Code again.
+
+### Figma requests fail or ask you to sign in
+
+Run `/mcp`, select **figma** and choose **Authenticate** again. Your sign-in can lapse, or you may have signed in with a different Figma account than the one that can open the file. If the server answers but refuses a request, you may have used up your seat's allowance; see [Who can use it](#who-can-use-it).
+
+### "npx: command not found"
+
+Context7 and Sequential Thinking use `npx` to run without installing globally. Make sure Node.js is installed:
+
+```bash
+node --version  # Should print v22.22.1 or higher
+```
+
+### Server not responding
+
+MCP servers start on demand when Claude needs them. If a server isn't responding:
+
+1. Check your internet connection — Context7 and Sequential Thinking fetch their packages via npm, and Figma's server is remote
+2. Try clearing the npx cache: `npx clear-npx-cache`
+3. Restart your Claude Code session
+
+## Adding your own MCP servers
+
+Servers everyone who clones the repository should get go in `.mcp.json`. A local server needs a `command` and an `args` array; a remote one uses `"type": "http"` and a `url` (with optional `headers`). `env` is optional and may reference environment variables with `${NAME}` (or `${NAME:-default}` to fall back to a default):
+
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "npx",
+      "args": ["-y", "my-mcp-package", "--stdio"],
+      "env": {
+        "API_KEY": "${MY_SERVER_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+Servers only you want, or servers whose keys you would rather not reference at all, are added from the terminal instead and stored in your personal Claude Code config, not in the repository:
+
+```bash
+claude mcp add --scope local my-server -e API_KEY=your-key -- npx -y my-mcp-package --stdio
+```
+
+Use `--scope user` to make a server available in all your projects, or `--scope project` to have the command write the entry into `.mcp.json` for you. Note that `.claude/settings.json` and `.claude/settings.local.json` cannot define MCP servers; Claude Code only reads server definitions from `.mcp.json` and from your personal config.
+
+Browse available MCP servers at the [MCP Server Registry](https://registry.modelcontextprotocol.io) or build your own following the [MCP specification](https://modelcontextprotocol.io).
+
+Looking for more servers to install? See [Extending Claude](/docs/ai/extending-claude) for optional add-ons like GitHub, Playwright, and more.

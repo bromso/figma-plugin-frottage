@@ -1,0 +1,45 @@
+---
+title: Plugins
+description: Add-ons that extend what Claude Code can do in your project.
+---
+
+## What are Claude Code plugins?
+
+Plugins are add-ons that give Claude new abilities. Without plugins, Claude is a general-purpose AI assistant. With the right plugins installed, it becomes a specialist — in this case, a Figma plugin developer.
+
+Think of plugins like apps on your phone: your phone works fine without them, but installing the right apps makes it much more useful for specific tasks.
+
+## What's pre-installed
+
+This template comes with one plugin already set up:
+
+### Superpowers
+
+The **superpowers** plugin adds structured workflows that help Claude work more carefully:
+
+- **Brainstorming** — Claude explores your idea and asks good questions before jumping into code
+- **Planning** — Claude breaks work into small, reviewable steps instead of doing everything at once
+- **Code review** — Claude checks its own work for mistakes before showing it to you
+- **Test-driven development** — Claude writes tests first to make sure the code actually works
+
+Without this plugin, Claude would still write code — but it might skip important steps or make assumptions. Superpowers keeps it disciplined.
+
+[GitHub](https://github.com/obra/superpowers) · [skills.sh](https://skills.sh)
+
+## Finding more plugins
+
+If you want to extend Claude's abilities further, browse [skills.sh](https://skills.sh) or the [Anthropic skills repository](https://github.com/anthropics/skills) and install what you need into your own Claude Code setup. The template does not vendor third-party skills, so what you install stays yours and does not end up in the repository.
+
+## How plugins are configured
+
+Plugins are listed in `.claude/settings.json` under the `enabledPlugins` field. You don't normally need to edit this file — Claude handles installation for you. But if you're curious, this is what the current configuration looks like:
+
+```json
+{
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true
+  }
+}
+```
+
+Each plugin is identified by its name and source. The `true` value means it's active.

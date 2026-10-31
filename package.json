@@ -1,0 +1,66 @@
+{
+  "name": "figma-plugin-template",
+  "description": "Figma/FigJam plugin boilerplate with React, Bun, TypeScript, and Turborepo monorepo",
+  "private": true,
+  "license": "MIT",
+  "author": "Jonas Bröms",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bromso/figma-plugin-template"
+  },
+  "keywords": [
+    "figma",
+    "figma-plugin",
+    "figjam",
+    "react",
+    "typescript",
+    "turborepo",
+    "monorepo",
+    "bun",
+    "biome",
+    "boilerplate",
+    "template"
+  ],
+  "engines": {
+    "node": ">=22.22.1",
+    "bun": ">=1.4.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.4",
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "turbo": "^2.11.10"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,css}": [
+      "biome check --write --no-errors-on-unmatched"
+    ]
+  },
+  "packageManager": "bun@1.4.2",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "storybook": "turbo run storybook",
+    "build-storybook": "turbo run build-storybook",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch",
+    "analyze": "turbo run analyze",
+    "types": "turbo run types",
+    "docs": "bun run --filter @repo/docs dev",
+    "docs:build": "bun run --filter @repo/docs build",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset git-tag",
+    "prepare": "husky"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "overrides": {
+    "@radix-ui/react-dialog": "1.3.1"
+  }
+}

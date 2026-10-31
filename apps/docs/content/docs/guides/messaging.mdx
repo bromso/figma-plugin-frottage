@@ -1,0 +1,72 @@
+---
+title: Messaging
+description: How the plugin UI and Figma API communicate via typed messages.
+---
+
+## How messaging works
+
+The plugin UI can't directly access Figma. Instead, it sends **messages** to the plugin process, which performs the Figma action and optionally sends a result back.
+
+```
+UI (React)  ──── "renameSelection" ────►  Plugin (Figma API)
+                                              │
+            ◄──── { success: true } ─────────┘
+```
+
+## Defining messages
+
+Messages are defined in `packages/common/src/networkSides.ts`. Each side declares what messages it **listens** for:
+
+```ts
+// What the UI listens for (messages FROM the plugin):
+export const UI = Networker.createSide("UI-side").listens<{
+  selectionChanged(count: number): void;
+}>();
+
+// What the plugin listens for (messages FROM the UI):
+export const PLUGIN = Networker.createSide("Plugin-side").listens<{
+  renameSelection(newName: string): void;
+  getSelectionInfo(): { name: string; type: string }[];
+}>();
+```
+
+## Handling messages in the plugin
+
+In `apps/design-plugin/src/plugin/plugin.network.ts`, register handlers:
+
+```ts
+PLUGIN_CHANNEL.registerMessageHandler("renameSelection", (newName) => {
+  for (const node of figma.currentPage.selection) {
+    node.name = newName;
+  }
+});
+
+PLUGIN_CHANNEL.registerMessageHandler("getSelectionInfo", () => {
+  return figma.currentPage.selection.map(n => ({
+    name: n.name,
+    type: n.type,
+  }));
+});
+```
+
+## Sending messages from the UI
+
+In `packages/ui/src/app.tsx`:
+
+```ts
+import { UI_CHANNEL } from "./app.network";
+import { PLUGIN } from "@repo/common/networkSides";
+
+// Fire-and-forget (no response):
+UI_CHANNEL.emit(PLUGIN, "renameSelection", ["New Name"]);
+
+// Request with response (returns a Promise):
+const info = await UI_CHANNEL.request(PLUGIN, "getSelectionInfo", []);
+```
+
+## Key rules
+
+- **`emit()`** sends a message without waiting for a response
+- **`request()`** sends a message and waits for the handler's return value
+- Message parameters must be simple data (strings, numbers, objects) — no functions or DOM elements
+- If a handler is `async`, the return type is automatically wrapped in a `Promise`

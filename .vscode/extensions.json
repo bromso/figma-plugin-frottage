@@ -1,0 +1,18 @@
+{
+  "recommendations": [
+    "biomejs.biome",
+    "formulahendry.auto-close-tag",
+    "aaron-bond.better-comments",
+    "oven.bun-vscode",
+    "anthropic.claude-code",
+    "vivaxy.vscode-conventional-commits",
+    "editorconfig.editorconfig",
+    "figma.figma-vscode-extension",
+    "vincaslt.highlight-matching-tag",
+    "TypeScriptTeam.native-preview",
+    "christian-kohler.npm-intellisense",
+    "ms-playwright.playwright",
+    "yoavbls.pretty-ts-errors",
+    "mattpocock.ts-error-translator"
+  ]
+}

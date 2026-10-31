@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "bun",
+      "request": "launch",
+      "name": "Debug bun test (UI file)",
+      "runtime": "bun",
+      "runtimeArgs": ["test"],
+      "program": "${file}",
+      "cwd": "${workspaceFolder}/packages/ui",
+      "watchMode": false,
+      "stopOnEntry": false
+    },
+    {
+      "type": "bun",
+      "request": "launch",
+      "name": "Debug bun test (common file)",
+      "runtime": "bun",
+      "runtimeArgs": ["test"],
+      "program": "${file}",
+      "cwd": "${workspaceFolder}/packages/common",
+      "watchMode": false,
+      "stopOnEntry": false
+    },
+    {
+      "type": "chrome",
+      "request": "attach",
+      "name": "Attach to Figma Plugin (Developer VM)",
+      "port": 9222,
+      "urlFilter": "*figma*",
+      "skipFiles": ["<node_internals>/**"],
+      "pathMapping": {
+        "/": "${workspaceFolder}/apps/design-plugin/src/"
+      }
+    }
+  ]
+}

@@ -1,0 +1,298 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+/* shadcn's data-* variants (data-checked → [data-state="checked"] etc.), accordion
+   keyframes and the no-scrollbar utility. Radix state styling depends on these. */
+@import "shadcn/tailwind.css";
+
+/* Tailwind v4 content scan, relative to this file. The build runs from
+   apps/design-plugin, so the default auto-detection would miss these sources. */
+@source ".";
+
+/* Dark mode: `.dark` for Storybook/tests, `html.figma-dark` is what Figma sets
+   on the plugin iframe when showUI runs with themeColors: true. */
+@custom-variant dark (&:where(.dark, .dark *, html.figma-dark, html.figma-dark *));
+
+/* Inter variable (Latin subset, OFL). Figma's iframe does not inherit Figma's
+   fonts; UI3 weights 450/550 need the variable font. Inlined by the Bun build. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ============================================================
+   UI3 tokens. Each binds to the variable Figma injects
+   (--figma-color-*) with the kit's value as fallback, so inside
+   Figma colours track the user's theme live and outside Figma
+   (Storybook, tests) the fallback palette applies.
+   Never define --figma-color-* here: Figma owns those names.
+   Which names Figma injects, and which stay static, is recorded in
+   packages/ui/src/figma-variables.md.
+   ============================================================ */
+:root {
+  /* surfaces */
+  --ui3-bg: var(--figma-color-bg, #ffffff);
+  --ui3-bg-secondary: var(--figma-color-bg-secondary, #f5f5f5);
+  --ui3-bg-tertiary: var(--figma-color-bg-tertiary, #e6e6e6);
+  --ui3-bg-hover: var(--figma-color-bg-hover, #f5f5f5);
+  --ui3-bg-pressed: var(--figma-color-bg-pressed, #e6e6e6);
+  --ui3-bg-selected: var(--figma-color-bg-selected, #e5f4ff);
+  --ui3-bg-disabled: var(--figma-color-bg-disabled, #f0f0f0);
+  --ui3-bg-brand: var(--figma-color-bg-brand, #0d99ff);
+  --ui3-bg-brand-hover: var(--figma-color-bg-brand-hover, #0c8ce9);
+  --ui3-bg-brand-pressed: var(--figma-color-bg-brand-pressed, #007be5);
+  --ui3-bg-danger: var(--figma-color-bg-danger, #f24822);
+  --ui3-bg-danger-hover: var(--figma-color-bg-danger-hover, #dc3412);
+  --ui3-bg-menu: #1e1e1e; /* static: Figma injects no bg-menu variable */
+  --ui3-bg-menu-hover: #383838; /* static: Figma injects no bg-menu-hover variable */
+  --ui3-bg-menu-selected: #0d99ff; /* static: Figma injects no bg-menu-selected variable */
+  --ui3-bg-tooltip: #1e1e1e; /* static: Figma injects no bg-tooltip variable */
+  /* text */
+  --ui3-text: var(--figma-color-text, rgba(0, 0, 0, 0.9));
+  --ui3-text-secondary: var(--figma-color-text-secondary, rgba(0, 0, 0, 0.5));
+  --ui3-text-tertiary: var(--figma-color-text-tertiary, rgba(0, 0, 0, 0.3));
+  --ui3-text-disabled: var(--figma-color-text-disabled, rgba(0, 0, 0, 0.3));
+  --ui3-text-brand: var(--figma-color-text-brand, #007be5);
+  --ui3-text-onbrand: var(--figma-color-text-onbrand, #ffffff);
+  --ui3-text-danger: var(--figma-color-text-danger, #dc3412);
+  --ui3-text-ondanger: var(--figma-color-text-ondanger, #ffffff);
+  --ui3-text-menu: #ffffff; /* static: Figma injects no text-menu variable */
+  --ui3-text-menu-secondary: rgba(255, 255, 255, 0.7); /* static: Figma injects no text-menu-secondary variable */
+  --ui3-text-menu-danger: #ffafa3; /* static: Figma injects no text-menu-danger variable */
+  --ui3-text-menu-disabled: rgba(255, 255, 255, 0.4); /* static: Figma injects no text-menu-disabled variable */
+  --ui3-text-tooltip: #ffffff; /* static: Figma injects no text-tooltip variable */
+  --ui3-text-tooltip-secondary: rgba(255, 255, 255, 0.7); /* static: Figma injects no text-tooltip-secondary variable */
+  /* borders */
+  --ui3-border: var(--figma-color-border, #e6e6e6);
+  --ui3-border-translucent: rgba(0, 0, 0, 0.1); /* static: Figma injects no border-translucent variable */
+  --ui3-border-strong: var(--figma-color-border-strong, rgba(0, 0, 0, 0.8));
+  --ui3-border-selected: var(--figma-color-border-selected, #0d99ff);
+  --ui3-border-selected-strong: var(--figma-color-border-selected-strong, #007be5);
+  --ui3-border-danger: var(--figma-color-border-danger, #f24822);
+  --ui3-border-menu: #383838; /* static: Figma injects no border-menu variable */
+  /* icons */
+  --ui3-icon: var(--figma-color-icon, rgba(0, 0, 0, 0.9));
+  --ui3-icon-secondary: var(--figma-color-icon-secondary, rgba(0, 0, 0, 0.5));
+  --ui3-icon-brand: var(--figma-color-icon-brand, #007be5);
+  --ui3-icon-onbrand: var(--figma-color-icon-onbrand, #ffffff);
+  --ui3-icon-menu: #ffffff; /* static: Figma injects no icon-menu variable */
+}
+
+:root,
+.dark,
+html.figma-dark {
+  /* shadcn tokens → UI3. Also on .dark so the aliases re-resolve inside a nested dark wrapper. */
+  --background: var(--ui3-bg);
+  --foreground: var(--ui3-text);
+  --card: var(--ui3-bg);
+  --card-foreground: var(--ui3-text);
+  --popover: var(--ui3-bg);
+  --popover-foreground: var(--ui3-text);
+  --primary: var(--ui3-bg-brand);
+  --primary-foreground: var(--ui3-text-onbrand);
+  --secondary: var(--ui3-bg-secondary);
+  --secondary-foreground: var(--ui3-text);
+  --muted: var(--ui3-bg-secondary);
+  --muted-foreground: var(--ui3-text-secondary);
+  --accent: var(--ui3-bg-hover);
+  --accent-foreground: var(--ui3-text);
+  --destructive: var(--ui3-bg-danger);
+  --destructive-foreground: var(--ui3-text-ondanger);
+  --border: var(--ui3-border);
+  --input: var(--ui3-bg-secondary);
+  --ring: var(--ui3-border-selected);
+  --chart-1: #0d99ff;
+  --chart-2: #14ae5c;
+  --chart-3: #ffcd29;
+  --chart-4: #9747ff;
+  --chart-5: #f24822;
+  --radius: 5px;
+}
+
+/* Dark fallbacks (Storybook/tests). Inside Figma the injected values win. */
+.dark,
+html.figma-dark {
+  --ui3-bg: var(--figma-color-bg, #2c2c2c);
+  --ui3-bg-secondary: var(--figma-color-bg-secondary, #383838);
+  --ui3-bg-tertiary: var(--figma-color-bg-tertiary, #444444);
+  --ui3-bg-hover: var(--figma-color-bg-hover, #383838);
+  --ui3-bg-pressed: var(--figma-color-bg-pressed, #444444);
+  --ui3-bg-selected: var(--figma-color-bg-selected, #394360);
+  --ui3-bg-disabled: var(--figma-color-bg-disabled, #383838);
+  --ui3-bg-brand: var(--figma-color-bg-brand, #0c8ce9);
+  --ui3-bg-brand-hover: var(--figma-color-bg-brand-hover, #0a6dc2);
+  --ui3-bg-brand-pressed: var(--figma-color-bg-brand-pressed, #0a6dc2);
+  --ui3-bg-danger: var(--figma-color-bg-danger, #f24822);
+  --ui3-bg-danger-hover: var(--figma-color-bg-danger-hover, #dc3412);
+  --ui3-bg-menu: #1e1e1e; /* static: Figma injects no bg-menu variable */
+  --ui3-bg-menu-hover: #383838; /* static: Figma injects no bg-menu-hover variable */
+  --ui3-bg-menu-selected: #0c8ce9; /* static: Figma injects no bg-menu-selected variable */
+  --ui3-bg-tooltip: #1e1e1e; /* static: Figma injects no bg-tooltip variable */
+  --ui3-text: var(--figma-color-text, #ffffff);
+  --ui3-text-secondary: var(--figma-color-text-secondary, rgba(255, 255, 255, 0.7));
+  --ui3-text-tertiary: var(--figma-color-text-tertiary, rgba(255, 255, 255, 0.4));
+  --ui3-text-disabled: var(--figma-color-text-disabled, rgba(255, 255, 255, 0.4));
+  --ui3-text-brand: var(--figma-color-text-brand, #7cc4f8);
+  --ui3-text-onbrand: var(--figma-color-text-onbrand, #ffffff);
+  --ui3-text-danger: var(--figma-color-text-danger, #ffafa3);
+  --ui3-text-ondanger: var(--figma-color-text-ondanger, #ffffff);
+  --ui3-text-menu: #ffffff; /* static: Figma injects no text-menu variable */
+  --ui3-text-menu-secondary: rgba(255, 255, 255, 0.7); /* static: Figma injects no text-menu-secondary variable */
+  --ui3-text-menu-danger: #ffafa3; /* static: Figma injects no text-menu-danger variable */
+  --ui3-text-menu-disabled: rgba(255, 255, 255, 0.4); /* static: Figma injects no text-menu-disabled variable */
+  --ui3-text-tooltip: #ffffff; /* static: Figma injects no text-tooltip variable */
+  --ui3-text-tooltip-secondary: rgba(255, 255, 255, 0.7); /* static: Figma injects no text-tooltip-secondary variable */
+  --ui3-border: var(--figma-color-border, #444444);
+  --ui3-border-translucent: rgba(255, 255, 255, 0.1); /* static: Figma injects no border-translucent variable */
+  --ui3-border-strong: var(--figma-color-border-strong, #e6e6e6);
+  --ui3-border-selected: var(--figma-color-border-selected, #0c8ce9);
+  --ui3-border-selected-strong: var(--figma-color-border-selected-strong, #0c8ce9);
+  --ui3-border-danger: var(--figma-color-border-danger, #f24822);
+  --ui3-border-menu: #383838; /* static: Figma injects no border-menu variable */
+  --ui3-icon: var(--figma-color-icon, #ffffff);
+  --ui3-icon-secondary: var(--figma-color-icon-secondary, rgba(255, 255, 255, 0.7));
+  --ui3-icon-brand: var(--figma-color-icon-brand, #7cc4f8);
+  --ui3-icon-onbrand: var(--figma-color-icon-onbrand, #ffffff);
+  --ui3-icon-menu: #ffffff; /* static: Figma injects no icon-menu variable */
+  --chart-1: #0c8ce9;
+  --chart-2: #14ae5c;
+  --chart-3: #ffcd29;
+  --chart-4: #9747ff;
+  --chart-5: #f24822;
+}
+
+@theme inline {
+  /* shadcn colour tokens */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* figma namespace: kit tokens shadcn lacks → bg-figma-bg-secondary etc. */
+  --color-figma-bg: var(--ui3-bg);
+  --color-figma-bg-secondary: var(--ui3-bg-secondary);
+  --color-figma-bg-tertiary: var(--ui3-bg-tertiary);
+  --color-figma-bg-hover: var(--ui3-bg-hover);
+  --color-figma-bg-pressed: var(--ui3-bg-pressed);
+  --color-figma-bg-selected: var(--ui3-bg-selected);
+  --color-figma-bg-disabled: var(--ui3-bg-disabled);
+  --color-figma-bg-brand: var(--ui3-bg-brand);
+  --color-figma-bg-brand-hover: var(--ui3-bg-brand-hover);
+  --color-figma-bg-brand-pressed: var(--ui3-bg-brand-pressed);
+  --color-figma-bg-danger: var(--ui3-bg-danger);
+  --color-figma-bg-danger-hover: var(--ui3-bg-danger-hover);
+  --color-figma-bg-menu: var(--ui3-bg-menu);
+  --color-figma-bg-menu-hover: var(--ui3-bg-menu-hover);
+  --color-figma-bg-menu-selected: var(--ui3-bg-menu-selected);
+  --color-figma-bg-tooltip: var(--ui3-bg-tooltip);
+  --color-figma-text: var(--ui3-text);
+  --color-figma-text-secondary: var(--ui3-text-secondary);
+  --color-figma-text-tertiary: var(--ui3-text-tertiary);
+  --color-figma-text-disabled: var(--ui3-text-disabled);
+  --color-figma-text-brand: var(--ui3-text-brand);
+  --color-figma-text-onbrand: var(--ui3-text-onbrand);
+  --color-figma-text-danger: var(--ui3-text-danger);
+  --color-figma-text-ondanger: var(--ui3-text-ondanger);
+  --color-figma-text-menu: var(--ui3-text-menu);
+  --color-figma-text-menu-secondary: var(--ui3-text-menu-secondary);
+  --color-figma-text-menu-danger: var(--ui3-text-menu-danger);
+  --color-figma-text-menu-disabled: var(--ui3-text-menu-disabled);
+  --color-figma-text-tooltip: var(--ui3-text-tooltip);
+  --color-figma-text-tooltip-secondary: var(--ui3-text-tooltip-secondary);
+  --color-figma-border: var(--ui3-border);
+  --color-figma-border-translucent: var(--ui3-border-translucent);
+  --color-figma-border-strong: var(--ui3-border-strong);
+  --color-figma-border-selected: var(--ui3-border-selected);
+  --color-figma-border-selected-strong: var(--ui3-border-selected-strong);
+  --color-figma-border-danger: var(--ui3-border-danger);
+  --color-figma-border-menu: var(--ui3-border-menu);
+  --color-figma-icon: var(--ui3-icon);
+  --color-figma-icon-secondary: var(--ui3-icon-secondary);
+  --color-figma-icon-brand: var(--ui3-icon-brand);
+  --color-figma-icon-onbrand: var(--ui3-icon-onbrand);
+  --color-figma-icon-menu: var(--ui3-icon-menu);
+
+  /* radii: controls 5 px, panels 13 px */
+  --radius-sm: 2px;
+  --radius-md: 5px;
+  --radius-lg: 5px;
+  --radius-xl: 13px;
+  --radius-2xl: 13px;
+
+  /* UI3 type scale (px, so the 16 px rem base and 4 px spacing grid are untouched) */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --text-xs: 9px;
+  --text-xs--line-height: 12px;
+  --text-sm: 11px;
+  --text-sm--line-height: 16px;
+  --text-base: 11px;
+  --text-base--line-height: 16px;
+  --text-lg: 13px;
+  --text-lg--line-height: 20px;
+  --text-xl: 15px;
+  --text-xl--line-height: 24px;
+  --font-weight-normal: 400;
+  --font-weight-medium: 450;
+  --font-weight-semibold: 550;
+  --font-weight-bold: 600;
+  --tracking-ui3: 0.005em;
+
+  /* elevation (from the kit) */
+  --shadow-tooltip: 0 1px 3px rgba(0, 0, 0, 0.1), 0 5px 12px rgba(0, 0, 0, 0.13), 0 0 0.5px rgba(0, 0, 0, 0.15);
+  --shadow-menu: 0 2px 5px rgba(0, 0, 0, 0.15), 0 10px 16px rgba(0, 0, 0, 0.12), 0 0 0.5px rgba(0, 0, 0, 0.12);
+  --shadow-dialog: 0 2px 14px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.2);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    margin: 0;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    font-weight: var(--font-weight-medium);
+    letter-spacing: var(--tracking-ui3);
+  }
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+  /* UI3 icons are drawn at 1 px; Lucide's 2 px stroke reads heavy at 16 px. Utilities such as stroke-[2.5] still override. */
+  svg.lucide {
+    stroke-width: 1.5;
+  }
+}

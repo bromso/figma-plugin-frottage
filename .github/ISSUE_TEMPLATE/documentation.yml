@@ -1,0 +1,59 @@
+name: Documentation
+description: Report missing, incorrect, or unclear documentation
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Help us improve our documentation!
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Documentation Type
+      options:
+        - Missing documentation
+        - Incorrect information
+        - Unclear/confusing
+        - Typo or grammar
+        - Outdated content
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: location
+    attributes:
+      label: Location
+      description: Where is the documentation issue?
+      options:
+        - apps/docs (Product docs)
+        - apps/legal (Legal docs)
+        - README files
+        - Code comments
+        - CLAUDE.md
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: page
+    attributes:
+      label: Page/File URL or Path
+      description: Link to the page or path to the file with the issue.
+      placeholder: e.g., /docs/getting-started or apps/docs/content/...
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What's wrong or missing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Improvement
+      description: How would you improve the documentation?

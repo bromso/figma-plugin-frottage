@@ -1,0 +1,25 @@
+{
+  "name": "@repo/design-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "NODE_ENV=production bun build.ts",
+    "dev": "bun build.ts --watch",
+    "dev:ui-only": "bun ../../packages/ui/src/index.html",
+    "types": "tsc --noEmit",
+    "analyze": "NODE_ENV=production bun build.ts --analyze",
+    "lint": "biome check ."
+  },
+  "dependencies": {
+    "@repo/common": "workspace:*",
+    "@repo/ui": "workspace:*",
+    "monorepo-networker": "^2.1.0"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.142.0",
+    "@types/bun": "^1.4.4",
+    "bun-plugin-tailwind": "^0.1.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
+  }
+}

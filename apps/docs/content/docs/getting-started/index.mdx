@@ -1,0 +1,69 @@
+---
+title: Getting Started
+description: Clone the template, install dependencies, and build your first plugin in under 5 minutes.
+---
+
+## Prerequisites
+
+You need three things installed on your computer:
+
+1. **[Bun](https://bun.sh)** (version 1.4.2 or later) — a fast JavaScript runtime and package manager
+2. **[Node.js](https://nodejs.org)** (version 22.22.1 or later) — used by the release tooling and the docs site; Bun runs everything else
+3. **[Figma desktop app](https://www.figma.com/downloads/)** — plugins can only be tested in the desktop app, not the browser
+
+## Step 1: Clone the template
+
+Open your terminal and run:
+
+```bash
+git clone https://github.com/bromso/figma-plugin-template.git
+cd figma-plugin-template
+```
+
+## Step 2: Install dependencies
+
+```bash
+bun install
+```
+
+This downloads all the libraries the template needs. It takes about 10-30 seconds.
+
+## Step 3: Build the plugin
+
+```bash
+bun run build
+```
+
+This creates the plugin files that Figma can load. You'll see output showing the build succeeded.
+
+## Step 4: Test in Figma
+
+See [Testing in Figma](/docs/getting-started/testing-in-figma) for how to load your plugin into the Figma desktop app.
+
+## Step 5: Start developing
+
+For active development with auto-rebuilding:
+
+```bash
+bun run dev
+```
+
+This watches your files and rebuilds automatically when you make changes.
+
+## Using AI to build your plugin
+
+If you have [Claude Code](https://claude.ai/code), open this project and describe what you want:
+
+> "I want a plugin that renames all selected layers to lowercase"
+
+Claude will generate the code, build it, and guide you through testing. See [Using Claude](/docs/ai/using-claude) for more examples.
+
+## Available commands
+
+| Command | What it does |
+|---------|-------------|
+| `bun run dev` | Watch mode — rebuilds on changes |
+| `bun run build` | One-time production build |
+| `bun run test` | Run all tests |
+| `bun run lint` | Check code style |
+| `bun run storybook` | Browse UI components interactively |

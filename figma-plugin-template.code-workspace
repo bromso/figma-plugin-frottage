@@ -1,0 +1,78 @@
+{
+  "folders": [
+    { "name": "🏡 Root", "path": "." },
+    { "name": "🤖 Claude", "path": ".claude/" },
+    { "name": "🦋 Version Control", "path": ".changeset/" },
+    { "name": "📟 VS Code", "path": ".vscode/" },
+    { "name": "🧩 Plugin/Design", "path": "apps/design-plugin" },
+    { "name": "⚛️ Common", "path": "packages/common" },
+    { "name": "🎨 Design System", "path": "packages/ui" },
+    { "name": "📕 Storybook", "path": "apps/storybook" },
+    { "name": "📜 Documentation", "path": "apps/docs" }
+  ],
+
+  "settings": {
+    // Hide folder icons to show emoji names in sidebar
+    "vsicons.presets.hideFolders": true,
+    "material-icon-theme.folders.theme": "none",
+    "catppuccin-icons.specificFolders": false,
+
+    "files.exclude": {
+      "node_modules": true,
+      ".next": true,
+      ".turbo": true,
+      ".changeset": true,
+      ".claude": true,
+      ".bun": true,
+      ".vscode": true,
+      "apps": true,
+      "packages": true,
+      "coverage": true,
+      "storybook-static": true,
+      "dist": true,
+      "build": true,
+      ".source": true
+    },
+
+    // Search excludes across all roots
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/.next": true,
+      "**/.turbo": true,
+      "**/dist": true,
+      "**/build": true,
+      "**/coverage": true,
+      "**/.git": true,
+      "**/bun.lock": true,
+      "**/storybook-static": true,
+      "**/.source": true
+    },
+
+    // Terminal working directory for multi-root
+    "terminal.integrated.cwd": "${workspaceFolder:🏡 Root}",
+
+    // Tailwind config path (workspace-relative)
+    "tailwindCSS.experimental.configFile": "packages/ui/src/styles.css",
+
+    // ===== File Associations =====
+    // Treat all .vscode JSON files as JSONC (allows comments)
+    "files.associations": {
+      "**/.vscode/*.json": "jsonc",
+      "**/keybindings*.json": "jsonc"
+    },
+
+    "editor.defaultFormatter": "biomejs.biome",
+    "editor.formatOnSave": true,
+
+    // ===== CSpell (Code Spell Checker) =====
+    // Add words to cspell.json instead of settings.json
+    "cSpell.customDictionaries": {
+      "project-words": {
+        "name": "project-words",
+        "path": "${workspaceFolder:🏡 Root}/cspell.json",
+        "addWords": true,
+        "scope": "workspace"
+      }
+    }
+  }
+}

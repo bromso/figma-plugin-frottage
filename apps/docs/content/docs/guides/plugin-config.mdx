@@ -1,0 +1,73 @@
+---
+title: Plugin Configuration
+description: How to set your plugin's name, ID, window size, and capabilities.
+---
+
+## The manifest
+
+Your plugin's identity is defined in `apps/design-plugin/figma.manifest.ts`:
+
+```ts
+export default {
+  name: "My Plugin Name",
+  id: "your-plugin-id-from-figma",
+  api: "1.0.0",
+  main: "plugin.js",
+  ui: "index.html",
+  // Required for new plugins: pages load lazily, so use the *Async node lookups
+  documentAccess: "dynamic-page",
+  // The template makes no network requests; list domains here if yours does
+  networkAccess: { allowedDomains: ["none"] },
+  capabilities: [],
+  enableProposedApi: false,
+  editorType: ["figma", "figjam"],
+};
+```
+
+## Getting a plugin ID
+
+1. Open [figma.com](https://www.figma.com)
+2. Go to **Plugins > Manage plugins > Create new plugin**
+3. Copy the plugin ID from the URL or the plugin settings page
+4. Replace `"your-plugin-id-from-figma"` in the manifest
+
+For development, you can use any ID. You only need a real ID when publishing.
+
+## Changing the window size
+
+In `apps/design-plugin/src/plugin/plugin.ts`, find the `figma.showUI` call:
+
+```ts
+figma.showUI(__html__, {
+  width: 320,    // Width in pixels
+  height: 480,   // Height in pixels
+  themeColors: true, // required: injects Figma's light/dark colour variables
+  title: "My Plugin",
+});
+```
+
+Common sizes:
+- **Small utility:** 300 x 200
+- **Standard plugin:** 400 x 500
+- **Template default (UI3 properties panel):** 320 × 480
+- **Wide panel:** 480 x 650
+
+## Editor types
+
+The `editorType` array controls where your plugin appears:
+
+- `["figma"]` — Only in Figma design files
+- `["figjam"]` — Only in FigJam boards
+- `["figma", "figjam"]` — Both (default)
+
+## Capabilities
+
+The `capabilities` array enables special features:
+
+```ts
+capabilities: ["codegen"],     // Code generation panel
+capabilities: ["inspect"],      // Design inspect mode
+capabilities: ["textreview"],   // Text review suggestions
+```
+
+Most plugins leave this empty.
