@@ -848,7 +848,10 @@ export function inferLayout(
   if (flow.some((c) => marginsOf(c).some((m) => m < 0))) return NONE;
 
   const { display } = node.layout;
-  if (GRID_PARENTS.has(display)) return inferGrid(node, flow, context);
+  if (GRID_PARENTS.has(display)) {
+    // Where Figma puts a child with no cell in a full grid is unproven, so such grids stay absolute.
+    return shown.some(isAbsolute) ? NONE : inferGrid(node, flow, context);
+  }
   // An inline parent holding a block, such as a custom element left at its default display.
   if (BLOCK_PARENTS.has(display) || (display === "inline" && holdsBlock(flow))) {
     return inferBlock(node, children, flow);

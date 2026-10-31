@@ -9,6 +9,8 @@ import type { FakeNode } from "./fake-figma";
 export type LayoutOptions = {
   /** Every child after the first lands this many px further along the axis than it should. */
   shiftChild?: number;
+  /** `resize` leaves sizing alone, so nothing can lean on that side effect. */
+  resizeKeepsSizing?: boolean;
 };
 
 type Axis = "H" | "V";
@@ -18,6 +20,9 @@ const isAuto = (n: FakeNode | undefined) =>
 const isGrid = (n: FakeNode | undefined) => n?.layoutMode === "GRID";
 const isLaidOut = (n: FakeNode | undefined) => isAuto(n) || isGrid(n);
 const inFlow = (n: FakeNode) => n.layoutPositioning !== "ABSOLUTE";
+
+/** Text sits on its baseline; anything else, having none, on its bottom edge. */
+const baselineOf = (c: FakeNode): number => (c.type === "TEXT" ? c.height * 0.8 : c.height);
 
 export function layoutModel(opts: LayoutOptions = {}) {
   const busy = new Set<FakeNode>();
@@ -113,7 +118,7 @@ export function layoutModel(opts: LayoutOptions = {}) {
       line.reduce((s, c) => s + c[size], 0) + gap * Math.max(line.length - 1, 0);
     const thickness = (line: FakeNode[]) =>
       Math.max(0, ...line.filter((c) => !crossHug || !fillsCross(c)).map((c) => c[crossSize]));
-    const lineGap: number = f.counterAxisSpacing ?? gap;
+    const lineGap: number = f.layoutWrap === "WRAP" ? f.counterAxisSpacing : gap;
     const thick = lines.map(thickness);
     const content = thick.reduce((s, t) => s + t, 0) + lineGap * (lines.length - 1);
 
@@ -125,7 +130,13 @@ export function layoutModel(opts: LayoutOptions = {}) {
     const free = main - padStart - padEnd;
     const crossFree = cross - crossPadStart - crossPadEnd;
 
-    let crossAt: number = crossPadStart;
+    // With `counterAxisAlignContent` at AUTO, wrapped tracks are as thick as their largest child and
+    // sit together, aligned by `counterAxisAlignItems`.
+    const wraps = f.layoutWrap === "WRAP";
+    const align = f.counterAxisAlignItems;
+    let crossAt: number =
+      crossPadStart +
+      (wraps ? (crossFree - content) * (align === "CENTER" ? 0.5 : align === "MAX" ? 1 : 0) : 0);
     for (const [i, line] of lines.entries()) {
       const left = free - lineLength(line);
       const n = line.length;
@@ -142,15 +153,18 @@ export function layoutModel(opts: LayoutOptions = {}) {
         extra = left / (n + 1);
         at += extra;
       }
-      const band = lines.length === 1 ? crossFree : (thick[i] as number);
+      const band = wraps ? (thick[i] as number) : crossFree;
+      const deepest = Math.max(...line.map(baselineOf));
       for (const [j, c] of line.entries()) {
         const spare = band - c[crossSize];
         const offset =
-          f.counterAxisAlignItems === "CENTER"
+          align === "CENTER"
             ? spare / 2
-            : f.counterAxisAlignItems === "MAX"
+            : align === "MAX"
               ? spare
-              : 0;
+              : align === "BASELINE"
+                ? deepest - baselineOf(c)
+                : 0;
         c.moveTo(pos, at + (j > 0 ? (opts.shiftChild ?? 0) : 0));
         c.moveTo(crossPos, crossAt + offset);
         at += c[size] + gap + extra;
@@ -343,6 +357,7 @@ export function layoutModel(opts: LayoutOptions = {}) {
     node.layoutState = {
       /** What `resize` does to a node's sizing. */
       fix() {
+        if (opts.resizeKeepsSizing) return;
         fillH = false;
         fillV = false;
         sizingH = "FIXED";
@@ -384,7 +399,6 @@ export function layoutModel(opts: LayoutOptions = {}) {
       layoutWrap: "NO_WRAP",
       primaryAxisAlignItems: "MIN",
       counterAxisAlignItems: "MIN",
-      counterAxisSpacing: null,
       itemSpacing: 0,
       paddingTop: 0,
       paddingRight: 0,
@@ -414,11 +428,32 @@ export function layoutModel(opts: LayoutOptions = {}) {
           throw new Error("BASELINE needs a HORIZONTAL frame");
         }
       },
-      counterAxisSpacing(v) {
+    };
+    // Set to null it syncs with itemSpacing, and it never reads null.
+    let lineSpacing: number | null = null;
+    Object.defineProperty(node, "counterAxisSpacing", {
+      configurable: true,
+      get: () => lineSpacing ?? values.itemSpacing,
+      set: (v: number | null) => {
         if (values.layoutWrap !== "WRAP") throw new Error("counterAxisSpacing needs WRAP");
         if (v !== null && !(v > 0)) throw new Error("counterAxisSpacing must be positive or null");
+        lineSpacing = v;
+        reflow(node);
       },
-    };
+    });
+    // The older pair of properties, each naming an axis relative to the frame's direction.
+    const axisMode = (primary: boolean) => ({
+      configurable: true,
+      get: () => (node[axisSizing(primary)] === "HUG" ? "AUTO" : "FIXED"),
+      set: (v: string) => {
+        if (!isAuto(node)) throw new Error("axis sizing modes need HORIZONTAL or VERTICAL");
+        node[axisSizing(primary)] = v === "AUTO" ? "HUG" : "FIXED";
+      },
+    });
+    const axisSizing = (primary: boolean) =>
+      primary === (mode === "HORIZONTAL") ? "layoutSizingHorizontal" : "layoutSizingVertical";
+    Object.defineProperty(node, "primaryAxisSizingMode", axisMode(true));
+    Object.defineProperty(node, "counterAxisSizingMode", axisMode(false));
     for (const key of Object.keys(values)) {
       Object.defineProperty(node, key, {
         configurable: true,

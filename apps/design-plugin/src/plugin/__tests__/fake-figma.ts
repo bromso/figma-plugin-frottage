@@ -47,14 +47,22 @@ export function fakeFigma(opts: Options = {}) {
   const model = layoutModel(opts);
   let seq = 0;
 
+  /** Takes a child off its parent's own list; `children` is a copy, as in Figma. */
+  const detach = (child: FakeNode) => {
+    const list: FakeNode[] | undefined = child.parent?.kids;
+    list?.splice(list.indexOf(child), 1);
+  };
+
+  const pageKids: FakeNode[] = [];
   const page: FakeNode = {
     id: "page",
     type: "PAGE",
-    children: [],
+    children: pageKids,
+    kids: pageKids,
     appendChild(child: FakeNode) {
-      child.parent?.children.splice(child.parent.children.indexOf(child), 1);
+      detach(child);
       child.parent = page;
-      page.children.push(child);
+      page.kids.push(child);
     },
   };
   let selection: FakeNode[] = [];
@@ -66,17 +74,21 @@ export function fakeFigma(opts: Options = {}) {
     },
   });
   for (const b of opts.existingBounds ?? []) {
-    page.children.push({ id: `old${seq++}`, type: "FRAME", children: [], ...b });
+    page.kids.push({ id: `old${seq++}`, type: "FRAME", children: [], ...b });
   }
 
   function makeNode(type: string): FakeNode {
     const id = `n${++seq}`;
     let name = "";
     let effects: any[] = [];
+    const kids: FakeNode[] = [];
     const node: FakeNode = {
       id,
       type,
-      children: [],
+      kids,
+      get children() {
+        return [...kids];
+      },
       parent: page,
       x: 0,
       y: 0,
@@ -124,16 +136,16 @@ export function fakeFigma(opts: Options = {}) {
       remove() {
         const parent = node.parent;
         node.removed = true;
-        parent?.children.splice(parent.children.indexOf(node), 1);
+        detach(node);
         if (model.isLaidOut(parent)) model.reflow(parent);
       },
     };
     const join = (child: FakeNode, cell: [number, number] | null) => {
       const old = child.parent;
-      old?.children.splice(old.children.indexOf(child), 1);
+      detach(child);
       if (model.isLaidOut(old)) model.reflow(old);
       child.parent = node;
-      node.children.push(child);
+      kids.push(child);
       if (cell) [child.gridRowAnchorIndex, child.gridColumnAnchorIndex] = cell;
       model.reflow(node);
     };
@@ -153,7 +165,7 @@ export function fakeFigma(opts: Options = {}) {
         });
       }
     }
-    page.children.push(node);
+    page.kids.push(node);
     nodes.set(id, node);
     created.push(node);
     return node;
@@ -206,7 +218,7 @@ export function fakeFigma(opts: Options = {}) {
         height: 24,
         constraints: { horizontal: "MIN", vertical: "MIN" },
       };
-      n.children.push(vector);
+      n.kids.push(vector);
       // As in Figma, resizing a frame scales a child only when its constraints are SCALE.
       const base = n.resize;
       n.resize = (w: number, h: number) => {

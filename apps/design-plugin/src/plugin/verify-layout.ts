@@ -31,6 +31,7 @@ export type ExpectedLayout = {
   layout: Laid;
   w: number;
   h: number;
+  containsText: boolean;
   sizingH: Sizing;
   sizingV: Sizing;
   children: ExpectedChild[];
@@ -43,7 +44,7 @@ type Read = { x: number; y: number; width: number; height: number };
 export type LaidOutFrame = { width: number; height: number; children: readonly Read[] };
 
 /** How far apart a captured and a laid out measurement may be; the mapper's own tolerance. */
-const TOL = 1;
+export const TOL = 1;
 
 /** One axis of a child: as laid out, as captured, and how it may differ. */
 type Span = { at: number; size: number; capAt: number; capSize: number };
@@ -60,8 +61,8 @@ type Item = {
 const fails = (reason: string): Verdict => ({ ok: false, reason });
 const PASS: Verdict = { ok: true };
 
-/** How much of a span's size difference text explains. */
-const drift = (span: Span, free: boolean) => (free ? Math.abs(span.size - span.capSize) : 0);
+/** How much of a span's size text accounts for, signed. */
+const drift = (span: Span, free: boolean) => (free ? span.size - span.capSize : 0);
 
 function toItem(read: Read, c: ExpectedChild, horizontal: boolean): Item {
   const h: Span = { at: read.x, size: read.width, capAt: c.x, capSize: c.w };
@@ -75,11 +76,25 @@ function toItem(read: Read, c: ExpectedChild, horizontal: boolean): Item {
     : { main: v, cross: h, freeMain: freeV, freeCross: freeH, fillMain: fillV, fillCross: fillH };
 }
 
-/** Text drift that moves other children: a FILL child takes up the difference instead of adding to it. */
+/**
+ * What text did to the length of a run. It nets out: one text wider and one narrower move nothing
+ * beyond them. A FILL child takes up the difference instead of adding to it.
+ */
 const explainedMain = (items: Item[]) =>
-  items.reduce((sum, i) => sum + (i.fillMain ? 0 : drift(i.main, i.freeMain)), 0);
+  Math.abs(items.reduce((sum, i) => sum + (i.fillMain ? 0 : drift(i.main, i.freeMain)), 0));
+/** What text did to the thickness of a run: the largest child decides, so it does not add up. */
 const explainedCross = (items: Item[]) =>
-  items.reduce((sum, i) => sum + drift(i.cross, i.freeCross), 0);
+  items.reduce((most, i) => Math.max(most, Math.abs(drift(i.cross, i.freeCross))), 0);
+
+/**
+ * How far a frame may be from its captured size along an axis: a FILL axis follows its parent and a
+ * HUG axis its text. Null if the frame is off with nothing to explain it.
+ */
+function frameSlack(size: number, capSize: number, sizing: Sizing, containsText: boolean) {
+  const off = Math.abs(size - capSize);
+  if (sizing === "FILL" || (sizing === "HUG" && containsText)) return off;
+  return off > TOL ? null : 0;
+}
 
 function sizesMatch(items: Item[], mainSlack: number, crossSlack: number): boolean {
   return items.every((i) => {
@@ -176,12 +191,126 @@ function bandOf(line: Item[]) {
   };
 }
 
+/** Space past the furthest child across the axis, as at capture. */
+function crossTrailFits(items: Item[], crossSize: number, capCrossSize: number, slack: number) {
+  const end = Math.max(...items.map((i) => i.cross.at + i.cross.size));
+  const capEnd = Math.max(...items.map((i) => i.cross.capAt + i.cross.capSize));
+  return Math.abs(crossSize - end - (capCrossSize - capEnd)) <= TOL + slack;
+}
+
+/** The breaks greedy wrapping makes at `room`, as lengths of its lines. */
+function wrapAt(sizes: number[], room: number, spacing: number): number[] {
+  const lengths: number[] = [];
+  let used = 0;
+  let count = 0;
+  for (const size of sizes) {
+    if (count > 0 && used + spacing + size > room) {
+      lengths.push(count);
+      used = 0;
+      count = 0;
+    }
+    used += (count > 0 ? spacing : 0) + size;
+    count++;
+  }
+  lengths.push(count);
+  return lengths;
+}
+
+const sameLengths = (lengths: number[], lines: Item[][]) =>
+  lengths.length === lines.length && lengths.every((n, i) => n === lines[i]?.length);
+
+/** Whether each line comes after the one before it, reading down the frame. */
+function readsDown(lines: Item[][]): boolean {
+  return lines.every((line, i) => {
+    const before = lines[i - 1];
+    if (!before) return true;
+    const band = bandOf(before);
+    return bandOf(line).at >= band.at + band.size - TOL;
+  });
+}
+
+/**
+ * A line's place along the axis, from the padding: with its children moved between lines, there is
+ * no captured offset to compare a line with.
+ */
+function lineFits(line: Item[], size: number, padStart: number, padEnd: number, align: string) {
+  const first = (line[0] as Item).main;
+  const last = (line[line.length - 1] as Item).main;
+  const lead = first.at - padStart;
+  const trail = size - padEnd - (last.at + last.size);
+  if (align === "MIN" || align === "SPACE_BETWEEN") return Math.abs(lead) <= TOL;
+  if (align === "MAX") return Math.abs(trail) <= TOL;
+  return Math.abs(lead - trail) <= TOL;
+}
+
+function inBand(item: Item, band: { at: number; size: number }, align: Auto["counterAlign"]) {
+  const { at, size } = item.cross;
+  if (align === "MAX") return Math.abs(band.at + band.size - (at + size)) <= TOL;
+  if (align === "CENTER") return Math.abs(at + size / 2 - (band.at + band.size / 2)) <= TOL;
+  return align === "BASELINE" || Math.abs(at - band.at) <= TOL;
+}
+
+/**
+ * Text moved children between lines, or something else did. Each line is judged on the frame's own
+ * rules, and the breaks must be the ones wrapping makes in the captured width with the sizes as
+ * they came out, where the captured sizes made the captured breaks. So drift got them there, and
+ * neither a frame of another size nor a capture that broke its lines some other way.
+ */
+function verifyRebroken(
+  items: Item[],
+  lines: Item[][],
+  laid: Item[][],
+  layout: Auto,
+  size: number,
+  capSize: number
+) {
+  if (!readsDown(laid)) return fails("order");
+  const [top, right, , left] = layout.padding;
+  const lineGap = layout.counterSpacing ?? layout.itemSpacing;
+  let bottom: number | null = null;
+  for (const line of laid) {
+    const band = bandOf(line);
+    for (let i = 1; i < line.length; i++) {
+      const a = (line[i - 1] as Item).main;
+      const gap = (line[i] as Item).main.at - (a.at + a.size);
+      const off = gap - layout.itemSpacing;
+      if (layout.primaryAlign.startsWith("SPACE_") ? off < -TOL : Math.abs(off) > TOL) {
+        return fails("gap");
+      }
+    }
+    if (!lineFits(line, size, left, right, layout.primaryAlign)) return fails("padding");
+    const expectedTop =
+      bottom === null ? (layout.counterAlign === "MIN" ? top : band.at) : bottom + lineGap;
+    if (Math.abs(band.at - expectedTop) > TOL) return fails("cross");
+    if (!line.every((i) => inBand(i, band, layout.counterAlign))) return fails("cross");
+    bottom = band.at + band.size;
+  }
+  const room = capSize - left - right;
+  const spacing = layout.itemSpacing;
+  const explains = (r: number) =>
+    sameLengths(
+      wrapAt(
+        items.map((i) => i.main.size),
+        r,
+        spacing
+      ),
+      laid
+    ) &&
+    sameLengths(
+      wrapAt(
+        items.map((i) => i.main.capSize),
+        r,
+        spacing
+      ),
+      lines
+    );
+  return explains(room - TOL) || explains(room + TOL) ? PASS : fails("wrap");
+}
+
 function verifyWrap(
   items: Item[],
   layout: Auto,
-  size: number,
-  capSize: number,
-  slack: number
+  { size, capSize, crossSize, capCrossSize, slack, crossSlack, hugsCross }: Extents
 ): Verdict {
   const lines = toLines(
     items,
@@ -193,45 +322,85 @@ function verifyWrap(
     (i) => i.main.at,
     (i) => i.main.size
   );
-  if (lines.length !== laid.length || lines.some((l, i) => l.length !== laid[i]?.length)) {
-    return slack > TOL ? PASS : fails("wrap");
+  if (
+    !sameLengths(
+      lines.map((l) => l.length),
+      laid
+    )
+  ) {
+    const rebroken = verifyRebroken(items, lines, laid, layout, size, capSize);
+    if (!rebroken.ok) return rebroken;
+  } else {
+    let above = 0;
+    for (const line of lines) {
+      const lineSlack = explainedMain(line) + slack;
+      const reason = checkMain(line, size, capSize, layout.primaryAlign, false, lineSlack);
+      if (reason) return fails(reason);
+      const band = bandOf(line);
+      const thickness = explainedCross(line);
+      if (Math.abs(band.at - band.capAt) > TOL + above) return fails("cross");
+      if (!crossFits(line, layout.counterAlign, band, thickness)) return fails("cross");
+      above += thickness;
+    }
   }
-  const crossSlack = explainedCross(items);
-  for (const line of lines) {
-    const reason = checkMain(line, size, capSize, layout.primaryAlign, false, slack);
-    if (reason) return fails(reason);
-    const band = bandOf(line);
-    if (Math.abs(band.at - band.capAt) > TOL + crossSlack) return fails("cross");
-    if (!crossFits(line, layout.counterAlign, band, crossSlack)) return fails("cross");
-  }
-  return PASS;
+  // Lines stack, so what each line gained adds up.
+  const across = laid.reduce((sum, line) => sum + explainedCross(line), 0);
+  return crossTrailFits(items, crossSize, capCrossSize, hugsCross ? 0 : across + crossSlack)
+    ? PASS
+    : fails("padding");
 }
+
+/** A frame's measurements along its axes, and how far its own size may be off along each. */
+type Extents = {
+  size: number;
+  capSize: number;
+  crossSize: number;
+  capCrossSize: number;
+  slack: number;
+  crossSlack: number;
+  hugsCross: boolean;
+};
 
 function verifyAuto(frame: LaidOutFrame, expected: ExpectedLayout, layout: Auto, flow: Item[]) {
   const horizontal = layout.mode === "HORIZONTAL";
+  const { w, h, sizingH, sizingV, containsText } = expected;
   const [size, capSize, crossSize, capCrossSize] = horizontal
-    ? [frame.width, expected.w, frame.height, expected.h]
-    : [frame.height, expected.h, frame.width, expected.w];
-  const hugging = (horizontal ? expected.sizingH : expected.sizingV) === "HUG";
-  const explained = explainedMain(flow);
-  const crossDelta = Math.abs(crossSize - capCrossSize);
-  const slack = explained + Math.abs(size - capSize);
-  if (!sizesMatch(flow, slack, crossDelta)) return fails("size");
-  if (layout.wrap) return verifyWrap(flow, layout, size, capSize, slack);
+    ? [frame.width, w, frame.height, h]
+    : [frame.height, h, frame.width, w];
+  const [mainSizing, crossSizing] = horizontal ? [sizingH, sizingV] : [sizingV, sizingH];
+  const slack = frameSlack(size, capSize, mainSizing, containsText);
+  const crossSlack = frameSlack(crossSize, capCrossSize, crossSizing, containsText);
+  if (slack === null || crossSlack === null) return fails("size");
+  if (!sizesMatch(flow, explainedMain(flow) + slack, crossSlack)) return fails("size");
+  const hugsCross = crossSizing === "HUG";
+  if (layout.wrap) {
+    const extents = { size, capSize, crossSize, capCrossSize, slack, crossSlack, hugsCross };
+    return verifyWrap(flow, layout, extents);
+  }
 
-  const reason = checkMain(flow, size, capSize, layout.primaryAlign, hugging, slack);
+  const hugging = mainSizing === "HUG";
+  const runSlack = explainedMain(flow) + slack;
+  const reason = checkMain(flow, size, capSize, layout.primaryAlign, hugging, runSlack);
   if (reason) return fails(reason);
   const band = { at: 0, size: crossSize, capAt: 0, capSize: capCrossSize };
-  return crossFits(flow, layout.counterAlign, band, explainedCross(flow)) ? PASS : fails("cross");
+  const thickness = explainedCross(flow);
+  if (!crossFits(flow, layout.counterAlign, band, thickness)) return fails("cross");
+  return crossTrailFits(flow, crossSize, capCrossSize, hugsCross ? 0 : thickness + crossSlack)
+    ? PASS
+    : fails("padding");
 }
 
 function verifyGrid(frame: LaidOutFrame, expected: ExpectedLayout, layout: Grid, flow: Item[]) {
-  // Across and down: `main` is horizontal here. Only a HUG track can pass text drift along.
+  const { w, h, sizingH, sizingV, containsText } = expected;
+  const offH = frameSlack(frame.width, w, sizingH, containsText);
+  const offV = frameSlack(frame.height, h, sizingV, containsText);
+  if (offH === null || offV === null) return fails("size");
+  // Across and down: `main` is horizontal here. Only a HUG track can pass text drift along, and
+  // each track passes on its own, so unlike a run this adds up.
   const hugs = (tracks: Grid["rows"]) => tracks.some((t) => t.type === "HUG");
-  const slackX =
-    (hugs(layout.columns) ? explainedMain(flow) : 0) + Math.abs(frame.width - expected.w);
-  const slackY =
-    (hugs(layout.rows) ? explainedCross(flow) : 0) + Math.abs(frame.height - expected.h);
+  const total = (read: (i: Item) => number) => flow.reduce((sum, i) => sum + Math.abs(read(i)), 0);
+  const slackX = (hugs(layout.columns) ? total((i) => drift(i.main, i.freeMain)) : 0) + offH;
+  const slackY = (hugs(layout.rows) ? total((i) => drift(i.cross, i.freeCross)) : 0) + offV;
   if (!sizesMatch(flow, slackX, slackY)) return fails("size");
   const inCell = (i: Item) =>
     Math.abs(i.main.at - i.main.capAt) <= TOL + slackX &&
@@ -241,11 +410,13 @@ function verifyGrid(frame: LaidOutFrame, expected: ExpectedLayout, layout: Grid,
 
 export function verifyFrame(frame: LaidOutFrame, expected: ExpectedLayout): Verdict {
   const { layout, children } = expected;
-  if (frame.children.length !== children.length) return fails("children");
+  // Each read of `children` builds a new array in Figma.
+  const reads = frame.children;
+  if (reads.length !== children.length) return fails("children");
   const horizontal = layout.mode !== "VERTICAL";
   const flow: Item[] = [];
   for (const [i, child] of children.entries()) {
-    if (!child.absolute) flow.push(toItem(frame.children[i] as Read, child, horizontal));
+    if (!child.absolute) flow.push(toItem(reads[i] as Read, child, horizontal));
   }
   if (flow.length === 0) return fails("children");
   return layout.mode === "GRID"

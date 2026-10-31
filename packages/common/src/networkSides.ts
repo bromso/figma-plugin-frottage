@@ -20,6 +20,7 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     failedOps: number;
     missingImages: number;
     rewrappedTexts: number;
+    textDriftCount: number;
     autoLayoutFrames: number;
     fallbackFrames: number;
     fallbackReasons: Record<string, number>;

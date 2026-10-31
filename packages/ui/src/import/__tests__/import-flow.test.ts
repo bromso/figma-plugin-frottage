@@ -116,6 +116,7 @@ describe("runImport", () => {
       failedOps: 3,
       missingImages: 1,
       rewrappedTexts: 4,
+      textDriftCount: 6,
       autoLayoutFrames: 5,
       fallbackFrames: 2,
     };
@@ -126,6 +127,7 @@ describe("runImport", () => {
       failedOps: 3,
       missingImages: 1,
       rewrappedTexts: 4,
+      textDriftCount: 6,
       autoLayoutFrames: 5,
       fallbackFrames: 2,
     });

@@ -207,6 +207,35 @@ describe("building auto layout", () => {
     expect(f.frame("row").primaryAxisAlignItems).toBe("SPACE_BETWEEN");
     expect(f.frame("row").layoutSizingHorizontal).toBe("FIXED");
   });
+  test("axes are made FIXED outright, not by resize's side effect", async () => {
+    const f = fakeFigma({ resizeKeepsSizing: true });
+    const r = await importOps(f, flexFrameOps);
+    expect(f.frame("row").width).toBe(200);
+    expect(f.frame("row").layoutSizingHorizontal).toBe("FIXED");
+    expect(r).toMatchObject({ fallbackFrames: 0, autoLayoutFrames: 1 });
+  });
+  test("a grid's axes are made FIXED the same way", async () => {
+    const f = fakeFigma({ resizeKeepsSizing: true });
+    const r = await importOps(f, [
+      frameOp(
+        "grid",
+        null,
+        [0, 0, 200, 40],
+        {
+          mode: "GRID",
+          rows: [{ type: "FLEX", value: 1 }],
+          columns: [{ type: "FLEX", value: 1 }],
+          rowGap: 0,
+          columnGap: 0,
+          padding: [0, 0, 0, 0],
+        },
+        1
+      ),
+      boxOp("a", "grid", [0, 0, 50, 40], flowChild({ cell: { row: 0, column: 0 } })),
+    ]);
+    expect(r).toMatchObject({ failedOps: 0, fallbackFrames: 0 });
+    expect(f.frame("grid").width).toBe(200);
+  });
   test("a child's FILL sizing is set after it joins the parent", async () => {
     const f = fakeFigma();
     const r = await importOps(f, [
@@ -434,6 +463,80 @@ describe("verification", () => {
     const t = f.created.find((n) => n.type === "TEXT") as any;
     expect(t.x).toBe(60 + 100 - 25);
   });
+  test("a child that cannot be placed does not stop the others", async () => {
+    const f = fakeFigma({ shiftChild: 5 });
+    const a = createApplier(f.figma);
+    await a.begin(meta);
+    await a.applyBatch([
+      frameOp("row", null, [0, 0, 300, 40], row(), 4),
+      boxOp("a", "row", [0, 0, 50, 40]),
+      boxOp("b", "row", [60, 0, 50, 40]),
+      boxOp("c", "row", [120, 0, 50, 40]),
+    ]);
+    Object.defineProperty(f.frame("b"), "y", {
+      get: () => 0,
+      set: () => {
+        throw new Error("boom");
+      },
+    });
+    await a.applyBatch([boxOp("d", "row", [180, 0, 50, 40])]);
+    const r = await a.end();
+    expect(f.frame("row").layoutMode).toBe("NONE");
+    expect(f.frame("c").x).toBe(120);
+    expect(f.frame("d").x).toBe(180);
+    expect(r).toMatchObject({ fallbackFrames: 1, fallbackReasons: { gap: 1, error: 1 } });
+  });
+  test("a frame that cannot be read is an error, and still goes back to absolute", async () => {
+    const f = fakeFigma();
+    const a = createApplier(f.figma);
+    await a.begin(meta);
+    await a.applyBatch([frameOp("row", null, [0, 0, 200, 40], row(), 3), ...flexFrameOps.slice(1)]);
+    const n = f.frame("row");
+    const { get } = Object.getOwnPropertyDescriptor(n, "children") as PropertyDescriptor;
+    let broken = true;
+    Object.defineProperty(n, "children", {
+      get() {
+        if (!broken) return get?.call(n);
+        broken = false;
+        throw new Error("gone");
+      },
+    });
+    const r = await a.end();
+    expect(r).toMatchObject({ autoLayoutFrames: 0, fallbackFrames: 1 });
+    expect(r.fallbackReasons).toEqual({ error: 1 });
+    expect(f.frame("row").layoutMode).toBe("NONE");
+    expect(f.frame("b").x).toBe(60);
+  });
+  test("FILL text in a fallback goes back to its captured width", async () => {
+    const f = fakeFigma({ shiftChild: 7 });
+    const r = await importOps(f, [
+      frameOp("root", null, [0, 0, 500, 100], row({ itemSpacing: 0 }), 2),
+      frameOp(
+        "card",
+        "root",
+        [0, 0, 300, 100],
+        stack({ itemSpacing: 4 }),
+        2,
+        flowChild({ sizingH: "FILL", sizingV: "FILL" })
+      ),
+      textOp(
+        "t",
+        "card",
+        [0, 0, 95, 12],
+        "aaaa bbbb cccc dddd",
+        { wrap: true, lineCount: 1 },
+        flowChild({ sizingH: "FILL", sizingV: "HUG" })
+      ),
+      boxOp("k", "card", [0, 20, 300, 20]),
+      boxOp("side", "root", [300, 0, 200, 100]),
+    ]);
+    expect(f.frame("card").layoutMode).toBe("NONE");
+    const t = f.created.find((n) => n.type === "TEXT") as any;
+    expect(t.width).toBe(95);
+    expect(t.height).toBe(12);
+    expect(t.textAutoResize).toBe("HEIGHT");
+    expect(r.failedOps).toBe(0);
+  });
   test("what Figma refuses leaves the frame absolute, with its layers", async () => {
     const f = fakeFigma({ failLayout: "itemSpacing" });
     const r = await importOps(f, flexFrameOps);
@@ -505,7 +608,7 @@ describe("verifying around text", () => {
       boxOp("a", "hug", [0, 0, 50, 40]),
       boxOp("b", "outer", [90, 0, 50, 40]),
     ]);
-    expect(r.fallbackReasons).toEqual({ padding: 1 });
+    expect(r.fallbackReasons).toEqual({ size: 1 });
     expect(f.frame("hug").layoutMode).toBe("NONE");
     expect(f.frame("hug").width).toBe(80);
     expect(f.frame("outer").layoutMode).toBe("HORIZONTAL");
@@ -529,6 +632,113 @@ describe("verifying around text", () => {
     expect(t.width).toBe(50);
     expect(t.height).toBe(24);
     expect(r).toMatchObject({ rewrappedTexts: 0, fallbackFrames: 0 });
+  });
+  const words = "aaaa bbbb cccc dddd eeee ffff gggg hhhh";
+  const fillColumn = (x: number) =>
+    frameOp(
+      "col",
+      "root",
+      [x, 0, 100, 24],
+      stack(),
+      1,
+      flowChild({ sizingH: "FILL", sizingV: "FILL" })
+    );
+  const fillText = textOp(
+    "t",
+    "col",
+    [0, 0, 100, 24],
+    words,
+    { wrap: true, lineCount: 2 },
+    flowChild({ sizingH: "FILL", sizingV: "HUG" })
+  );
+  const rootRow = frameOp("root", null, [0, 0, 300, 24], row({ itemSpacing: 0 }), 2);
+
+  test("FILL text is measured at its final width, not at the width it had alone", async () => {
+    const f = fakeFigma({ textWiderBy: 0.1 });
+    const r = await importOps(f, [
+      rootRow,
+      fillColumn(0),
+      fillText,
+      boxOp("side", "root", [100, 0, 200, 24]),
+    ]);
+    const t = f.created.find((n) => n.type === "TEXT") as any;
+    expect(t.layoutSizingHorizontal).toBe("FIXED");
+    expect(t.width).toBeGreaterThan(100);
+    expect(t.height).toBe(24);
+    expect(r.rewrappedTexts).toBe(0);
+  });
+  test("FILL text that no widening can save is counted", async () => {
+    const f = fakeFigma({ textWiderBy: 0.2 });
+    const r = await importOps(f, [
+      rootRow,
+      fillColumn(0),
+      fillText,
+      boxOp("side", "root", [100, 0, 200, 24]),
+    ]);
+    expect(r.rewrappedTexts).toBe(1);
+  });
+  test("FILL text gives the same answer whichever sibling comes first", async () => {
+    const f = fakeFigma({ textWiderBy: 0.1 });
+    const r = await importOps(f, [
+      rootRow,
+      boxOp("side", "root", [0, 0, 200, 24]),
+      fillColumn(200),
+      fillText,
+    ]);
+    const t = f.created.find((n) => n.type === "TEXT") as any;
+    expect(t.layoutSizingHorizontal).toBe("FIXED");
+    expect(t.height).toBe(24);
+    expect(r.rewrappedTexts).toBe(0);
+  });
+  test("FILL text that fits at its final width stays FILL", async () => {
+    const f = fakeFigma();
+    const r = await importOps(f, [
+      rootRow,
+      fillColumn(0),
+      fillText,
+      boxOp("side", "root", [100, 0, 200, 24]),
+    ]);
+    const t = f.created.find((n) => n.type === "TEXT") as any;
+    expect(t.layoutSizingHorizontal).toBe("FILL");
+    expect(t.width).toBe(100);
+    expect(r).toMatchObject({ rewrappedTexts: 0, fallbackFrames: 0 });
+  });
+  test("counts text that came out another size, once", async () => {
+    const f = fakeFigma({ textWiderBy: 0.04 });
+    const r = await importOps(f, [
+      frameOp("row", null, [0, 0, 700, 12], row(), 2),
+      textOp("t", "row", [0, 0, 500, 12], "x".repeat(100)),
+      textOp("same", "row", [510, 0, 20, 12], "xxxx"),
+    ]);
+    expect(r.textDriftCount).toBe(1);
+  });
+  test("a filled box wider than its captured text is not drift", async () => {
+    const f = fakeFigma();
+    const r = await importOps(f, [
+      frameOp("col", null, [0, 0, 300, 24], stack(), 1),
+      textOp(
+        "t",
+        "col",
+        [0, 0, 40, 24],
+        "aaaaaaaa bbbbbbbb",
+        { wrap: true, lineCount: 1 },
+        flowChild({ sizingH: "FILL", sizingV: "HUG" })
+      ),
+    ]);
+    expect(r.textDriftCount).toBe(1); // the height: one line where the capture had two
+    const g = fakeFigma();
+    const s = await importOps(g, [
+      frameOp("col", null, [0, 0, 300, 12], stack(), 1),
+      textOp(
+        "t",
+        "col",
+        [0, 0, 40, 12],
+        "aaaaaaaa bbbbbbbb",
+        { wrap: true, lineCount: 1 },
+        flowChild({ sizingH: "FILL", sizingV: "HUG" })
+      ),
+    ]);
+    expect(s.textDriftCount).toBe(0);
   });
   test("wrapped text too wide to fill goes back to a widened fixed box", async () => {
     const f = fakeFigma({ textWiderBy: 0.05 });
@@ -718,6 +928,7 @@ describe("when to verify", () => {
       autoLayoutFrames: 0,
       fallbackFrames: 0,
       fallbackReasons: {},
+      textDriftCount: 0,
     });
   });
 });
@@ -766,6 +977,47 @@ describe("staying responsive", () => {
     clock.mockRestore();
     expect(timers.mock.calls.length).toBeGreaterThanOrEqual(20);
     await a.end();
+  });
+  test("slow ops yield inside a batch", async () => {
+    const f = fakeFigma();
+    const a = createApplier(f.figma);
+    await a.begin(meta);
+    const ops = [
+      frameOp("root", null, [0, 0, 300, 40], { mode: "NONE" }, 10),
+      ...Array.from({ length: 10 }, (_, i) => boxOp(`b${i}`, "root", [0, 0, 10, 10])),
+    ];
+    let t = 0;
+    const clock = spyOn(Date, "now").mockImplementation(() => {
+      t += 3000;
+      return t;
+    });
+    timers.mockClear();
+    await a.applyBatch(ops);
+    clock.mockRestore();
+    expect(timers.mock.calls.length).toBeGreaterThanOrEqual(10);
+    expect((await a.end()).failedOps).toBe(0);
+  });
+  test("cancelling while a batch yields stops the batch", async () => {
+    const f = fakeFigma();
+    const a = createApplier(f.figma);
+    await a.begin(meta);
+    const ops = [
+      frameOp("root", null, [0, 0, 300, 40], { mode: "NONE" }, 3),
+      boxOp("a", "root", [0, 0, 10, 10]),
+      boxOp("b", "root", [0, 0, 10, 10]),
+      boxOp("c", "root", [0, 0, 10, 10]),
+    ];
+    let t = 0;
+    const clock = spyOn(Date, "now").mockImplementation(() => {
+      t += 3000;
+      return t;
+    });
+    const batch = a.applyBatch(ops);
+    a.cancel();
+    await batch;
+    clock.mockRestore();
+    expect(f.page.children).toHaveLength(0);
+    expect(f.calls.filter((c) => c === "createFrame").length).toBeLessThan(4);
   });
   test("end yields as well, for what never completed", async () => {
     const f = fakeFigma();

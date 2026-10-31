@@ -20,6 +20,7 @@ export type ImportState =
       failedOps: number;
       missingImages: number;
       rewrappedTexts: number;
+      textDriftCount: number;
       autoLayoutFrames: number;
       fallbackFrames: number;
     }
@@ -35,6 +36,7 @@ export type ImportPort = {
     failedOps: number;
     missingImages?: number;
     rewrappedTexts?: number;
+    textDriftCount?: number;
     autoLayoutFrames?: number;
     fallbackFrames?: number;
   }>;
@@ -129,6 +131,7 @@ export async function runImport(
       failedOps: result.failedOps,
       missingImages: result.missingImages ?? 0,
       rewrappedTexts: result.rewrappedTexts ?? 0,
+      textDriftCount: result.textDriftCount ?? 0,
       autoLayoutFrames: result.autoLayoutFrames ?? 0,
       fallbackFrames: result.fallbackFrames ?? 0,
     });

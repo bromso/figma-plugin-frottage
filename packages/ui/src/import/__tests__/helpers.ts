@@ -107,6 +107,7 @@ export type FakePort = ImportPort & {
     failedOps: number;
     missingImages?: number;
     rewrappedTexts?: number;
+    textDriftCount?: number;
     autoLayoutFrames?: number;
     fallbackFrames?: number;
   };

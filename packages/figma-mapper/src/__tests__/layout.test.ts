@@ -1033,13 +1033,11 @@ describe("grid", () => {
   test("line names in computed tracks are ignored", () => {
     expect(inferLayout(grid("[a] 300px [b] 200px [c]"), cells)).toMatchObject({ mode: "GRID" });
   });
-  test("an absolute child is left out of the cells", () => {
+  test("an absolute child keeps the grid absolute until Figma is shown to take one", () => {
     const parent = grid("300px 200px");
     const abs = item("abs", 0, 0, 500, 100, { position: "absolute" });
-    const layout = inferLayout(parent, [...cells, abs]);
-    expect(layout.mode).toBe("GRID");
-    expect(inferChildLayout(abs, layout, parent)).toMatchObject({ positioning: "ABSOLUTE" });
-    expect(inferChildLayout(abs, layout, parent).cell).toBeUndefined();
+    expect(inferLayout(parent, [...cells, abs])).toEqual({ mode: "NONE" });
+    expect(inferLayout(parent, cells).mode).toBe("GRID");
   });
   test("a child smaller than its track keeps its size", () => {
     const parent = grid("300px 200px");

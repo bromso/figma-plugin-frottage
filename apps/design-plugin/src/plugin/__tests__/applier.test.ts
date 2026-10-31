@@ -342,6 +342,7 @@ test("an import with no root op returns an empty rootId and counts a failure", a
     autoLayoutFrames: 0,
     fallbackFrames: 0,
     fallbackReasons: {},
+    textDriftCount: 0,
   });
 });
 

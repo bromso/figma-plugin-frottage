@@ -39,6 +39,7 @@ const expected = (
   layout,
   w: 200,
   h: 100,
+  containsText: false,
   sizingH: "FIXED",
   sizingV: "FIXED",
   children,
@@ -155,6 +156,126 @@ describe("verifyFrame: arrangement", () => {
       ok: false,
       reason: "children",
     });
+  });
+});
+
+describe("verifyFrame: the frame's own size", () => {
+  const pair: [Box, Box] = [
+    [0, 0, 50, 20],
+    [60, 0, 50, 20],
+  ];
+
+  test("a FIXED frame that came out another size fails along its axis", () => {
+    const r = verifyFrame(frame(pair, 110), expected(auto(), [a, b]));
+    expect(r).toEqual({ ok: false, reason: "size" });
+  });
+  test("a FIXED frame that came out another size fails across its axis", () => {
+    const r = verifyFrame(frame(pair, 200, 300), expected(auto(), [a, b]));
+    expect(r).toEqual({ ok: false, reason: "size" });
+  });
+  test("a HUG frame with no text gets no allowance", () => {
+    const r = verifyFrame(frame(pair, 110), expected(auto(), [a, b], { sizingH: "HUG" }));
+    expect(r).toEqual({ ok: false, reason: "size" });
+  });
+  test("a HUG frame holding text may change size", () => {
+    const hug = child([0, 0, 50, 20], { text: true, sizingH: "HUG" });
+    const r = verifyFrame(
+      frame([[0, 0, 60, 20]], 60),
+      expected(auto(), [hug], { w: 50, sizingH: "HUG", containsText: true })
+    );
+    expect(r.ok).toBe(true);
+  });
+  test("1 px of rounding is not a wrong size", () => {
+    expect(verifyFrame(frame(pair, 200.5, 99.5), expected(auto(), [a, b])).ok).toBe(true);
+  });
+  test("space below the children counts across the axis", () => {
+    const fill = child([0, 0, 50, 90], { text: true });
+    const r = verifyFrame(frame([[0, 0, 50, 90]]), expected(auto(), [fill]));
+    expect(r.ok).toBe(true);
+    const shortFrame = verifyFrame(
+      frame([[0, 0, 50, 60]], 200, 130),
+      expected(auto(), [child([0, 0, 50, 60])], { sizingV: "FILL" })
+    );
+    expect(shortFrame.ok).toBe(true);
+    const lost = verifyFrame(
+      frame([[0, 0, 50, 60]], 200, 90),
+      expected(auto(), [child([0, 0, 50, 60])], { h: 80, containsText: true, sizingV: "HUG" })
+    );
+    expect(lost).toEqual({ ok: false, reason: "padding" });
+  });
+  test("a grid frame of another size fails", () => {
+    const grid: ExpectedLayout["layout"] = {
+      mode: "GRID",
+      rows: [{ type: "FIXED", value: 20 }],
+      columns: [{ type: "FIXED", value: 50 }],
+      rowGap: 0,
+      columnGap: 0,
+      padding: [0, 0, 0, 0],
+    };
+    const r = verifyFrame(frame([[0, 0, 50, 20]], 90), expected(grid, [a]));
+    expect(r).toEqual({ ok: false, reason: "size" });
+  });
+});
+
+describe("verifyFrame: reads", () => {
+  test("a frame's children are read once, however many there are", () => {
+    const n = 1000;
+    const reads = Array.from({ length: n }, (_, i) => ({ x: i * 10, y: 0, width: 10, height: 10 }));
+    let count = 0;
+    const counted = {
+      width: n * 10,
+      height: 10,
+      get children() {
+        count++;
+        return [...reads];
+      },
+    };
+    const children = reads.map((r) => child([r.x, 0, 10, 10]));
+    const r = verifyFrame(
+      counted,
+      expected(auto({ itemSpacing: 0 }), children, { w: n * 10, h: 10 })
+    );
+    expect(r.ok).toBe(true);
+    expect(count).toBe(1);
+  });
+});
+
+describe("verifyFrame: drift adds up as it does on the page", () => {
+  const text = (box: Box) => child(box, { text: true, sizingH: "HUG", sizingV: "HUG" });
+
+  test("across the axis the tallest text decides, so it is not the sum", () => {
+    const r = verifyFrame(
+      frame([
+        [0, 0, 40, 26],
+        [50, 0, 40, 26],
+        [100, 0, 40, 26],
+        [150, 15, 40, 20],
+      ]),
+      expected(auto({ counterAlign: "BASELINE" }), [
+        text([0, 0, 40, 20]),
+        text([50, 0, 40, 20]),
+        text([100, 0, 40, 20]),
+        child([150, 0, 40, 20]),
+      ])
+    );
+    expect(r).toEqual({ ok: false, reason: "cross" });
+  });
+  test("along the axis drift nets out, so text that cancels moves nothing", () => {
+    const r = verifyFrame(
+      frame(
+        [
+          [59, 0, 50, 20],
+          [119, 0, 30, 20],
+        ],
+        190,
+        20
+      ),
+      expected(auto({ primaryAlign: "CENTER" }), [text([50, 0, 40, 20]), text([100, 0, 40, 20])], {
+        w: 190,
+        h: 20,
+      })
+    );
+    expect(r).toEqual({ ok: false, reason: "padding" });
   });
 });
 
@@ -293,7 +414,11 @@ describe("verifyFrame: text", () => {
   test("a hugging frame's padding stays exact whatever its text does", () => {
     const r = verifyFrame(
       frame([[5, 0, 80, 20]], 90),
-      expected(auto({ primaryAlign: "MAX" }), [text([0, 0, 50, 20])], { w: 60, sizingH: "HUG" })
+      expected(auto({ primaryAlign: "MAX" }), [text([0, 0, 50, 20])], {
+        w: 60,
+        sizingH: "HUG",
+        containsText: true,
+      })
     );
     expect(r).toEqual({ ok: false, reason: "padding" });
   });
@@ -369,6 +494,77 @@ describe("verifyFrame: wrap", () => {
       expected(wrap, [text, ...lines.slice(1)])
     );
     expect(r.ok).toBe(true);
+  });
+  test("a changed break does not excuse children out of order", () => {
+    const text = child([0, 0, 40, 20], { text: true, sizingH: "HUG" });
+    const row = [text, child([50, 0, 40, 20]), child([100, 0, 40, 20]), child([150, 0, 40, 20])];
+    const r = verifyFrame(
+      frame([
+        [120, 40, 43, 20],
+        [60, 0, 40, 20],
+        [0, 40, 40, 20],
+        [150, 0, 40, 20],
+      ]),
+      expected(auto({ wrap: true }), row)
+    );
+    expect(r).toEqual({ ok: false, reason: "order" });
+  });
+  test("a changed break does not excuse wrong gaps on the new lines", () => {
+    const text = child([0, 0, 110, 20], { text: true, sizingH: "HUG" });
+    const r = verifyFrame(
+      frame([
+        [0, 0, 120, 20],
+        [0, 30, 40, 20],
+        [70, 30, 40, 20],
+      ]),
+      expected(auto({ wrap: true, counterSpacing: 10 }), [
+        text,
+        child([120, 0, 40, 20]),
+        child([0, 30, 40, 20]),
+      ])
+    );
+    expect(r).toEqual({ ok: false, reason: "gap" });
+  });
+  test("a changed break does not excuse a line away from the padding edge", () => {
+    const text = child([0, 0, 110, 20], { text: true, sizingH: "HUG" });
+    const r = verifyFrame(
+      frame([
+        [0, 0, 170, 20],
+        [15, 30, 40, 20],
+      ]),
+      expected(auto({ wrap: true, counterSpacing: 10 }), [text, child([120, 0, 40, 20])])
+    );
+    expect(r).toEqual({ ok: false, reason: "padding" });
+  });
+  test("drift somewhere else does not explain a break", () => {
+    const text = child([0, 0, 40, 20], { text: true, sizingH: "HUG" });
+    const r = verifyFrame(
+      frame([
+        [0, 0, 43, 20],
+        [53, 0, 40, 20],
+        [0, 30, 40, 20],
+      ]),
+      expected(auto({ wrap: true, counterSpacing: 10 }), [
+        text,
+        child([50, 0, 40, 20]),
+        child([100, 0, 40, 20]),
+      ])
+    );
+    expect(r).toEqual({ ok: false, reason: "wrap" });
+  });
+  test("a narrower FILL frame does not explain a break: only text does", () => {
+    const r = verifyFrame(
+      frame(
+        [
+          [0, 0, 90, 20],
+          [0, 28, 90, 20],
+          [0, 56, 90, 20],
+        ],
+        120
+      ),
+      expected(wrap, lines, { sizingH: "FILL" })
+    );
+    expect(r).toEqual({ ok: false, reason: "wrap" });
   });
   test("a line in the wrong place fails", () => {
     const r = verifyFrame(

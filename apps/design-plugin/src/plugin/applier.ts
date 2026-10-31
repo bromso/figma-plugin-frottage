@@ -1,6 +1,5 @@
 import type {
   FontRef,
-  PlanChildLayout,
   PlanEffect,
   PlanOp,
   PlanPaint,
@@ -8,7 +7,14 @@ import type {
   PlanStroke,
   PlanTrack,
 } from "@repo/figma-mapper";
-import { type ExpectedChild, type ExpectedLayout, verifyFrame } from "./verify-layout";
+import {
+  alignedX,
+  type Built,
+  clampSize,
+  createLayoutTracker,
+  type TextFit,
+  widenToLines,
+} from "./layout-tracker";
 
 /**
  * Turns plan ops into Figma layers. Runs in the plugin sandbox. Only types come
@@ -21,6 +27,8 @@ export type EndResult = {
   failedOps: number;
   missingImages: number;
   rewrappedTexts: number;
+  /** Text in verified frames that came out a different size from the capture: `text-drift`. */
+  textDriftCount: number;
   /** Frames that were proposed auto layout and kept it. */
   autoLayoutFrames: number;
   /** Frames that were proposed auto layout and went back to absolute. */
@@ -30,51 +38,16 @@ export type EndResult = {
 
 type Corners = [number, number, number, number];
 type FrameOp = Extract<PlanOp, { op: "frame" }>;
-type Sizing = PlanChildLayout["sizingH"];
-/** The kinds of node an op makes. */
-type Built = FrameNode | TextNode | RectangleNode;
-
-/** What a fallback needs beyond what verification reads. */
-type Child = ExpectedChild & { node: Built; align: string };
-
-/** A frame in auto layout, from its creation until it has been verified. */
-type LaidFrame = {
-  id: string;
-  frame: FrameNode;
-  op: FrameOp;
-  sizingH: Sizing;
-  sizingV: Sizing;
-  /** Its entry among its parent's children. */
-  child: Child | null;
-  /** Null when the parent is not in auto layout: nothing about this frame affects it then. */
-  parent: LaidFrame | null;
-  children: Child[];
-  containsText: boolean;
-  /** Direct children still to arrive, or whose own content is still to arrive. */
-  waiting: number;
-  /** Finished FILL children, whose size this frame's other children still decide. */
-  deferred: LaidFrame[];
-};
 
 const FALLBACK: FontRef = { family: "Inter", style: "Regular" };
 const GAP = 100;
-const MIN_SIZE = 0.01;
-const MAX_WIDEN_STEPS = 8;
 /** The largest SVG source handed to Figma. Capture applies the same limit; a file can still hold more. */
 const MAX_SVG_BYTES = 256 * 1024;
 /**
- * Verification shares a batch's time. Reads are quick, but a fallback writes, so both limits apply;
- * the time is half of the 2 s a batch may take, as the ops ahead of it have used some already.
+ * Ops and verification share a batch's time, checked between them. This is half of the 2 s a batch
+ * may take, as a single op or fallback can run on past it.
  */
-const MAX_VERIFIES_PER_SLICE = 200;
 const MAX_SLICE_MS = 1000;
-
-/** x for a text box of `actual` width that must stay anchored inside the captured `w`. */
-function alignedX(align: string, x: number, w: number, actual: number): number {
-  if (align === "CENTER") return x + (w - actual) / 2;
-  if (align === "RIGHT") return x + w - actual;
-  return x;
-}
 
 /** What `end` returns when the import was cancelled under it. */
 const CANCELLED: EndResult = {
@@ -82,6 +55,7 @@ const CANCELLED: EndResult = {
   failedOps: 0,
   missingImages: 0,
   rewrappedTexts: 0,
+  textDriftCount: 0,
   autoLayoutFrames: 0,
   fallbackFrames: 0,
   fallbackReasons: {},
@@ -89,7 +63,6 @@ const CANCELLED: EndResult = {
 
 const fontKey = (f: FontRef) => `${f.family}\u0000${f.style}`;
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
-const clampSize = (n: number) => Math.max(n, MIN_SIZE);
 /** UTF-8 size without TextEncoder, which the plugin sandbox may not have. */
 function utf8Bytes(text: string): number {
   let n = 0;
@@ -121,14 +94,9 @@ export function createApplier(api: PluginAPI) {
   let fallbackOk = true;
   let failedOps = 0;
   let missingImages = 0;
-  let rewrappedTexts = 0;
-  let autoLayoutFrames = 0;
-  let fallbackFrames = 0;
-  let fallbackReasons: Record<string, number> = {};
-  /** Frames with children to come, in creation order, so parents come before their children. */
-  let open = new Map<string, LaidFrame>();
-  /** Finished frames to verify, children before parents. */
-  let ready: LaidFrame[] = [];
+  let tracker = createLayoutTracker();
+  /** Set while building FILL text, whose lines are judged once its width is final. */
+  let fillFit: TextFit | null = null;
   let sliceStart = 0;
   /** Changes when an import ends, so that work suspended in a yield can tell. */
   let generation = 0;
@@ -155,12 +123,8 @@ export function createApplier(api: PluginAPI) {
     fallbackOk = true;
     failedOps = 0;
     missingImages = 0;
-    rewrappedTexts = 0;
-    autoLayoutFrames = 0;
-    fallbackFrames = 0;
-    fallbackReasons = {};
-    open = new Map();
-    ready = [];
+    tracker = createLayoutTracker();
+    fillFit = null;
   }
 
   async function loadFont(f: FontRef): Promise<void> {
@@ -277,8 +241,8 @@ export function createApplier(api: PluginAPI) {
 
   /**
    * Turns on the op's layout and gives the frame its size, which a frame in auto layout must get
-   * after its mode. `resize` makes both axes FIXED, as SPACE_* alignment and FLEX tracks need, so
-   * HUG comes last. Refused settings leave the frame absolute: losing it would lose its subtree.
+   * after its mode. Both axes start FIXED, as SPACE_* alignment and FLEX tracks need, so HUG comes
+   * last. Refused settings leave the frame absolute: losing it would lose its subtree.
    */
   function setLayout(node: FrameNode, op: FrameOp) {
     const { layout } = op;
@@ -289,6 +253,13 @@ export function createApplier(api: PluginAPI) {
     }
     try {
       node.layoutMode = layout.mode;
+      if (layout.mode === "GRID") {
+        node.layoutSizingHorizontal = "FIXED";
+        node.layoutSizingVertical = "FIXED";
+      } else {
+        node.primaryAxisSizingMode = "FIXED";
+        node.counterAxisSizingMode = "FIXED";
+      }
       size();
       [node.paddingTop, node.paddingRight, node.paddingBottom, node.paddingLeft] = layout.padding;
       if (layout.mode === "GRID") {
@@ -312,7 +283,7 @@ export function createApplier(api: PluginAPI) {
     } catch {
       node.layoutMode = "NONE";
       size();
-      countFallback("apply");
+      tracker.countFallback("apply");
     }
   }
 
@@ -428,28 +399,17 @@ export function createApplier(api: PluginAPI) {
           ...pixels,
           pixels.length < op.runs.length || pixels.length === 0 ? oneLine : 0
         );
-        const expected = Math.max(op.lineCount, 1) * lineHeight;
         // Half a line of slack, so the check counts lines and ignores rounding.
-        const slack = lineHeight / 2;
+        const fit = { w: op.w, limit: (Math.max(op.lineCount, 1) + 0.5) * lineHeight };
         node.textAutoResize = "HEIGHT";
-        // Filling costs the text its widening, so it only fills if that keeps the lines.
         if (inLayout(parent) && op.childLayout?.sizingH === "FILL") {
           node.layoutSizingHorizontal = "FILL";
-          if (node.height <= expected + slack) {
-            place(node, parent, op);
-            return node;
-          }
-          node.layoutSizingHorizontal = "FIXED";
+          fillFit = fit;
+          place(node, parent, op);
+          return node;
         }
-        // Keep the current height: a different one switches HEIGHT mode to NONE.
-        node.resize(clampSize(op.w), clampSize(node.height));
-        let added = 0;
-        for (let step = 1; node.height > expected + slack && step <= MAX_WIDEN_STEPS; step++) {
-          added = (op.w * step) / 100;
-          node.resize(clampSize(op.w + added), clampSize(node.height));
-        }
-        if (node.height > expected + slack) rewrappedTexts++;
-        place(node, parent, op, alignedX(op.align, op.x, op.w, op.w + added));
+        if (!widenToLines(node, fit)) tracker.noteRewrapped();
+        place(node, parent, op, alignedX(op.align, op.x, op.w, node.width));
         return node;
       }
       case "image": {
@@ -522,169 +482,13 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
-  function countFallback(reason: string) {
-    fallbackFrames++;
-    fallbackReasons[reason] = (fallbackReasons[reason] ?? 0) + 1;
-  }
-
-  /**
-   * A frame is finished when its children and all that is below them are. Walks up rather than
-   * recursing, as one op can finish a deep chain. A FILL frame is verified along with its parent:
-   * until the parent has all its children, the frame's size is not its final one.
-   */
-  function finish(first: LaidFrame) {
-    let current: LaidFrame | undefined = first;
-    while (current) {
-      const { id, parent, deferred, sizingH, sizingV }: LaidFrame = current;
-      open.delete(id);
-      const waitsForParent =
-        parent && open.has(parent.id) && (sizingH === "FILL" || sizingV === "FILL");
-      const target = waitsForParent ? parent.deferred : ready;
-      for (const frame of deferred) target.push(frame);
-      target.push(current);
-      passTextUp(current);
-      current = parent && arrived(parent) ? parent : undefined;
-    }
-  }
-
-  function passTextUp({ containsText, child, parent }: LaidFrame) {
-    if (child) child.containsText = containsText;
-    if (parent && containsText) parent.containsText = true;
-  }
-
-  /** Counts one child in. True when that was the last one. */
-  function arrived(frame: LaidFrame): boolean {
-    frame.waiting--;
-    return frame.waiting <= 0 && open.has(frame.id);
-  }
-
-  /** Records what the op made, so that its parent and the node itself can be verified. */
-  function track(op: PlanOp, node: Built, parent: LaidFrame | undefined) {
-    const auto = op.op === "frame" && (node as FrameNode).layoutMode !== "NONE";
-    const own = auto && op.layout.mode !== "NONE" && op.layout.mode !== "GRID" ? op.layout : null;
-    const sizing = (axis: "sizingH" | "sizingV"): Sizing =>
-      op.childLayout?.[axis] === "FILL" ? "FILL" : (own?.[axis] ?? "FIXED");
-    const sizingH = sizing("sizingH");
-    const sizingV = sizing("sizingV");
-    let child: Child | null = null;
-    if (parent) {
-      child = {
-        node,
-        x: op.x,
-        y: op.y,
-        w: op.w,
-        h: op.h,
-        absolute: op.childLayout?.positioning === "ABSOLUTE",
-        text: op.op === "text",
-        containsText: false,
-        sizingH,
-        sizingV,
-        align: op.op === "text" ? op.align : "LEFT",
-      };
-      parent.children.push(child);
-      if (op.op === "text") parent.containsText = true;
-    }
-    if (op.op === "frame" && auto) {
-      const frame: LaidFrame = {
-        id: op.id,
-        frame: node as FrameNode,
-        op,
-        sizingH,
-        sizingV,
-        child,
-        parent: parent ?? null,
-        children: [],
-        containsText: false,
-        waiting: op.childCount,
-        deferred: [],
-      };
-      open.set(op.id, frame);
-      if (op.childCount <= 0) finish(frame);
-    } else if (parent && arrived(parent)) {
-      finish(parent);
-    }
-  }
-
-  /**
-   * Puts the frame back to absolute, leaving its children's own layout alone. Text keeps its
-   * measured size, and a child that hugged goes on hugging; only a FILL axis has lost its source.
-   */
-  function fallBack({ frame, op, parent, child, sizingH, sizingV, children }: LaidFrame) {
-    frame.layoutMode = "NONE";
-    frame.resize(clampSize(op.w), clampSize(op.h));
-    if (parent && parent.frame.layoutMode !== "NONE") {
-      if (sizingH === "FILL") frame.layoutSizingHorizontal = "FILL";
-      if (sizingV === "FILL") frame.layoutSizingVertical = "FILL";
-    }
-    for (const c of children) {
-      const { node } = c;
-      if (!c.text && (c.sizingH === "FILL" || c.sizingV === "FILL")) {
-        const sized = node as FrameNode;
-        sized.resize(
-          clampSize(c.sizingH === "FILL" ? c.w : node.width),
-          clampSize(c.sizingV === "FILL" ? c.h : node.height)
-        );
-        if (c.sizingH === "HUG") sized.layoutSizingHorizontal = "HUG";
-        if (c.sizingV === "HUG") sized.layoutSizingVertical = "HUG";
-      }
-      node.x = alignedX(c.align, c.x, c.w, node.width);
-      node.y = c.y;
-    }
-    if (child) {
-      child.sizingH = sizingH === "FILL" ? "FILL" : "FIXED";
-      child.sizingV = sizingV === "FILL" ? "FILL" : "FIXED";
-    }
-  }
-
-  function expectation({ op, sizingH, sizingV, children }: LaidFrame): ExpectedLayout {
-    return {
-      layout: op.layout as ExpectedLayout["layout"],
-      w: op.w,
-      h: op.h,
-      sizingH,
-      sizingV,
-      children,
-    };
-  }
-
-  function verify(frame: LaidFrame) {
-    try {
-      const verdict = verifyFrame(frame.frame, expectation(frame));
-      if (verdict.ok) {
-        autoLayoutFrames++;
-        return;
-      }
-      countFallback(verdict.reason ?? "unknown");
-      fallBack(frame);
-    } catch {
-      // The layer may have gone: the user can edit during an import, which must still finish.
-    }
-  }
-
-  /** Verifies what is ready, yielding as needed. False if the import ended during a yield. */
-  async function drain(run: number): Promise<boolean> {
-    let verified = 0;
-    for (let i = 0; i < ready.length; i++) {
-      if (verified >= MAX_VERIFIES_PER_SLICE || Date.now() - sliceStart > MAX_SLICE_MS) {
-        await tick();
-        if (run !== generation) return false;
-        sliceStart = Date.now();
-        verified = 0;
-      }
-      verify(ready[i] as LaidFrame);
-      verified++;
-    }
-    ready = [];
-    return true;
-  }
-
   function applyOp(op: PlanOp) {
     pending = null;
-    const parent = op.parent === null ? undefined : open.get(op.parent);
+    fillFit = null;
     try {
       const node = build(op);
       nodes.set(op.id, node);
-      track(op, node, parent);
+      tracker.track(op, node, fillFit);
     } catch {
       failed.add(op.id);
       failedOps++;
@@ -695,38 +499,30 @@ export function createApplier(api: PluginAPI) {
       } catch {
         // best effort
       }
-      // A failed child is one less to wait for; verification judges the frame without it.
-      if (parent && arrived(parent)) finish(parent);
+      tracker.failed(op);
     }
     pending = null;
+  }
+
+  const overBudget = () => Date.now() - sliceStart > MAX_SLICE_MS;
+
+  /** Yields to Figma. False if the import ended meanwhile. */
+  async function breathe(run: number): Promise<boolean> {
+    await tick();
+    sliceStart = Date.now();
+    return run === generation;
   }
 
   async function applyBatch(ops: PlanOp[]): Promise<void> {
     if (!active) throw new Error("import not started");
     const run = generation;
     sliceStart = Date.now();
-    for (const op of ops) applyOp(op);
-    if (await drain(run)) await tick();
-  }
-
-  /** Frames still open never got all their ops. Latest first: children come after their parents. */
-  function closeOpen() {
-    for (const frame of [...open.values()].reverse()) {
-      for (const deferred of frame.deferred) ready.push(deferred);
-      ready.push(frame);
-      passTextUp(frame);
+    for (const op of ops) {
+      if (overBudget() && !(await breathe(run))) return;
+      applyOp(op);
     }
-    open = new Map();
+    if (await tracker.drain(overBudget, () => breathe(run))) await tick();
   }
-
-  const results = () => ({
-    failedOps,
-    missingImages,
-    rewrappedTexts,
-    autoLayoutFrames,
-    fallbackFrames,
-    fallbackReasons,
-  });
 
   async function end(): Promise<EndResult> {
     if (!active) throw new Error("import not started");
@@ -737,11 +533,11 @@ export function createApplier(api: PluginAPI) {
         // The root op failed (already counted) or never arrived (count it now).
         if (!rootAttempted) failedOps++;
         api.commitUndo();
-        return { rootId: "", ...results() };
+        return { rootId: "", failedOps, missingImages, ...tracker.counts() };
       }
-      closeOpen();
+      tracker.closeOpen();
       sliceStart = Date.now();
-      if (!(await drain(run))) return CANCELLED;
+      if (!(await tracker.drain(overBudget, () => breathe(run)))) return CANCELLED;
       api.commitUndo();
       try {
         (page ?? api.currentPage).selection = [done];
@@ -749,7 +545,7 @@ export function createApplier(api: PluginAPI) {
       } catch {
         // the user may have switched pages; the import itself is done
       }
-      const result = { rootId: done.id, ...results() };
+      const result = { rootId: done.id, failedOps, missingImages, ...tracker.counts() };
       root = null; // keep the layers; reset() would remove them
       return result;
     } finally {
