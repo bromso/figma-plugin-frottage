@@ -353,7 +353,8 @@ export function createApplier(api: PluginAPI) {
             }
           }
         }
-        imported.clipsContent = false;
+        // Browsers clip inline SVG unless its overflow is visible.
+        imported.clipsContent = op.clips !== false;
         imported.resize(clampSize(op.w), clampSize(op.h));
         imported.opacity = op.opacity;
         imported.x = op.x;

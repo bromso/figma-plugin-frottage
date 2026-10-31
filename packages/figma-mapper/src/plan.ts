@@ -139,6 +139,8 @@ export type PlanOp = (
       /** Self-contained SVG source; the applier rebuilds it with `createNodeFromSvg`. */
       markup: string;
       opacity: number;
+      /** Whether the frame clips its content, as browsers clip inline SVG. Absent means yes. */
+      clips?: boolean;
     }
   | {
       op: "placeholder";

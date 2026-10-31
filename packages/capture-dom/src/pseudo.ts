@@ -262,12 +262,25 @@ export function pseudoNodes(el: Element, which: Which, ctx: PseudoCtx): CaptureN
         ? hostBox.y + px(host.borderTopWidth) + px(host.paddingTop)
         : hostBox.y + hostBox.h - px(host.borderBottomWidth) - px(host.paddingBottom) - h;
     // In a row flex container a generated box is an item, next to the first or last child.
-    const sibling = which === "before" ? el.firstElementChild : el.lastElementChild;
-    if (host.display.includes("flex") && host.flexDirection.startsWith("row") && sibling) {
-      const sb = ctx.pageBox(sibling);
+    // Children without a box or out of flow are not items; row-reverse swaps the two ends.
+    const items = Array.from(el.children).filter((c) => {
+      const cs = ctx.cs(c);
+      return (
+        cs.display !== "none" &&
+        cs.display !== "contents" &&
+        cs.position !== "absolute" &&
+        cs.position !== "fixed"
+      );
+    });
+    const anchor = which === "before" ? items[0] : items[items.length - 1];
+    if (host.display.includes("flex") && host.flexDirection.startsWith("row") && anchor) {
+      const sb = ctx.pageBox(anchor);
       const gap = px(host.columnGap);
-      x = which === "before" ? sb.x - gap - w : sb.x + sb.w + gap;
-      y = sb.y;
+      // `before` comes first in order: left of the first item, or right of it in row-reverse.
+      const leftOf = (which === "before") !== host.flexDirection.endsWith("reverse");
+      x = leftOf ? sb.x - gap - w : sb.x + sb.w + gap;
+      // Cross axis: centre on the neighbour when the container centres its items.
+      y = host.alignItems === "center" ? sb.y + (sb.h - h) / 2 : sb.y;
     }
   }
   const box: Box = { x: round2(x), y: round2(y), w: round2(w), h: round2(h) };

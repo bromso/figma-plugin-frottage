@@ -403,6 +403,9 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
                 h: node.box.h,
                 markup: node.markup,
                 opacity: node.opacity,
+                clips:
+                  node.overflow === undefined ||
+                  node.overflow.split(/\s+/).some((o) => o !== "" && o !== "visible"),
               };
         break;
       case "placeholder":

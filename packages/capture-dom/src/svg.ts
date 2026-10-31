@@ -106,7 +106,11 @@ type State = {
   /** Ids present in the copy. */
   have: Set<string>;
   tried: Set<string>;
+  report: SvgReport;
 };
+
+/** What serialising an SVG could not carry over. */
+export type SvgReport = { transform3d: number };
 
 type Flags = {
   /** Properties some ancestor inside the current `<use>` target declares itself. */
@@ -266,6 +270,41 @@ function inlineStyle(st: State, orig: Element, clone: Element, s: CSSStyleDeclar
   }
 }
 
+/**
+ * A computed CSS transform as an SVG `transform` attribute. SVG's attribute has no origin, so the
+ * computed `transform-origin` is baked in: translate(o) matrix translate(-o). The origin is
+ * relative to `transform-box`: the view box by default, the element's own box for fill/stroke-box.
+ */
+function bakeTransform(st: State, orig: Element, s: CSSStyleDeclaration): string | null {
+  const t = s.transform;
+  if (!t || t === "none") return null;
+  if (!t.startsWith("matrix(")) {
+    if (t.startsWith("matrix3d(")) st.report.transform3d++;
+    return null;
+  }
+  const parts = s.transformOrigin.split(/\s+/).map((v) => Number.parseFloat(v));
+  let ox = Number.isFinite(parts[0]) ? (parts[0] as number) : 0;
+  let oy = Number.isFinite(parts[1]) ? (parts[1] as number) : 0;
+  const box = s.getPropertyValue("transform-box");
+  if (box === "fill-box" || box === "stroke-box") {
+    try {
+      const b = (orig as SVGGraphicsElement).getBBox();
+      ox += b.x;
+      oy += b.y;
+    } catch {
+      // no geometry: the origin stays relative to the view box
+    }
+  } else {
+    const vb = (orig as SVGElement).ownerSVGElement?.viewBox?.baseVal;
+    if (vb) {
+      ox += vb.x;
+      oy += vb.y;
+    }
+  }
+  if (!ox && !oy) return t;
+  return `translate(${round3(ox)} ${round3(oy)}) ${t} translate(${round3(-ox)} ${round3(-oy)})`;
+}
+
 function copyElement(
   st: State,
   orig: Element,
@@ -303,9 +342,8 @@ function copyElement(
     const opacity = Number.parseFloat(s.opacity);
     if (Number.isFinite(opacity) && opacity !== 1) clone.setAttribute("opacity", round3(opacity));
     // A CSS transform (from a rule) is not in the attributes; the computed one covers both.
-    if (s.transform && s.transform !== "none" && s.transform.startsWith("matrix(")) {
-      clone.setAttribute("transform", s.transform);
-    }
+    const moved = bakeTransform(st, orig, s);
+    if (moved) clone.setAttribute("transform", moved);
     inlineStyle(st, orig, clone, s, f);
   }
   parent?.appendChild(clone);
@@ -382,7 +420,7 @@ function inlineUse(st: State, use: Element, parent: Element, f: Flags) {
   copyElement(st, target, wrapper, flags);
 }
 
-export function serialiseSvg(el: SVGSVGElement): string {
+export function serialiseSvg(el: SVGSVGElement, report: SvgReport = { transform3d: 0 }): string {
   const doc = el.ownerDocument;
   const win = doc.defaultView as Window & typeof globalThis;
   const st: State = {
@@ -393,6 +431,7 @@ export function serialiseSvg(el: SVGSVGElement): string {
     refs: new Set(),
     have: new Set(),
     tried: new Set(),
+    report,
   };
   const flags: Flags = {
     explicit: new Set(),

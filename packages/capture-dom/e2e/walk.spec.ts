@@ -905,6 +905,76 @@ test("a quoted local clip-path reference survives", async ({ page }) => {
   expect(q).toMatch(/transform="matrix\(/);
 });
 
+test("a CSS transform keeps its origin in the attribute", async ({ page }) => {
+  const c = await capture(page, "svg.html");
+  const m = svgs(c).find((x) => x.markup.includes('id="spun"'))?.markup ?? "";
+  const tf = (id: string) =>
+    new RegExp(`id="${id}"[^>]*transform="([^"]+)"|transform="([^"]+)"[^>]*id="${id}"`).exec(m);
+  // fill-box centre of the 8 x 4 rect at (2, 2) is (6, 4).
+  expect(m).toMatch(/translate\(6 4\) matrix\([^)]*\) translate\(-6 -4\)/);
+  // A view-box origin of 12px 12px.
+  expect(m).toMatch(/translate\(12 12\) matrix\([^)]*\) translate\(-12 -12\)/);
+  // The default origin (0 0) needs no translate.
+  expect(m).toMatch(/transform="matrix\(/);
+  expect(tf("r1")).toBeTruthy();
+});
+
+test("a 3D transform inside an SVG is left out with a warning", async ({ page }) => {
+  const c = await capture(page, "svg.html");
+  const m = svgs(c).find((x) => x.markup.includes('id="flat3d"'))?.markup ?? "";
+  expect(m).not.toContain("transform=");
+  expect(c.warnings.find((w) => w.code === "svg-3d-transform")).toBeTruthy();
+});
+
+test("the svg's overflow is recorded", async ({ page }) => {
+  const c = await capture(page, "svg.html");
+  const by = (id: string) => svgs(c).find((x) => x.markup.includes(`id="${id}"`))?.overflow;
+  expect(by("spill")).toBe("visible");
+  expect(by("plain")).toBe("hidden");
+});
+
+test("aria-labelledby wins over aria-label on an SVG", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/svg.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<p id="lbl">By id</p><svg id="both" width="8" height="8" aria-label="Plain" aria-labelledby="lbl"><title>Title</title><rect width="8" height="8"/></svg>'
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  expect(svgs(c).find((x) => x.markup.includes('id="both"'))?.semantic.ariaLabel).toBe("By id");
+});
+
+test("pseudo-elements in row-reverse and centred flex containers", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/pseudo.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<div class="row" id="rev" style="flex-direction: row-reverse"><i style="display:none"></i><span>Aa</span><span style="height:30px">Bb</span></div>'
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const row = findKind(
+    c,
+    "element",
+    (n) => n.layout.flexDirection === "row-reverse" && n.children.length === 4
+  );
+  const before = row.children.find((k) => k.semantic.tag === "::before");
+  const after = row.children.find((k) => k.semantic.tag === "::after");
+  const first = row.children.find((k) => k.semantic.tag === "span");
+  const lastSpan = row.children.filter((k) => k.semantic.tag === "span").pop();
+  if (!before || !after || !first || !lastSpan) throw new Error("missing pseudo or span");
+  // First in order is rightmost; the display:none child is not an anchor.
+  expect(before.box.x).toBeGreaterThanOrEqual(first.box.x + first.box.w);
+  expect(after.box.x + after.box.w).toBeLessThanOrEqual(lastSpan.box.x);
+  // Centred on the cross axis relative to the neighbour.
+  expect(before.box.y + before.box.h / 2).toBeCloseTo(first.box.y + first.box.h / 2, 0);
+});
+
 test("an SVG takes its name from aria-labelledby or a first-child title", async ({ page }) => {
   const c = await capture(page, "svg.html");
   const name = (id: string) => {

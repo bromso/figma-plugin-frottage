@@ -670,8 +670,16 @@ test("applier creates a vector frame and sizes it", async () => {
   expect(v.name).toBe("Svg");
   expect([v.x, v.y, v.width, v.height, v.opacity]).toEqual([7, 8, 24, 16, 0.5]);
   expect(v.parent).toBe(f.node(r.rootId));
-  expect(v.clipsContent).toBe(false);
+  expect(v.clipsContent).toBe(true);
   expect(r.failedOps).toBe(0);
+});
+
+test("an svg whose overflow was visible does not clip", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp("<svg/>", { clips: false })]);
+  expect(f.node((await a.end()).rootId).children[0].clipsContent).toBe(false);
 });
 
 test("an svg shown at another size scales its vectors", async () => {

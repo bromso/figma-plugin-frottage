@@ -28,7 +28,7 @@ import {
   readStyle,
   readTransform,
 } from "./styles";
-import { MAX_SVG_BYTES, SvgTooLargeError, serialiseSvg } from "./svg";
+import { MAX_SVG_BYTES, type SvgReport, SvgTooLargeError, serialiseSvg } from "./svg";
 import { cleanCss, cleanUrl, rememberUrl } from "./urls";
 
 export type CaptureEnv = {
@@ -640,7 +640,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       .map((id) => tree.getElementById?.(id)?.textContent?.trim() ?? "")
       .filter(Boolean)
       .join(" ");
-    if (named) return named;
+    return named;
+  }
+
+  function svgTitle(el: Element): string {
     const first = el.firstElementChild;
     return first?.localName === "title" ? (first.textContent?.trim() ?? "") : "";
   }
@@ -651,11 +654,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const role = el.getAttribute("role");
     if (role) semantic.role = role;
     const label = el.getAttribute("aria-label");
-    if (label) semantic.ariaLabel = label;
-    else if (tag === "svg" && el.namespaceURI === SVG_NS) {
-      const name = svgName(el);
-      if (name) semantic.ariaLabel = name;
-    }
+    // aria-labelledby wins over aria-label; for an SVG a first-child title is the last resort.
+    const isSvg = tag === "svg" && el.namespaceURI === SVG_NS;
+    const name = (isSvg && svgName(el)) || label || (isSvg && svgTitle(el)) || "";
+    if (name) semantic.ariaLabel = name;
     if (/^h[1-6]$/.test(tag)) semantic.headingLevel = Number(tag[1]);
     const landmarks: Record<string, string> = {
       header: "banner",
@@ -820,10 +822,11 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     }
 
     if (el.namespaceURI === SVG_NS && tag === "svg") {
+      const report: SvgReport = { transform3d: 0 };
       let markup = "";
       let why = "it could not be serialised";
       try {
-        markup = serialiseSvg(el as SVGSVGElement);
+        markup = serialiseSvg(el as SVGSVGElement, report);
         if (utf8Length(markup) > MAX_SVG_BYTES) {
           why = `it is over ${MAX_SVG_BYTES / 1024} KiB`;
           markup = "";
@@ -835,7 +838,18 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         warn("svg-too-large", id, `An inline SVG was left as a placeholder: ${why}`);
         return [placeholder(common, "blocked-image")];
       }
-      return [{ ...common, kind: "svg", markup }];
+      if (report.transform3d > 0) {
+        warn("svg-3d-transform", id, "A 3D transform inside an inline SVG was left out");
+        for (let i = 1; i < report.transform3d; i++) warn("svg-3d-transform", id, "");
+      }
+      return [
+        {
+          ...common,
+          kind: "svg",
+          markup,
+          overflow: s.overflowX === s.overflowY ? s.overflowX : `${s.overflowX} ${s.overflowY}`,
+        },
+      ];
     }
     if (el.namespaceURI === XHTML) {
       if (tag === "canvas") return [placeholder(common, "canvas")];

@@ -277,6 +277,18 @@ describe("mapCapture", () => {
         opacity: 0.5,
       });
     });
+    test("clips follows the captured overflow and defaults to clipping", () => {
+      const clips = (over: object) =>
+        (
+          mapCapture(withSvg("<svg/>", over), inter).ops.find((o) => o.id === "s") as {
+            clips?: boolean;
+          }
+        ).clips;
+      expect(clips({})).toBe(true);
+      expect(clips({ overflow: "hidden" })).toBe(true);
+      expect(clips({ overflow: "visible" })).toBe(false);
+      expect(clips({ overflow: "visible hidden" })).toBe(true);
+    });
     test("an svg with no markup stays a placeholder", () => {
       const op = mapCapture(withSvg(""), inter).ops.find((o) => o.id === "s");
       expect(op).toMatchObject({ op: "placeholder", label: "SVG" });

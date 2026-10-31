@@ -149,6 +149,8 @@ const svgNode = z.object({
   ...common,
   kind: z.literal("svg"),
   markup: z.string(),
+  /** Computed overflow of the `<svg>`; browsers clip inline SVG unless this is `visible`. */
+  overflow: z.string().optional(),
 });
 
 const placeholderNode = z.object({
