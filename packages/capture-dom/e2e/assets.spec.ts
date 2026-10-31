@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import { type Capture, type CaptureNode, parseCapture } from "@repo/capture-schema";
+import { mapCapture } from "@repo/figma-mapper";
 
 // The page bundle is built the same way as in walk.spec.ts and carries no Zod.
 let bundle = "";
@@ -242,6 +243,65 @@ test("a shared 2 MB data URI background is not repeated in capture.json and is s
   expect(r.capture.assets.length).toBe(1);
   expect(r.assets.size).toBe(1);
   expect(r.capture.assets[0]?.sourceUrl.length).toBeLessThan(200);
+});
+
+test("no query, fragment or userinfo reaches the capture or the plan, and fetches keep them", async ({
+  page,
+}) => {
+  await page.goto("/secrets.html");
+  await page.addScriptTag({ content: bundle });
+  const out = await page.evaluate(async () => {
+    const h = (globalThis as unknown as Hook).__frottageCapture;
+    const capture = h.captureDocument(document, { now: () => "x", toolVersion: "test" });
+    const walked = JSON.stringify(capture);
+    const fetched: string[] = [];
+    await h.collectAssets(capture, {
+      fetchBytes: (url: string, signal?: AbortSignal) => {
+        fetched.push(url);
+        return (h.browserFetchBytes as (u: string, s?: AbortSignal) => Promise<Blob>)(url, signal);
+      },
+      normalise: h.browserNormalise,
+    });
+    return { walked, collected: JSON.stringify(capture), fetched };
+  });
+  const capture = JSON.parse(out.collected) as Capture;
+  const plan = JSON.stringify(mapCapture(capture, [{ family: "Inter", style: "Regular" }]));
+  for (const text of [out.walked, out.collected, plan]) {
+    expect(text).not.toContain("SECRET");
+    expect(text).not.toContain("sig=abc");
+  }
+  expect(parseCapture(capture).ok).toBe(true);
+  expect(capture.source.url).toBe("http://localhost:4173/secrets.html");
+
+  // The stored forms stay useful.
+  const blocked = findNode(capture, "blocked");
+  expect(blocked).toMatchObject({
+    kind: "placeholder",
+    sourceUrl: "http://localhost:4174/assets/logo.svg",
+  });
+  expect(findImage(capture, "ok").assetHash).toMatch(/^[0-9a-f]{64}$/);
+  expect(capture.assets.every((a) => !a.sourceUrl.includes("?"))).toBe(true);
+  const hrefs: string[] = [];
+  const go = (n: CaptureNode) => {
+    if (n.semantic.href) hrefs.push(n.semantic.href);
+    if (n.kind === "element") n.children.forEach(go);
+  };
+  go(capture.root);
+  expect(hrefs).toEqual([
+    "http://localhost:4173/reset",
+    "http://localhost:4173/account",
+    "mailto:ada@example.com",
+    "javascript:",
+  ]);
+
+  // Only the capture is cleaned: the page's own requests still carry their tokens.
+  expect(out.fetched).toEqual(
+    expect.arrayContaining([
+      expect.stringContaining("token=SECRET-IMG-TOKEN"),
+      expect.stringContaining("token=SECRET-BG-TOKEN"),
+      expect.stringContaining("token=SECRET-SET-TOKEN"),
+    ])
+  );
 });
 
 function bgLayersAll(c: Capture) {

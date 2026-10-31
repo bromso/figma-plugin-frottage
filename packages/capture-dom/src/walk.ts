@@ -16,6 +16,7 @@ import {
   readStyle,
   readTransform,
 } from "./styles";
+import { cleanCss, cleanUrl, rememberUrl } from "./urls";
 
 export type CaptureEnv = {
   now: () => string;
@@ -477,7 +478,9 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
     const landmark = landmarks[tag];
     if (landmark) semantic.landmark = landmark;
-    if (tag === "a" && el.hasAttribute("href")) semantic.href = (el as HTMLAnchorElement).href;
+    if (tag === "a" && el.hasAttribute("href")) {
+      semantic.href = cleanUrl((el as HTMLAnchorElement).href);
+    }
     const alt = el.getAttribute("alt");
     if (alt !== null && alt !== "") semantic.alt = alt;
     return semantic;
@@ -515,7 +518,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       ...base,
       kind: "placeholder",
       placeholderKind,
-      ...(sourceUrl ? { sourceUrl } : {}),
+      ...(sourceUrl ? { sourceUrl: cleanUrl(sourceUrl) } : {}),
     };
   }
 
@@ -608,12 +611,13 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         const node: ImageNode = {
           ...common,
           kind: "image",
-          ...(sourceUrl ? { sourceUrl } : {}),
+          ...(sourceUrl ? { sourceUrl: cleanUrl(sourceUrl) } : {}),
           fit,
           objectPosition: s.objectPosition,
           borders: readBorders(s),
           borderRadius: readRadii(s, box.w, box.h),
         };
+        if (sourceUrl) rememberUrl(node, sourceUrl);
         return [node];
       }
     }
@@ -674,7 +678,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         if (!/(^|,)\s*(:root|html)\s*(,|$)/.test(rule.selectorText)) continue;
         for (const name of Array.from(rule.style)) {
           if (name.startsWith("--")) {
-            cssCustomProperties[name] = rule.style.getPropertyValue(name).trim();
+            cssCustomProperties[name] = cleanCss(rule.style.getPropertyValue(name).trim());
           }
         }
       }
@@ -692,7 +696,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     capturedAt: env.now(),
     tool: { name: "frottage", version: env.toolVersion },
     source: {
-      url: win.location.href,
+      url: cleanUrl(win.location.href),
       title: doc.title,
       viewport: { w: root.clientWidth, h: root.clientHeight },
       scrollSize: { w: root.scrollWidth, h: root.scrollHeight },

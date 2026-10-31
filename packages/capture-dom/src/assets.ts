@@ -7,7 +7,7 @@ import type {
 } from "@repo/capture-schema";
 // The hash module has no Zod, so this file can run in the page's isolated world.
 import { sha256Hex } from "@repo/capture-schema/hash";
-import { dataUrlOf, resetDataUrls, shortDataUrl } from "./data-urls";
+import { cleanCss, cleanText, cleanUrl, firstUrlInCss, fullUrlOf, resetUrls } from "./urls";
 
 type Warning = Capture["warnings"][number];
 type Layer = ElementNode["style"]["backgroundImages"][number];
@@ -55,17 +55,6 @@ class Failure extends Error {
   }
 }
 
-const URL_IN_CSS = /url\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^)\s]*))\s*\)/;
-
-/** The first url() in a computed `background-image` layer, or null (gradients, unparsable image-set). */
-function urlOfLayer(layer: Layer): string | null {
-  const full = dataUrlOf(layer);
-  if (full) return full;
-  const m = URL_IN_CSS.exec(layer.css);
-  const raw = m?.[1] ?? m?.[2] ?? m?.[3];
-  return raw ? raw.replace(/\\(.)/g, "$1") : null;
-}
-
 type Ref =
   | { kind: "image"; url: string; node: ImageNode; list: CaptureNode[]; index: number }
   | { kind: "background"; url: string | null; element: ElementNode; layer: Layer };
@@ -78,14 +67,16 @@ function gather(root: CaptureNode): Ref[] {
     if (node.kind === "element") {
       for (const layer of node.style.backgroundImages) {
         if (layer.type === "image" && !layer.assetHash) {
-          refs.push({ kind: "background", url: urlOfLayer(layer), element: node, layer });
+          const url = fullUrlOf(layer) ?? firstUrlInCss(layer.css);
+          layer.css = cleanCss(layer.css);
+          refs.push({ kind: "background", url, element: node, layer });
         }
       }
       node.children.forEach((child, index) => {
         if (child.kind === "image" && child.sourceUrl && !child.assetHash) {
           refs.push({
             kind: "image",
-            url: child.sourceUrl,
+            url: fullUrlOf(child) ?? child.sourceUrl,
             node: child,
             list: node.children,
             index,
@@ -96,7 +87,7 @@ function gather(root: CaptureNode): Ref[] {
         stack.push(node.children[i] as CaptureNode);
     }
     if ("sourceUrl" in node && typeof node.sourceUrl === "string") {
-      node.sourceUrl = shortDataUrl(node.sourceUrl);
+      node.sourceUrl = cleanUrl(node.sourceUrl);
     }
   }
   return refs;
@@ -136,7 +127,7 @@ export async function collectAssets(capture: Capture, deps: AssetDeps): Promise<
   try {
     return await collect(capture, deps);
   } finally {
-    resetDataUrls();
+    resetUrls();
   }
 }
 
@@ -221,7 +212,7 @@ async function collect(capture: Capture, deps: AssetDeps): Promise<AssetResult> 
     else warnings.set(code, { first: { code, nodeId, detail }, count: 1 });
   };
   const lost = (id: string, url: string | null, r: Extract<Loaded, { ok: false }>) => {
-    const what = url ? shortDataUrl(url) : "an image-set";
+    const what = url ? cleanUrl(url) : "an image-set";
     if (r.code === "asset-limit")
       warn(
         "asset-limit",
@@ -229,8 +220,8 @@ async function collect(capture: Capture, deps: AssetDeps): Promise<AssetResult> 
         `The ${Math.floor(budget / 1048576)} MiB image limit was reached; ${what} was not captured`
       );
     else if (r.code === "image-blocked")
-      warn("image-blocked", id, `Could not read ${what}: ${r.detail}`);
-    else warn("image-failed", id, `Could not decode ${what}: ${r.detail}`);
+      warn("image-blocked", id, `Could not read ${what}: ${cleanText(r.detail)}`);
+    else warn("image-failed", id, `Could not decode ${what}: ${cleanText(r.detail)}`);
   };
 
   const dropped = new Set<Layer>();
@@ -248,7 +239,7 @@ async function collect(capture: Capture, deps: AssetDeps): Promise<AssetResult> 
       dropped.add(ref.layer);
       if (r?.code === "asset-limit") lost(ref.element.id, ref.url, r);
       else {
-        const why = r ? r.detail : "it has no usable URL";
+        const why = r ? cleanText(r.detail) : "it has no usable URL";
         warn("background-image-dropped", ref.element.id, `A background image was left out: ${why}`);
       }
     }
@@ -274,7 +265,7 @@ async function collect(capture: Capture, deps: AssetDeps): Promise<AssetResult> 
       mime: r.n.mime,
       width: r.n.width,
       height: r.n.height,
-      sourceUrl: shortDataUrl(url),
+      sourceUrl: cleanUrl(url),
       ...(r.n.downscaledFrom ? { downscaledFrom: r.n.downscaledFrom } : {}),
     });
   }

@@ -1,6 +1,6 @@
 import type { ElementNode } from "@repo/capture-schema";
 import { parseComputedColor, type Rgba } from "./color";
-import { rememberDataUrl, shortenDataUrls } from "./data-urls";
+import { cleanCss, firstUrlInCss, rememberUrl, shortenDataUrls } from "./urls";
 
 type Style = ElementNode["style"];
 type Layout = ElementNode["layout"];
@@ -98,7 +98,8 @@ export function parseBackgroundImages(cs: CSSStyleDeclaration): BackgroundImage[
   const repeats = splitTop(cs.backgroundRepeat);
   const out: BackgroundImage[] = [];
   // Data URLs are swapped for short tokens first: they can be megabytes and must not be kept
-  // in `css` (repeated per element) nor split character by character.
+  // in `css` (repeated per element) nor split character by character. Only the image layer's
+  // cleaned form is stored; `collectAssets` reads the whole URL from memory.
   const shortened = shortenDataUrls(value);
   splitTop(shortened.text).forEach((rawLayer, i) => {
     const pick = (list: string[]) => list[i % Math.max(list.length, 1)];
@@ -139,8 +140,9 @@ export function parseBackgroundImages(cs: CSSStyleDeclaration): BackgroundImage[
         ...(stops ? { stops } : {}),
       });
     } else if (layer.startsWith("url(") || layer.startsWith("image-set(")) {
-      const entry: BackgroundImage = { type: "image", ...base };
-      if (full !== undefined) rememberDataUrl(entry, full);
+      const entry: BackgroundImage = { type: "image", ...base, css: cleanCss(layer) };
+      const url = full ?? firstUrlInCss(layer);
+      if (url) rememberUrl(entry, url);
       out.push(entry);
     }
   });
@@ -170,7 +172,7 @@ export function parseBoxShadows(value: string): Shadow[] {
 
 export function parseFilters(value: string): string[] {
   if (!value || value === "none") return [];
-  return splitTop(value, " ");
+  return splitTop(value, " ").map(cleanCss);
 }
 
 function border(cs: CSSStyleDeclaration, side: "Top" | "Right" | "Bottom" | "Left"): Border {
@@ -221,7 +223,7 @@ export function readStyle(cs: CSSStyleDeclaration, w: number, h: number): Style 
     overflow: overflowX === overflowY ? overflowX : `${overflowX} ${overflowY}`,
   };
   const backdrop = cs.getPropertyValue("backdrop-filter");
-  if (backdrop && backdrop !== "none") style.backdropFilter = backdrop;
+  if (backdrop && backdrop !== "none") style.backdropFilter = cleanCss(backdrop);
   return style;
 }
 

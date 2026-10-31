@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Capture, CaptureNode } from "@repo/capture-schema";
 import { collectAssets } from "../assets";
+import { rememberUrl } from "../urls";
 
 const box = { x: 0, y: 0, w: 10, h: 10 };
 const common = (id: string) => ({
@@ -72,6 +73,42 @@ describe("collectAssets", () => {
         sourceUrl: "http://x/a.png",
       },
     ]);
+  });
+
+  test("a URL held in memory is fetched in full and stored clean", async () => {
+    const node = img("a", "http://x/a.png");
+    rememberUrl(node, "http://x/a.png?token=abc#frag");
+    const fetched: string[] = [];
+    const r = await collectAssets(make([node]), {
+      fetchBytes: async (url) => {
+        fetched.push(url);
+        return blobOf(png(1));
+      },
+      normalise: okNormalise,
+    });
+    expect(fetched).toEqual(["http://x/a.png?token=abc#frag"]);
+    expect(r.capture.assets[0]?.sourceUrl).toBe("http://x/a.png");
+    expect(JSON.stringify(r.capture)).not.toContain("token");
+  });
+
+  test("placeholders, assets, warnings and layers never keep a token", async () => {
+    const c = make(
+      [img("a", "https://u:p@x/a.png?token=abc"), img("b", "https://x/b.png?token=abc")],
+      ['url("https://x/bg.png?token=abc")']
+    );
+    const r = await collectAssets(c, {
+      fetchBytes: async (url) => {
+        if (url.includes("/a.png")) throw new Error(`blocked ${url}`);
+        if (url.includes("/bg.png")) throw new Error(`blocked ${url}`);
+        return blobOf(png(1));
+      },
+      normalise: okNormalise,
+    });
+    const json = JSON.stringify(r.capture);
+    expect(json).not.toContain("token");
+    expect(json).not.toContain("u:p@");
+    expect(kids(r.capture)[0]).toMatchObject({ sourceUrl: "https://x/a.png" });
+    expect(r.capture.assets[0]?.sourceUrl).toBe("https://x/b.png");
   });
 
   test("two URLs with identical bytes share one asset", async () => {
