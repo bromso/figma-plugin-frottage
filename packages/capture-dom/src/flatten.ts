@@ -3,18 +3,41 @@ import type { CaptureEnv } from "./walk";
 const isSlot = (n: Node): n is HTMLSlotElement =>
   n.nodeType === 1 && (n as Element).localName === "slot";
 
+/**
+ * Elements whose shadow root, if any, belongs to the browser (the inner editor of an input, the
+ * controls of a video). Their roots are never read, whatever the environment's getShadowRoot
+ * returns, so privacy does not depend on how the browser treats user-agent roots.
+ */
+const NON_AUTHOR_HOSTS = new Set([
+  "input",
+  "textarea",
+  "select",
+  "option",
+  "video",
+  "audio",
+  "img",
+  "canvas",
+  "iframe",
+  "meter",
+  "progress",
+  "details",
+  "summary",
+]);
+
 /** The shadow root of an element, open or closed when the environment can reach closed ones. */
 export function shadowRootOf(el: Element, env: CaptureEnv): ShadowRoot | null {
+  if (NON_AUTHOR_HOSTS.has(el.localName)) return null;
   return env.getShadowRoot?.(el) ?? el.shadowRoot ?? null;
 }
 
-/** What a slot shows: the nodes assigned to it (through nested slots too), else its own fallback. */
+/** What a slot shows: the nodes assigned to it (a nested slot is resolved by `expand`), else its own fallback. */
 function slotContents(
   slot: HTMLSlotElement,
   keepSlot: ((slot: Element) => boolean) | undefined
 ): Node[] {
-  const assigned = slot.assignedNodes({ flatten: true });
-  return assigned.length > 0 ? assigned : expand(Array.from(slot.childNodes), keepSlot);
+  // Not `flatten: true`: that would look through a nested slot whatever its own display is.
+  const assigned = slot.assignedNodes();
+  return expand(assigned.length > 0 ? assigned : Array.from(slot.childNodes), keepSlot);
 }
 
 function expand(nodes: Iterable<Node>, keepSlot: ((slot: Element) => boolean) | undefined): Node[] {

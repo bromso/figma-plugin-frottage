@@ -554,3 +554,53 @@ test("never reads .value inside a shadow root", async ({ page }) => {
   });
   expect(reads).toBe(0);
 });
+
+test("a user-agent host's shadow root is never read, whatever getShadowRoot returns", async ({
+  page,
+}) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/form.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML("beforeend", "<details><summary>More</summary>Body</details>");
+  });
+  await page.addScriptTag({ content: bundle });
+  const { reads, json } = await page.evaluate(() => {
+    let reads = 0;
+    const stub = (tag: string) => ({
+      get childNodes() {
+        reads++;
+        const t = document.createTextNode(`UA-ROOT-MARKER-${tag}`);
+        return [t];
+      },
+    });
+    const hosts = ["input", "textarea", "select", "video", "details"];
+    const c = (globalThis as unknown as Hook).__frottageCapture.captureDocument(document, {
+      now: () => "x",
+      toolVersion: "t",
+      getShadowRoot: (el) =>
+        hosts.includes(el.localName) ? (stub(el.localName) as unknown as ShadowRoot) : null,
+    });
+    return { reads, json: JSON.stringify(c) };
+  });
+  expect(reads).toBe(0);
+  expect(json).not.toContain("UA-ROOT-MARKER");
+});
+
+test("a nested slot with display: none does not reveal its content", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/shadow.html");
+  await page.evaluate(() => {
+    // O's shadow root slots a hidden slot into A's slot; flattening would look through it.
+    const o = document.createElement("div");
+    const a = document.createElement("div");
+    a.attachShadow({ mode: "open" }).innerHTML = "<p>Outer start</p><div><slot></slot></div>";
+    a.innerHTML = '<slot style="display:none"></slot>';
+    o.attachShadow({ mode: "open" }).appendChild(a);
+    o.innerHTML = "<span>HIDDEN-SLOTTED</span>";
+    document.body.appendChild(o);
+  });
+  await page.addScriptTag({ content: bundle });
+  const t = textOf(await runCapture(page, "x"));
+  expect(t).toContain("Outer start");
+  expect(t).not.toContain("HIDDEN-SLOTTED");
+});
