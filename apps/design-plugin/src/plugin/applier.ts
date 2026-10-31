@@ -269,7 +269,8 @@ export function createApplier(api: PluginAPI) {
         // Half a line of slack, so the check counts lines and ignores rounding.
         const slack = lineHeight / 2;
         node.textAutoResize = "HEIGHT";
-        node.resize(clampSize(op.w), clampSize(op.h));
+        // Keep the current height: a different one switches HEIGHT mode to NONE.
+        node.resize(clampSize(op.w), clampSize(node.height));
         let added = 0;
         for (let step = 1; node.height > expected + slack && step <= MAX_WIDEN_STEPS; step++) {
           added = (op.w * step) / 100;

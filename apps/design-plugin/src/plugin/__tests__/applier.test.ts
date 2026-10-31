@@ -630,3 +630,15 @@ test("the line check counts lines, not pixels, for long paragraphs with fraction
   expect(textNodeOf(f).width).toBe(50);
   expect(r.rewrappedTexts).toBe(0);
 });
+
+test("wrapped text ends in HEIGHT mode with the captured line count, even when h differs", async () => {
+  const f = fakeFigma({ charWidth: 10 });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), wrapped({ h: 99 })]);
+  const r = await a.end();
+  const t = textNodeOf(f);
+  expect(t.textAutoResize).toBe("HEIGHT");
+  expect(t.height).toBe(24);
+  expect(r.rewrappedTexts).toBe(0);
+});

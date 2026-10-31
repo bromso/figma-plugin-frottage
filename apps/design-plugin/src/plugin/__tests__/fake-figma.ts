@@ -196,6 +196,8 @@ export function fakeFigma(opts: Options = {}) {
       });
       const baseResize = t.resize;
       t.resize = (w: number, h: number) => {
+        // As in real Figma, a height that differs from the current one drops HEIGHT mode.
+        if (autoResize === "HEIGHT" && Math.abs(h - t.height) > 1e-9) autoResize = "NONE";
         baseResize(w, h);
         layout();
       };
