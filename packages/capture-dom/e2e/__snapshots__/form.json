@@ -756,40 +756,98 @@
          "grow": 0,
          "shrink": 1
         },
-        "children": [
-         {
-          "id": "n10",
-          "kind": "text",
-          "paintOrder": 10,
-          "visible": true,
-          "opacity": 1,
-          "blendMode": "normal",
-          "semantic": {
-           "tag": "input"
+        "children": []
+       },
+       {
+        "id": "n10",
+        "paintOrder": 10,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "input"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 1,
+          "g": 1,
+          "b": 1,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
           },
-          "text": "Password",
-          "runs": [
-           {
-            "start": 0,
-            "end": 8,
-            "weight": 400,
-            "style": "normal",
-            "size": 14,
-            "lineHeight": 19.6,
-            "letterSpacing": 0,
-            "color": {
-             "r": 0,
-             "g": 0,
-             "b": 0,
-             "a": 0.5
-            },
-            "decoration": "none",
-            "transform": "none",
-            "align": "left"
-           }
-          ]
-         }
-        ]
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          6,
+          6,
+          6,
+          6
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "clip"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          10,
+          6,
+          10
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": []
        },
        {
         "id": "n11",
@@ -880,44 +938,11 @@
          "grow": 0,
          "shrink": 1
         },
-        "children": [
-         {
-          "id": "n12",
-          "kind": "text",
-          "paintOrder": 12,
-          "visible": true,
-          "opacity": 1,
-          "blendMode": "normal",
-          "semantic": {
-           "tag": "input"
-          },
-          "text": "Card number",
-          "runs": [
-           {
-            "start": 0,
-            "end": 11,
-            "weight": 400,
-            "style": "normal",
-            "size": 14,
-            "lineHeight": 19.6,
-            "letterSpacing": 0,
-            "color": {
-             "r": 0,
-             "g": 0,
-             "b": 0,
-             "a": 0.5
-            },
-            "decoration": "none",
-            "transform": "none",
-            "align": "left"
-           }
-          ]
-         }
-        ]
+        "children": []
        },
        {
-        "id": "n13",
-        "paintOrder": 13,
+        "id": "n12",
+        "paintOrder": 12,
         "visible": true,
         "opacity": 1,
         "blendMode": "normal",
@@ -1004,7 +1029,40 @@
          "grow": 0,
          "shrink": 1
         },
-        "children": []
+        "children": [
+         {
+          "id": "n13",
+          "kind": "text",
+          "paintOrder": 13,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "input"
+          },
+          "text": "Password",
+          "runs": [
+           {
+            "start": 0,
+            "end": 8,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 19.6,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.5
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
        },
        {
         "id": "n14",
@@ -1013,7 +1071,7 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "select"
+         "tag": "input"
         },
         "kind": "element",
         "style": {
@@ -1104,6 +1162,221 @@
           "opacity": 1,
           "blendMode": "normal",
           "semantic": {
+           "tag": "input"
+          },
+          "text": "Card number",
+          "runs": [
+           {
+            "start": 0,
+            "end": 11,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 19.6,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.5
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n16",
+        "paintOrder": 16,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "input"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 1,
+          "g": 1,
+          "b": 1,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          6,
+          6,
+          6,
+          6
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "clip"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          10,
+          6,
+          10
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": []
+       },
+       {
+        "id": "n17",
+        "paintOrder": 17,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "select"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 1,
+          "g": 1,
+          "b": 1,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          6,
+          6,
+          6,
+          6
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "clip"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          10,
+          6,
+          10
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n18",
+          "kind": "text",
+          "paintOrder": 18,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
            "tag": "select"
           },
           "text": "Second option",
@@ -1131,8 +1404,8 @@
         ]
        },
        {
-        "id": "n16",
-        "paintOrder": 16,
+        "id": "n19",
+        "paintOrder": 19,
         "visible": true,
         "opacity": 1,
         "blendMode": "normal",
@@ -1221,9 +1494,9 @@
         },
         "children": [
          {
-          "id": "n17",
+          "id": "n20",
           "kind": "text",
-          "paintOrder": 17,
+          "paintOrder": 20,
           "visible": true,
           "opacity": 1,
           "blendMode": "normal",
@@ -1255,8 +1528,8 @@
         ]
        },
        {
-        "id": "n18",
-        "paintOrder": 18,
+        "id": "n21",
+        "paintOrder": 21,
         "visible": true,
         "opacity": 1,
         "blendMode": "normal",
@@ -1345,9 +1618,9 @@
         },
         "children": [
          {
-          "id": "n19",
+          "id": "n22",
           "kind": "text",
-          "paintOrder": 19,
+          "paintOrder": 22,
           "visible": true,
           "opacity": 1,
           "blendMode": "normal",
@@ -1379,8 +1652,8 @@
         ]
        },
        {
-        "id": "n20",
-        "paintOrder": 20,
+        "id": "n23",
+        "paintOrder": 23,
         "visible": true,
         "opacity": 1,
         "blendMode": "normal",
@@ -1469,9 +1742,9 @@
         },
         "children": [
          {
-          "id": "n21",
+          "id": "n24",
           "kind": "text",
-          "paintOrder": 21,
+          "paintOrder": 24,
           "visible": true,
           "opacity": 1,
           "blendMode": "normal",
@@ -1503,8 +1776,8 @@
         ]
        },
        {
-        "id": "n22",
-        "paintOrder": 22,
+        "id": "n25",
+        "paintOrder": 25,
         "visible": true,
         "opacity": 1,
         "blendMode": "normal",
@@ -1593,8 +1866,8 @@
         },
         "children": [
          {
-          "id": "n23",
-          "paintOrder": 23,
+          "id": "n26",
+          "paintOrder": 26,
           "visible": true,
           "opacity": 1,
           "blendMode": "normal",
@@ -1683,9 +1956,9 @@
           },
           "children": [
            {
-            "id": "n24",
+            "id": "n27",
             "kind": "text",
-            "paintOrder": 24,
+            "paintOrder": 27,
             "visible": true,
             "opacity": 1,
             "blendMode": "normal",

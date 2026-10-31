@@ -175,6 +175,39 @@ test("never captures a password or hidden text", async ({ page }) => {
   expect(json).toContain("Second option");
 });
 
+test("a secret field keeps its box and style, with no text", async ({ page }) => {
+  const c = await capture(page, "form.html");
+  const inputs: Extract<CaptureNode, { kind: "element" }>[] = [];
+  each(c, (n) => {
+    if (n.kind === "element" && n.semantic.tag === "input") inputs.push(n);
+  });
+  // #u, #e, #p, #p2, #p3, #pw, #card, #attr; only the hidden input is left out.
+  expect(inputs).toHaveLength(8);
+  const empty = inputs.filter((n) => n.children.length === 0);
+  // #p, #p2, #p3 are secret, and #attr has a value but no placeholder.
+  expect(empty).toHaveLength(4);
+  for (const n of empty) {
+    expect(n.box).toMatchObject({ w: 320, h: 36 });
+    expect(n.style.borders.top.width).toBe(1);
+    expect(n.style.borderRadius[0]).toBe(6);
+  }
+});
+
+test("a password field's placeholder is not read", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/form.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<input type="password" placeholder="PASSWORD-PLACEHOLDER"><select autocomplete="cc-exp"><option>CARD-EXPIRY</option></select>'
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const json = JSON.stringify(await runCapture(page, "x"));
+  expect(json).not.toContain("PASSWORD-PLACEHOLDER");
+  expect(json).not.toContain("CARD-EXPIRY");
+});
+
 test("never reads .value on a password, text-like input or textarea", async ({ page }) => {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
   await page.goto("/form.html");

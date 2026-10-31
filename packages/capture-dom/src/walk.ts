@@ -100,9 +100,9 @@ const SECRET_AUTOCOMPLETE =
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
- * Whether a field must never be read. Looks at attributes only, never at `value`.
- * Password inputs are skipped outright, as are fields that declare a password,
- * one-time-code or card secret through `autocomplete`.
+ * Whether a field's content must never be read. Looks at attributes only, never at `value`.
+ * True for password inputs and for fields that declare a password, one-time-code or card secret
+ * through `autocomplete`. Such a field is captured as an empty box.
  */
 function isSecretField(el: Element): boolean {
   const tag = el.localName;
@@ -551,7 +551,6 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   function visit(el: Element, depth: number, isRoot: boolean): CaptureNode[] {
     if (IGNORED_TAGS.has(el.localName)) return [];
-    if (isSecretField(el)) return []; // never read, never emitted
     if (el instanceof win.HTMLInputElement && el.type === "hidden") return [];
     const s = cs(el);
     if (s.display === "none") return [];
@@ -639,7 +638,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
     const leafControl = tag === "input" || tag === "textarea" || tag === "select";
     if (leafControl) {
-      if (depth < MAX_DEPTH) {
+      // A secret field keeps its box and style; nothing inside it is read.
+      if (depth < MAX_DEPTH && !isSecretField(el)) {
         const t = controlNode(el, s, box);
         if (t) element.children.push(t);
       }
