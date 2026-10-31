@@ -17,6 +17,13 @@ const border = z.object({
   style: z.string(),
 });
 
+const borders = z.object({
+  top: border,
+  right: border,
+  bottom: border,
+  left: border,
+});
+
 const stop = z.object({ color, position: z.number() });
 
 const backgroundImage = z.object({
@@ -42,12 +49,7 @@ const boxShadow = z.object({
 const style = z.object({
   backgroundColor: color,
   backgroundImages: z.array(backgroundImage),
-  borders: z.object({
-    top: border,
-    right: border,
-    bottom: border,
-    left: border,
-  }),
+  borders,
   // [topLeft, topRight, bottomRight, bottomLeft]
   borderRadius: four,
   boxShadows: z.array(boxShadow),
@@ -126,6 +128,9 @@ const imageNode = z.object({
   sourceUrl: z.string().optional(),
   fit: z.enum(["cover", "contain", "fill", "none", "tile"]),
   objectPosition: z.string(),
+  borders,
+  // [topLeft, topRight, bottomRight, bottomLeft]
+  borderRadius: four,
 });
 
 const svgNode = z.object({

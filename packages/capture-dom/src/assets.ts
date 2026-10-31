@@ -103,7 +103,16 @@ function gather(root: CaptureNode): Ref[] {
 }
 
 function toPlaceholder(node: ImageNode): PlaceholderNode {
-  const { kind: _k, assetHash: _a, fit: _f, objectPosition: _o, sourceUrl, ...rest } = node;
+  const {
+    kind: _k,
+    assetHash: _a,
+    fit: _f,
+    objectPosition: _o,
+    borders: _b,
+    borderRadius: _r,
+    sourceUrl,
+    ...rest
+  } = node;
   return {
     ...rest,
     kind: "placeholder",

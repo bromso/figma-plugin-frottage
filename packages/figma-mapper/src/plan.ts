@@ -81,6 +81,10 @@ export type PlanOp =
       h: number;
       hash: string;
       fit: "FILL" | "FIT" | "CROP" | "TILE";
+      opacity: number;
+      /** [topLeft, topRight, bottomRight, bottomLeft]. */
+      radius: [number, number, number, number];
+      strokes: PlanStroke | null;
     }
   | {
       op: "placeholder";
@@ -91,6 +95,7 @@ export type PlanOp =
       y: number;
       w: number;
       h: number;
+      opacity: number;
       label: string;
     };
 

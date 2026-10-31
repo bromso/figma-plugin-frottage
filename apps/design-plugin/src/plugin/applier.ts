@@ -1,4 +1,11 @@
-import type { FontRef, PlanEffect, PlanOp, PlanPaint, PlanRun } from "@repo/figma-mapper";
+import type {
+  FontRef,
+  PlanEffect,
+  PlanOp,
+  PlanPaint,
+  PlanRun,
+  PlanStroke,
+} from "@repo/figma-mapper";
 
 /**
  * Turns plan ops into Figma layers. Runs in the plugin sandbox. Only types come
@@ -7,6 +14,8 @@ import type { FontRef, PlanEffect, PlanOp, PlanPaint, PlanRun } from "@repo/figm
 
 export type ImportMeta = { name: string; fonts: FontRef[]; totalOps: number };
 export type EndResult = { rootId: string; failedOps: number; missingImages: number };
+
+type Corners = [number, number, number, number];
 
 const FALLBACK: FontRef = { family: "Inter", style: "Regular" };
 const GAP = 100;
@@ -163,23 +172,29 @@ export function createApplier(api: PluginAPI) {
 
   const validWeight = (n: number) => Number.isFinite(n) && n >= 0;
 
+  function setRadius(node: FrameNode | RectangleNode, radius: Corners) {
+    node.topLeftRadius = radius[0];
+    node.topRightRadius = radius[1];
+    node.bottomRightRadius = radius[2];
+    node.bottomLeftRadius = radius[3];
+  }
+
+  function setStroke(node: FrameNode | RectangleNode, s: PlanStroke | null) {
+    if (!s || !Object.values(s.weights).every(validWeight)) return;
+    node.strokes = [{ type: "SOLID", color: s.color, opacity: s.opacity }];
+    node.strokeAlign = "INSIDE";
+    node.strokeTopWeight = s.weights.top;
+    node.strokeRightWeight = s.weights.right;
+    node.strokeBottomWeight = s.weights.bottom;
+    node.strokeLeftWeight = s.weights.left;
+  }
+
   function buildFrame(op: Extract<PlanOp, { op: "frame" }>, parent: FrameNode | null) {
     const node = newFrame(parent, op.name, op.w, op.h);
     node.clipsContent = op.clips;
     node.fills = paints(op.fills);
-    node.topLeftRadius = op.radius[0];
-    node.topRightRadius = op.radius[1];
-    node.bottomRightRadius = op.radius[2];
-    node.bottomLeftRadius = op.radius[3];
-    const s = op.strokes;
-    if (s && Object.values(s.weights).every(validWeight)) {
-      node.strokes = [{ type: "SOLID", color: s.color, opacity: s.opacity }];
-      node.strokeAlign = "INSIDE";
-      node.strokeTopWeight = s.weights.top;
-      node.strokeRightWeight = s.weights.right;
-      node.strokeBottomWeight = s.weights.bottom;
-      node.strokeLeftWeight = s.weights.left;
-    }
+    setRadius(node, op.radius);
+    setStroke(node, op.strokes);
     node.effects = effects(op.effects);
     node.opacity = op.opacity;
     // The import root is placed by the applier, not at its captured offset.
@@ -236,6 +251,8 @@ export function createApplier(api: PluginAPI) {
           missingImages++;
           const node = newFrame(parent, `Image (missing): ${op.name}`, op.w, op.h);
           node.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 }, opacity: 0.08 }];
+          setRadius(node, op.radius);
+          node.opacity = op.opacity;
           node.x = op.x;
           node.y = op.y;
           return node;
@@ -246,6 +263,9 @@ export function createApplier(api: PluginAPI) {
         node.name = op.name;
         node.resize(clampSize(op.w), clampSize(op.h));
         node.fills = [{ type: "IMAGE", imageHash, scaleMode: op.fit === "CROP" ? "FILL" : op.fit }];
+        setRadius(node, op.radius);
+        setStroke(node, op.strokes);
+        node.opacity = op.opacity;
         node.x = op.x;
         node.y = op.y;
         return node;
@@ -253,6 +273,7 @@ export function createApplier(api: PluginAPI) {
       case "placeholder": {
         const node = newFrame(parent, op.label, op.w, op.h);
         node.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 }, opacity: 0.08 }];
+        node.opacity = op.opacity;
         node.x = op.x;
         node.y = op.y;
         return node;

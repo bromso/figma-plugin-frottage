@@ -12,12 +12,15 @@ const common = (id: string) => ({
   blendMode: "normal",
   semantic: { tag: "img" },
 });
+const side = { width: 0, color: { r: 0, g: 0, b: 0, a: 0 }, style: "none" };
 const img = (id: string, sourceUrl: string): CaptureNode => ({
   ...common(id),
   kind: "image",
   sourceUrl,
   fit: "fill",
   objectPosition: "50% 50%",
+  borderRadius: [0, 0, 0, 0],
+  borders: { top: side, right: side, bottom: side, left: side },
 });
 const el = (id: string, children: CaptureNode[], bgCss: string[] = []): CaptureNode =>
   ({

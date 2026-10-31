@@ -15,6 +15,11 @@ const black = { r: 0, g: 0, b: 0, a: 1 };
 const none = { r: 0, g: 0, b: 0, a: 0 };
 const noBorder = { width: 0, color: none, style: "none" };
 
+export const imageStyle = {
+  borderRadius: [0, 0, 0, 0],
+  borders: { top: noBorder, right: noBorder, bottom: noBorder, left: noBorder },
+};
+
 export function elementNode(id: string, children: CaptureNode[] = []): CaptureNode {
   return {
     ...common,

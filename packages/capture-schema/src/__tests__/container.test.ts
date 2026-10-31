@@ -10,7 +10,7 @@ import {
   parseCapture,
   unpackFrottage,
 } from "../index";
-import { elementNode, minimalCapture, textNode, treeOfThree } from "./fixtures";
+import { elementNode, imageStyle, minimalCapture, textNode, treeOfThree } from "./fixtures";
 
 const SLICE = 16 * 1024;
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
@@ -34,6 +34,7 @@ function packRaw(json: unknown): Uint8Array {
 function captureUsingAsset(hash: string): Capture {
   const image = {
     ...textNode("img"),
+    ...imageStyle,
     kind: "image",
     fit: "cover",
     objectPosition: "50% 50%",
@@ -410,6 +411,7 @@ describe("parseCapture", () => {
     const base = textNode("t") as unknown as Record<string, unknown>;
     const image = {
       ...base,
+      ...imageStyle,
       id: "i",
       kind: "image",
       fit: "cover",

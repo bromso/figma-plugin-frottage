@@ -13,6 +13,10 @@ export const inter: FontRef[] = [
 const clear = { r: 0, g: 0, b: 0, a: 0 };
 const black = { r: 0, g: 0, b: 0, a: 1 };
 const side = { width: 0, color: clear, style: "none" };
+export const imageStyle = {
+  borderRadius: [0, 0, 0, 0] as [number, number, number, number],
+  borders: { top: side, right: side, bottom: side, left: side },
+};
 
 export function el(
   id: string,
@@ -172,5 +176,6 @@ export const anyOp: PlanOp = {
   y: 0,
   w: 1,
   h: 1,
+  opacity: 1,
   label: "x",
 };

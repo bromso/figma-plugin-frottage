@@ -187,7 +187,7 @@ function border(cs: CSSStyleDeclaration, side: "Top" | "Right" | "Bottom" | "Lef
 }
 
 /** Corner radii in px, order TL, TR, BR, BL. Percentages resolve against the box. */
-function radii(cs: CSSStyleDeclaration, w: number, h: number): Style["borderRadius"] {
+export function readRadii(cs: CSSStyleDeclaration, w: number, h: number): Style["borderRadius"] {
   const one = (prop: string) => {
     const first = (cs.getPropertyValue(prop).split(/\s+/)[0] ?? "0").trim();
     const n = px(first);
@@ -201,19 +201,21 @@ function radii(cs: CSSStyleDeclaration, w: number, h: number): Style["borderRadi
   ];
 }
 
+export const readBorders = (cs: CSSStyleDeclaration): Style["borders"] => ({
+  top: border(cs, "Top"),
+  right: border(cs, "Right"),
+  bottom: border(cs, "Bottom"),
+  left: border(cs, "Left"),
+});
+
 export function readStyle(cs: CSSStyleDeclaration, w: number, h: number): Style {
   const overflowX = cs.overflowX;
   const overflowY = cs.overflowY;
   const style: Style = {
     backgroundColor: colorOf(cs.backgroundColor),
     backgroundImages: parseBackgroundImages(cs),
-    borders: {
-      top: border(cs, "Top"),
-      right: border(cs, "Right"),
-      bottom: border(cs, "Bottom"),
-      left: border(cs, "Left"),
-    },
-    borderRadius: radii(cs, w, h),
+    borders: readBorders(cs),
+    borderRadius: readRadii(cs, w, h),
     boxShadows: parseBoxShadows(cs.boxShadow),
     filters: parseFilters(cs.filter),
     overflow: overflowX === overflowY ? overflowX : `${overflowX} ${overflowY}`,

@@ -7,7 +7,15 @@ import type {
   TextNode,
 } from "@repo/capture-schema";
 import type { Rgba } from "./color";
-import { colorOf, px, readLayout, readStyle, readTransform } from "./styles";
+import {
+  colorOf,
+  px,
+  readBorders,
+  readLayout,
+  readRadii,
+  readStyle,
+  readTransform,
+} from "./styles";
 
 export type CaptureEnv = {
   now: () => string;
@@ -603,6 +611,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
           ...(sourceUrl ? { sourceUrl } : {}),
           fit,
           objectPosition: s.objectPosition,
+          borders: readBorders(s),
+          borderRadius: readRadii(s, box.w, box.h),
         };
         return [node];
       }

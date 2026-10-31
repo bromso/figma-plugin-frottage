@@ -283,6 +283,30 @@ test("overflow on html and body reaches the viewport, so neither clips the page"
   expect(card?.semantic.tag).toBe("div");
 });
 
+test("images keep opacity, radius and border", async ({ page }) => {
+  const c = await capture(page, "image-style.html");
+  const image = (alt: string) => {
+    let hit: Extract<CaptureNode, { kind: "image" }> | undefined;
+    each(c, (n) => {
+      if (n.kind === "image" && n.semantic.alt === alt) hit = n;
+    });
+    if (!hit) throw new Error(`no image ${alt}`);
+    return hit;
+  };
+  expect(image("hidden").opacity).toBe(0);
+  expect(image("half").opacity).toBe(0.5);
+  const avatar = image("avatar");
+  expect(avatar.borderRadius).toEqual([54, 54, 54, 54]);
+  expect(avatar.borders.top).toEqual({
+    width: 4,
+    color: { r: 1, g: 0, b: 0, a: 1 },
+    style: "solid",
+  });
+  expect(image("plain").borderRadius).toEqual([0, 0, 0, 0]);
+  expect(image("plain").borders.left.width).toBe(0);
+  expect(parseCapture(c).ok).toBe(true);
+});
+
 test("records alignment, weight, radius and borders", async ({ page }) => {
   const c = await capture(page, "landing.html");
   expect(findText(c, "Product analytics").runs[0]).toMatchObject({ align: "center", weight: 700 });

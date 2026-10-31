@@ -153,6 +153,8 @@ export async function imageFile(good: boolean): Promise<File> {
       assetHash: key,
       fit: "cover",
       objectPosition: "50% 50%",
+      borderRadius: [0, 0, 0, 0],
+      borders: { top: noBorder, right: noBorder, bottom: noBorder, left: noBorder },
     } as CaptureNode,
   ];
   const bytes = packFrottage(capture, new Map([[key, PNG]]));

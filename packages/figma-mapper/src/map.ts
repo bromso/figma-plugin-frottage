@@ -65,12 +65,12 @@ function mapFills(style: ElementNode["style"], hashes: Set<string>): PlanPaint[]
   return fills;
 }
 
-function mapStroke(style: ElementNode["style"]): PlanStroke | null {
+function mapStroke(borders: ElementNode["style"]["borders"]): PlanStroke | null {
   const sides = ["top", "right", "bottom", "left"] as const;
   const weights = { top: 0, right: 0, bottom: 0, left: 0 };
   const tally = new Map<string, { color: Color; n: number }>();
   for (const s of sides) {
-    const b = style.borders[s];
+    const b = borders[s];
     if (b.width > 0 && b.style !== "none" && b.style !== "hidden" && b.color.a > 0) {
       weights[s] = b.width;
       const key = `${b.color.r},${b.color.g},${b.color.b},${b.color.a}`;
@@ -262,6 +262,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
       y,
       w: node.box.w,
       h: node.box.h,
+      opacity: node.opacity,
       label,
     };
   };
@@ -293,7 +294,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
           w: node.box.w,
           h: node.box.h,
           fills: hidden ? [] : mapFills(s, hashes),
-          strokes: hidden ? null : mapStroke(s),
+          strokes: hidden ? null : mapStroke(s.borders),
           // [topLeft, topRight, bottomRight, bottomLeft], as the walker emits.
           radius: [...s.borderRadius] as [number, number, number, number],
           opacity: node.opacity,
@@ -323,6 +324,9 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
             h: node.box.h,
             hash: node.assetHash,
             fit: imageFit(node.fit),
+            opacity: node.opacity,
+            radius: [...node.borderRadius] as [number, number, number, number],
+            strokes: mapStroke(node.borders),
           };
         } else {
           op = placeholder(

@@ -62,6 +62,9 @@ const imageOp = (hash: string): PlanOp => ({
   h: 10,
   hash,
   fit: "FILL",
+  opacity: 1,
+  radius: [0, 0, 0, 0],
+  strokes: null,
 });
 
 test("applies frames and text in order under one root", async () => {
@@ -176,11 +179,64 @@ test("placeholder op is a faint grey frame named by label", async () => {
       y: 0,
       w: 10,
       h: 10,
+      opacity: 0.5,
       label: "Video",
     },
   ]);
   expect(f.lastFrame().name).toBe("Video");
   expect(f.lastFrame().fills[0].opacity).toBe(0.08);
+  expect(f.lastFrame().opacity).toBe(0.5);
+});
+
+const styled = {
+  opacity: 0.5,
+  radius: [1, 2, 3, 4],
+  strokes: {
+    color: { r: 1, g: 0, b: 0 },
+    opacity: 1,
+    weights: { top: 4, right: 3, bottom: 2, left: 1 },
+  },
+};
+
+test("an image rectangle takes opacity, radius and border", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.addImage("abc", png);
+  await a.applyBatch([frame("a"), { ...imageOp("abc"), ...styled } as PlanOp]);
+  expect(f.lastRectangle()).toMatchObject({
+    opacity: 0.5,
+    topLeftRadius: 1,
+    topRightRadius: 2,
+    bottomRightRadius: 3,
+    bottomLeftRadius: 4,
+    strokeAlign: "INSIDE",
+    strokeTopWeight: 4,
+    strokeRightWeight: 3,
+    strokeBottomWeight: 2,
+    strokeLeftWeight: 1,
+  });
+  expect(f.lastRectangle().strokes).toEqual([
+    { type: "SOLID", color: { r: 1, g: 0, b: 0 }, opacity: 1 },
+  ]);
+});
+
+test("an image with opacity 0 stays in the file at opacity 0", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.addImage("abc", png);
+  await a.applyBatch([frame("a"), { ...imageOp("abc"), opacity: 0 } as PlanOp]);
+  expect(f.lastRectangle().opacity).toBe(0);
+});
+
+test("a missing image keeps its opacity and radius", async () => {
+  const f = fakeFigma({ createImageThrows: true });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.addImage("abc", png);
+  await a.applyBatch([frame("a"), { ...imageOp("abc"), ...styled } as PlanOp]);
+  expect(f.lastFrame()).toMatchObject({ opacity: 0.5, topLeftRadius: 1, bottomLeftRadius: 4 });
 });
 
 test("one failing op is counted, its children fail too, the rest continue", async () => {

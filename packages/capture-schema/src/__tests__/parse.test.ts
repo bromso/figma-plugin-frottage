@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { countNodes, parseCapture } from "../index";
-import { minimalCapture, treeOfThree } from "./fixtures";
+import { imageStyle, minimalCapture, treeOfThree } from "./fixtures";
 
 test("accepts a minimal valid capture", () => {
   expect(parseCapture(minimalCapture()).ok).toBe(true);
@@ -28,6 +28,7 @@ test("accepts text, image, svg and placeholder children", () => {
     t.children[0],
     {
       ...t.children[0],
+      ...imageStyle,
       id: "i",
       kind: "image",
       fit: "cover",

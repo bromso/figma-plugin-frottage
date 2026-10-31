@@ -7,6 +7,7 @@ import {
   deepTree,
   el,
   emptyRun,
+  imageStyle,
   inter,
   nested,
   run,
@@ -210,8 +211,24 @@ describe("mapCapture", () => {
         "root",
         [0, 0],
         [
-          { ...base, id: "i", kind: "image", assetHash: "hh", fit: "cover", objectPosition: "" },
-          { ...base, id: "i2", kind: "image", fit: "none", objectPosition: "", sourceUrl: "u" },
+          {
+            ...base,
+            ...imageStyle,
+            id: "i",
+            kind: "image",
+            assetHash: "hh",
+            fit: "cover",
+            objectPosition: "",
+          },
+          {
+            ...base,
+            ...imageStyle,
+            id: "i2",
+            kind: "image",
+            fit: "none",
+            objectPosition: "",
+            sourceUrl: "u",
+          },
           { ...base, id: "p", kind: "placeholder", placeholderKind: "video" },
           { ...base, id: "s", kind: "svg", markup: "<svg/>" },
           { ...base, id: "gone", kind: "svg", markup: "", visible: false },
@@ -231,11 +248,69 @@ describe("mapCapture", () => {
     expect(plan.assetHashes).toEqual(["hh"]);
     expect(plan.report).toMatchObject({ nodes: 5, texts: 0, images: 1, placeholders: 3 });
   });
+  test("images keep opacity, radius and border; placeholders keep opacity", () => {
+    const red = { r: 1, g: 0, b: 0, a: 1 };
+    const side = { width: 4, color: red, style: "solid" };
+    const base = {
+      box: { x: 0, y: 0, w: 10, h: 10 },
+      paintOrder: 0,
+      visible: true,
+      blendMode: "normal",
+      semantic: { tag: "img" },
+      fit: "cover" as const,
+      objectPosition: "",
+      kind: "image" as const,
+    };
+    const c = cap(
+      el(
+        "root",
+        [0, 0],
+        [
+          {
+            ...base,
+            id: "round",
+            opacity: 0.5,
+            assetHash: "h",
+            borderRadius: [5, 6, 7, 8],
+            borders: { top: side, right: side, bottom: side, left: side },
+          },
+          { ...base, ...imageStyle, id: "ghost", opacity: 0, assetHash: "h" },
+          { ...base, ...imageStyle, id: "blocked", opacity: 0.25 },
+          {
+            ...base,
+            kind: "placeholder",
+            placeholderKind: "canvas",
+            id: "canvas",
+            opacity: 0.75,
+          } as never,
+        ]
+      )
+    );
+    const ops = mapCapture(c, inter).ops;
+    expect(ops.find((o) => o.id === "round")).toMatchObject({
+      op: "image",
+      opacity: 0.5,
+      radius: [5, 6, 7, 8],
+      strokes: {
+        color: { r: 1, g: 0, b: 0 },
+        opacity: 1,
+        weights: { top: 4, right: 4, bottom: 4, left: 4 },
+      },
+    });
+    expect(ops.find((o) => o.id === "ghost")).toMatchObject({
+      op: "image",
+      opacity: 0,
+      strokes: null,
+    });
+    expect(ops.find((o) => o.id === "blocked")).toMatchObject({ op: "placeholder", opacity: 0.25 });
+    expect(ops.find((o) => o.id === "canvas")).toMatchObject({ op: "placeholder", opacity: 0.75 });
+  });
   test("image fit mapping", () => {
     const common = el("x", [0, 0]);
     const mk = (id: string, fit: "cover" | "contain" | "fill" | "none" | "tile") => ({
       id,
       kind: "image" as const,
+      ...imageStyle,
       box: common.box,
       paintOrder: 0,
       visible: true,
