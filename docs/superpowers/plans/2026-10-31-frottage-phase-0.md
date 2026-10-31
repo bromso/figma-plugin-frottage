@@ -1,20 +1,20 @@
-# Calque Phase 0 Implementation Plan
+# Frottage Phase 0 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Decide whether Calque proceeds, and settle all eight unverified technical assumptions, before any product code exists.
+**Goal:** Decide whether Frottage proceeds, and settle all eight unverified technical assumptions, before any product code exists.
 
 **Architecture:** Throwaway work on one unmerged branch. Competitor measurement runs first and can stop the project. Figma spikes temporarily reuse the real plugin, UI and networker pipeline on that branch; extension spikes are plain unpacked JavaScript in `spikes/`. The only lasting output is a findings document and any revisions to the design.
 
 **Tech Stack:** Bun 1.4.2, the existing plugin build, monorepo-networker, Manifest V3 plain JavaScript, Figma desktop and browser, Chrome.
 
-**Spec:** `docs/superpowers/specs/2026-10-31-calque-design.md`
+**Spec:** `docs/superpowers/specs/2026-10-31-frottage-design.md`
 
 This plan covers Phase 0 only. Phases 1 to 4 are planned after the gate in Task 11, because Phase 0 may change or stop them.
 
 ## Global Constraints
 
-- All spike code lives on branch `chore/calque-phase-0-spikes` and is never merged. Keeping any of it is a new decision.
+- All spike code lives on branch `chore/frottage-phase-0-spikes` and is never merged. Keeping any of it is a new decision.
 - Spikes get no automated tests. Evidence is a measured value recorded in `spikes/RESULTS.md`, stated as pass or fail against the numbers below. Never record a result that was not observed.
 - Steps tagged **[Owner]** need a human in Figma or Chrome. Agents prepare everything and stop for those results.
 - `networkAccess` stays `["none"]`, even in spikes.
@@ -49,15 +49,15 @@ This plan covers Phase 0 only. Phases 1 to 4 are planned after the gate in Task 
 The spec and this plan are uncommitted on `master`, and master takes no direct commits.
 
 ```bash
-git checkout -b docs/calque-design
-git add docs/superpowers/specs/2026-10-31-calque-design.md docs/superpowers/plans/2026-10-31-calque-phase-0.md
-git commit -m "docs: add Calque design and Phase 0 plan"
+git checkout -b docs/frottage-design
+git add docs/superpowers/specs/2026-10-31-frottage-design.md docs/superpowers/plans/2026-10-31-frottage-phase-0.md
+git commit -m "docs: add Frottage design and Phase 0 plan"
 ```
 
 - [ ] **Step 2: Create the spike branch and install**
 
 ```bash
-git checkout -b chore/calque-phase-0-spikes
+git checkout -b chore/frottage-phase-0-spikes
 bun install
 bun run build
 ```
@@ -149,7 +149,7 @@ html.to.design "meets the targets" if, on `landing` and `dashboard`, `autoLayout
 
 - [ ] **Step 6: [Owner] Decide, and commit**
 
-If it meets the targets, the owner chooses: **smaller Calque** (free, open, local) or **stop**. If not: **proceed**. On **stop**, skip to Task 11. Record the decision and reason.
+If it meets the targets, the owner chooses: **smaller Frottage** (free, open, local) or **stop**. If not: **proceed**. On **stop**, skip to Task 11. Record the decision and reason.
 
 ```bash
 git add spikes/RESULTS.md
@@ -178,7 +178,7 @@ Expected: `[build] production build done`.
 - [ ] **Step 3: Generate test files**
 
 ```bash
-mkdir -p "$TMPDIR/calque" && head -c 1048576 /dev/urandom > "$TMPDIR/calque/1mb.bin" && head -c 104857600 /dev/urandom > "$TMPDIR/calque/100mb.bin"
+mkdir -p "$TMPDIR/frottage" && head -c 1048576 /dev/urandom > "$TMPDIR/frottage/1mb.bin" && head -c 104857600 /dev/urandom > "$TMPDIR/frottage/100mb.bin"
 ```
 
 - [ ] **Step 4: [Owner] Run in desktop and browser Figma**
@@ -361,8 +361,8 @@ git commit -m "chore: spike capture-to-frame walkthrough"
 ### Task 11: Findings and design revision
 
 **Files:**
-- Create: `docs/superpowers/specs/2026-10-31-calque-phase-0-findings.md`
-- Modify: `docs/superpowers/specs/2026-10-31-calque-design.md`
+- Create: `docs/superpowers/specs/2026-10-31-frottage-phase-0-findings.md`
+- Modify: `docs/superpowers/specs/2026-10-31-frottage-design.md`
 
 **Interfaces:**
 - Consumes: `spikes/RESULTS.md`, and the Task 3 decision.
@@ -371,22 +371,22 @@ git commit -m "chore: spike capture-to-frame walkthrough"
 - [ ] **Step 1: Write findings on the design branch**
 
 ```bash
-git checkout docs/calque-design
+git checkout docs/frottage-design
 ```
 
 Copy results into the findings document: the gate decision with its evidence, a pass or fail for each of the eight unverified items, and measured numbers. If Tasks 4 to 10 were skipped by a stop, say so.
 
 - [ ] **Step 2: Update the design**
 
-Replace each item in the spec's "Unverified" section with its result. Revise anything a failure invalidates, including positioning if the gate chose a smaller Calque, and replace provisional numbers where measured. On a stop, set the spec status to "stopped" with the reason.
+Replace each item in the spec's "Unverified" section with its result. Revise anything a failure invalidates, including positioning if the gate chose a smaller Frottage, and replace provisional numbers where measured. On a stop, set the spec status to "stopped" with the reason.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add docs/superpowers/specs
-git commit -m "docs: record Calque Phase 0 findings"
+git commit -m "docs: record Frottage Phase 0 findings"
 ```
 
 - [ ] **Step 4: [Owner] Review**
 
-The owner approves the revised design. Only then is a Phase 1 plan written with superpowers:writing-plans. `chore/calque-phase-0-spikes` stays unmerged.
+The owner approves the revised design. Only then is a Phase 1 plan written with superpowers:writing-plans. `chore/frottage-phase-0-spikes` stays unmerged.

@@ -1,6 +1,6 @@
-# Calque design
+# Frottage design
 
-Date: 2026-10-31. Status: approved by the owner on 2026-10-31, including the recommended answers on positioning and on this repository becoming Calque.
+Date: 2026-10-31. Status: approved by the owner on 2026-10-31, including the recommended answers on positioning and on this repository becoming Frottage.
 
 The owner skipped the question round and asked for the document directly. So apart from the starting point in the brief, **the product decisions below began as the author's calls**, which the owner reviewed in approving this document. Those calls are collected in [Calls to confirm](#calls-to-confirm). API facts were checked against Context7 and vendor documentation on 2026-10-31; anything not confirmed there is listed under [Unverified](#unverified-settled-by-phase-0).
 
@@ -8,7 +8,7 @@ The owner skipped the question round and asked for the document directly. So apa
 
 Designers often need to start from a page that already exists: to redesign it, extend it, or fix the gap between the shipped product and the Figma file. Rebuilding it by hand takes days, and an import is only worth it if the file needs little cleanup afterwards.
 
-Calque (French for both "layer" and "tracing") captures a rendered page in Chrome and rebuilds it in Figma as a file a designer can keep working in.
+Frottage, named after the art technique of taking a rubbing from a textured surface, captures a rendered page in Chrome and rebuilds it in Figma as a file a designer can keep working in.
 
 ### The market is crowded, and that shapes this design
 
@@ -28,12 +28,12 @@ Consequences:
 Author's call, inferred from the brief's emphasis on usable files:
 
 - **Primary: a product designer or design engineer working from a live product they have access to**, including logged-in pages and local dev servers, who will keep editing the result.
-- **Secondary: the owner**, as a personal tool. This repository becomes the Calque product and stops being a template.
+- **Secondary: the owner**, as a personal tool. This repository becomes the Frottage product and stops being a template.
 - **Not the target:** people who want a quick visual reference (Figma's free capture is enough), or who need to convert public URLs in bulk.
 
 ## What good output means
 
-Calque's measure is "how little cleanup does the file need?", not "how close is the screenshot?". Visual match is a floor, not the goal.
+Frottage's measure is "how little cleanup does the file need?", not "how close is the screenshot?". Visual match is a floor, not the goal.
 
 Targets for a v1 release, measured on the fixture corpus (numbers are provisional and may be tuned once Phase 2 produces real data):
 
@@ -45,7 +45,7 @@ Targets for a v1 release, measured on the fixture corpus (numbers are provisiona
 | Repeated text treatments and colours turned into text styles and variables | every value used 3 or more times |
 | Visual difference from a Chromium screenshot, with fixture fonts installed | at most 3% of pixels at a 0.1 pixelmatch threshold |
 | Import of a 5,000-node page | under 60 s, no single block of Figma's UI over 2 s, progress shown, cancel available |
-| Anything Calque could not convert is reported | always; nothing is silently dropped |
+| Anything Frottage could not convert is reported | always; nothing is silently dropped |
 
 When structure and pixels conflict, **pixels win where the conflict is a layout error, and structure wins where it comes from text measurement**. A frame whose children are in the wrong place stays absolute. A frame that shifts only because a substituted font is wider stays in auto layout, as a designer would want (see [Layout inference](#layout-inference)). The pixel target applies only with fonts installed. A second run with fixture fonts missing must keep the auto layout target.
 
@@ -54,7 +54,7 @@ When structure and pixels conflict, **pixels win where the conflict is a layout 
 ### v1 goals
 
 1. Chrome extension (Manifest V3) captures the current tab's rendered DOM at its current size, including logged-in pages, SPAs in their current state, and local dev servers.
-2. The capture is saved as a versioned `.calque` file, which the plugin imports.
+2. The capture is saved as a versioned `.frottage` file, which the plugin imports.
 3. The plugin produces a Figma frame with semantic layer names, editable text, images, SVG vectors, effects, and auto layout where verified.
 4. The plugin creates text styles and a colour variable collection from repeated values.
 5. An import report lists substituted fonts, placeholders and unsupported features.
@@ -97,9 +97,9 @@ Capture sequence:
 3. `scripting.executeScript` injects the capture script in the isolated world, in the main frame.
 4. The walker builds the capture tree, reading computed styles, boxes and text geometry.
 5. Assets are collected and normalised to PNG, JPEG or GIF, at most 4096 px per side (Figma's limit), with a downscale noted in the report.
-6. The container is built and downloaded as `<hostname>-<date>.calque`.
+6. The container is built and downloaded as `<hostname>-<date>.frottage`.
 
-### Transport: a local `.calque` file
+### Transport: a local `.frottage` file
 
 | Option | Backend | Privacy | Friction | Verdict |
 |---|---|---|---|---|
@@ -113,7 +113,7 @@ Capture sequence:
 
 Dropping a file on the iframe's DOM is unverified: Figma's documentation covers drops onto the canvas, not onto the UI itself. The plugin always offers an `<input type="file">` picker, and drag and drop is added if Phase 0 shows it works.
 
-The `.calque` file is a ZIP (via `fflate`) holding:
+The `.frottage` file is a ZIP (via `fflate`) holding:
 
 ```
 capture.json              the capture tree, validated against the schema
@@ -127,7 +127,7 @@ A ZIP avoids base64's 33% inflation and lets images load one at a time. Limits o
 A versioned, documented format is the contract between the two halves and the piece worth keeping stable.
 
 - **Definition:** Zod 4 schemas, with TypeScript types inferred from them. The recursive tree uses Zod's getter pattern. A JSON Schema is generated with `z.toJSONSchema()`, committed, and published on the docs site.
-- **Version:** an integer `schemaVersion`, independent of the package version. Any breaking change increments it and adds a migration function. The plugin reads every older version, and on a newer version shows "update Calque", never a partial import.
+- **Version:** an integer `schemaVersion`, independent of the package version. Any breaking change increments it and adds a migration function. The plugin reads every older version, and on a newer version shows "update Frottage", never a partial import.
 - **Validation:** runs in the plugin UI iframe. Zod does not ship in the plugin sandbox bundle. It is used by the extension only in tests, so the injected capture script stays small.
 
 The schema records **resolved, measured values**. It holds what the browser computed, not CSS source, and no Figma concepts. Translation to Figma lives entirely in the mapper.
@@ -197,7 +197,7 @@ packages/
   capture-dom/          new. @repo/capture-dom: DOM walker. No chrome.* imports; capabilities are injected
   figma-mapper/         new. @repo/figma-mapper: Capture -> LayerPlan. Pure, no figma.* or DOM
   common/               extended: import events in networkSides.ts
-  ui/                   extended: Calque plugin screen replaces the sampler app.tsx
+  ui/                   extended: Frottage plugin screen replaces the sampler app.tsx
 ```
 
 **`LayerPlan` is the key seam.** It is a plain-data description of the Figma tree: layer names, Figma paints, auto layout settings, plus styles and variables to create. Everything hard and testable lives in `@repo/figma-mapper`: layout inference, naming, token extraction, font matching. The sandbox applier is a thin loop that turns a plan into `figma.*` calls.
@@ -226,7 +226,7 @@ The extension may need a small dedicated popup entry. `@repo/ui` exports compone
 |---|---|---|
 | `activeTab` | Temporary access to the tab the user invoked it on | none |
 | `scripting` | Inject the capture script | none |
-| `downloads` | Save the `.calque` file reliably after the popup closes | "Manage your downloads" (to confirm in Phase 0) |
+| `downloads` | Save the `.frottage` file reliably after the popup closes | "Manage your downloads" (to confirm in Phase 0) |
 | `offscreen` | Create a Blob URL for the download; the service worker cannot | none |
 | Optional `<all_urls>` | Fetch cross-origin images, on request only | shown at grant time |
 
@@ -234,12 +234,12 @@ No `debugger`, no `tabs`, no static host permissions, no `storage` unless the bu
 
 #### Repository housekeeping
 
-- This repository becomes Calque (owner decision). The sampler `app.tsx` is removed, not preserved.
-- The checkout is `bromso/figma-plugin-frottage`, but `.changeset/config.json` points `changelog` at `bromso/figma-plugin-template`, and the docs use `/figma-plugin-template` paths. Fix both when Calque work begins. The docs site deploys from this repository and hosts the privacy policy and capture format, so it needs a stable URL.
-- Rewrite the template-focused docs, README and CONTRIBUTING for Calque, and retire or rewrite the `build-figma-plugin` skill and its references.
-- `figma.manifest.ts`: `name: "Calque"`, a new plugin `id` of the owner's, `editorType: ["figma"]`. `networkAccess` stays `["none"]`; update its comment to explain that this is deliberate.
+- This repository becomes Frottage (owner decision). The sampler `app.tsx` is removed, not preserved.
+- The checkout is `bromso/figma-plugin-frottage`, but `.changeset/config.json` points `changelog` at `bromso/figma-plugin-template`, and the docs use `/figma-plugin-template` paths. Fix both when Frottage work begins. The docs site deploys from this repository and hosts the privacy policy and capture format, so it needs a stable URL.
+- Rewrite the template-focused docs, README and CONTRIBUTING for Frottage, and retire or rewrite the `build-figma-plugin` skill and its references.
+- `figma.manifest.ts`: `name: "Frottage"`, a new plugin `id` of the owner's, `editorType: ["figma"]`. `networkAccess` stays `["none"]`; update its comment to explain that this is deliberate.
 - `plugin.ts`: remove the sampler `setInterval` ping and FigJam branch, retitle the window. Keep `themeColors: true`.
-- Changesets: `@repo/design-plugin` currently sits in `ignore`, and an extension needs a real version in its manifest. Remove it from `ignore`, and add a second `fixed` group for Calque: `@repo/design-plugin`, `@repo/chrome-extension`, `@repo/capture-schema`, `@repo/capture-dom`, `@repo/figma-mapper`. `chrome.manifest.ts` reads `version` from `package.json`.
+- Changesets: `@repo/design-plugin` currently sits in `ignore`, and an extension needs a real version in its manifest. Remove it from `ignore`, and add a second `fixed` group for Frottage: `@repo/design-plugin`, `@repo/chrome-extension`, `@repo/capture-schema`, `@repo/capture-dom`, `@repo/figma-mapper`. `chrome.manifest.ts` reads `version` from `package.json`.
 - Update `README.md`, `CONTRIBUTING.md`, `.claude/CLAUDE.md` and `apps/docs` with the new workspaces, and add docs pages for the capture format and privacy.
 
 ### Layout inference
@@ -305,13 +305,13 @@ Fixed and sticky elements appear at the position they hold with the page scrolle
 
 **Layer names**, in priority order: `aria-label` or `aria-labelledby` text; landmark or role (`Header`, `Navigation`, `Main`, `Footer`); heading with text (`H1 - Get started`); interactive with text (`Button - Sign up`, `Link - Pricing`); `Image - <alt>`; a readable class or `id`, excluding hashed-looking values; repeated siblings as `Item 1`, `Item 2`; capitalised tag as the last resort. Long values are truncated at 40 characters.
 
-**Alt text and semantics.** The brief proposed layer descriptions, but `description` only exists on components, component sets and styles. So alt text goes in a Dev Mode annotation (`node.annotations`, supported on frames, rectangles and text) where the alt is non-empty, and the raw semantics (`tag`, `role`, `href`, `alt`) are kept in `setSharedPluginData` under the `calque` namespace. Annotation labels use the plain `label` field, never `labelMarkdown`, because the text comes from the page.
+**Alt text and semantics.** The brief proposed layer descriptions, but `description` only exists on components, component sets and styles. So alt text goes in a Dev Mode annotation (`node.annotations`, supported on frames, rectangles and text) where the alt is non-empty, and the raw semantics (`tag`, `role`, `href`, `alt`) are kept in `setSharedPluginData` under the `frottage` namespace. Annotation labels use the plain `label` field, never `labelMarkdown`, because the text comes from the page.
 
 **Text styles.** Cluster text runs by family, weight, size, line height and letter spacing. Clusters used 3 or more times become text styles named `heading/<n>` and `body/<n>`, ordered by size.
 
 **Colour variables.** A collection named after the hostname, with one mode. Values used 3 or more times become variables, bound through `setBoundVariableForPaint`. Names come from matching CSS custom properties where the resolved value matches (`--color-primary` to `color/primary`), otherwise `color/<n>`. Alpha colours stay as plain paints in v1. Gradient stops are not bound. Spacing and radius variables are v2.
 
-**Repeat imports and cancel.** Two captures in one file are expected, since that is how v1 handles responsive work, so tokens must not duplicate. The mapper emits token definitions with their values and proposed names, and the sandbox resolves them against the file, because only it can read existing tokens. Calque reuses any style or variable it created earlier (found through shared plugin data) with an identical value, and otherwise adds a new one, continuing the numbering. The collection is per hostname. Tokens created by the user or other plugins are not touched. Cancel removes the partial root frame and any tokens created by that import that nothing else uses. (Author's call.)
+**Repeat imports and cancel.** Two captures in one file are expected, since that is how v1 handles responsive work, so tokens must not duplicate. The mapper emits token definitions with their values and proposed names, and the sandbox resolves them against the file, because only it can read existing tokens. Frottage reuses any style or variable it created earlier (found through shared plugin data) with an identical value, and otherwise adds a new one, continuing the numbering. The collection is per hostname. Tokens created by the user or other plugins are not touched. Cancel removes the partial root frame and any tokens created by that import that nothing else uses. (Author's call.)
 
 **UI accessibility.** WCAG 2.2 AA for the plugin screen and the popup: full keyboard operation, visible focus, progress announced via `role="status"`, and error text linked to its control. The `@repo/ui` scale of 11 px text is a Figma convention that this project keeps, with contrast checked against both themes. The popup follows `prefers-color-scheme` by toggling the `dark` class, because `--figma-color-*` is absent there. `@repo/ui`'s CSS fallbacks handle the rest.
 
@@ -335,19 +335,19 @@ Author's call: **free and MIT licensed, like the template, with no accounts.** R
 - **Figma Community:** requires the plugin security disclosure form. `networkAccess: ["none"]` keeps the answer short. Later updates publish without review.
 - **Chrome Web Store:** single purpose ("capture a web page to a file for import into Figma"), a justification for each permission, and a privacy policy, hosted on the docs site, stating that nothing leaves the device.
 - **Content rights:** the store listings and docs state that users are responsible for rights to the pages they capture.
-- **File sensitivity:** docs and the popup state that a `.calque` file contains the page's content, including anything visible in a logged-in session, and should be shared accordingly.
+- **File sensitivity:** docs and the popup state that a `.frottage` file contains the page's content, including anything visible in a logged-in session, and should be shared accordingly.
 
 ## Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| **html.to.design's output is already as good** as Calque's target | Unknown: no independent data found | High | Phase 0 head-to-head before product code. If it wins, v1 either shrinks or stops, per the [gate](#roadmap) |
+| **html.to.design's output is already as good** as Frottage's target | Unknown: no independent data found | High | Phase 0 head-to-head before product code. If it wins, v1 either shrinks or stops, per the [gate](#roadmap) |
 | **Figma ships structured capture** and removes the reason to exist | Medium to high: component and style mapping is on its roadmap | High | Keep v1 small. Open format, local-only design and transparency remain differentiators. Decide on v2 only after seeing Figma's next release |
 | Auto layout inference fails on real sites more than on fixtures | High | High | Local fallback in place. Phase 2 tests private real-world sites early, and the 70% target is measured before v1 is called done |
 | Text wrapping differs between browser and Figma | High | Medium | Tolerances and reporting. Accept the difference over per-line nodes |
 | Rendered font cannot be identified without the debugger | Medium | Medium | Stack inference, substitution table shown before import |
 | Import freezes Figma on large pages | Medium | High | Batching, caps and a Phase 0 benchmark before committing to budgets |
-| File step feels clumsy compared with paste | Medium | Medium | Direct bridge is a v2 candidate, and the `.calque` format carries over unchanged |
+| File step feels clumsy compared with paste | Medium | Medium | Direct bridge is a v2 candidate, and the `.frottage` format carries over unchanged |
 | Pages with CSP or strict frames | Low | Low | Isolated-world scripts are not bound by the page's CSP; fetch failures become placeholders |
 | Chrome Web Store rejection over optional `<all_urls>` | Low to medium | Medium | Narrow single purpose, clear justification. Worst case: ship without it, and blocked images stay placeholders |
 | Scope creep from the size of CSS | High | High | Every case is fixture-backed, and anything unlisted is reported, not chased |
@@ -356,10 +356,10 @@ Author's call: **free and MIT licensed, like the template, with no accounts.** R
 
 **Phase 0: competitor check and spikes (throwaway, about a week).** Spikes are permitted by approval of this document; they do not ship.
 
-- **Competitor check, first, as a go/no-go.** The owner imports the three composed fixtures and three real pages into html.to.design and Figma's capture, using free tiers. Measure for each: share of frames in auto layout, nesting depth, meaningful names, text styles and variables created, plus the owner's estimate of cleanup minutes. Check html.to.design's privacy policy and Chrome listing for where capture data goes. **If html.to.design already meets the [targets](#what-good-output-means), the decision returns to the owner:** ship a smaller Calque competing on free, open and local, or stop.
+- **Competitor check, first, as a go/no-go.** The owner imports the three composed fixtures and three real pages into html.to.design and Figma's capture, using free tiers. Measure for each: share of frames in auto layout, nesting depth, meaningful names, text styles and variables created, plus the owner's estimate of cleanup minutes. Check html.to.design's privacy policy and Chrome listing for where capture data goes. **If html.to.design already meets the [targets](#what-good-output-means), the decision returns to the owner:** ship a smaller Frottage competing on free, open and local, or stop.
 - **Technical spikes.** Resolve each item under [Unverified](#unverified-settled-by-phase-0). Exit: a capture-to-frame walkthrough on one fixture, and a 5,000-node benchmark meeting the budget. If benchmarks or layout verification fail, this document is revised before Phase 1.
 
-**Phase 1: pipeline, walking skeleton.** Workspaces and builds, schema v1, walker for boxes, text and images, `.calque` file, plugin import with absolute layout only, report screen. Exit: a landing-page fixture imports with editable text and correct positions.
+**Phase 1: pipeline, walking skeleton.** Workspaces and builds, schema v1, walker for boxes, text and images, `.frottage` file, plugin import with absolute layout only, report screen. Exit: a landing-page fixture imports with editable text and correct positions.
 
 **Phase 2: usable output.** Layout inference with verification, semantic names, text styles, colour variables, annotations, token reuse, and font matching with the substitution table. Exit, on structural targets only: auto layout, names, tokens and text, on fixtures with fonts both installed and missing. The owner also runs three real pages of their choice, private if they like, and shares the import report's numbers, not the pages. Fixtures measure the targets; real pages reveal failures, and any failure pattern becomes a new fixture.
 
@@ -391,15 +391,15 @@ Internal `LayerPlan` shape, walker internals, popup and plugin screen layouts wi
 ## Calls to confirm
 
 1. Audience: product designers and design engineers working from products they can access, not bulk public-URL conversion.
-2. Differentiation (owner decision): Calque is the free, open source, local-only importer, with no accounts, no backend and no import limit. Usable structure is the quality goal, measured by the Phase 0 check, and becomes a selling point only if that check supports it.
+2. Differentiation (owner decision): Frottage is the free, open source, local-only importer, with no accounts, no backend and no import limit. Usable structure is the quality goal, measured by the Phase 0 check, and becomes a selling point only if that check supports it.
 3. Extension only in v1, with no URL import.
-4. Local `.calque` file transport, with no backend and `networkAccess: ["none"]`.
+4. Local `.frottage` file transport, with no backend and `networkAccess: ["none"]`.
 5. No `debugger` permission, which gives up exact font detection and viewport emulation.
 6. One capture at one viewport in v1.
 7. Component detection and CSS grid mapping are out of v1.
 8. Free, MIT, no accounts, no telemetry.
 9. Alt text in Dev Mode annotations, not layer descriptions.
-10. The name "Calque". A quick search found no Figma plugin or Chrome extension with it, but this was not a trademark check.
+10. The name "Frottage" (owner decision). No name or trademark check has been done.
 
 ## Sources
 
