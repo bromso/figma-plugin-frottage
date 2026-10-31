@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { BASE } from "@/lib/base";
 import "./global.css";
 
-const SITE_URL = "https://bromso.github.io/figma-plugin-template";
+const SITE_URL = "https://bromso.github.io/figma-plugin-frottage";
 const SITE_DESCRIPTION = "Build Figma plugins with React, Bun, TypeScript, and AI skills";
 
 export const metadata: Metadata = {
@@ -59,7 +59,7 @@ const websiteJsonLd = JSON.stringify({
   publisher: {
     "@type": "Organization",
     name: "Figma Plugin Template",
-    url: "https://github.com/bromso/figma-plugin-template",
+    url: "https://github.com/bromso/figma-plugin-frottage",
     logo: {
       "@type": "ImageObject",
       url: `${SITE_URL}/android-chrome-512x512.png`,

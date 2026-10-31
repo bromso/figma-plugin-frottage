@@ -10,8 +10,8 @@ import { notFound } from "next/navigation";
 import { getMDXComponents } from "@/components/mdx";
 import { source } from "@/lib/source";
 
-const SITE_URL = "https://bromso.github.io/figma-plugin-template";
-const REPO_URL = "https://github.com/bromso/figma-plugin-template";
+const SITE_URL = "https://bromso.github.io/figma-plugin-frottage";
+const REPO_URL = "https://github.com/bromso/figma-plugin-frottage";
 
 interface PageProps {
   params: Promise<{ slug?: string[] }>;

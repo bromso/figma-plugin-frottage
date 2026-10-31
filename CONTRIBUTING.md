@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in contributing to figma-plugin-template! We welcome all contributions — bug fixes, improvements, and new features.
+Thank you for your interest in contributing to figma-plugin-frottage! We welcome all contributions — bug fixes, improvements, and new features.
 
 ## Prerequisites
 
@@ -11,8 +11,8 @@ Thank you for your interest in contributing to figma-plugin-template! We welcome
 ## Getting Started
 
 ```bash
-git clone https://github.com/bromso/figma-plugin-template.git
-cd figma-plugin-template
+git clone https://github.com/bromso/figma-plugin-frottage.git
+cd figma-plugin-frottage
 bun install
 bun run build
 ```

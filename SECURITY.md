@@ -15,7 +15,7 @@ Only the latest release on the default branch is supported with security updates
 
 If you discover a security vulnerability in this project, please report it privately using GitHub's built-in vulnerability reporting:
 
-**[Report a vulnerability](https://github.com/jonasbroms/figma-plugin-template/security/advisories/new)**
+**[Report a vulnerability](https://github.com/bromso/figma-plugin-frottage/security/advisories/new)**
 
 When reporting, please include:
 
