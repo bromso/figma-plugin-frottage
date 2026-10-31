@@ -1,6 +1,6 @@
 # Frottage design
 
-Date: 2026-10-31. Status: approved by the owner on 2026-10-31, including the recommended answers on positioning and on this repository becoming Frottage. Revised the same day with Phase 0 findings; the revision awaits owner approval.
+Date: 2026-10-31. Status: approved by the owner on 2026-10-31, including the recommended answers on positioning and on this repository becoming Frottage. Revised the same day with Phase 0 findings, and the revision was approved by the owner.
 
 The owner skipped the question round and asked for the document directly. So apart from the starting point in the brief, **the product decisions below began as the author's calls**, which the owner reviewed in approving this document. Those calls are collected in [Calls to confirm](#calls-to-confirm). API facts were checked against Context7 and vendor documentation on 2026-10-31; anything not confirmed there is listed under [Unverified](#unverified-settled-by-phase-0).
 
