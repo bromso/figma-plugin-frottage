@@ -87,9 +87,20 @@
         "vite": "^8.3.5",
       },
     },
+    "packages/capture-schema": {
+      "name": "@repo/capture-schema",
+      "version": "0.0.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.4",
+        "typescript": "^7.0.2",
+      },
+    },
     "packages/common": {
       "name": "@repo/common",
-      "version": "1.4.2",
+      "version": "2.0.0",
       "dependencies": {
         "monorepo-networker": "^2.1.0",
       },
@@ -100,7 +111,7 @@
     },
     "packages/ui": {
       "name": "@repo/ui",
-      "version": "1.4.2",
+      "version": "2.0.0",
       "dependencies": {
         "@daypicker/react": "^10.0.2",
         "@iconify-json/lucide": "^1.2.149",
@@ -731,6 +742,8 @@
     "@radix-ui/rect": ["@radix-ui/rect@1.1.3", "", {}, "sha512-JtyZR+mqgBibTo8xea3B6ZRmzZiM/YeVBtUkas6zMuXjAlfIFIW2FgqeM9eLyvEaYX66vr6DJMK+4U6LV0KhNw=="],
 
     "@reduxjs/toolkit": ["@reduxjs/toolkit@2.11.2", "", { "dependencies": { "@standard-schema/spec": "^1.0.0", "@standard-schema/utils": "^0.3.0", "immer": "^11.0.0", "redux": "^5.0.1", "redux-thunk": "^3.1.0", "reselect": "^5.1.0" }, "peerDependencies": { "react": "^16.9.0 || ^17.0.0 || ^18 || ^19", "react-redux": "^7.2.1 || ^8.1.3 || ^9.0.0" }, "optionalPeers": ["react", "react-redux"] }, "sha512-Kd6kAHTA6/nUpp8mySPqj3en3dm0tdMIgbttnQ1xFMVpufoj+ADi8pXLBsd4xzTRHQa7t/Jv8W5UnCuW4kuWMQ=="],
+
+    "@repo/capture-schema": ["@repo/capture-schema@workspace:packages/capture-schema"],
 
     "@repo/common": ["@repo/common@workspace:packages/common"],
 
