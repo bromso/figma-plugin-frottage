@@ -19,8 +19,8 @@ Frottage, named after the art technique of taking a rubbing from a textured surf
 Consequences:
 
 - **Getting pixels into Figma is commoditised.** A personal or open source tool cannot beat a free first-party feature on that alone.
-- **Better structure than Figma's capture is plausible, but better than html.to.design is unproven.** Phase 0 tests this head to head before any product code is written.
-- **The defensible position today is the combination:** free and unlimited, open source, an open format, and verifiably local. How html.to.design handles capture data was not established, so no comparative privacy claim is made here.
+- **html.to.design's output is strong, measured on 2026-10-31 on the free plan.** On `bun.com` and `react.dev/learn` it produced 78% and 82% auto layout frames, 94% and 99% of solid fills bound or styled, nearly all text styled, and hover variants, in about 30 to 40 s. Its gaps were names (0 to 9% human-readable, mostly `div.flex` and `Component N`), style clutter (257 text styles and 811 variables across three pages), and a "FREE version" label. Details are in the Phase 0 findings.
+- **Positioning (owner decision, 2026-10-31): a smaller Frottage, free, unlimited, open source, with an open format and `networkAccess: ["none"]`.** Output quality alone does not justify the project. html.to.design states its `.h2d` file route stays local, so the claim Frottage can make is narrower: anyone can verify the absence of network access in the manifest rather than rely on a policy. Readable names and fewer, cleaner tokens are the realistic quality edge.
 - **The gap may close.** Figma has said component and style mapping is coming. See [Risks](#risks).
 
 ## Target users
@@ -341,7 +341,7 @@ Author's call: **free and MIT licensed, like the template, with no accounts.** R
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| **html.to.design's output is already as good** as Frottage's target | Unknown: no independent data found | High | Phase 0 head-to-head before product code. If it wins, v1 either shrinks or stops, per the [gate](#roadmap) |
+| **html.to.design's output is already as good** as Frottage's target | Happened on auto layout, text and tokens | High | Owner chose a smaller Frottage on 2026-10-31. Users who only want results may reasonably stay with html.to.design |
 | **Figma ships structured capture** and removes the reason to exist | Medium to high: component and style mapping is on its roadmap | High | Keep v1 small. Open format, local-only design and transparency remain differentiators. Decide on v2 only after seeing Figma's next release |
 | Auto layout inference fails on real sites more than on fixtures | High | High | Local fallback in place. Phase 2 tests private real-world sites early, and the 70% target is measured before v1 is called done |
 | Text wrapping differs between browser and Figma | High | Medium | Tolerances and reporting. Accept the difference over per-line nodes |
