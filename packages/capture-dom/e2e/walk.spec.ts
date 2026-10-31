@@ -1064,3 +1064,35 @@ test("images, SVGs and placeholders record how they sit in the flow", async ({ p
   expect(canvas.margin).toBeUndefined();
   expect(parseCapture(c).ok).toBe(true);
 });
+
+test("captures the first class token, unless it looks hashed or unsafe", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/svg.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      [
+        '<div id="k1" class="hero wide">a</div>',
+        '<div id="k2" class="css-1x2y3z hero">a</div>',
+        '<div id="k3" class="sc-abc123">a</div>',
+        `<div id="k4" class="${"x".repeat(41)}">a</div>`,
+        '<div id="k5" class="a=b">a</div>',
+        '<div id="k6" class="https://evil.test/x.png">a</div>',
+        '<div id="k7" class="md:flex">a</div>',
+      ].join("")
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const seen = new Set<string>();
+  const visit = (n: CaptureNode) => {
+    if (n.semantic.className !== undefined) seen.add(n.semantic.className);
+    if (n.kind === "element") for (const k of n.children) visit(k);
+  };
+  visit(c.root);
+  expect(seen.has("hero")).toBe(true);
+  for (const bad of ["css-1x2y3z", "sc-abc123", "a=b", "md:flex", "x".repeat(41)]) {
+    expect(seen.has(bad)).toBe(false);
+  }
+  expect([...seen].some((v) => v.includes("evil.test"))).toBe(false);
+});

@@ -1182,18 +1182,18 @@ describe("wrapper collapse", () => {
   });
   test("the semantics of the wrapper reach the child", () => {
     const nav = wrap({ semantic: { tag: "nav", landmark: "navigation", ariaLabel: "Main" } });
-    expect(frameOp(page(nav), "leaf").name).toBe("Nav");
+    expect(frameOp(page(nav), "leaf").name).toBe("Navigation - Main");
     const a = wrap(
       { semantic: { tag: "a", href: "https://example.com/" } },
       single("Go", 0, 0, 100, 50, { semantic: { tag: "div" } })
     );
     const out = mapCapture(cap(page(a)), inter).ops[1];
-    expect(out).toMatchObject({ op: "text", name: "A" });
+    expect(out).toMatchObject({ op: "text", name: "Go" });
   });
   test("a child with its own meaning keeps its tag, and gains what the wrapper knew", () => {
     const child = box("list", 0, 0, 100, 50, { semantic: { tag: "ul" }, style: painted() });
     const nav = wrap({ semantic: { tag: "nav", landmark: "navigation" } }, child);
-    expect(frameOp(page(nav), "list").name).toBe("Ul");
+    expect(frameOp(page(nav), "list").name).toBe("Navigation");
   });
   test("the root never collapses", () => {
     expect(opIds(el("root", [0, 0], [box("only", 0, 0, 100, 100)], {}, [100, 100]))).toEqual([
@@ -1232,7 +1232,7 @@ describe("wrapper collapse", () => {
   test("a custom element child survives a plain wrapper, tag intact", () => {
     const child = box("c", 0, 0, 100, 50, { semantic: { tag: "x-card" }, style: painted() });
     const section = wrap({ semantic: { tag: "section" } }, child);
-    expect(frameOp(page(section), "c").name).toBe("X-card");
+    expect(frameOp(page(section), "c").name).toBe("Card");
   });
   test.each([
     ["a fill", { backgroundColor: { r: 1, g: 0, b: 0, a: 1 } }],

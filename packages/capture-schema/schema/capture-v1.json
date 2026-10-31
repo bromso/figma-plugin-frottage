@@ -272,6 +272,10 @@
                 },
                 "alt": {
                   "type": "string"
+                },
+                "className": {
+                  "type": "string",
+                  "maxLength": 40
                 }
               },
               "required": ["tag"],
@@ -912,6 +916,10 @@
                 },
                 "alt": {
                   "type": "string"
+                },
+                "className": {
+                  "type": "string",
+                  "maxLength": 40
                 }
               },
               "required": ["tag"],
@@ -1139,6 +1147,10 @@
                 },
                 "alt": {
                   "type": "string"
+                },
+                "className": {
+                  "type": "string",
+                  "maxLength": 40
                 }
               },
               "required": ["tag"],
@@ -1498,6 +1510,10 @@
                 },
                 "alt": {
                   "type": "string"
+                },
+                "className": {
+                  "type": "string",
+                  "maxLength": 40
                 }
               },
               "required": ["tag"],
@@ -1660,6 +1676,10 @@
                 },
                 "alt": {
                   "type": "string"
+                },
+                "className": {
+                  "type": "string",
+                  "maxLength": 40
                 }
               },
               "required": ["tag"],

@@ -97,6 +97,8 @@ const semantic = z.object({
   landmark: z.string().optional(),
   href: z.string().optional(),
   alt: z.string().optional(),
+  // The first class token, when it reads as a name: never hashed, never longer than 40.
+  className: z.string().max(40).optional(),
 });
 
 const common = {

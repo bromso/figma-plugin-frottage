@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { batchOps, mapCapture, type PlanOp } from "../index";
+import { batchOps, DEFAULT_IMPORT_OPTIONS, mapCapture, type PlanOp } from "../index";
 import {
   anyOp,
   cap,
@@ -268,7 +268,7 @@ describe("mapCapture", () => {
         op: "svg",
         id: "s",
         parent: "root",
-        name: "Svg",
+        name: "Icon",
         x: 10,
         y: 20,
         w: 24,
@@ -592,5 +592,44 @@ describe("batchOps", () => {
   test("custom size, and bad sizes fall back", () => {
     expect(batchOps(new Array(5).fill(anyOp), 2).map((b) => b.length)).toEqual([2, 2, 1]);
     expect(batchOps(new Array(3).fill(anyOp), 0).map((b) => b.length)).toEqual([3]);
+  });
+});
+
+describe("mapCapture options", () => {
+  const tree = () =>
+    cap(
+      el(
+        "root",
+        [0, 0],
+        [
+          el(
+            "row",
+            [0, 0],
+            [el("a", [0, 0], [], {}, [40, 20]), el("b", [50, 0], [], {}, [40, 20])],
+            { layout: { ...el("x", [0, 0]).layout, display: "flex" } },
+            [100, 20]
+          ),
+        ]
+      )
+    );
+  test("autoLayout on infers layout, off gives NONE for every frame", () => {
+    const on = mapCapture(tree(), inter).ops.filter((o) => o.op === "frame");
+    expect(on.some((o) => o.layout.mode !== "NONE")).toBe(true);
+    const off = mapCapture(tree(), inter, {
+      ...DEFAULT_IMPORT_OPTIONS,
+      autoLayout: false,
+    }).ops.filter((o) => o.op === "frame");
+    expect(off.length).toBe(on.length);
+    for (const o of off) expect(o.layout).toEqual({ mode: "NONE" });
+    for (const o of mapCapture(tree(), inter, { ...DEFAULT_IMPORT_OPTIONS, autoLayout: false })
+      .ops) {
+      expect(o.childLayout).toBeUndefined();
+    }
+  });
+  test("htmlNames switches every frame to tag names", () => {
+    const names = mapCapture(tree(), inter, { ...DEFAULT_IMPORT_OPTIONS, htmlNames: true })
+      .ops.filter((o) => o.op === "frame")
+      .map((o) => o.name);
+    expect(names.every((n) => n === "div")).toBe(true);
   });
 });

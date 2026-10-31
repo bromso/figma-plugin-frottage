@@ -305,7 +305,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "p"
+         "tag": "p",
+         "className": "kicker"
         },
         "kind": "element",
         "style": {
@@ -554,7 +555,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "p"
+         "tag": "p",
+         "className": "byline"
         },
         "kind": "element",
         "style": {
@@ -8363,7 +8365,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "p"
+         "tag": "p",
+         "className": "rule"
         },
         "kind": "element",
         "style": {

@@ -310,7 +310,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "div"
+         "tag": "div",
+         "className": "logo"
         },
         "kind": "element",
         "style": {
@@ -1035,7 +1036,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "button"
+         "tag": "button",
+         "className": "btn"
         },
         "kind": "element",
         "style": {
@@ -1161,7 +1163,8 @@
       "opacity": 1,
       "blendMode": "normal",
       "semantic": {
-       "tag": "section"
+       "tag": "section",
+       "className": "hero"
       },
       "kind": "element",
       "style": {
@@ -1512,7 +1515,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "div"
+         "tag": "div",
+         "className": "actions"
         },
         "kind": "element",
         "style": {
@@ -1610,7 +1614,8 @@
           "opacity": 1,
           "blendMode": "normal",
           "semantic": {
-           "tag": "button"
+           "tag": "button",
+           "className": "btn"
           },
           "kind": "element",
           "style": {
@@ -1734,7 +1739,8 @@
           "opacity": 1,
           "blendMode": "normal",
           "semantic": {
-           "tag": "button"
+           "tag": "button",
+           "className": "btn"
           },
           "kind": "element",
           "style": {
@@ -1860,7 +1866,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "div"
+         "tag": "div",
+         "className": "more-row"
         },
         "kind": "element",
         "style": {
@@ -1986,7 +1993,8 @@
       "opacity": 1,
       "blendMode": "normal",
       "semantic": {
-       "tag": "section"
+       "tag": "section",
+       "className": "cards"
       },
       "kind": "element",
       "style": {
@@ -2084,7 +2092,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "div"
+         "tag": "div",
+         "className": "card"
         },
         "kind": "element",
         "style": {
@@ -2174,7 +2183,8 @@
           "opacity": 1,
           "blendMode": "normal",
           "semantic": {
-           "tag": "div"
+           "tag": "div",
+           "className": "icon"
           },
           "kind": "element",
           "style": {
@@ -2563,7 +2573,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "div"
+         "tag": "div",
+         "className": "card"
         },
         "kind": "element",
         "style": {
@@ -2653,7 +2664,8 @@
           "opacity": 1,
           "blendMode": "normal",
           "semantic": {
-           "tag": "div"
+           "tag": "div",
+           "className": "icon"
           },
           "kind": "element",
           "style": {
@@ -3042,7 +3054,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "div"
+         "tag": "div",
+         "className": "card"
         },
         "kind": "element",
         "style": {
@@ -3132,7 +3145,8 @@
           "opacity": 1,
           "blendMode": "normal",
           "semantic": {
-           "tag": "div"
+           "tag": "div",
+           "className": "icon"
           },
           "kind": "element",
           "style": {
@@ -3523,7 +3537,8 @@
       "opacity": 1,
       "blendMode": "normal",
       "semantic": {
-       "tag": "section"
+       "tag": "section",
+       "className": "logos"
       },
       "kind": "element",
       "style": {
@@ -4618,7 +4633,8 @@
       "opacity": 1,
       "blendMode": "normal",
       "semantic": {
-       "tag": "section"
+       "tag": "section",
+       "className": "tags"
       },
       "kind": "element",
       "style": {
@@ -4716,7 +4732,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "span"
+         "tag": "span",
+         "className": "on"
         },
         "kind": "element",
         "style": {
@@ -4840,7 +4857,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "span"
+         "tag": "span",
+         "className": "hot"
         },
         "kind": "element",
         "style": {
@@ -5088,7 +5106,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "span"
+         "tag": "span",
+         "className": "hot"
         },
         "kind": "element",
         "style": {

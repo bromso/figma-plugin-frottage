@@ -10,6 +10,8 @@ import {
   textLeading,
   visualOrder,
 } from "./layout";
+import { layerName } from "./names";
+import { DEFAULT_IMPORT_OPTIONS, type ImportOptions } from "./options";
 import type {
   FontRef,
   LayerPlan,
@@ -27,11 +29,6 @@ type Fit = "FILL" | "FIT" | "CROP" | "TILE";
 type Color = { r: number; g: number; b: number; a: number };
 
 const rgb = (c: Color): PlanRgb => ({ r: c.r, g: c.g, b: c.b });
-
-function nameOf(node: CaptureNode, fallback: string): string {
-  const tag = node.semantic.tag.replace(/^[^a-zA-Z0-9]+/, "");
-  return tag ? tag.charAt(0).toUpperCase() + tag.slice(1) : fallback;
-}
 
 // Phase 3: CSS `object-fit: fill` stretches, while Figma's FILL crops to keep the aspect ratio.
 function imageFit(fit: "cover" | "contain" | "fill" | "none" | "tile"): Fit {
@@ -151,7 +148,11 @@ function settle(layout: PlanLayout, childLayout: PlanChildLayout | undefined): P
   };
 }
 
-export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
+export function mapCapture(
+  capture: Capture,
+  available: FontRef[],
+  options: ImportOptions = DEFAULT_IMPORT_OPTIONS
+): LayerPlan {
   const ops: PlanOp[] = [];
   const fonts = new Map<string, FontRef>();
   const hashes = new Set<string>();
@@ -199,7 +200,16 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     return fallbackFont;
   };
 
-  const mapText = (node: TextNode, parent: string, x: number, y: number): PlanOp | null => {
+  const nameFor = (node: CaptureNode, peers: CaptureNode[]): string =>
+    layerName(node, peers, { htmlNames: options.htmlNames });
+
+  const mapText = (
+    node: TextNode,
+    parent: string,
+    x: number,
+    y: number,
+    peers: CaptureNode[]
+  ): PlanOp | null => {
     const len = node.text.length;
     if (len === 0) return null;
     const valid: PlanRun[] = [];
@@ -254,7 +264,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
       op: "text",
       id: node.id,
       parent,
-      name: nameOf(node, "Text"),
+      name: nameFor(node, peers),
       x,
       y: y - leading,
       w: node.box.w,
@@ -272,14 +282,15 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     parent: string,
     x: number,
     y: number,
-    label: string
+    label: string,
+    peers: CaptureNode[]
   ): PlanOp => {
     report.placeholders++;
     return {
       op: "placeholder",
       id: node.id,
       parent,
-      name: nameOf(node, "Placeholder"),
+      name: nameFor(node, peers),
       x,
       y,
       w: node.box.w,
@@ -299,6 +310,8 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     parentId: string | null;
     parentLayout: PlanLayout | null;
     siblings: Siblings | undefined;
+    /** What the parent's children turned into, for numbering repeated items. */
+    peers: CaptureNode[];
   };
   const stack: Item[] = [
     {
@@ -308,10 +321,11 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
       parentId: null,
       parentLayout: null,
       siblings: undefined,
+      peers: [],
     },
   ];
   while (stack.length > 0) {
-    const { node, outer, parent, parentId, parentLayout, siblings } = stack.pop() as Item;
+    const { node, outer, parent, parentId, parentLayout, siblings, peers } = stack.pop() as Item;
     // visibility:hidden on a parent does not hide visible children, so an
     // invisible element with children stays as an unpainted frame.
     const hidden = !node.visible;
@@ -332,12 +346,14 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
           node.children,
           parentLayout ? { parent: parentLayout } : {}
         );
-        const layout = settle(inferred, childLayout);
+        const layout: PlanLayout = options.autoLayout
+          ? settle(inferred, childLayout)
+          : { mode: "NONE" };
         op = {
           op: "frame",
           id: node.id,
           parent: parentId,
-          name: nameOf(node, "Frame"),
+          name: nameFor(node, peers),
           x,
           y,
           w: node.box.w,
@@ -358,21 +374,23 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
           layout.mode === "HORIZONTAL" || layout.mode === "VERTICAL"
             ? siblingsOf(node.children, layout.mode === "HORIZONTAL")
             : undefined;
+        const targets = children.map((child) => collapseTarget(child, repeated));
         for (let i = children.length - 1; i >= 0; i--) {
           const child = children[i] as CaptureNode;
           stack.push({
-            node: collapseTarget(child, repeated),
+            node: targets[i] as CaptureNode,
             outer: child,
             parent: node,
             parentId: node.id,
             parentLayout: layout,
             siblings: around,
+            peers: targets,
           });
         }
         break;
       }
       case "text":
-        op = mapText(node, parentId as string, x, y);
+        op = mapText(node, parentId as string, x, y, peers);
         break;
       case "image":
         if (node.assetHash) {
@@ -382,7 +400,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
             op: "image",
             id: node.id,
             parent: parentId as string,
-            name: nameOf(node, "Image"),
+            name: nameFor(node, peers),
             x,
             y,
             w: node.box.w,
@@ -399,7 +417,8 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
             parentId as string,
             x,
             y,
-            node.sourceUrl ?? node.semantic.alt ?? "Image"
+            node.sourceUrl ?? node.semantic.alt ?? "Image",
+            peers
           );
         }
         break;
@@ -407,12 +426,12 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
         // Markup that was left out of the capture has nothing to rebuild.
         op =
           node.markup === ""
-            ? placeholder(node, parentId as string, x, y, "SVG")
+            ? placeholder(node, parentId as string, x, y, "SVG", peers)
             : {
                 op: "svg",
                 id: node.id,
                 parent: parentId as string,
-                name: nameOf(node, "Svg"),
+                name: nameFor(node, peers),
                 x,
                 y,
                 w: node.box.w,
@@ -430,7 +449,8 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
           parentId as string,
           x,
           y,
-          node.sourceUrl ? `${node.placeholderKind}: ${node.sourceUrl}` : node.placeholderKind
+          node.sourceUrl ? `${node.placeholderKind}: ${node.sourceUrl}` : node.placeholderKind,
+          peers
         );
         break;
     }

@@ -649,6 +649,19 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return first?.localName === "title" ? (first.textContent?.trim() ?? "") : "";
   }
 
+  /**
+   * The first class token, when it could be a name: plain word characters, at most 40 long, not
+   * hashed (a digit with a letter, or a CSS-in-JS prefix). Anything with `=`, `:` or `/` is out.
+   */
+  function classToken(el: Element): string | undefined {
+    const token = (el.getAttribute("class") ?? "").trim().split(/\s+/)[0] ?? "";
+    if (token.length === 0 || token.length > 40 || !/^[A-Za-z][\w-]*$/.test(token))
+      return undefined;
+    if (/\d/.test(token) && /[a-z]/i.test(token)) return undefined;
+    if (/^(?:css|sc|jsx|svelte|astro|emotion|styled|chakra|mui)[-_]/i.test(token)) return undefined;
+    return token;
+  }
+
   function semanticOf(el: Element): ElementNode["semantic"] {
     const tag = el.localName;
     const semantic: ElementNode["semantic"] = { tag };
@@ -675,6 +688,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     }
     const alt = el.getAttribute("alt");
     if (alt !== null && alt !== "") semantic.alt = alt;
+    const className = classToken(el);
+    if (className) semantic.className = className;
     return semantic;
   }
 

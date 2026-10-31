@@ -1658,7 +1658,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "p"
+         "tag": "p",
+         "className": "br"
         },
         "kind": "element",
         "style": {
@@ -1782,7 +1783,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "div"
+         "tag": "div",
+         "className": "zero-visible"
         },
         "kind": "element",
         "style": {
