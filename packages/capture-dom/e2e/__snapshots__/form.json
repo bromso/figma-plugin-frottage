@@ -519,7 +519,7 @@
           "semantic": {
            "tag": "input"
           },
-          "text": "ada@example.com",
+          "text": "you@example.com",
           "runs": [
            {
             "start": 0,
@@ -533,7 +533,7 @@
              "r": 0,
              "g": 0,
              "b": 0,
-             "a": 1
+             "a": 0.5
             },
             "decoration": "none",
             "transform": "none",
@@ -674,7 +674,7 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "select"
+         "tag": "input"
         },
         "kind": "element",
         "style": {
@@ -765,6 +765,345 @@
           "opacity": 1,
           "blendMode": "normal",
           "semantic": {
+           "tag": "input"
+          },
+          "text": "Password",
+          "runs": [
+           {
+            "start": 0,
+            "end": 8,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 19.6,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.5
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n11",
+        "paintOrder": 11,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "input"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 1,
+          "g": 1,
+          "b": 1,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          6,
+          6,
+          6,
+          6
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "clip"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          10,
+          6,
+          10
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n12",
+          "kind": "text",
+          "paintOrder": 12,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "input"
+          },
+          "text": "Card number",
+          "runs": [
+           {
+            "start": 0,
+            "end": 11,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 19.6,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.5
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n13",
+        "paintOrder": 13,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "input"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 1,
+          "g": 1,
+          "b": 1,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          6,
+          6,
+          6,
+          6
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "clip"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          10,
+          6,
+          10
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": []
+       },
+       {
+        "id": "n14",
+        "paintOrder": 14,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "select"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 1,
+          "g": 1,
+          "b": 1,
+          "a": 1
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "right": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "bottom": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          },
+          "left": {
+           "width": 1,
+           "color": {
+            "r": 0.8,
+            "g": 0.8,
+            "b": 0.8,
+            "a": 1
+           },
+           "style": "solid"
+          }
+         },
+         "borderRadius": [
+          6,
+          6,
+          6,
+          6
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "clip"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          6,
+          10,
+          6,
+          10
+         ],
+         "margin": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n15",
+          "kind": "text",
+          "paintOrder": 15,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
            "tag": "select"
           },
           "text": "Second option",
@@ -792,8 +1131,8 @@
         ]
        },
        {
-        "id": "n11",
-        "paintOrder": 11,
+        "id": "n16",
+        "paintOrder": 16,
         "visible": true,
         "opacity": 1,
         "blendMode": "normal",
@@ -882,20 +1221,20 @@
         },
         "children": [
          {
-          "id": "n12",
+          "id": "n17",
           "kind": "text",
-          "paintOrder": 12,
+          "paintOrder": 17,
           "visible": true,
           "opacity": 1,
           "blendMode": "normal",
           "semantic": {
            "tag": "textarea"
           },
-          "text": "Some notes",
+          "text": "Notes",
           "runs": [
            {
             "start": 0,
-            "end": 10,
+            "end": 5,
             "weight": 400,
             "style": "normal",
             "size": 14,
@@ -905,7 +1244,7 @@
              "r": 0,
              "g": 0,
              "b": 0,
-             "a": 1
+             "a": 0.5
             },
             "decoration": "none",
             "transform": "none",
@@ -916,8 +1255,8 @@
         ]
        },
        {
-        "id": "n13",
-        "paintOrder": 13,
+        "id": "n18",
+        "paintOrder": 18,
         "visible": true,
         "opacity": 1,
         "blendMode": "normal",
@@ -1006,9 +1345,9 @@
         },
         "children": [
          {
-          "id": "n14",
+          "id": "n19",
           "kind": "text",
-          "paintOrder": 14,
+          "paintOrder": 19,
           "visible": true,
           "opacity": 1,
           "blendMode": "normal",
@@ -1040,8 +1379,132 @@
         ]
        },
        {
-        "id": "n15",
-        "paintOrder": 15,
+        "id": "n20",
+        "paintOrder": 20,
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "normal",
+        "semantic": {
+         "tag": "p"
+        },
+        "kind": "element",
+        "style": {
+         "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+         },
+         "backgroundImages": [],
+         "borders": {
+          "top": {
+           "width": 0,
+           "color": {
+            "r": 0.07,
+            "g": 0.07,
+            "b": 0.07,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "right": {
+           "width": 0,
+           "color": {
+            "r": 0.07,
+            "g": 0.07,
+            "b": 0.07,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "bottom": {
+           "width": 0,
+           "color": {
+            "r": 0.07,
+            "g": 0.07,
+            "b": 0.07,
+            "a": 1
+           },
+           "style": "none"
+          },
+          "left": {
+           "width": 0,
+           "color": {
+            "r": 0.07,
+            "g": 0.07,
+            "b": 0.07,
+            "a": 1
+           },
+           "style": "none"
+          }
+         },
+         "borderRadius": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "boxShadows": [],
+         "filters": [],
+         "overflow": "visible"
+        },
+        "layout": {
+         "display": "block",
+         "position": "static",
+         "padding": [
+          0,
+          0,
+          0,
+          0
+         ],
+         "margin": [
+          14,
+          0,
+          14,
+          0
+         ],
+         "order": 0,
+         "grow": 0,
+         "shrink": 1
+        },
+        "children": [
+         {
+          "id": "n21",
+          "kind": "text",
+          "paintOrder": 21,
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "normal",
+          "semantic": {
+           "tag": "p"
+          },
+          "text": "foo\nbar",
+          "runs": [
+           {
+            "start": 0,
+            "end": 7,
+            "weight": 400,
+            "style": "normal",
+            "size": 14,
+            "lineHeight": 19.6,
+            "letterSpacing": 0,
+            "color": {
+             "r": 0.07,
+             "g": 0.07,
+             "b": 0.07,
+             "a": 1
+            },
+            "decoration": "none",
+            "transform": "none",
+            "align": "left"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "n22",
+        "paintOrder": 22,
         "visible": true,
         "opacity": 1,
         "blendMode": "normal",
@@ -1130,8 +1593,8 @@
         },
         "children": [
          {
-          "id": "n16",
-          "paintOrder": 16,
+          "id": "n23",
+          "paintOrder": 23,
           "visible": true,
           "opacity": 1,
           "blendMode": "normal",
@@ -1220,9 +1683,9 @@
           },
           "children": [
            {
-            "id": "n17",
+            "id": "n24",
             "kind": "text",
-            "paintOrder": 17,
+            "paintOrder": 24,
             "visible": true,
             "opacity": 1,
             "blendMode": "normal",

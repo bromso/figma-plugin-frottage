@@ -23,6 +23,8 @@ type Warning = Capture["warnings"][number];
 
 /** Matches `LIMITS.depth` in @repo/capture-schema; the root counts as depth 1. */
 const MAX_DEPTH = 256;
+/** Matches `LIMITS.nodes` in @repo/capture-schema; kept local so the walker stays type-only. */
+const MAX_NODES = 20_000;
 const XHTML = "http://www.w3.org/1999/xhtml";
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -105,12 +107,24 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   const root = doc.documentElement;
   const scrollX = win.scrollX;
   const scrollY = win.scrollY;
-  const warnings: Warning[] = [];
+  const warnings = new Map<string, { first: Warning; count: number }>();
   const fonts = new Map<string, Font>();
   const familyCache = new Map<string, string>();
   const installedCache = new Map<string, boolean>();
   const mergeable = new WeakMap<Element, boolean>();
   let counter = 0;
+  let limitHit = false;
+  /** Ids and node budget in one: nothing is emitted once MAX_NODES ids have been handed out. */
+  const nextId = (): number | null => {
+    if (counter >= MAX_NODES) {
+      if (!limitHit) {
+        limitHit = true;
+        warn("node-limit", "", `Capture stopped at ${MAX_NODES} nodes; the rest was not captured`);
+      }
+      return null;
+    }
+    return counter++;
+  };
   let canvasCtx: CanvasRenderingContext2D | null | undefined;
 
   const cs = (el: Element) => win.getComputedStyle(el);
@@ -313,6 +327,15 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
           if (IGNORED_TAGS.has(e.localName)) continue;
           if (e.localName === "br") {
             text = text.replace(/ +$/, "");
+            // Earlier runs may extend over the spaces just removed.
+            while (runs.length > 0) {
+              const tail = runs[runs.length - 1] as Run;
+              if (tail.start >= text.length) runs.pop();
+              else {
+                tail.end = Math.min(tail.end, text.length);
+                break;
+              }
+            }
             append("\n", runOf(cs(e), 0, 0));
           } else {
             addNodes(e.childNodes, e);
@@ -350,7 +373,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const top = Math.min(...lines.map((l) => l.y));
     const right = Math.max(...lines.map((l) => l.x + l.w));
     const bottom = Math.max(...lines.map((l) => l.y + l.h));
-    const n = counter++;
+    const n = nextId();
+    if (n === null) return null;
     return {
       id: `n${n}`,
       kind: "text",
@@ -368,16 +392,19 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   // ---------- Form controls
 
+  /**
+   * Text shown for a form control. The live value of an editable field is never read:
+   * a text-like input or textarea yields its `placeholder` attribute only, so typed
+   * secrets cannot leak through a toggled `type` or a missing `autocomplete`.
+   */
   function controlText(el: Element): { value: string; placeholder: boolean } | null {
     if (el instanceof win.HTMLInputElement) {
       const type = (el.getAttribute("type") ?? "text").toLowerCase();
       if (NO_TEXT_INPUTS.has(type)) return null;
       if (BUTTON_INPUTS.has(type)) return { value: el.value, placeholder: false };
-      if (el.value) return { value: el.value, placeholder: false };
       return el.placeholder ? { value: el.placeholder, placeholder: true } : null;
     }
     if (el instanceof win.HTMLTextAreaElement) {
-      if (el.value) return { value: el.value, placeholder: false };
       return el.placeholder ? { value: el.placeholder, placeholder: true } : null;
     }
     if (el instanceof win.HTMLSelectElement && !el.multiple) {
@@ -400,7 +427,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
     const run = runOf(s, 0, content.value.length);
     if (content.placeholder) run.color = { ...run.color, a: round2(run.color.a * 0.5) } as Rgba;
-    const n = counter++;
+    const n = nextId();
+    if (n === null) return null;
     return {
       id: `n${n}`,
       kind: "text",
@@ -459,8 +487,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return pageBox(r);
   }
 
-  function warn(code: string, nodeId: string, detail: string) {
-    warnings.push({ code, nodeId, detail });
+  function warn(code: string, nodeId: string | undefined, detail: string) {
+    const seen = warnings.get(code);
+    if (seen) seen.count++;
+    else warnings.set(code, { first: { code, ...(nodeId ? { nodeId } : {}), detail }, count: 1 });
   }
 
   function placeholder(
@@ -515,7 +545,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const clipped = s.overflowX !== "visible" || s.overflowY !== "visible";
     if (!isRoot && boxArea(box) <= 0 && clipped) return [];
 
-    const n = counter++;
+    const n = nextId();
+    if (n === null) return [];
     const id = `n${n}`;
     const common = {
       id,
@@ -587,8 +618,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
     const leafControl = tag === "input" || tag === "textarea" || tag === "select";
     if (leafControl) {
-      const t = controlNode(el, s, box);
-      if (t) element.children.push(t);
+      if (depth < MAX_DEPTH) {
+        const t = controlNode(el, s, box);
+        if (t) element.children.push(t);
+      }
     } else {
       element.children = visitChildren(el, depth);
     }
@@ -652,7 +685,9 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     tokens: { cssCustomProperties: sortedTokens },
     fonts: [...fonts.values()],
     assets: [],
-    warnings,
+    warnings: [...warnings.values()].map(({ first, count }) =>
+      count > 1 ? { ...first, detail: `${first.detail} (${count} times)` } : first
+    ),
     root: tree,
   };
 }

@@ -24,13 +24,25 @@ textarea { height: 72px; }
   <input id="p" type="password" value="hunter2-do-not-capture">
   <input id="p2" type="text" autocomplete="current-password" value="hunter2-do-not-capture">
   <input id="p3" type="text" autocomplete="new-password" value="hunter2-do-not-capture">
+  <input id="pw" type="password" placeholder="Password">
+  <input id="card" name="card" type="text" placeholder="Card number">
+  <input id="attr" type="text" value="ATTR-VALUE-NOT-READ">
   <input type="hidden" value="HIDDEN-INPUT-VALUE">
   <select id="s"><option>First</option><option selected>Second option</option></select>
-  <textarea id="t">Some notes</textarea>
+  <textarea id="t" placeholder="Notes">Some notes</textarea>
   <button type="submit">Sign in</button>
   <div class="gone">HIDDEN-TEXT</div>
   <div class="zero">ZERO-AREA-TEXT</div>
+  <p class="br">foo <br>bar</p>
   <div class="zero-visible"><span>Overflowing child</span></div>
 </form>
+<script>
+  // A show-password toggle: the field becomes type=text and still holds the secret.
+  const pw = document.getElementById("pw");
+  pw.value = "TOGGLED-SECRET-VALUE";
+  pw.type = "text";
+  document.getElementById("card").value = "CARD-TYPED-4111";
+  document.getElementById("t").value = "TEXTAREA-TYPED-VALUE";
+</script>
 </body>
 </html>

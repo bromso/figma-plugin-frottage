@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
-import { type Capture, type CaptureNode, parseCapture } from "@repo/capture-schema";
+import { type Capture, type CaptureNode, countNodes, parseCapture } from "@repo/capture-schema";
 
 // Bundle the walker once into an IIFE global (`globalThis.__frottageCapture`), so it runs in the
 // page exactly as the extension would inject it. Playwright runs under Node, so the bundle is built
@@ -156,23 +156,32 @@ test("never captures a password or hidden text", async ({ page }) => {
   expect(json).not.toContain("HIDDEN-TEXT");
   expect(json).not.toContain("HIDDEN-INPUT-VALUE");
   expect(json).not.toContain("ZERO-AREA-TEXT");
-  // Non-password fields are read: value, else placeholder.
-  expect(json).toContain("ada@example.com");
+  // Editable fields yield their placeholder only; typed or defaulted values never appear.
+  for (const secret of [
+    "ada@example.com",
+    "TOGGLED-SECRET-VALUE",
+    "CARD-TYPED-4111",
+    "ATTR-VALUE-NOT-READ",
+    "TEXTAREA-TYPED-VALUE",
+    "Some notes",
+  ]) {
+    expect(json).not.toContain(secret);
+  }
+  expect(json).toContain("you@example.com");
   expect(json).toContain("Search the docs");
+  expect(json).toContain("Card number");
   expect(json).toContain("Second option");
 });
 
-test("never reads the value of a password input", async ({ page }) => {
+test("never reads .value on a password, text-like input or textarea", async ({ page }) => {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
   await page.goto("/form.html");
   await page.addScriptTag({ content: bundle });
   const reads = await page.evaluate(() => {
     let count = 0;
-    for (const input of document.querySelectorAll("input")) {
-      const secret =
-        input.getAttribute("type") === "password" ||
-        /password/.test(input.getAttribute("autocomplete") ?? "");
-      if (!secret) continue;
+    for (const input of document.querySelectorAll("input, textarea")) {
+      const type = input.getAttribute("type") ?? "text";
+      if (["checkbox", "radio", "submit", "button", "reset"].includes(type)) continue;
       Object.defineProperty(input, "value", {
         get() {
           count++;
@@ -187,6 +196,66 @@ test("never reads the value of a password input", async ({ page }) => {
     return count;
   });
   expect(reads).toBe(0);
+});
+
+test("text runs are contiguous after a line break", async ({ page }) => {
+  const c = await capture(page, "form.html");
+  const t = findText(c, "foo");
+  expect(t.text).toBe("foo\nbar");
+  expect(t.runs.map((r) => [r.start, r.end])).toEqual([[0, 7]]);
+});
+
+test("runs are contiguous, ordered and within the text in every fixture", async ({ page }) => {
+  for (const name of pages) {
+    const c = await capture(page, `${name}.html`);
+    each(c, (n) => {
+      if (n.kind !== "text") return;
+      let at = 0;
+      for (const r of n.runs) {
+        expect(r.start).toBeGreaterThanOrEqual(at);
+        expect(r.end).toBeGreaterThan(r.start);
+        expect(r.end).toBeLessThanOrEqual(n.text.length);
+        at = r.end;
+      }
+    });
+  }
+});
+
+test("stops at 20,000 nodes with one warning and still parses", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/form.html");
+  await page.evaluate(() => {
+    const host = document.createElement("div");
+    for (let i = 0; i < 25000; i++) {
+      const d = document.createElement("div");
+      d.style.cssText = "width:10px;height:2px";
+      host.appendChild(d);
+    }
+    document.body.appendChild(host);
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  expect(c.warnings.filter((w) => w.code === "node-limit")).toHaveLength(1);
+  expect(countNodes(c.root)).toBeLessThanOrEqual(20000);
+  expect(parseCapture(c).ok).toBe(true);
+});
+
+test("collapses repeated warnings into one with a count", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/form.html");
+  await page.evaluate(() => {
+    for (let i = 0; i < 5; i++) {
+      document.body.insertAdjacentHTML(
+        "beforeend",
+        '<svg width="10" height="10"><rect width="10" height="10"/></svg>'
+      );
+    }
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const svg = c.warnings.filter((w) => w.code === "svg-placeholder");
+  expect(svg).toHaveLength(1);
+  expect(svg[0]?.detail).toContain("(5 times)");
 });
 
 test("keeps the subtree of a zero-area element whose children have area", async ({ page }) => {
