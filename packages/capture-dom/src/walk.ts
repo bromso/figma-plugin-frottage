@@ -7,6 +7,7 @@ import type {
   TextNode,
 } from "@repo/capture-schema";
 import type { Rgba } from "./color";
+import { flatChildren, shadowRootOf } from "./flatten";
 import {
   colorOf,
   px,
@@ -21,7 +22,7 @@ import { cleanCss, cleanUrl, rememberUrl } from "./urls";
 export type CaptureEnv = {
   now: () => string;
   toolVersion: string;
-  /** Reserved for Phase 3 (shadow DOM); the Phase 1 walker does not traverse shadow roots. */
+  /** Reaches closed shadow roots (the extension passes `chrome.dom.openOrClosedShadowRoot`); open ones are read without it. */
   getShadowRoot?: (el: Element) => ShadowRoot | null;
 };
 
@@ -137,6 +138,9 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   let canvasCtx: CanvasRenderingContext2D | null | undefined;
 
   const cs = (el: Element) => win.getComputedStyle(el);
+  /** A slot with `display: contents` has no box and is replaced by what it shows; any other keeps its node. */
+  const keepSlot = (slot: Element) => cs(slot).display !== "contents";
+  const childrenOf = (el: Element) => flatChildren(el, env, keepSlot);
   const pageBox = (r: { left: number; top: number; width: number; height: number }): Box => ({
     x: round2(r.left + scrollX),
     y: round2(r.top + scrollY),
@@ -275,9 +279,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         s.borderLeftStyle === "none" &&
         s.mixBlendMode === "normal";
       if (ok) {
-        for (const child of el.children) {
-          if (IGNORED_TAGS.has(child.localName)) continue;
-          if (!isMergeable(child)) {
+        for (const child of childrenOf(el)) {
+          if (child.nodeType !== 1) continue;
+          if (IGNORED_TAGS.has((child as Element).localName)) continue;
+          if (!isMergeable(child as Element)) {
             ok = false;
             break;
           }
@@ -302,8 +307,9 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       else runs.push({ ...run, start, end: text.length });
     };
 
-    const addText = (node: Text, styleEl: Element) => {
-      const s = cs(styleEl);
+    const addText = (node: Text, parentEl: Element) => {
+      // A slotted text node takes its style from the slot it is assigned to, not its light parent.
+      const s = cs(node.assignedSlot ?? parentEl);
       if (s.visibility !== "visible") return;
       const raw = node.nodeValue ?? "";
       const ws = s.whiteSpace;
@@ -347,7 +353,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
             }
             append("\n", runOf(cs(e), 0, 0));
           } else {
-            addNodes(e.childNodes, e);
+            addNodes(childrenOf(e), e);
           }
         }
       }
@@ -531,7 +537,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       if (node) out.push(node);
       group = [];
     };
-    for (const child of el.childNodes) {
+    for (const child of childrenOf(el)) {
       if (child.nodeType === 3) {
         group.push(child);
       } else if (child.nodeType === 1) {
@@ -621,7 +627,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       }
     }
 
-    if (depth >= MAX_DEPTH && el.firstChild) {
+    if (depth >= MAX_DEPTH && (el.firstChild || shadowRootOf(el, env))) {
       warn("depth-limit", id, `Subtree below depth ${MAX_DEPTH} was not captured`);
       return [placeholder(common, "blocked-image")];
     }

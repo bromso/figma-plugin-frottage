@@ -30,29 +30,45 @@ test.beforeAll(() => {
 
 type Hook = {
   __frottageCapture: {
-    captureDocument: (doc: Document, env: { now: () => string; toolVersion: string }) => Capture;
+    captureDocument: (
+      doc: Document,
+      env: {
+        now: () => string;
+        toolVersion: string;
+        getShadowRoot?: (el: Element) => ShadowRoot | null;
+      }
+    ) => Capture;
   };
 };
 
-async function capture(page: Page, file: string): Promise<Capture> {
+type CaptureOptions = {
+  /** Pass a getShadowRoot that reaches closed roots, through the hook the fixture sets on window. */
+  closedShadow?: boolean;
+};
+
+async function capture(page: Page, file: string, options: CaptureOptions = {}): Promise<Capture> {
   // Fonts are not part of what is under test; block the network so results never depend on it.
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
   await page.goto(`/${file}`);
   await page.addScriptTag({ content: bundle });
-  return runCapture(page, "2026-01-01T00:00:00.000Z");
+  return runCapture(page, "2026-01-01T00:00:00.000Z", options);
 }
 
 // Serialised in the page: a deep tree is too long a reference chain for Playwright to transfer.
-async function runCapture(page: Page, now: string): Promise<Capture> {
+async function runCapture(page: Page, now: string, options: CaptureOptions = {}): Promise<Capture> {
   const json = await page.evaluate(
-    (at) =>
-      JSON.stringify(
+    ({ at, closed }) => {
+      type Roots = WeakMap<Element, ShadowRoot>;
+      const roots = (window as unknown as { __frottageClosedRoots?: Roots }).__frottageClosedRoots;
+      return JSON.stringify(
         (globalThis as unknown as Hook).__frottageCapture.captureDocument(document, {
           now: () => at,
           toolVersion: "test",
+          ...(closed ? { getShadowRoot: (el: Element) => roots?.get(el) ?? el.shadowRoot } : {}),
         })
-      ),
-    now
+      );
+    },
+    { at: now, closed: options.closedShadow === true }
   );
   return JSON.parse(json) as Capture;
 }
@@ -64,6 +80,20 @@ function each(c: Capture, fn: Walk) {
     if (n.kind === "element") for (const child of n.children) go(child);
   };
   go(c.root);
+}
+function textOf(c: Capture): string {
+  const parts: string[] = [];
+  each(c, (n) => {
+    if (n.kind === "text") parts.push(n.text);
+  });
+  return parts.join("\n");
+}
+function countTag(c: Capture, tag: string): number {
+  let count = 0;
+  each(c, (n) => {
+    if (n.kind === "element" && n.semantic.tag === tag) count++;
+  });
+  return count;
 }
 function findText(c: Capture, needle: string) {
   let hit: Extract<CaptureNode, { kind: "text" }> | undefined;
@@ -399,4 +429,128 @@ test("stops at depth 256 with a warning and still parses", async ({ page }) => {
   const c = await runCapture(page, "x");
   expect(c.warnings.some((w) => w.code === "depth-limit")).toBe(true);
   expect(parseCapture(c).ok).toBe(true);
+});
+
+test("reads open and closed shadow roots", async ({ page }) => {
+  const c = await capture(page, "shadow.html", { closedShadow: true });
+  expect(textOf(c)).toContain("Link 12");
+  expect(countTag(c, "x-icon")).toBe(6);
+  // Each closed root holds an inline svg, which Phase 1 emits as a placeholder.
+  expect(c.warnings.find((w) => w.code === "svg-placeholder")?.detail).toContain("(6 times)");
+});
+
+test("a closed root is not read without a getShadowRoot that reaches it", async ({ page }) => {
+  const c = await capture(page, "shadow.html");
+  expect(c.warnings.some((w) => w.code === "svg-placeholder")).toBe(false);
+});
+
+test("slotted content appears once", async ({ page }) => {
+  const text = textOf(await capture(page, "shadow.html"));
+  expect(text.split("Slotted heading").length - 1).toBe(1);
+  expect(text.split("Card body one").length - 1).toBe(1);
+});
+
+test("an unassigned slot renders its fallback", async ({ page }) => {
+  const text = textOf(await capture(page, "shadow.html"));
+  // Only the empty card falls back; the card with content and the card whose child names a
+  // slot that does not exist do not, and the unassigned child is not rendered at all.
+  expect(text.split("Fallback copy").length - 1).toBe(2);
+  expect(text).not.toContain("ORPHAN-SLOTTED");
+});
+
+test("a password inside a shadow root is never read", async ({ page }) => {
+  const json = JSON.stringify(await capture(page, "shadow.html"));
+  expect(json).not.toContain("shadow-secret");
+  expect(json).not.toContain("shadow-placeholder");
+  expect(json).toContain("Shadow email");
+});
+
+test("custom element tag names are kept", async ({ page }) => {
+  expect(findElement(await capture(page, "shadow.html"), "x-link").semantic.tag).toBe("x-link");
+});
+
+test("slotted content keeps its place in shadow content", async ({ page }) => {
+  const c = await capture(page, "shadow.html");
+  // "Link 12 " is shadow text and "New" is slotted into it; they read as one line.
+  expect(findText(c, "Link 12").text).toBe("Link 12 New");
+});
+
+test("shadow nodes count toward the node cap", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/shadow.html");
+  await page.evaluate(() => {
+    const host = document.createElement("div");
+    host.attachShadow({ mode: "open" }).innerHTML =
+      '<div style="width:10px;height:2px"></div>'.repeat(25000);
+    document.body.appendChild(host);
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  expect(c.warnings.filter((w) => w.code === "node-limit")).toHaveLength(1);
+  expect(countNodes(c.root)).toBeLessThanOrEqual(20000);
+  expect(parseCapture(c).ok).toBe(true);
+});
+
+test("shadow nodes count toward the depth cap", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/shadow.html");
+  await page.evaluate(() => {
+    // 300 nested elements, each inside the shadow root of the one before.
+    let at: Element | ShadowRoot = document.body;
+    for (let i = 0; i < 300; i++) {
+      const d = document.createElement("div");
+      d.style.paddingLeft = "1px";
+      at.appendChild(d);
+      at = d.attachShadow({ mode: "open" });
+    }
+    (at as ShadowRoot).textContent = "deep";
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  expect(c.warnings.some((w) => w.code === "depth-limit")).toBe(true);
+  expect(parseCapture(c).ok).toBe(true);
+});
+
+test("a slot with display: contents emits no node, and one with a box does", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/shadow.html");
+  await page.evaluate(() => {
+    const make = (css: string) => {
+      const host = document.createElement("div");
+      host.attachShadow({ mode: "open" }).innerHTML = `<slot style="${css}"></slot>`;
+      host.innerHTML = "<p>Boxed text</p>";
+      document.body.appendChild(host);
+    };
+    make("display:contents");
+    make("display:block;background:rgb(255,0,0);padding:4px");
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  expect(countTag(c, "slot")).toBe(1);
+  expect(textOf(c).split("Boxed text").length - 1).toBe(2);
+});
+
+test("never reads .value inside a shadow root", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/shadow.html");
+  await page.addScriptTag({ content: bundle });
+  const reads = await page.evaluate(() => {
+    let count = 0;
+    for (const host of document.querySelectorAll("x-login")) {
+      for (const input of host.shadowRoot?.querySelectorAll("input") ?? []) {
+        Object.defineProperty(input, "value", {
+          get() {
+            count++;
+            return "";
+          },
+        });
+      }
+    }
+    (globalThis as unknown as Hook).__frottageCapture.captureDocument(document, {
+      now: () => "x",
+      toolVersion: "t",
+    });
+    return count;
+  });
+  expect(reads).toBe(0);
 });
