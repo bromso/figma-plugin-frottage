@@ -1,6 +1,6 @@
 # Frottage v2 design: usable, complete, multi-version imports
 
-Date: 2026-10-31. Status: draft, awaiting approval.
+Date: 2026-10-31. Status: approved by the owner on 2026-10-31.
 
 Builds on `2026-10-31-frottage-design.md` and the Phase 0 and Phase 1 results in this folder. Decisions there stand unless changed here. This assumes PR #1 (Phase 1) merges first.
 
