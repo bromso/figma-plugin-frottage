@@ -122,6 +122,17 @@
         "typescript": "^7.0.2",
       },
     },
+    "packages/figma-mapper": {
+      "name": "@repo/figma-mapper",
+      "version": "0.0.0",
+      "dependencies": {
+        "@repo/capture-schema": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.4",
+        "typescript": "^7.0.2",
+      },
+    },
     "packages/ui": {
       "name": "@repo/ui",
       "version": "2.0.0",
@@ -767,6 +778,8 @@
     "@repo/design-plugin": ["@repo/design-plugin@workspace:apps/design-plugin"],
 
     "@repo/docs": ["@repo/docs@workspace:apps/docs"],
+
+    "@repo/figma-mapper": ["@repo/figma-mapper@workspace:packages/figma-mapper"],
 
     "@repo/storybook": ["@repo/storybook@workspace:apps/storybook"],
 

@@ -1,0 +1,22 @@
+{
+  "name": "@repo/figma-mapper",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "test": "bun test src",
+    "test:watch": "bun test src --watch",
+    "types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/capture-schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}
