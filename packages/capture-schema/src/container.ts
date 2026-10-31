@@ -184,7 +184,13 @@ export function unpackFrottage(
     throw new FrottageFileError("invalid-capture", "capture.json is not valid JSON");
   }
 
-  const parsed = parseCapture(json, limits);
+  let parsed: ReturnType<typeof parseCapture>;
+  try {
+    parsed = parseCapture(json, limits);
+  } catch (e) {
+    if (isStackOverflow(e)) throw new FrottageFileError("too-deep");
+    throw new FrottageFileError("invalid-capture");
+  }
   if (!parsed.ok) {
     const code = {
       invalid: "invalid-capture",

@@ -17,11 +17,13 @@ const border = z.object({
   style: z.string(),
 });
 
+const stop = z.object({ color, position: z.number() });
+
 const backgroundImage = z.object({
   type: z.enum(["linear-gradient", "radial-gradient", "conic-gradient", "image"]),
   css: z.string(),
   assetHash: z.string().optional(),
-  stops: z.array(z.object({ color, position: z.number() })).optional(),
+  stops: z.array(stop).optional(),
   angle: z.number().optional(),
   size: z.string().optional(),
   position: z.string().optional(),
@@ -228,7 +230,7 @@ export const parts = {
   textRun,
   boxShadow,
   backgroundImage: backgroundImage.omit({ stops: true }),
-  stop: z.object({ color, position: z.number() }),
+  stop,
   string: z.string(),
   // Top level without its unbounded members.
   captureShell: captureSchema.omit({

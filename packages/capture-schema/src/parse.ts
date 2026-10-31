@@ -48,7 +48,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function rest(raw: Record<string, unknown>, ...omit: string[]): Record<string, unknown> {
   const copy: Record<string, unknown> = {};
-  for (const key of Object.keys(raw)) if (!omit.includes(key)) copy[key] = raw[key];
+  for (const key of Object.keys(raw)) {
+    // An own "__proto__" key from JSON.parse must not reach the setter, or it
+    // could supply required fields through the prototype.
+    if (key === "__proto__" || omit.includes(key)) continue;
+    Object.defineProperty(copy, key, {
+      value: raw[key],
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
   return copy;
 }
 
@@ -127,7 +137,7 @@ function checkTree(
       item.out,
       checkNode(
         item.raw,
-        item.raw.id === undefined ? "root" : `node ${String(item.raw.id).slice(0, 40)}`
+        typeof item.raw.id === "string" ? `node ${item.raw.id.slice(0, 40)}` : "root"
       )
     );
     if (item.raw.kind !== "element") continue;
@@ -202,6 +212,7 @@ function checkTokens(input: unknown): { cssCustomProperties: Record<string, stri
   }
   const out: Record<string, string> = {};
   for (const key of Object.keys(input.cssCustomProperties)) {
+    if (key === "__proto__") continue; // z.record skips it too
     const value = input.cssCustomProperties[key];
     if (typeof value !== "string") {
       throw new Reject(

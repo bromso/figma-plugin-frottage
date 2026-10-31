@@ -456,3 +456,190 @@ describe("parseCapture", () => {
     if (!result.ok) expect(result.detail.length).toBeLessThanOrEqual(500);
   });
 });
+
+/** An array whose item reads are counted: a whole-array check reads them all. */
+function countedArray(length: number, item: () => unknown) {
+  let reads = 0;
+  const target = Array.from({ length }, item);
+  const proxy = new Proxy(target, {
+    get(t, prop, receiver) {
+      if (typeof prop === "string" && /^\d+$/.test(prop)) reads++;
+      return Reflect.get(t, prop, receiver);
+    },
+  });
+  return { proxy, reads: () => reads };
+}
+
+function elementWith(style: Record<string, unknown>) {
+  const el = elementNode("e") as unknown as { style: Record<string, unknown> };
+  Object.assign(el.style, style);
+  return el;
+}
+
+describe("bounded validation reads a hostile list only up to the first failure", () => {
+  const N = 5000;
+  const color = { r: 0, g: 0, b: 0, a: 1 };
+  const cases: Array<[string, (list: unknown) => Record<string, unknown>, () => unknown]> = [
+    ["fonts", (list) => ({ ...minimalCapture(), fonts: list }), () => ({})],
+    ["assets", (list) => ({ ...minimalCapture(), assets: list }), () => ({})],
+    ["warnings", (list) => ({ ...minimalCapture(), warnings: list }), () => ({})],
+    [
+      "boxShadows",
+      (list) => ({ ...minimalCapture(), root: elementWith({ boxShadows: list }) }),
+      () => ({}),
+    ],
+    ["filters", (list) => ({ ...minimalCapture(), root: elementWith({ filters: list }) }), () => 1],
+    [
+      "backgroundImages",
+      (list) => ({ ...minimalCapture(), root: elementWith({ backgroundImages: list }) }),
+      () => ({}),
+    ],
+    [
+      "stops",
+      (list) => ({
+        ...minimalCapture(),
+        root: elementWith({
+          backgroundImages: [{ type: "linear-gradient", css: "x", stops: list }],
+        }),
+      }),
+      () => ({ color: 1 }),
+    ],
+    [
+      "lines",
+      (list) => ({ ...minimalCapture(), root: { ...textNode("t"), lines: list } }),
+      () => ({}),
+    ],
+    [
+      "runs",
+      (list) => ({ ...minimalCapture(), root: { ...textNode("t"), runs: list } }),
+      () => ({}),
+    ],
+  ];
+
+  for (const [name, build, item] of cases) {
+    test(`${name}: stops at the first bad item with a short detail`, () => {
+      const { proxy, reads } = countedArray(N, item);
+      const result = parseCapture(build(proxy));
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toBe("invalid");
+        expect(result.detail.length).toBeLessThanOrEqual(300);
+      }
+      expect(reads()).toBeLessThanOrEqual(3);
+    });
+  }
+
+  test("tokens: stops at the first bad entry", () => {
+    let reads = 0;
+    const target: Record<string, unknown> = {};
+    for (let i = 0; i < N; i++) target[`--v${i}`] = 1;
+    const proxy = new Proxy(target, {
+      get(t, prop, receiver) {
+        if (typeof prop === "string" && prop.startsWith("--v")) reads++;
+        return Reflect.get(t, prop, receiver);
+      },
+    });
+    const result = parseCapture({ ...minimalCapture(), tokens: { cssCustomProperties: proxy } });
+    expect(result.ok).toBe(false);
+    expect(reads).toBeLessThanOrEqual(3);
+  });
+
+  test("a valid stops list still round-trips", () => {
+    const stops = [
+      { color, position: 0 },
+      { color, position: 1 },
+    ];
+    const input = {
+      ...minimalCapture(),
+      root: elementWith({ backgroundImages: [{ type: "linear-gradient", css: "x", stops }] }),
+    };
+    const result = parseCapture(input);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.capture).toEqual(captureSchema.parse(input));
+  });
+});
+
+describe("own __proto__ keys from JSON.parse", () => {
+  const cap = minimalCapture();
+  const shellFields = {
+    schemaVersion: cap.schemaVersion,
+    capturedAt: cap.capturedAt,
+    tool: cap.tool,
+    source: cap.source,
+  };
+  const json = (s: string): Record<string, unknown> => JSON.parse(s);
+
+  function expectRejected(value: unknown) {
+    const result = parseCapture(value);
+    expect(result.ok).toBe(false);
+    // The two paths must agree about whether the object is acceptable.
+    expect(result.ok).toBe(captureSchema.safeParse(value).success);
+  }
+
+  test("required shell fields supplied only through __proto__", () => {
+    const value = json(
+      `{"__proto__":${JSON.stringify(shellFields)},"tokens":{"cssCustomProperties":{}},"fonts":[],"assets":[],"warnings":[],"root":${JSON.stringify(elementNode("r"))}}`
+    );
+    expectRejected(value);
+  });
+
+  test("required text fields supplied only through __proto__", () => {
+    const node = JSON.stringify({ ...textNode("t"), text: undefined }).slice(1);
+    const root = json(`{"__proto__":{"text":"hi"},${node}`);
+    expectRejected({ ...cap, root });
+  });
+
+  test("required style fields supplied only through __proto__", () => {
+    const el = elementNode("e") as unknown as { style: Record<string, unknown> };
+    const { overflow: _o, ...style } = el.style;
+    const styleJson = json(`{"__proto__":{"overflow":"visible"},${JSON.stringify(style).slice(1)}`);
+    expectRejected({ ...cap, root: { ...el, style: styleJson } });
+  });
+
+  test("required background fields supplied only through __proto__", () => {
+    const bg = json('{"__proto__":{"css":"x"},"type":"image"}');
+    expectRejected({ ...cap, root: elementWith({ backgroundImages: [bg] }) });
+  });
+
+  test("a __proto__ key inside tokens is skipped like z.record does", () => {
+    const value = {
+      ...cap,
+      tokens: json('{"cssCustomProperties":{"__proto__":"x","b":"y"}}'),
+    };
+    const result = parseCapture(value);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.capture).toEqual(captureSchema.parse(value));
+      expect(Object.keys(result.capture.tokens.cssCustomProperties)).toEqual(["b"]);
+    }
+  });
+
+  test("a non-string __proto__ token value does not reject", () => {
+    const value = { ...cap, tokens: json('{"cssCustomProperties":{"__proto__":1}}') };
+    expect(parseCapture(value).ok).toBe(captureSchema.safeParse(value).success);
+  });
+});
+
+describe("unexpected failures stay coded", () => {
+  const badId = { ...minimalCapture(), root: { ...elementNode("r"), id: { toString: 1 } } };
+
+  test("an object id does not throw an uncoded TypeError", () => {
+    expect(parseCapture(badId)).toMatchObject({ ok: false, reason: "invalid" });
+    expectCode(() => unpackFrottage(zipWithRaw(JSON.stringify(badId))), "invalid-capture");
+  });
+
+  test("a RangeError that is not a stack overflow is invalid, a stack overflow is too-deep", () => {
+    const other = {
+      get schemaVersion(): never {
+        throw new RangeError("Invalid array length");
+      },
+    };
+    expect(parseCapture(other)).toMatchObject({ ok: false, reason: "invalid" });
+    const stack = {
+      get schemaVersion(): never {
+        throw new RangeError("Maximum call stack size exceeded.");
+      },
+    };
+    expect(parseCapture(stack)).toMatchObject({ ok: false, reason: "too-deep" });
+  });
+});
