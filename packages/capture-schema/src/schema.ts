@@ -59,6 +59,8 @@ const style = z.object({
   clip: box.optional(),
 });
 
+const marginAuto = z.tuple([z.boolean(), z.boolean(), z.boolean(), z.boolean()]);
+
 const layout = z.object({
   display: z.string(),
   position: z.string(),
@@ -71,7 +73,7 @@ const layout = z.object({
   padding: four,
   margin: four,
   // `margin` holds used pixels, so this says which sides were `auto`: [top, right, bottom, left].
-  marginAuto: z.tuple([z.boolean(), z.boolean(), z.boolean(), z.boolean()]).optional(),
+  marginAuto: marginAuto.optional(),
   order: z.number(),
   grow: z.number(),
   shrink: z.number(),
@@ -133,8 +135,16 @@ const textNode = z.object({
   runs: z.array(textRun),
 });
 
+// How a leaf sits among its siblings; left out when static or zero. Elements have `layout`.
+const flow = {
+  position: z.string().optional(),
+  margin: four.optional(),
+  marginAuto: marginAuto.optional(),
+};
+
 const imageNode = z.object({
   ...common,
+  ...flow,
   kind: z.literal("image"),
   assetHash: z.string().optional(),
   sourceUrl: z.string().optional(),
@@ -147,6 +157,7 @@ const imageNode = z.object({
 
 const svgNode = z.object({
   ...common,
+  ...flow,
   kind: z.literal("svg"),
   markup: z.string(),
   /** Computed overflow of the `<svg>`; browsers clip inline SVG unless this is `visible`. */
@@ -155,6 +166,7 @@ const svgNode = z.object({
 
 const placeholderNode = z.object({
   ...common,
+  ...flow,
   kind: z.literal("placeholder"),
   placeholderKind: z.enum(["canvas", "video", "cross-origin-iframe", "blocked-image"]),
   sourceUrl: z.string().optional(),

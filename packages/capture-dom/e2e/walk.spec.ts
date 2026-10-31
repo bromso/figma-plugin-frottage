@@ -1053,3 +1053,14 @@ test("an auto margin is told apart from its used pixel value", async ({ page }) 
   expect(push?.layout.marginAuto).toEqual([false, false, false, true]);
   expect(logo?.layout.marginAuto).toBeUndefined();
 });
+
+test("images, SVGs and placeholders record how they sit in the flow", async ({ page }) => {
+  const c = await capture(page, "layout.html");
+  const icon = findKind(c, "svg");
+  expect(icon.margin).toEqual([0, 8, 0, 0]);
+  expect(icon.position).toBeUndefined();
+  const canvas = findKind(c, "placeholder");
+  expect(canvas.position).toBe("absolute");
+  expect(canvas.margin).toBeUndefined();
+  expect(parseCapture(c).ok).toBe(true);
+});

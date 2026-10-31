@@ -34,14 +34,21 @@ function renders(node: CaptureNode): boolean {
   return node.visible || (node.kind === "element" && node.children.length > 0);
 }
 
-const isAbsolute = (node: CaptureNode) =>
-  node.kind === "element" && /^(absolute|fixed)$/.test(node.layout.position);
+/** Where a node keeps its place in the flow. Text has none: it is always in flow. */
+function placement(node: CaptureNode): {
+  position?: string;
+  margin?: Four;
+  marginAuto?: [boolean, boolean, boolean, boolean];
+} {
+  if (node.kind === "element") return node.layout;
+  return node.kind === "text" ? {} : node;
+}
 
-const marginsOf = (node: CaptureNode): Four =>
-  node.kind === "element" ? node.layout.margin : NO_MARGINS;
+const isAbsolute = (node: CaptureNode) => /^(absolute|fixed)$/.test(placement(node).position ?? "");
 
-const autoMargins = (node: CaptureNode) =>
-  node.kind === "element" ? node.layout.marginAuto : undefined;
+const marginsOf = (node: CaptureNode): Four => placement(node).margin ?? NO_MARGINS;
+
+const autoMargins = (node: CaptureNode) => placement(node).marginAuto;
 
 /** The half-leading above a text's first line: the capture has the glyph box, Figma the line box. */
 export function textLeading(node: TextNode): number {
@@ -265,18 +272,41 @@ function shared(slots: Slot[], read: (s: Slot) => number): number {
 }
 
 /** What a child's sizing depends on among its siblings. */
-type Siblings = { flow: number; equalGrowth: boolean };
+export type Siblings = { flow: number; equalGrowth: boolean; used: number };
 
-function siblingsOf(children: CaptureNode[], horizontal: boolean): Siblings {
+export function siblingsOf(children: CaptureNode[], horizontal: boolean): Siblings {
   const flow = children.filter((c) => renders(c) && !isAbsolute(c));
   const grown = flow.filter((c) => c.kind === "element" && c.layout.grow > 0);
-  const size = (c: CaptureNode) => (horizontal ? c.box.w : c.box.h);
+  const size = (c: CaptureNode) => (horizontal ? flowBox(c).w : flowBox(c).h);
   const first = grown[0];
   return {
     flow: flow.length,
+    used: flow.reduce((sum, c) => sum + size(c), 0),
     // Figma shares free space equally among FILL children, whatever the grow factors.
     equalGrowth: !first || grown.every((c) => near(size(c), size(first))),
   };
+}
+
+/** Whether a node's height is what its content asks for, with no stretching on top. */
+function contentFillsHeight(node: ElementNode): boolean {
+  const flow = node.children.filter((c) => renders(c) && !isAbsolute(c));
+  if (flow.length === 0) return false;
+  const [top, , bottom] = insets(node);
+  const boxes = flow.map(flowBox);
+  const height = (from: (i: number) => number, to: (i: number) => number) =>
+    Math.max(...boxes.map((_, i) => to(i))) - Math.min(...boxes.map((_, i) => from(i)));
+  const at = (i: number) => boxes[i] as Box;
+  const bare = height(
+    (i) => at(i).y,
+    (i) => at(i).y + at(i).h
+  );
+  // Margins may or may not have collapsed through the node's edges.
+  const withMargins = height(
+    (i) => at(i).y - marginsOf(flow[i] as CaptureNode)[0],
+    (i) => at(i).y + at(i).h + marginsOf(flow[i] as CaptureNode)[2]
+  );
+  const h = node.box.h - top - bottom;
+  return near(h, bare) || near(h, withMargins);
 }
 
 const TEXT_ALIGN: Partial<Record<AutoLayout["counterAlign"], RegExp>> = {
@@ -311,29 +341,38 @@ function fills(
   const isFlex = FLEX_PARENTS.has(display);
   const [top, right, bottom, left] = layout.padding;
   const contentW = parent.box.w - left - right;
-  const widthFills = !display.startsWith("inline") && near(child.box.w, contentW);
+  const contentH = parent.box.h - top - bottom;
+  // `inline` itself is a block in an inline, as wide as its container; `inline-*` shrinks to fit.
+  const widthFills = !display.startsWith("inline-") && near(child.box.w, contentW);
   if (primary) {
-    if (isFlex && child.layout.grow > 0 && siblings.equalGrowth) return true;
+    const taken = siblings.used + layout.itemSpacing * (siblings.flow - 1);
+    const reachesEnd = near(taken, axis === "H" ? contentW : contentH);
+    // Without reaching the end, something like max-width stopped the growth, which FILL would undo.
+    if (isFlex && child.layout.grow > 0 && siblings.equalGrowth && reachesEnd) return true;
     return axis === "H" && siblings.flow === 1 && widthFills;
   }
   const stretches = isFlex && /^(normal|stretch)$/.test(child.layout.alignSelf ?? alignItems ?? "");
   if (axis === "H") {
     return widthFills || (stretches && near(child.box.w, contentW));
   }
-  return stretches && near(child.box.h, parent.box.h - top - bottom);
+  // A child its content already explains is not stretched, and FILL would only cost the row its HUG.
+  return stretches && near(child.box.h, contentH) && !contentFillsHeight(target);
 }
 
-/** Whether each slot sits where the shared alignment puts it within `lo` to `hi`. */
+/**
+ * Whether each slot sits where the shared alignment puts it within `lo` to `hi`. A stretched slot
+ * spans the line, so it only has to start there. Baselines cannot be read from boxes.
+ */
 function fitsCross(
   slots: Slot[],
   lo: number,
   hi: number,
   align: AutoLayout["counterAlign"],
-  skip: (s: Slot) => boolean
+  stretched: (s: Slot) => boolean
 ): boolean {
   if (align === "BASELINE") return true;
   return slots.every((s) => {
-    if (skip(s)) return true;
+    if (stretched(s)) return near(s.crossStart, lo);
     if (align === "MIN") return near(s.crossStart, lo);
     if (align === "MAX") return near(s.crossEnd, hi);
     return near(s.crossStart - lo, hi - s.crossEnd);
@@ -377,17 +416,34 @@ function withSizing(
   };
 }
 
-/** Whether auto margins follow the one pattern Figma can show: the last of two pushed away. */
-function isPushedPair(slots: Slot[], horizontal: boolean): boolean {
-  const [first, last] = slots;
-  if (slots.length !== 2 || !first || !last) return false;
-  const startSide = horizontal ? 3 : 0;
-  const endSide = horizontal ? 1 : 2;
-  const allowed = (auto: boolean[] | undefined, side: number) =>
-    !auto || auto.every((on, i) => !on || i === side);
-  const a = autoMargins(first.node);
-  const b = autoMargins(last.node);
-  return allowed(a, endSide) && allowed(b, startSide);
+/**
+ * Reads auto margins into the slots, whose margins then hold no used pixels from them. Main-axis
+ * ones must be the one pattern Figma can show, the last of two pushed away, and cross-axis ones
+ * must centre. Null for anything else.
+ */
+function readAutoMargins(
+  slots: Slot[],
+  horizontal: boolean
+): { pushed: boolean; centred: boolean } | null {
+  const [mainStart, mainEnd, crossStart, crossEnd] = horizontal ? [3, 1, 0, 2] : [0, 2, 3, 1];
+  const side = (s: Slot, i: number | undefined) => autoMargins(s.node)?.[i as number] === true;
+  let pushed = false;
+  let centred = false;
+  for (const [i, s] of slots.entries()) {
+    if (side(s, crossStart) !== side(s, crossEnd)) return null;
+    if (side(s, crossStart)) {
+      centred = true;
+      s.crossMarginStart = 0;
+      s.crossMarginEnd = 0;
+    }
+    if (!side(s, mainStart) && !side(s, mainEnd)) continue;
+    const pushedAway = slots.length === 2 && !side(s, i === 0 ? mainStart : mainEnd);
+    if (!pushedAway) return null;
+    pushed = true;
+    if (i === 0) s.marginEnd = 0;
+    else s.marginStart = 0;
+  }
+  return { pushed, centred };
 }
 
 function inferFlex(node: ElementNode, children: CaptureNode[], flow: CaptureNode[]): PlanLayout {
@@ -402,19 +458,20 @@ function inferFlex(node: ElementNode, children: CaptureNode[], flow: CaptureNode
   if (!lines) return NONE;
 
   let justify = node.layout.justifyContent ?? "normal";
-  if (slots.some((s) => autoMargins(s.node))) {
-    if (wrap || !isPushedPair(slots, horizontal)) return NONE;
-    const [first, last] = slots as [Slot, Slot];
-    if (autoMargins(first.node)) first.marginEnd = 0;
-    if (autoMargins(last.node)) last.marginStart = 0;
-    justify = "space-between";
-  }
+  const autos = readAutoMargins(slots, horizontal);
+  if (!autos || (wrap && slots.some((s) => autoMargins(s.node)))) return NONE;
+  if (autos.pushed) justify = "space-between";
 
   const [rowGap = 0, columnGap = 0] = gap ?? [];
   const cssGap = horizontal ? columnGap : rowGap;
   let primaryAlign = justifyToAlign(justify, horizontal, reversed);
-  const counterAlign = itemsToAlign(alignItems, horizontal);
+  const counterAlign = autos.centred ? "CENTER" : itemsToAlign(alignItems, horizontal);
   if (!primaryAlign || !counterAlign) return NONE;
+  if (counterAlign === "BASELINE") {
+    const agrees = (s: Slot) =>
+      s.node.kind !== "element" || /^((first )?baseline)?$/.test(s.node.layout.alignSelf ?? "");
+    if (!slots.every(agrees)) return NONE;
+  }
   if (slots.length === 1 && primaryAlign.startsWith("SPACE_")) {
     primaryAlign = primaryAlign === "SPACE_BETWEEN" ? "MIN" : "CENTER";
   }
@@ -434,6 +491,8 @@ function inferFlex(node: ElementNode, children: CaptureNode[], flow: CaptureNode
   if (primaryAlign.startsWith("SPACE_")) {
     const [one] = pairs;
     if (!one || lines.length > 1) return NONE;
+    // How Figma adds itemSpacing to a distributed share is unconfirmed, so no gap is assumed.
+    if (primaryAlign !== "SPACE_BETWEEN" && cssGap !== 0) return NONE;
     if (pairs.some(([s, next]) => between(s, next) !== cssGap)) return NONE;
     const measured = one[1].start - one[0].end;
     if (measured < cssGap - TOL) return NONE;
@@ -490,7 +549,8 @@ function inferFlex(node: ElementNode, children: CaptureNode[], flow: CaptureNode
 
   const siblings = siblingsOf(children, horizontal);
   const crossAxis: Axis = horizontal ? "V" : "H";
-  const skip = (s: Slot) => fills(s.node, s.node, crossAxis, layout, node, siblings);
+  const stretched = (s: Slot) =>
+    s.node.kind === "element" && fills(s.node, s.node, crossAxis, layout, node, siblings);
   if (wrap) {
     let prevEnd: number | null = null;
     for (const line of lines) {
@@ -498,21 +558,44 @@ function inferFlex(node: ElementNode, children: CaptureNode[], flow: CaptureNode
       const bottom = Math.max(...line.map((s) => s.crossEnd));
       if (!near(top, prevEnd === null ? lo : prevEnd + (counterSpacing ?? itemSpacing)))
         return NONE;
-      if (!fitsCross(line, top, bottom, counterAlign, skip)) return NONE;
+      if (!fitsCross(line, top, bottom, counterAlign, stretched)) return NONE;
       prevEnd = bottom;
     }
-  } else if (!fitsCross(slots, lo, hi, counterAlign, skip)) {
+  } else if (!fitsCross(slots, lo, hi, counterAlign, stretched)) {
     return NONE;
   }
 
   return withSizing(layout, node, children, slots);
 }
 
-/** Normal flow: a vertical stack whose gaps are collapsed margins and nothing else. */
-function inferBlock(node: ElementNode, children: CaptureNode[], flow: CaptureNode[]): PlanLayout {
-  for (const child of flow) {
-    if (child.kind === "element" && !BLOCK_CHILDREN.has(child.layout.display)) return NONE;
+/** The node a child stands for once wrappers have collapsed. */
+function collapsed(node: CaptureNode): CaptureNode {
+  let current = node;
+  while (current.kind === "element") {
+    const child = wrappedChild(current);
+    if (!child) break;
+    current = child;
   }
+  return current;
+}
+
+const holdsBlock = (children: CaptureNode[]) =>
+  children.some((c) => c.kind === "element" && BLOCK_CHILDREN.has(c.layout.display));
+
+/** Whether a node takes a line of its own. An inline element holding a block breaks around it. */
+function isBlockLevel(node: CaptureNode): boolean {
+  const target = collapsed(node);
+  if (target.kind !== "element") return true;
+  const { display } = target.layout;
+  return BLOCK_CHILDREN.has(display) || (display === "inline" && holdsBlock(target.children));
+}
+
+/**
+ * Normal flow: a vertical stack with equal gaps. Only the measured gaps count, as margins deep in
+ * the children collapse into them. A lone child has no run to break, so any display will do.
+ */
+function inferBlock(node: ElementNode, children: CaptureNode[], flow: CaptureNode[]): PlanLayout {
+  if (flow.length > 1 && !flow.every(isBlockLevel)) return NONE;
   const slots = cssOrder(node, flow).map((c) => toSlot(c, false));
   const lines = toLines(slots, false);
   if (!lines) return NONE;
@@ -522,20 +605,15 @@ function inferBlock(node: ElementNode, children: CaptureNode[], flow: CaptureNod
   const last = slots[slots.length - 1] as Slot;
 
   const lead = first.start - (span.start + span.insetStart);
-  let padStart = span.insetStart;
-  if (near(lead, first.marginStart)) padStart += first.marginStart;
-  else if (!(near(lead, 0) && span.insetStart === 0)) return NONE;
+  if (lead < -TOL) return NONE;
+  const padStart = span.insetStart + Math.max(lead, 0);
 
   const trail = span.start + span.size - span.insetEnd - last.end;
   const padEnd = span.insetEnd + (near(trail, last.marginEnd) ? last.marginEnd : 0);
 
-  // Adjoining vertical margins collapse to the larger.
-  const spacings = slots.slice(1).map((next, i) => {
-    const prev = slots[i] as Slot;
-    return { css: Math.max(prev.marginEnd, next.marginStart), measured: next.start - prev.end };
-  });
-  const itemSpacing = spacings[0]?.css ?? 0;
-  if (!spacings.every((g) => near(g.css, itemSpacing) && near(g.measured, g.css))) return NONE;
+  const gaps = slots.slice(1).map((next, i) => next.start - (slots[i] as Slot).end);
+  const itemSpacing = Math.max(gaps[0] ?? 0, 0);
+  if (!gaps.every((g) => near(g, itemSpacing))) return NONE;
 
   const autoSides = slots.some((s) => autoMargins(s.node));
   const crossMarginStart = autoSides ? 0 : shared(slots, (s) => s.crossMarginStart);
@@ -558,8 +636,9 @@ function inferBlock(node: ElementNode, children: CaptureNode[], flow: CaptureNod
       sizingH: "FIXED",
       sizingV: "FIXED",
     };
-    const skip = (s: Slot) => fills(s.node, s.node, "H", layout, node, siblings);
-    if (fitsCross(slots, lo, hi, counterAlign, skip)) {
+    const stretched = (s: Slot) =>
+      s.node.kind === "element" && fills(s.node, s.node, "H", layout, node, siblings);
+    if (fitsCross(slots, lo, hi, counterAlign, stretched)) {
       return withSizing(layout, node, children, slots);
     }
   }
@@ -770,7 +849,10 @@ export function inferLayout(
 
   const { display } = node.layout;
   if (GRID_PARENTS.has(display)) return inferGrid(node, flow, context);
-  if (BLOCK_PARENTS.has(display)) return inferBlock(node, children, flow);
+  // An inline parent holding a block, such as a custom element left at its default display.
+  if (BLOCK_PARENTS.has(display) || (display === "inline" && holdsBlock(flow))) {
+    return inferBlock(node, children, flow);
+  }
   if (!FLEX_PARENTS.has(display)) return NONE;
 
   const layout = inferFlex(node, children, flow);
@@ -787,17 +869,6 @@ export function inferLayout(
 const overlaps = (a: Box, b: Box) =>
   a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-const siblingCache = new WeakMap<ElementNode, Siblings>();
-
-function cachedSiblings(parent: ElementNode, horizontal: boolean): Siblings {
-  let hit = siblingCache.get(parent);
-  if (!hit) {
-    hit = siblingsOf(parent.children, horizontal);
-    siblingCache.set(parent, hit);
-  }
-  return hit;
-}
-
 /** What a node sizes itself to, apart from any parent: only auto layout frames and text can hug. */
 function ownSizing(node: CaptureNode): { h: "FIXED" | "HUG"; v: "FIXED" | "HUG" } {
   if (node.kind === "text") return { h: node.lines.length > 1 ? "FIXED" : "HUG", v: "HUG" };
@@ -809,13 +880,15 @@ function ownSizing(node: CaptureNode): { h: "FIXED" | "HUG"; v: "FIXED" | "HUG" 
 
 /**
  * How `child` sits in its parent. When wrappers collapsed, `child` is the outermost wrapper, which
- * is what the parent laid out, and `target` the node that remains.
+ * is what the parent laid out, and `target` the node that remains. `siblings` saves a walk over
+ * every child of a parent from redoing `siblingsOf`.
  */
 export function inferChildLayout(
   child: CaptureNode,
   parent: PlanLayout,
   parentNode: ElementNode,
-  target: CaptureNode = child
+  target: CaptureNode = child,
+  siblings?: Siblings
 ): PlanChildLayout {
   const positioning = isAbsolute(child) ? "ABSOLUTE" : "AUTO";
   if (parent.mode === "NONE") return { positioning, sizingH: "FIXED", sizingV: "FIXED" };
@@ -826,20 +899,23 @@ export function inferChildLayout(
     const lines = gridLines(parentNode);
     const cell = lines && cellOf(child, lines);
     const b = flowBox(child);
-    const fillsTrack = (size: number, track: number | undefined) =>
-      target.kind === "element" && track !== undefined && near(size, track);
+    // A HUG track takes its size from the child, so the child cannot take its size from the track.
+    const fillsTrack = (size: number, track: number | undefined, plan: PlanTrack | undefined) =>
+      target.kind === "element" && track !== undefined && plan?.type !== "HUG" && near(size, track);
+    const column = cell?.column ?? -1;
+    const row = cell?.row ?? -1;
     return {
       positioning,
-      sizingH: fillsTrack(b.w, lines?.columns[cell?.column ?? -1]) ? "FILL" : own.h,
-      sizingV: fillsTrack(b.h, lines?.rows[cell?.row ?? -1]) ? "FILL" : own.v,
+      sizingH: fillsTrack(b.w, lines?.columns[column], parent.columns[column]) ? "FILL" : own.h,
+      sizingV: fillsTrack(b.h, lines?.rows[row], parent.rows[row]) ? "FILL" : own.v,
       ...(cell ? { cell } : {}),
     };
   }
 
-  const siblings = cachedSiblings(parentNode, parent.mode === "HORIZONTAL");
+  const around = siblings ?? siblingsOf(parentNode.children, parent.mode === "HORIZONTAL");
   // The parent judged the wrapper, which a collapsed target can differ from; FILL needs a FIXED axis.
   const fillsAxis = (axis: Axis, sizing: AutoLayout["sizingH"]) =>
-    sizing === "FIXED" && fills(child, target, axis, parent, parentNode, siblings);
+    sizing === "FIXED" && fills(child, target, axis, parent, parentNode, around);
   return {
     positioning,
     sizingH: fillsAxis("H", parent.sizingH) ? "FILL" : own.h,

@@ -278,6 +278,20 @@ export function readMarginAuto(el: Element): Layout["marginAuto"] {
   return sides.some(Boolean) ? sides : undefined;
 }
 
+/** A leaf node's place in the flow, leaving out the defaults. */
+export function readFlow(
+  el: Element,
+  cs: CSSStyleDeclaration
+): { position?: string; margin?: Layout["margin"]; marginAuto?: Layout["marginAuto"] } {
+  const margin = four(cs, "margin");
+  const marginAuto = margin.some((m) => m > 0) ? readMarginAuto(el) : undefined;
+  return {
+    ...(cs.position && cs.position !== "static" ? { position: cs.position } : {}),
+    ...(margin.some((m) => m !== 0) ? { margin } : {}),
+    ...(marginAuto ? { marginAuto } : {}),
+  };
+}
+
 /** A 2D matrix from a computed transform, or undefined for none or 3D. */
 export function readTransform(value: string): ElementNode["transform"] {
   const m = /^matrix\(([^)]+)\)$/.exec(value);

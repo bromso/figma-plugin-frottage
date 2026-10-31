@@ -22,6 +22,7 @@ import {
   colorOf,
   px,
   readBorders,
+  readFlow,
   readLayout,
   readMarginAuto,
   readRadii,
@@ -815,6 +816,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       ...(readTransform(s.transform) ? { transform: readTransform(s.transform) } : {}),
       semantic: semanticOf(el),
     };
+    const leaf = { ...common, ...readFlow(el, s) };
     const tag = el.localName;
 
     if (!isRoot && boxArea(box) <= 0 && ["img", "svg", "canvas", "video", "iframe"].includes(tag)) {
@@ -836,7 +838,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       }
       if (markup === "") {
         warn("svg-too-large", id, `An inline SVG was left as a placeholder: ${why}`);
-        return [placeholder(common, "blocked-image")];
+        return [placeholder(leaf, "blocked-image")];
       }
       if (report.transform3d > 0) {
         warn("svg-3d-transform", id, "A 3D transform inside an inline SVG was left out");
@@ -844,7 +846,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       }
       return [
         {
-          ...common,
+          ...leaf,
           kind: "svg",
           markup,
           overflow: s.overflowX === s.overflowY ? s.overflowX : `${s.overflowX} ${s.overflowY}`,
@@ -852,32 +854,32 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       ];
     }
     if (el.namespaceURI === XHTML) {
-      if (tag === "canvas") return [placeholder(common, "canvas")];
+      if (tag === "canvas") return [placeholder(leaf, "canvas")];
       if (tag === "video") {
         const v = el as HTMLVideoElement;
         // A poster is an image like any other: collectAssets fetches it, or turns it into a
         // placeholder when it cannot be read.
-        if (v.poster) return [imageNode(common, v.poster, s, box)];
-        return [placeholder(common, "video", v.currentSrc || undefined)];
+        if (v.poster) return [imageNode(leaf, v.poster, s, box)];
+        return [placeholder(leaf, "video", v.currentSrc || undefined)];
       }
       if (tag === "iframe") {
         return [
-          placeholder(common, "cross-origin-iframe", (el as HTMLIFrameElement).src || undefined),
+          placeholder(leaf, "cross-origin-iframe", (el as HTMLIFrameElement).src || undefined),
         ];
       }
       if (tag === "img") {
         const img = el as HTMLImageElement;
         const sourceUrl = img.currentSrc || img.src || undefined;
         if (img.complete && img.naturalWidth === 0) {
-          return [placeholder(common, "blocked-image", sourceUrl)];
+          return [placeholder(leaf, "blocked-image", sourceUrl)];
         }
-        return [imageNode(common, sourceUrl, s, box)];
+        return [imageNode(leaf, sourceUrl, s, box)];
       }
     }
 
     if (depth >= MAX_DEPTH && (el.firstChild || shadowRootOf(el, env))) {
       warn("depth-limit", id, `Subtree below depth ${MAX_DEPTH} was not captured`);
-      return [placeholder(common, "blocked-image")];
+      return [placeholder(leaf, "blocked-image")];
     }
 
     const element: ElementNode = {

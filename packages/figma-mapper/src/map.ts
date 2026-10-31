@@ -5,6 +5,8 @@ import {
   inferChildLayout,
   inferLayout,
   repeatedItems,
+  type Siblings,
+  siblingsOf,
   textLeading,
   visualOrder,
 } from "./layout";
@@ -296,12 +298,20 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     parent: ElementNode | null;
     parentId: string | null;
     parentLayout: PlanLayout | null;
+    siblings: Siblings | undefined;
   };
   const stack: Item[] = [
-    { node: capture.root, outer: capture.root, parent: null, parentId: null, parentLayout: null },
+    {
+      node: capture.root,
+      outer: capture.root,
+      parent: null,
+      parentId: null,
+      parentLayout: null,
+      siblings: undefined,
+    },
   ];
   while (stack.length > 0) {
-    const { node, outer, parent, parentId, parentLayout } = stack.pop() as Item;
+    const { node, outer, parent, parentId, parentLayout, siblings } = stack.pop() as Item;
     // visibility:hidden on a parent does not hide visible children, so an
     // invisible element with children stays as an unpainted frame.
     const hidden = !node.visible;
@@ -311,7 +321,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     let op: PlanOp | null = null;
     const childLayout =
       parent && parentLayout && parentLayout.mode !== "NONE"
-        ? inferChildLayout(outer, parentLayout, parent, node)
+        ? inferChildLayout(outer, parentLayout, parent, node, siblings)
         : undefined;
 
     switch (node.kind) {
@@ -343,6 +353,10 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
         };
         const children = visualOrder(node, node.children, layout);
         const repeated = repeatedItems(children);
+        const around =
+          layout.mode === "HORIZONTAL" || layout.mode === "VERTICAL"
+            ? siblingsOf(node.children, layout.mode === "HORIZONTAL")
+            : undefined;
         for (let i = children.length - 1; i >= 0; i--) {
           const child = children[i] as CaptureNode;
           stack.push({
@@ -351,6 +365,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
             parent: node,
             parentId: node.id,
             parentLayout: layout,
+            siblings: around,
           });
         }
         break;

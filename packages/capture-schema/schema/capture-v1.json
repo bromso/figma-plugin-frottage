@@ -1144,6 +1144,49 @@
               "required": ["tag"],
               "additionalProperties": false
             },
+            "position": {
+              "type": "string"
+            },
+            "margin": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "items": false,
+              "minItems": 4,
+              "maxItems": 4
+            },
+            "marginAuto": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "boolean"
+                }
+              ],
+              "items": false,
+              "minItems": 4,
+              "maxItems": 4
+            },
             "kind": {
               "type": "string",
               "const": "image"
@@ -1460,6 +1503,49 @@
               "required": ["tag"],
               "additionalProperties": false
             },
+            "position": {
+              "type": "string"
+            },
+            "margin": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "items": false,
+              "minItems": 4,
+              "maxItems": 4
+            },
+            "marginAuto": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "boolean"
+                }
+              ],
+              "items": false,
+              "minItems": 4,
+              "maxItems": 4
+            },
             "kind": {
               "type": "string",
               "const": "svg"
@@ -1578,6 +1664,49 @@
               },
               "required": ["tag"],
               "additionalProperties": false
+            },
+            "position": {
+              "type": "string"
+            },
+            "margin": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "items": false,
+              "minItems": 4,
+              "maxItems": 4
+            },
+            "marginAuto": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "boolean"
+                }
+              ],
+              "items": false,
+              "minItems": 4,
+              "maxItems": 4
             },
             "kind": {
               "type": "string",

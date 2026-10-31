@@ -356,11 +356,21 @@ describe("justify-content", () => {
       sizingH: "FIXED",
     });
   });
-  test("a gap adds to the free space share of space-around", () => {
-    const gapped = [box("a", 40, 0, 100, 50), box("b", 250, 0, 100, 50), box("c", 460, 0, 100, 50)];
+  test("space-around and space-evenly with a gap are NONE until Figma's sum is known", () => {
+    const around = [box("a", 40, 0, 100, 50), box("b", 250, 0, 100, 50), box("c", 460, 0, 100, 50)];
+    expect(inferLayout(flex({ justifyContent: "space-around", gap: [0, 30] }), around)).toEqual({
+      mode: "NONE",
+    });
+    const evenly = [box("a", 60, 0, 100, 50), box("b", 250, 0, 100, 50), box("c", 440, 0, 100, 50)];
+    expect(inferLayout(flex({ justifyContent: "space-evenly", gap: [0, 30] }), evenly)).toEqual({
+      mode: "NONE",
+    });
+  });
+  test("space-between keeps its gap", () => {
+    const apart = [box("a", 0, 0, 100, 50), box("b", 500, 0, 100, 50)];
     expect(
-      inferLayout(flex({ justifyContent: "space-around", gap: [0, 30] }), gapped)
-    ).toMatchObject({ primaryAlign: "SPACE_AROUND", itemSpacing: 30 });
+      inferLayout(flex({ justifyContent: "space-between", gap: [0, 30] }), apart)
+    ).toMatchObject({ primaryAlign: "SPACE_BETWEEN", itemSpacing: 30 });
   });
   test("space-between on a primary axis that would hug stays FIXED", () => {
     const tight = [box("a", 0, 0, 100, 50), box("b", 100, 0, 100, 50)];
@@ -731,9 +741,24 @@ describe("normal-flow block stack", () => {
     const children = [box("a", 0, 0, 600, 50), box("b", 0, 60, 600, 50), box("c", 0, 130, 600, 50)];
     expect(inferLayout(stack(), children)).toEqual({ mode: "NONE" });
   });
-  test("equal gaps that no margin explains are NONE", () => {
-    const children = [box("a", 0, 0, 600, 50), box("b", 0, 60, 600, 50)];
-    expect(inferLayout(stack(), children)).toEqual({ mode: "NONE" });
+  test("gaps from margins inside the children count, since only the boxes show them", () => {
+    const children = [box("a", 0, 0, 600, 50), box("b", 0, 70, 600, 50), box("c", 0, 140, 600, 50)];
+    expect(inferLayout(stack([600, 190]), children)).toMatchObject({
+      mode: "VERTICAL",
+      itemSpacing: 20,
+    });
+  });
+  test("the lead above the first child is padding, whatever made it", () => {
+    expect(inferLayout(stack([600, 66]), [box("a", 0, 16, 600, 50)])).toMatchObject({
+      mode: "VERTICAL",
+      padding: [16, 0, 0, 0],
+      sizingV: "HUG",
+    });
+  });
+  test("a first child above the content edge is NONE", () => {
+    const parent = stack([600, 60]);
+    parent.layout.padding = [10, 0, 0, 0];
+    expect(inferLayout(parent, [box("a", 0, 2, 600, 50)])).toEqual({ mode: "NONE" });
   });
   test("children with mixed edges are NONE", () => {
     const children = [box("a", 0, 0, 100, 50), box("b", 200, 50, 100, 50)];
@@ -1338,5 +1363,274 @@ describe("wrapper collapse", () => {
     wrapper.children = [box("inner", 590, 0, 20, 20, { style: painted() })];
     parent.children = [...kids, wrapper];
     expect(frameOp(parent, "inner").childLayout).toMatchObject({ positioning: "ABSOLUTE" });
+  });
+});
+
+describe("inline-level children of a block", () => {
+  const parent = (size: [number, number] = [600, 40]) => el("p", [0, 0], [], {}, size);
+  const painted2 = { style: painted() };
+
+  test.each(["inline", "inline-block", "inline-flex", "inline-grid"])(
+    "a lone %s child is judged by its box",
+    (display) => {
+      const child = item("a", 0, 10, 100, 20, { display }, painted2);
+      expect(inferLayout(parent(), [child])).toMatchObject({ mode: "VERTICAL" });
+    }
+  );
+  test("two inline-level children are still NONE", () => {
+    const two = [
+      item("a", 0, 0, 100, 20, { display: "inline" }),
+      item("b", 0, 20, 100, 20, { display: "inline" }),
+    ];
+    expect(inferLayout(parent(), two)).toEqual({ mode: "NONE" });
+  });
+  test("a wrapper that collapses is judged by what it collapses into", () => {
+    const inner = box("in", 0, 0, 600, 20, painted2);
+    const wrapper = el("w", [0, 0], [inner], withLayout({ display: "inline-block" }), [600, 20]);
+    expect(inferLayout(parent(), [wrapper, box("b", 0, 20, 600, 20)]).mode).toBe("VERTICAL");
+  });
+  test("an inline element holding a block counts as a block", () => {
+    const inline = item(
+      "a",
+      0,
+      0,
+      600,
+      20,
+      { display: "inline" },
+      {
+        style: painted(),
+        children: [box("in", 0, 0, 600, 10), box("in2", 0, 10, 600, 10)],
+      }
+    );
+    expect(inferLayout(parent(), [inline, box("b", 0, 20, 600, 20)]).mode).toBe("VERTICAL");
+  });
+  test("a default-inline host with block children stacks them", () => {
+    const host = el(
+      "host",
+      [0, 0],
+      [],
+      { ...withLayout({ display: "inline" }), semantic: { tag: "x-theme" } },
+      [600, 40]
+    );
+    const blocks = [box("a", 0, 0, 600, 20), box("b", 0, 20, 600, 20)];
+    host.children = blocks;
+    const layout = inferLayout(host, blocks);
+    expect(layout).toMatchObject({ mode: "VERTICAL", sizingH: "FIXED" });
+    expect(inferChildLayout(blocks[0] as ElementNode, layout, host).sizingH).toBe("FILL");
+  });
+  test("an inline parent with only inline content is NONE", () => {
+    const span = flex({ display: "inline" }, [100, 20]);
+    expect(inferLayout(span, [single("words")])).toEqual({ mode: "NONE" });
+  });
+});
+
+describe("flex-grow that did not fill", () => {
+  test("a grown child stopped by max-width stays FIXED, and the row keeps its alignment", () => {
+    const parent = flex();
+    const children = [item("a", 0, 0, 200, 50, { grow: 1 })];
+    parent.children = children;
+    const layout = inferLayout(parent, children);
+    expect(layout).toMatchObject({ mode: "HORIZONTAL", primaryAlign: "MIN", sizingH: "FIXED" });
+    expect(inferChildLayout(children[0] as ElementNode, layout, parent).sizingH).toBe("FIXED");
+  });
+  test("two equal grown children short of the end stay FIXED", () => {
+    const parent = flex();
+    const children = [
+      item("a", 0, 0, 200, 50, { grow: 1 }),
+      item("b", 200, 0, 200, 50, { grow: 1 }),
+    ];
+    parent.children = children;
+    const layout = inferLayout(parent, children);
+    expect(inferChildLayout(children[1] as ElementNode, layout, parent).sizingH).toBe("FIXED");
+  });
+  test("grown children reaching the end past a fixed sibling and a gap FILL", () => {
+    const parent = flex({ gap: [0, 10] });
+    const children = [
+      box("fixed", 0, 0, 80, 50),
+      item("a", 90, 0, 250, 50, { grow: 1 }),
+      item("b", 350, 0, 250, 50, { grow: 1 }),
+    ];
+    parent.children = children;
+    const layout = inferLayout(parent, children);
+    expect(inferChildLayout(children[2] as ElementNode, layout, parent).sizingH).toBe("FILL");
+  });
+});
+
+describe("cross-axis checks that used to skip", () => {
+  test("a FILL child off the start of the content box is NONE", () => {
+    const children = [box("a", 0, 0, 600, 50), item("b", 8, 50, 600, 50, { margin: [0, 8, 0, 8] })];
+    expect(inferLayout(el("p", [0, 0], [], {}, [600, 100]), children)).toEqual({ mode: "NONE" });
+    expect(inferLayout(flexCol({ alignItems: "normal" }, [600, 100]), children)).toEqual({
+      mode: "NONE",
+    });
+  });
+  test("a lone width: 100% with side margins folds them, and does not FILL", () => {
+    const parent = el("p", [0, 0], [], {}, [600, 50]);
+    const child = item("a", 8, 0, 600, 50, { margin: [0, 8, 0, 8] });
+    parent.children = [child];
+    const layout = inferLayout(parent, [child]);
+    expect(layout).toMatchObject({ mode: "VERTICAL", padding: [0, 8, 0, 8] });
+    expect(inferChildLayout(child, layout, parent).sizingH).toBe("FIXED");
+  });
+  test("a BASELINE row with a conflicting align-self is NONE", () => {
+    const self = [box("a", 0, 12, 100, 20), item("b", 110, 0, 100, 40, { alignSelf: "center" })];
+    expect(inferLayout(row({ alignItems: "baseline" }, [600, 40]), self)).toEqual({ mode: "NONE" });
+  });
+  test("align-self: baseline agrees with a BASELINE row", () => {
+    const self = [box("a", 0, 12, 100, 20), item("b", 110, 0, 100, 40, { alignSelf: "baseline" })];
+    expect(inferLayout(row({ alignItems: "baseline" }, [600, 40]), self)).toMatchObject({
+      counterAlign: "BASELINE",
+    });
+  });
+});
+
+describe("stretch rows", () => {
+  const filled = (id: string, x: number, h: number, contentH = h) =>
+    el(id, [x, 0], [box(`${id}-in`, x, 0, 100, contentH)], {}, [100, h]);
+
+  test("children their content already explains keep the row HUG", () => {
+    const parent = row({ alignItems: "normal" }, [210, 40]);
+    const children = [filled("a", 0, 40), filled("b", 110, 40)];
+    parent.children = children;
+    const layout = inferLayout(parent, children);
+    expect(layout).toMatchObject({ mode: "HORIZONTAL", sizingV: "HUG" });
+    expect(inferChildLayout(children[0] as ElementNode, layout, parent).sizingV).toBe("HUG");
+  });
+  test("a card stretched past its content FILLs, and the row stays FIXED", () => {
+    const parent = row({ alignItems: "normal" }, [210, 200]);
+    const children = [filled("a", 0, 200), filled("b", 110, 200, 80)];
+    parent.children = children;
+    const layout = inferLayout(parent, children);
+    expect(layout).toMatchObject({ sizingV: "FIXED" });
+    expect(inferChildLayout(children[1] as ElementNode, layout, parent).sizingV).toBe("FILL");
+    expect(inferChildLayout(children[0] as ElementNode, layout, parent).sizingV).toBe("HUG");
+  });
+  test("deep nesting of stretch rows stays linear", () => {
+    let node = item("n0", 0, 0, 100, 100, {});
+    for (let i = 1; i <= 200; i++) {
+      node = item(
+        `n${i}`,
+        0,
+        0,
+        100,
+        100,
+        { display: "flex", flexDirection: "row", alignItems: "normal", gap: [0, 0] },
+        { children: [node], style: painted() }
+      );
+    }
+    const started = performance.now();
+    mapCapture(cap(node), inter);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+});
+
+describe("leaf nodes in the flow", () => {
+  const leaf = {
+    box: { x: 0, y: 2, w: 16, h: 16 },
+    paintOrder: 1,
+    visible: true,
+    opacity: 1,
+    blendMode: "normal",
+    semantic: { tag: "svg" },
+  };
+  const svg = (over: Record<string, unknown> = {}) =>
+    ({ ...leaf, id: "icon", kind: "svg", markup: "<svg/>", ...over }) as CaptureNode;
+
+  test("an icon with a margin beside a label is a row", () => {
+    const label = single("Label", 24, 0, 60, 20, { paintOrder: 2 });
+    const parent = flex({ alignItems: "center" }, [84, 20]);
+    expect(
+      inferLayout(parent, [svg({ margin: [0, 8, 0, 0] as Layout["margin"] }), label])
+    ).toMatchObject({ mode: "HORIZONTAL", itemSpacing: 8, sizingH: "HUG" });
+  });
+  test("an absolute image, SVG or placeholder is out of the flow", () => {
+    const parent = row();
+    const abs = svg({ position: "absolute", box: { x: 10, y: 10, w: 16, h: 16 } });
+    const layout = inferLayout(parent, [...kids, abs]);
+    expect(layout).toMatchObject({ mode: "HORIZONTAL" });
+    expect(inferChildLayout(abs, layout, parent).positioning).toBe("ABSOLUTE");
+  });
+  test("an auto margin on a leaf pushes it like an element", () => {
+    const pushed = svg({
+      box: { x: 584, y: 0, w: 16, h: 16 },
+      margin: [0, 0, 0, 484],
+      marginAuto: [false, false, false, true],
+    });
+    expect(inferLayout(flex(), [box("a", 0, 0, 100, 50), pushed])).toMatchObject({
+      primaryAlign: "SPACE_BETWEEN",
+    });
+  });
+  test("a negative leaf margin is NONE", () => {
+    const pulled = svg({ margin: [0, 0, 0, -4], box: { x: 100, y: 0, w: 16, h: 16 } });
+    expect(inferLayout(flex(), [box("a", 0, 0, 100, 50), pulled])).toEqual({ mode: "NONE" });
+  });
+  test("a wrapper does not collapse into an absolute leaf", () => {
+    const abs = svg({ position: "absolute", box: { x: 0, y: 0, w: 100, h: 50 } });
+    const wrapper = el("w", [0, 0], [abs], {}, [100, 50]);
+    expect(collapseTarget(wrapper, new Set()).id).toBe("w");
+  });
+});
+
+describe("minor rulings", () => {
+  test("a grid child in a HUG track keeps its own sizing", () => {
+    const parent = grid("1fr auto");
+    const cells = [box("a", 0, 0, 300, 100), box("b", 300, 0, 200, 100)];
+    const layout = inferLayout(parent, cells);
+    expect(inferChildLayout(cells[1] as ElementNode, layout, parent).sizingH).toBe("FIXED");
+    expect(inferChildLayout(cells[0] as ElementNode, layout, parent).sizingH).toBe("FILL");
+  });
+  test("margin: 0 auto in a flex column is CENTER", () => {
+    const auto = {
+      margin: [0, 100, 0, 100] as Layout["margin"],
+      marginAuto: [false, true, false, true] as Layout["marginAuto"],
+    };
+    const children = [item("a", 100, 0, 400, 50, auto), item("b", 100, 50, 400, 50, auto)];
+    expect(inferLayout(flexCol({ alignItems: "normal" }, [600, 100]), children)).toMatchObject({
+      mode: "VERTICAL",
+      counterAlign: "CENTER",
+      padding: [0, 0, 0, 0],
+    });
+  });
+  test("one-sided cross-axis auto margins are NONE", () => {
+    const auto = item("a", 500, 0, 100, 50, {
+      margin: [0, 0, 0, 500],
+      marginAuto: [false, false, false, true],
+    });
+    expect(inferLayout(flexCol({ alignItems: "normal" }, [600, 50]), [auto])).toEqual({
+      mode: "NONE",
+    });
+  });
+  test("a centred child among children that are not centred is NONE", () => {
+    const children = [
+      box("a", 0, 0, 100, 50),
+      item("b", 250, 50, 100, 50, {
+        margin: [0, 250, 0, 250],
+        marginAuto: [false, true, false, true],
+      }),
+    ];
+    expect(inferLayout(flexCol({ alignItems: "normal" }, [600, 100]), children)).toEqual({
+      mode: "NONE",
+    });
+  });
+  test("single-line text hugs in every parent", () => {
+    for (const parent of [
+      flex({}, [600, 20]),
+      flexCol({}, [600, 20]),
+      el("p", [0, 0], [], {}, [600, 20]),
+    ]) {
+      const t = single("one");
+      expect(inferChildLayout(t, inferLayout(parent, [t]), parent).sizingH).toBe("HUG");
+    }
+  });
+  test("sibling facts come from the children passed, not an earlier call", () => {
+    const parent = flex();
+    const fullRow = [item("a", 0, 0, 600, 50, { grow: 1 })];
+    const shortRow = [item("a", 0, 0, 200, 50, { grow: 1 })];
+    parent.children = fullRow;
+    const child = fullRow[0] as ElementNode;
+    expect(inferChildLayout(child, inferLayout(parent, fullRow), parent).sizingH).toBe("FILL");
+    parent.children = shortRow;
+    const short = shortRow[0] as ElementNode;
+    expect(inferChildLayout(short, inferLayout(parent, shortRow), parent).sizingH).toBe("FIXED");
   });
 });
