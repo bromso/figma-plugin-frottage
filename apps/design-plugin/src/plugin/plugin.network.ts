@@ -50,3 +50,7 @@ PLUGIN_CHANNEL.registerMessageHandler("importBatch", async (ops) => {
 });
 
 PLUGIN_CHANNEL.registerMessageHandler("importEnd", () => applier.end());
+
+PLUGIN_CHANNEL.registerMessageHandler("importCancel", () => applier.cancel());
+
+figma.on("close", () => applier.cancel());

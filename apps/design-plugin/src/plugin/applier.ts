@@ -18,11 +18,16 @@ const clampSize = (n: number) => Math.max(n, MIN_SIZE);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function createApplier(api: PluginAPI) {
+  let active = false;
+  let page: PageNode | null = null;
   let root: FrameNode | null = null;
+  let rootX = 0;
+  let rootAttempted = false;
+  let pending: SceneNode | null = null;
   let nodes = new Map<string, SceneNode>();
   let failed = new Set<string>();
   let images = new Map<string, string>();
-  let failedFonts = new Set<string>();
+  let loadedFonts = new Set<string>();
   let fallbackOk = true;
   let failedOps = 0;
   let missingImages = 0;
@@ -36,48 +41,44 @@ export function createApplier(api: PluginAPI) {
       }
     }
     root = null;
+    page = null;
+    active = false;
+    rootAttempted = false;
+    pending = null;
     nodes = new Map();
     failed = new Set();
     images = new Map();
-    failedFonts = new Set();
+    loadedFonts = new Set();
     fallbackOk = true;
     failedOps = 0;
     missingImages = 0;
   }
 
-  async function loadFont(f: FontRef): Promise<boolean> {
+  async function loadFont(f: FontRef): Promise<void> {
     try {
       await api.loadFontAsync(f);
-      return true;
+      loadedFonts.add(fontKey(f));
     } catch {
-      return false;
+      // stays out of loadedFonts; text using it falls back
     }
   }
 
   async function begin(meta: ImportMeta): Promise<void> {
     reset();
     api.commitUndo();
-    const [fallback] = await Promise.all([
-      loadFont(FALLBACK),
-      ...meta.fonts.map(async (f) => {
-        if (!(await loadFont(f))) failedFonts.add(fontKey(f));
-      }),
-    ]);
-    fallbackOk = fallback;
+    active = true;
+    page = api.currentPage;
+    await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
+    fallbackOk = loadedFonts.has(fontKey(FALLBACK));
 
     let right = 0;
     let any = false;
-    for (const child of api.currentPage.children) {
+    for (const child of page.children) {
       const edge = child.x + child.width;
       if (!any || edge > right) right = edge;
       any = true;
     }
-    root = api.createFrame();
-    root.name = meta.name;
-    root.fills = [];
-    root.clipsContent = false;
-    root.x = any ? right + GAP : 0;
-    root.y = 0;
+    rootX = any ? right + GAP : 0;
   }
 
   async function addImage(
@@ -121,32 +122,32 @@ export function createApplier(api: PluginAPI) {
     }));
   }
 
-  function parentOf(op: PlanOp): FrameNode {
-    if (op.parent === null) {
-      if (!root) throw new Error("import not started");
-      return root;
-    }
-    const p = nodes.get(op.parent);
-    if (!p || failed.has(op.parent) || !("appendChild" in p)) throw new Error("parent unavailable");
-    return p as FrameNode;
-  }
-
-  function frameLike(op: PlanOp & { w: number; h: number }, parent: FrameNode, name: string) {
+  /** Creates a frame under `parent`, or as the import root when `parent` is null. */
+  function newFrame(parent: FrameNode | null, name: string, w: number, h: number): FrameNode {
     const node = api.createFrame();
-    parent.appendChild(node);
+    pending = node;
+    if (parent) parent.appendChild(node);
+    else if (page && node.parent !== page) page.appendChild(node);
     node.name = name;
-    node.resize(clampSize(op.w), clampSize(op.h));
+    node.resize(clampSize(w), clampSize(h));
     return node;
   }
 
+  function parentOf(op: PlanOp): FrameNode {
+    const p = nodes.get(op.parent as string);
+    if (!p || failed.has(op.parent as string) || !("appendChild" in p)) {
+      throw new Error("parent unavailable");
+    }
+    return p as FrameNode;
+  }
+
   function usableFont(f: FontRef): FontRef {
-    if (!failedFonts.has(fontKey(f))) return f;
+    if (loadedFonts.has(fontKey(f))) return f;
     if (!fallbackOk) throw new Error(`font ${f.family} ${f.style} unavailable`);
     return FALLBACK;
   }
 
-  function runProps(node: TextNode, run: PlanRun) {
-    const { start, end } = run;
+  function runProps(node: TextNode, run: PlanRun, start: number, end: number) {
     node.setRangeFontName(start, end, usableFont(run.fontName));
     node.setRangeFontSize(start, end, run.fontSize);
     node.setRangeFills(start, end, [{ type: "SOLID", color: run.color, opacity: run.opacity }]);
@@ -160,43 +161,57 @@ export function createApplier(api: PluginAPI) {
     node.setRangeTextCase(start, end, run.textCase);
   }
 
+  const validWeight = (n: number) => Number.isFinite(n) && n >= 0;
+
+  function buildFrame(op: Extract<PlanOp, { op: "frame" }>, parent: FrameNode | null) {
+    const node = newFrame(parent, op.name, op.w, op.h);
+    node.clipsContent = op.clips;
+    node.fills = paints(op.fills);
+    node.topLeftRadius = op.radius[0];
+    node.topRightRadius = op.radius[1];
+    node.bottomRightRadius = op.radius[2];
+    node.bottomLeftRadius = op.radius[3];
+    const s = op.strokes;
+    if (s && Object.values(s.weights).every(validWeight)) {
+      node.strokes = [{ type: "SOLID", color: s.color, opacity: s.opacity }];
+      node.strokeAlign = "INSIDE";
+      node.strokeTopWeight = s.weights.top;
+      node.strokeRightWeight = s.weights.right;
+      node.strokeBottomWeight = s.weights.bottom;
+      node.strokeLeftWeight = s.weights.left;
+    }
+    node.effects = effects(op.effects);
+    node.opacity = op.opacity;
+    // The import root is placed by the applier, not at its captured offset.
+    node.x = parent ? op.x : rootX;
+    node.y = parent ? op.y : 0;
+    return node;
+  }
+
   function build(op: PlanOp): SceneNode {
+    if (op.op === "frame" && op.parent === null) {
+      if (rootAttempted) throw new Error("more than one root op");
+      rootAttempted = true;
+      const node = buildFrame(op, null);
+      root = node;
+      return node;
+    }
     const parent = parentOf(op);
     switch (op.op) {
-      case "frame": {
-        const node = frameLike(op, parent, op.name);
-        node.clipsContent = op.clips;
-        node.fills = paints(op.fills);
-        node.topLeftRadius = op.radius[0];
-        node.topRightRadius = op.radius[1];
-        node.bottomRightRadius = op.radius[2];
-        node.bottomLeftRadius = op.radius[3];
-        if (op.strokes) {
-          const s = op.strokes;
-          node.strokes = [{ type: "SOLID", color: s.color, opacity: s.opacity }];
-          node.strokeAlign = "INSIDE";
-          node.strokeTopWeight = s.weights.top;
-          node.strokeRightWeight = s.weights.right;
-          node.strokeBottomWeight = s.weights.bottom;
-          node.strokeLeftWeight = s.weights.left;
-        }
-        node.effects = effects(op.effects);
-        node.opacity = op.opacity;
-        node.x = op.x;
-        node.y = op.y;
-        return node;
-      }
+      case "frame":
+        return buildFrame(op, parent);
       case "text": {
-        const first = op.runs[0]?.fontName ?? FALLBACK;
-        const font = usableFont(first);
-        if (font === FALLBACK && !fallbackOk) throw new Error("fallback font unavailable");
+        const font = usableFont(op.runs[0]?.fontName ?? FALLBACK);
         const node = api.createText();
+        pending = node;
         parent.appendChild(node);
         node.name = op.name;
         node.fontName = font;
         node.characters = op.text;
         for (const run of op.runs) {
-          if (run.end > run.start) runProps(node, run);
+          const start = Math.max(run.start, 0);
+          const end = Math.min(run.end, op.text.length);
+          if (start < end) runProps(node, run, start, end);
         }
         node.textAlignHorizontal = op.align;
         if (op.wrap) {
@@ -204,6 +219,12 @@ export function createApplier(api: PluginAPI) {
           node.resize(clampSize(op.w), clampSize(op.h));
         } else {
           node.textAutoResize = "WIDTH_AND_HEIGHT";
+          // Single-line text that is centred or right-aligned inside its captured
+          // box needs that box width, or x would be off by the width difference.
+          if (op.align !== "LEFT" && Math.abs(node.width - op.w) > 0.5) {
+            node.textAutoResize = "HEIGHT";
+            node.resize(clampSize(op.w), clampSize(node.height));
+          }
         }
         node.x = op.x;
         node.y = op.y;
@@ -213,13 +234,14 @@ export function createApplier(api: PluginAPI) {
         const imageHash = images.get(op.hash);
         if (!imageHash) {
           missingImages++;
-          const node = frameLike(op, parent, `Image (missing): ${op.name}`);
+          const node = newFrame(parent, `Image (missing): ${op.name}`, op.w, op.h);
           node.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 }, opacity: 0.08 }];
           node.x = op.x;
           node.y = op.y;
           return node;
         }
         const node = api.createRectangle();
+        pending = node;
         parent.appendChild(node);
         node.name = op.name;
         node.resize(clampSize(op.w), clampSize(op.h));
@@ -229,7 +251,7 @@ export function createApplier(api: PluginAPI) {
         return node;
       }
       case "placeholder": {
-        const node = frameLike(op, parent, op.label);
+        const node = newFrame(parent, op.label, op.w, op.h);
         node.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 }, opacity: 0.08 }];
         node.x = op.x;
         node.y = op.y;
@@ -239,49 +261,60 @@ export function createApplier(api: PluginAPI) {
   }
 
   function applyOp(op: PlanOp) {
+    pending = null;
     try {
       nodes.set(op.id, build(op));
     } catch {
       failed.add(op.id);
       failedOps++;
-      // build() may have left a half-made node as the parent's last child.
-      cleanupPartial(op);
+      const partial = pending as SceneNode | null;
+      if (partial && root === partial) root = null;
+      try {
+        partial?.remove();
+      } catch {
+        // best effort
+      }
     }
-  }
-
-  function cleanupPartial(op: PlanOp) {
-    try {
-      const parent = op.parent === null ? root : (nodes.get(op.parent) as FrameNode | undefined);
-      const last = parent?.children[parent.children.length - 1];
-      if (last && ![...nodes.values()].includes(last)) last.remove();
-    } catch {
-      // best effort
-    }
+    pending = null;
   }
 
   async function applyBatch(ops: PlanOp[]): Promise<void> {
+    if (!active) throw new Error("import not started");
     for (const op of ops) applyOp(op);
     await tick();
   }
 
   async function end(): Promise<EndResult> {
-    if (!root) throw new Error("import not started");
-    let w = 0;
-    let h = 0;
-    for (const child of root.children) {
-      w = Math.max(w, child.x + child.width);
-      h = Math.max(h, child.y + child.height);
+    if (!active) throw new Error("import not started");
+    try {
+      const done = root;
+      if (!done) {
+        // The root op failed (already counted) or never arrived (count it now).
+        if (!rootAttempted) failedOps++;
+        api.commitUndo();
+        return { rootId: "", failedOps, missingImages };
+      }
+      api.commitUndo();
+      try {
+        (page ?? api.currentPage).selection = [done];
+        api.viewport.scrollAndZoomIntoView([done]);
+      } catch {
+        // the user may have switched pages; the import itself is done
+      }
+      const result = { rootId: done.id, failedOps, missingImages };
+      root = null; // keep the layers; reset() would remove them
+      return result;
+    } finally {
+      reset();
     }
-    root.resize(clampSize(w), clampSize(h));
-    const done = root;
-    api.commitUndo();
-    api.currentPage.selection = [done];
-    api.viewport.scrollAndZoomIntoView([done]);
-    const result = { rootId: done.id, failedOps, missingImages };
-    root = null;
-    reset();
-    return result;
   }
 
-  return { begin, addImage, applyBatch, end };
+  /** Abandon the import: remove the partial root and restore the undo point. */
+  function cancel(): void {
+    if (!active) return;
+    reset();
+    api.commitUndo();
+  }
+
+  return { begin, addImage, applyBatch, end, cancel, isActive: () => active };
 }

@@ -71,8 +71,9 @@ test("applies frames and text in order under one root", async () => {
   await a.applyBatch([frame("a"), textOp("t", "a", [run(0, 5, inter)])]);
   const r = await a.end();
   expect(f.node(r.rootId).children).toHaveLength(1);
-  expect(f.node(r.rootId).children[0].children).toHaveLength(1);
-  expect(f.node(r.rootId).children[0].clipsContent).toBe(true);
+  expect(f.node(r.rootId).children[0].type).toBe("TEXT");
+  expect(f.node(r.rootId).clipsContent).toBe(true);
+  expect(f.page.children).toHaveLength(1);
   expect(r.failedOps).toBe(0);
 });
 
@@ -194,13 +195,14 @@ test("one failing op is counted, its children fail too, the rest continue", asyn
   ]);
   const r = await a.end();
   expect(r.failedOps).toBe(2);
-  expect(f.node(r.rootId).children[0].children).toHaveLength(1);
+  expect(f.node(r.rootId).children).toHaveLength(1);
 });
 
 test("commits undo once around the import and selects the root", async () => {
   const f = fakeFigma();
   const a = createApplier(f.figma);
   await a.begin(meta);
+  await a.applyBatch([frame("a")]);
   const r = await a.end();
   expect(f.count("commitUndo")).toBe(2);
   expect(f.page.selection[0].id).toBe(r.rootId);
@@ -216,6 +218,7 @@ test("root sits 100px right of existing content", async () => {
   });
   const a = createApplier(f.figma);
   await a.begin(meta);
+  await a.applyBatch([frame("a")]);
   const r = await a.end();
   expect(f.node(r.rootId).x).toBe(400);
   expect(f.node(r.rootId).y).toBe(0);
@@ -225,7 +228,157 @@ test("a second begin removes the partial root", async () => {
   const f = fakeFigma();
   const a = createApplier(f.figma);
   await a.begin(meta);
+  await a.applyBatch([frame("a")]);
   const first = f.created[0];
   await a.begin(meta);
   expect(first.removed).toBe(true);
+});
+
+test("begin creates no node; the root op is the root and ignores its captured offset", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  expect(f.created).toHaveLength(0);
+  await a.applyBatch([frame("a", null, { x: 77, y: 88 })]);
+  const r = await a.end();
+  expect(r.rootId).toBe(f.created[0].id);
+  expect([f.node(r.rootId).x, f.node(r.rootId).y]).toEqual([0, 0]);
+});
+
+test("an import with no root op returns an empty rootId and counts a failure", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const r = await a.end();
+  expect(r).toEqual({ rootId: "", failedOps: 1, missingImages: 0 });
+});
+
+test("a failed root op is counted once and fails its children", async () => {
+  const f = fakeFigma({ failOn: "a" });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), frame("b", "a")]);
+  const r = await a.end();
+  expect(r.rootId).toBe("");
+  expect(r.failedOps).toBe(2);
+  expect(f.page.children).toHaveLength(0);
+});
+
+test("cancel removes the partial root, commits undo, and ignores an idle applier", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  a.cancel();
+  expect(f.count("commitUndo")).toBe(0);
+  await a.begin(meta);
+  await a.applyBatch([frame("a")]);
+  a.cancel();
+  expect(f.page.children).toHaveLength(0);
+  expect(f.count("commitUndo")).toBe(2);
+  expect(a.isActive()).toBe(false);
+});
+
+test("end keeps the result when selecting throws, and resets state", async () => {
+  const f = fakeFigma({ viewportThrows: true });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a")]);
+  const r = await a.end();
+  expect(r.rootId).not.toBe("");
+  expect(f.node(r.rootId).removed).toBe(false);
+  expect(a.isActive()).toBe(false);
+  await expect(a.end()).rejects.toThrow();
+});
+
+test("text is created only after its font is loaded (fake enforces it)", async () => {
+  const f = fakeFigma();
+  const t = f.raw_createText();
+  expect(() => {
+    t.characters = "x";
+  }).toThrow();
+  expect(() => {
+    t.fontName = bold;
+  }).toThrow();
+});
+
+test("run ranges are clamped to the text and empty ones skipped", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a"),
+    textOp("t", "a", [run(0, 3, inter), run(3, 99, bold), run(5, 9, inter), run(4, 4, inter)]),
+  ]);
+  expect((await a.end()).failedOps).toBe(0);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  const spans = t.ranges.filter((r: any) => r.m === "setRangeFontSize").map((r: any) => [r.s, r.e]);
+  expect(spans).toEqual([
+    [0, 3],
+    [3, 5],
+  ]);
+});
+
+test("a font outside the loaded set uses the fallback", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const other = { family: "Nope", style: "Thin" };
+  await a.applyBatch([frame("a"), textOp("t", "a", [run(0, 5, other)])]);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  expect(t.fontName).toEqual(inter);
+  expect((await a.end()).failedOps).toBe(0);
+});
+
+test("frame effects carry visible and blendMode, sizes clamp, default fill is replaced", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a", null, {
+      w: 0,
+      h: 0,
+      fills: [],
+      effects: [
+        {
+          type: "DROP_SHADOW",
+          color: { r: 0, g: 0, b: 0, a: 0.5 },
+          offset: { x: 0, y: 1 },
+          radius: 2,
+          spread: 0,
+        },
+      ],
+    }),
+  ]);
+  const r = await a.end();
+  expect(r.failedOps).toBe(0);
+  const n = f.node(r.rootId);
+  expect(n.width).toBe(0.01);
+  expect(n.fills).toEqual([]);
+  expect(n.effects[0]).toMatchObject({ visible: true, blendMode: "NORMAL" });
+});
+
+test("a bad stroke weight drops the stroke, not the frame", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const strokes = {
+    color: { r: 0, g: 0, b: 0 },
+    opacity: 1,
+    weights: { top: 1, right: Number.NaN, bottom: 1, left: 1 },
+  };
+  await a.applyBatch([frame("a", null, { strokes })]);
+  const r = await a.end();
+  expect(r.failedOps).toBe(0);
+  expect(f.node(r.rootId).strokes).toBeUndefined();
+});
+
+test("centred single-line text keeps the captured box width", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const op = { ...textOp("t", "a", [run(0, 5, inter)]), align: "CENTER" } as PlanOp;
+  await a.applyBatch([frame("a"), op]);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  expect(t.textAutoResize).toBe("HEIGHT");
+  expect(t.width).toBe(80);
+  expect(t.textAlignHorizontal).toBe("CENTER");
 });
