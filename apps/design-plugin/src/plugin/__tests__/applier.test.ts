@@ -642,3 +642,86 @@ test("wrapped text ends in HEIGHT mode with the captured line count, even when h
   expect(t.height).toBe(24);
   expect(r.rewrappedTexts).toBe(0);
 });
+
+const svgOp = (markup = "<svg/>", extra: object = {}): PlanOp => ({
+  op: "svg",
+  id: "vec",
+  parent: "a",
+  name: "Svg",
+  x: 7,
+  y: 8,
+  w: 24,
+  h: 16,
+  markup,
+  opacity: 0.5,
+  ...extra,
+});
+
+test("applier creates a vector frame and sizes it", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp("<svg>ok</svg>")]);
+  expect(f.calls).toContain("createNodeFromSvg");
+  expect(f.svgSources).toEqual(["<svg>ok</svg>"]);
+  const r = await a.end();
+  const v = f.node(r.rootId).children[0];
+  expect(v.name).toBe("Svg");
+  expect([v.x, v.y, v.width, v.height, v.opacity]).toEqual([7, 8, 24, 16, 0.5]);
+  expect(v.parent).toBe(f.node(r.rootId));
+  // The frame keeps the clipping Figma gave it.
+  expect(v.clipsContent).toBe(false);
+  expect(r.failedOps).toBe(0);
+});
+
+test("a rejected svg becomes a placeholder and the import continues", async () => {
+  const f = fakeFigma({ svgThrows: true });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp(), textOp("t", "a", [run(0, 5, inter)])]);
+  const r = await a.end();
+  const kids = f.node(r.rootId).children;
+  expect(kids.map((n: any) => n.type)).toEqual(["FRAME", "TEXT"]);
+  expect(kids[0].name).toContain("SVG");
+  expect([kids[0].x, kids[0].y, kids[0].width, kids[0].height]).toEqual([7, 8, 24, 16]);
+  expect(r.failedOps).toBe(0);
+});
+
+test("svg markup over 256 KiB is not handed to Figma", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp(`<svg>${"x".repeat(256 * 1024)}</svg>`)]);
+  const r = await a.end();
+  expect(f.count("createNodeFromSvg")).toBe(0);
+  expect(f.node(r.rootId).children[0].name).toContain("SVG");
+  expect(r.failedOps).toBe(0);
+});
+
+test("a multi-byte svg is measured in bytes", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  // 100,000 characters but 300,000 bytes.
+  await a.applyBatch([frame("a"), svgOp(`<svg>${"\u20ac".repeat(100_000)}</svg>`)]);
+  expect(f.count("createNodeFromSvg")).toBe(0);
+});
+
+test("an svg with no parent fails like any other op", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp("<svg/>", { parent: "missing" })]);
+  expect(f.count("createNodeFromSvg")).toBe(0);
+  expect((await a.end()).failedOps).toBe(1);
+});
+
+test("an svg frame whose setup fails is removed and counted", async () => {
+  const f = fakeFigma({ failOn: "Svg" });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp()]);
+  const r = await a.end();
+  expect(r.failedOps).toBe(1);
+  expect(f.node(r.rootId).children).toHaveLength(0);
+});

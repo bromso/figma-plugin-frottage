@@ -26,6 +26,8 @@ const FALLBACK: FontRef = { family: "Inter", style: "Regular" };
 const GAP = 100;
 const MIN_SIZE = 0.01;
 const MAX_WIDEN_STEPS = 8;
+/** The largest SVG source handed to Figma. Capture applies the same limit; a file can still hold more. */
+const MAX_SVG_BYTES = 256 * 1024;
 
 /** x for a text box of `actual` width that must stay anchored inside the captured `w`. */
 function alignedX(align: string, x: number, w: number, actual: number): number {
@@ -37,6 +39,20 @@ function alignedX(align: string, x: number, w: number, actual: number): number {
 const fontKey = (f: FontRef) => `${f.family}\u0000${f.style}`;
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 const clampSize = (n: number) => Math.max(n, MIN_SIZE);
+/** UTF-8 size without TextEncoder, which the plugin sandbox may not have. */
+function utf8Bytes(text: string): number {
+  let n = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c < 0x80) n += 1;
+    else if (c < 0x800) n += 2;
+    else if (c >= 0xd800 && c <= 0xdbff) {
+      n += 4; // a surrogate pair is one 4-byte character
+      i++;
+    } else n += 3;
+  }
+  return n;
+}
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function createApplier(api: PluginAPI) {
@@ -305,6 +321,35 @@ export function createApplier(api: PluginAPI) {
         node.x = op.x;
         node.y = op.y;
         return node;
+      }
+      case "svg": {
+        let imported: FrameNode | null = null;
+        // Markup from a `.frottage` file is untrusted: Figma may reject it, and an oversized one is
+        // not worth the parse. Either way the import goes on with a marker where the vector was.
+        if (utf8Bytes(op.markup) <= MAX_SVG_BYTES) {
+          try {
+            imported = api.createNodeFromSvg(op.markup);
+          } catch {
+            imported = null;
+          }
+        }
+        if (!imported) {
+          const node = newFrame(parent, `SVG (not imported): ${op.name}`, op.w, op.h);
+          node.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 }, opacity: 0.08 }];
+          node.opacity = op.opacity;
+          node.x = op.x;
+          node.y = op.y;
+          return node;
+        }
+        // The frame keeps the clipping Figma gave it.
+        pending = imported;
+        parent.appendChild(imported);
+        imported.name = op.name;
+        imported.resize(clampSize(op.w), clampSize(op.h));
+        imported.opacity = op.opacity;
+        imported.x = op.x;
+        imported.y = op.y;
+        return imported;
       }
       case "placeholder": {
         const node = newFrame(parent, op.label, op.w, op.h);

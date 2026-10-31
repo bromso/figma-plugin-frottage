@@ -17,6 +17,8 @@ type Options = {
   /** "family|style" keys whose loadFontAsync rejects. */
   failFonts?: string[];
   existingBounds?: { x: number; width: number }[];
+  /** createNodeFromSvg throws, as Figma does for markup it rejects. */
+  svgThrows?: boolean;
   /** selection assignment or scrollAndZoomIntoView throws. */
   viewportThrows?: boolean;
   /** Text measure rule: every character is this wide (default 5). */
@@ -34,6 +36,7 @@ export function fakeFigma(opts: Options = {}) {
   const nodes = new Map<string, FakeNode>();
   const hashes = new Map<string, string>();
   const created: FakeNode[] = [];
+  const svgSources: string[] = [];
   const loaded = new Set<string>();
   let seq = 0;
 
@@ -136,6 +139,18 @@ export function fakeFigma(opts: Options = {}) {
       const n = makeNode("FRAME");
       n.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 }, opacity: 1 }];
       n.clipsContent = true;
+      return n;
+    },
+    createNodeFromSvg(svg: string) {
+      calls.push("createNodeFromSvg");
+      svgSources.push(svg);
+      if (opts.svgThrows) throw new Error("Invalid SVG");
+      // Figma returns an unfilled frame that holds the vectors; its clipping is Figma's choice.
+      const n = makeNode("FRAME");
+      n.fills = [];
+      n.clipsContent = false;
+      n.width = 24;
+      n.height = 24;
       return n;
     },
     createRectangle() {
@@ -251,6 +266,7 @@ export function fakeFigma(opts: Options = {}) {
     lastRectangle: () => [...created].reverse().find((n) => n.type === "RECTANGLE") as FakeNode,
     lastFrame: () => [...created].reverse().find((n) => n.type === "FRAME") as FakeNode,
     created,
+    svgSources,
     page,
     raw_createText: () => figma.createText() as FakeNode,
   };

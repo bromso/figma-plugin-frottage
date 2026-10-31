@@ -341,7 +341,22 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
         }
         break;
       case "svg":
-        op = placeholder(node, parentId as string, x, y, "SVG");
+        // Markup that was left out of the capture has nothing to rebuild.
+        op =
+          node.markup === ""
+            ? placeholder(node, parentId as string, x, y, "SVG")
+            : {
+                op: "svg",
+                id: node.id,
+                parent: parentId as string,
+                name: nameOf(node, "Svg"),
+                x,
+                y,
+                w: node.box.w,
+                h: node.box.h,
+                markup: node.markup,
+                opacity: node.opacity,
+              };
         break;
       case "placeholder":
         op = placeholder(

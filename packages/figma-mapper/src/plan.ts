@@ -93,6 +93,19 @@ export type PlanOp =
       strokes: PlanStroke | null;
     }
   | {
+      op: "svg";
+      id: string;
+      parent: string;
+      name: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      /** Self-contained SVG source; the applier rebuilds it with `createNodeFromSvg`. */
+      markup: string;
+      opacity: number;
+    }
+  | {
       op: "placeholder";
       id: string;
       parent: string;

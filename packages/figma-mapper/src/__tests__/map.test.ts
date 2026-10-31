@@ -247,10 +247,71 @@ describe("mapCapture", () => {
     });
     expect(plan.ops.find((o) => o.id === "i2")?.op).toBe("placeholder");
     expect(plan.ops.find((o) => o.id === "p")?.op).toBe("placeholder");
-    expect(plan.ops.find((o) => o.id === "s")?.op).toBe("placeholder");
+    expect(plan.ops.find((o) => o.id === "s")?.op).toBe("svg");
     expect(plan.ops.find((o) => o.id === "gone")).toBeUndefined();
     expect(plan.assetHashes).toEqual(["hh"]);
-    expect(plan.report).toMatchObject({ nodes: 5, texts: 0, images: 1, placeholders: 3 });
+    expect(plan.report).toMatchObject({ nodes: 5, texts: 0, images: 1, placeholders: 2 });
+  });
+  describe("svg", () => {
+    const svgBase = {
+      box: { x: 10, y: 20, w: 24, h: 24 },
+      paintOrder: 0,
+      visible: true,
+      opacity: 0.5,
+      blendMode: "normal",
+      semantic: { tag: "svg" },
+    };
+    const withSvg = (markup: string, over: object = {}) =>
+      cap(el("root", [0, 0], [{ ...svgBase, id: "s", kind: "svg", markup, ...over }]));
+    test("svg nodes become svg ops", () => {
+      expect(mapCapture(withSvg("<svg/>"), inter).ops.find((o) => o.op === "svg")).toMatchObject({
+        op: "svg",
+        id: "s",
+        parent: "root",
+        name: "Svg",
+        x: 10,
+        y: 20,
+        w: 24,
+        h: 24,
+        markup: "<svg/>",
+        opacity: 0.5,
+      });
+    });
+    test("an svg with no markup stays a placeholder", () => {
+      const op = mapCapture(withSvg(""), inter).ops.find((o) => o.id === "s");
+      expect(op).toMatchObject({ op: "placeholder", label: "SVG" });
+    });
+    test("an svg is placed relative to its parent and listed after it", () => {
+      const c = cap(
+        el(
+          "root",
+          [5, 5],
+          [
+            el(
+              "box",
+              [15, 25],
+              [
+                {
+                  ...svgBase,
+                  id: "s",
+                  kind: "svg",
+                  markup: "<svg/>",
+                  box: { x: 30, y: 40, w: 8, h: 8 },
+                },
+              ]
+            ),
+          ]
+        )
+      );
+      const { ops } = mapCapture(c, inter);
+      expect(ops.map((o) => o.id)).toEqual(["root", "box", "s"]);
+      expect(ops[2]).toMatchObject({ op: "svg", parent: "box", x: 15, y: 15, w: 8, h: 8 });
+    });
+    test("an invisible svg is skipped", () => {
+      expect(mapCapture(withSvg("<svg/>", { visible: false }), inter).ops.map((o) => o.id)).toEqual(
+        ["root"]
+      );
+    });
   });
   test("images keep opacity, radius and border; placeholders keep opacity", () => {
     const red = { r: 1, g: 0, b: 0, a: 1 };
