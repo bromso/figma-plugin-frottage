@@ -1,4 +1,5 @@
 import { FrottageFileError, unpackFrottage } from "@repo/capture-schema";
+import { sha256Hex } from "@repo/capture-schema/hash";
 import {
   batchOps,
   type FontRef,
@@ -35,12 +36,22 @@ export const MAX_FILE_BYTES = 300 * 1024 * 1024;
 
 const SHA256_KEY = /^[0-9a-f]{64}$/i;
 
+/** Let the browser paint and handle input; safe where requestAnimationFrame is absent. */
+export function yieldToPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => setTimeout(resolve));
+    } else {
+      setTimeout(resolve);
+    }
+  });
+}
+
 async function verifyAssets(assets: Map<string, Uint8Array>): Promise<void> {
   for (const [key, bytes] of assets) {
     if (!SHA256_KEY.test(key)) continue;
-    const digest = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
-    const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-    if (hex !== key.toLowerCase()) throw new FrottageFileError("corrupt-asset");
+    if (sha256Hex(bytes) !== key.toLowerCase()) throw new FrottageFileError("corrupt-asset");
+    await yieldToPaint();
   }
 }
 
@@ -53,19 +64,23 @@ export async function runImport(
   try {
     if (file.size > MAX_FILE_BYTES) throw new FrottageFileError("too-large");
     onState({ step: "working", done: 0, total: 0 });
+    await yieldToPaint();
     const bytes = new Uint8Array(await file.arrayBuffer());
     const { capture, assets } = unpackFrottage(bytes);
     await verifyAssets(assets);
 
+    await yieldToPaint();
     const plan = mapCapture(capture, await port.listFonts());
     const total = plan.ops.length;
     onState({ step: "working", done: 0, total });
 
-    await port.begin({ name: capture.source.title, fonts: plan.fonts, totalOps: total });
+    // Set first: a begin that fails halfway may still have created state to cancel.
     begun = true;
+    await port.begin({ name: capture.source.title, fonts: plan.fonts, totalOps: total });
 
     for (const hash of plan.assetHashes) {
       const data = assets.get(hash);
+      // A failed image is not an error here; the sandbox counts it in `missingImages` at end().
       if (data) await port.image(hash, data);
     }
 

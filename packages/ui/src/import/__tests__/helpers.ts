@@ -1,4 +1,5 @@
 import { type Capture, type CaptureNode, packFrottage } from "@repo/capture-schema";
+import { sha256Hex } from "@repo/capture-schema/hash";
 import type { FontRef, PlanOp } from "@repo/figma-mapper";
 import type { ImportPort } from "../import-flow";
 
@@ -140,14 +141,9 @@ export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular"
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 
-export async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 /** A file with one image node; `keyFor` decides the asset's map key. */
 export async function imageFile(good: boolean): Promise<File> {
-  const key = good ? await sha256Hex(PNG) : "a".repeat(64);
+  const key = good ? sha256Hex(PNG) : "a".repeat(64);
   const capture = captureWithTexts(0);
   (capture.root as { children: CaptureNode[] }).children = [
     {

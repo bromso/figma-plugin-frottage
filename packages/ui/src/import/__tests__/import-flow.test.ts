@@ -45,6 +45,17 @@ describe("runImport", () => {
     expect(states.at(-1)?.step).toBe("done");
   });
 
+  test("verifies images where crypto.subtle is unavailable", async () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis.crypto, "subtle");
+    Object.defineProperty(globalThis.crypto, "subtle", { value: undefined, configurable: true });
+    try {
+      const { states } = await run(await imageFile(true));
+      expect(states.at(-1)?.step).toBe("done");
+    } finally {
+      if (original) Object.defineProperty(globalThis.crypto, "subtle", original);
+    }
+  });
+
   test("progress counts ops and finishes at the total", async () => {
     const { states } = await run(frottageFile(119));
     const working = states.filter((s) => s.step === "working");

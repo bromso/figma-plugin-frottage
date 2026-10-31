@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./json-schema": "./src/json-schema.ts"
+    "./json-schema": "./src/json-schema.ts",
+    "./hash": "./src/hash.ts"
   },
   "scripts": {
     "lint": "biome check .",
@@ -15,6 +16,7 @@
     "generate": "bun src/json-schema.ts --write"
   },
   "dependencies": {
+    "@noble/hashes": "2.4.0",
     "fflate": "0.8.3",
     "zod": "^4.6.7"
   },

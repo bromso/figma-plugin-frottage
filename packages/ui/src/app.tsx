@@ -1,10 +1,16 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type ImportPort, type ImportState, runImport } from "./import/import-flow";
 import { Button, Progress, SectionTitle } from "./index";
 
 const MORE_THAN_ONE = "You dropped more than one file. Frottage imported the first one.";
 
-function Report({ state }: { state: Extract<ImportState, { step: "done" }> }) {
+function Report({
+  state,
+  headingRef,
+}: {
+  state: Extract<ImportState, { step: "done" }>;
+  headingRef: React.Ref<HTMLParagraphElement>;
+}) {
   const { report, failedOps, missingImages } = state;
   const rows: [string, number][] = [
     ["Layers", report.nodes],
@@ -16,7 +22,9 @@ function Report({ state }: { state: Extract<ImportState, { step: "done" }> }) {
   if (missingImages > 0) rows.push(["Missing images", missingImages]);
   return (
     <div className="flex flex-col gap-2">
-      <SectionTitle>Import complete</SectionTitle>
+      <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">
+        Import complete
+      </SectionTitle>
       <dl className="flex flex-col">
         {rows.map(([label, count]) => (
           <div key={label} className="flex h-6 items-center justify-between">
@@ -58,14 +66,44 @@ function App({ port }: { port?: ImportPort }) {
   const [notice, setNotice] = useState("");
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const busy = useRef(false);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const headingRef = useRef<HTMLParagraphElement>(null);
   const working = state.step === "working";
+
+  // A drop outside the drop area must not make Figma's iframe navigate to the file.
+  useEffect(() => {
+    const stop = (e: Event) => e.preventDefault();
+    window.addEventListener("dragover", stop);
+    window.addEventListener("drop", stop);
+    return () => {
+      window.removeEventListener("dragover", stop);
+      window.removeEventListener("drop", stop);
+    };
+  }, []);
+
+  // The picker unmounts when an import finishes, so move focus to the outcome.
+  useEffect(() => {
+    if (state.step === "error") errorRef.current?.focus();
+    if (state.step === "done") headingRef.current?.focus();
+  }, [state.step]);
 
   async function start(files: File[]) {
     const file = files[0];
-    if (!file || working) return;
-    setNotice(files.length > 1 ? MORE_THAN_ONE : "");
-    const target = port ?? (await import("./app.network")).channelImportPort;
-    await runImport(file, target, setState);
+    if (!file || busy.current) return;
+    busy.current = true;
+    try {
+      setNotice(files.length > 1 ? MORE_THAN_ONE : "");
+      const target = port ?? (await import("./app.network")).channelImportPort;
+      await runImport(file, target, setState);
+    } finally {
+      busy.current = false;
+    }
+  }
+
+  function reset() {
+    setNotice("");
+    setState({ step: "idle" });
   }
 
   const total = state.step === "working" ? state.total : 0;
@@ -78,7 +116,6 @@ function App({ port }: { port?: ImportPort }) {
       <input
         ref={input}
         type="file"
-        accept=".frottage"
         hidden
         aria-label="Choose a .frottage file"
         onChange={(e) => {
@@ -95,7 +132,9 @@ function App({ port }: { port?: ImportPort }) {
             e.preventDefault();
             setDragging(true);
           }}
-          onDragLeave={() => setDragging(false)}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+          }}
           onDrop={(e) => {
             e.preventDefault();
             setDragging(false);
@@ -112,25 +151,38 @@ function App({ port }: { port?: ImportPort }) {
         </fieldset>
       )}
 
-      {notice && <p className="text-figma-text-secondary">{notice}</p>}
+      {notice && state.step !== "working" && state.step !== "done" && (
+        <p className="text-figma-text-secondary">{notice}</p>
+      )}
 
       {state.step === "error" && (
-        <p role="alert" className="text-figma-text-danger">
+        <p
+          ref={errorRef}
+          role="alert"
+          tabIndex={-1}
+          className="text-figma-text-danger outline-none"
+        >
           {state.message}
         </p>
       )}
 
+      <p role="status" className="sr-only">
+        {working ? "Importing" : state.step === "done" ? "Import finished" : ""}
+      </p>
+
       {working && (
-        <div role="status" className="flex flex-col gap-2">
-          <p>{total > 0 ? `Importing ${state.done} of ${total} layers` : "Reading the file"}</p>
+        <div className="flex flex-col gap-2">
+          <p aria-hidden="true">
+            {total > 0 ? `Importing ${state.done} of ${total} layers` : "Reading the file"}
+          </p>
           <Progress value={percent} aria-label="Import progress" />
         </div>
       )}
 
       {state.step === "done" && (
         <>
-          <Report state={state} />
-          <Button variant="secondary" onClick={() => setState({ step: "idle" })}>
+          <Report state={state} headingRef={headingRef} />
+          <Button variant="secondary" onClick={reset}>
             Import another file
           </Button>
         </>
