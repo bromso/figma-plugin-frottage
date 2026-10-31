@@ -12,7 +12,7 @@
 
 Frottage imports rendered web pages into editable Figma designs. A Chrome extension captures the page; the Figma plugin turns the capture into native layers. Built with React, Bun, TypeScript and a Turborepo monorepo.
 
-> Phase 1 is in progress: the repository was a plugin template and the UI is still its sampler.
+> Phase 1 is in progress: capture a page with the Chrome extension, then open the `.frottage` file in the plugin.
 
 ## Features
 
@@ -77,7 +77,7 @@ Packages are **JIT source-only** — they export raw TypeScript with no build st
 The plugin runs as **two separate processes** that communicate via message passing:
 
 - **Plugin side** (`apps/design-plugin/src/plugin/`) — Runs in Figma's sandbox with access to the Figma API (`figma.*`). No DOM access. Entry: `plugin.ts`.
-- **UI side** (`packages/ui/src/`) — Runs in an iframe. React app with shadcn/ui components. Entry: `main.tsx` → `app.tsx`; `app.tsx` is the sampler laid out like a Figma properties panel.
+- **UI side** (`packages/ui/src/`) — Runs in an iframe. React app with shadcn/ui components. Entry: `main.tsx` → `app.tsx`; `app.tsx` is the import screen.
 - **Common** (`packages/common/src/`) — Shared between both sides. Contains network event type definitions.
 
 ### Messaging

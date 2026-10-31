@@ -10,7 +10,7 @@ export default {
   // pages must use the *Async APIs (e.g. figma.getNodeByIdAsync).
   documentAccess: "dynamic-page",
   // ["none"] is deliberate: Frottage makes no network requests. Pages arrive as
-  // pasted capture data, so the plugin never needs a domain allowlist.
+  // .frottage files the user opens, so the plugin never needs a domain allowlist.
   networkAccess: { allowedDomains: ["none"] },
   capabilities: [],
   enableProposedApi: false,
