@@ -44,11 +44,15 @@ bun run dev
 ```
 apps/
   design-plugin/  — Figma plugin app (build.ts bundles to dist/)
+  chrome-extension/ — Chrome extension that captures a page into a .frottage file
   storybook/      — Storybook component documentation
   docs/           — Documentation site (Next.js + Fumadocs, port 3000)
 packages/
   common/         — Shared types and network events (@repo/common)
   ui/             — UI components, styles, and app shell (@repo/ui)
+  capture-schema/ — Capture schema, validation and the .frottage container
+  capture-dom/    — DOM walker that produces a capture in the page
+  figma-mapper/   — Maps a capture to Figma layer plans
 ```
 
 Packages are **JIT source-only** — they export raw TypeScript with no build step. Use `@repo/*` workspace imports for cross-package references.

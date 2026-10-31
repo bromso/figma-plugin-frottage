@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## About Frottage
 
-Frottage is a Figma plugin plus a Chrome extension that imports rendered web pages into editable Figma files. The extension captures a page's rendered DOM; the plugin turns the pasted capture into native Figma layers. The plugin makes no network requests (`networkAccess` stays `["none"]`). This repository began as a Figma plugin template, and the UI sampler in `packages/ui/src/app.tsx` is still a placeholder.
+Frottage is a Figma plugin plus a Chrome extension that imports rendered web pages into editable Figma files. The extension captures a page's rendered DOM; the plugin turns a `.frottage` file into native Figma layers. The plugin makes no network requests (`networkAccess` stays `["none"]`). This repository began as a Figma plugin template, and the UI sampler in `packages/ui/src/app.tsx` is still a placeholder.
 
 ## MCP Servers (pre-configured in `.mcp.json`)
 
@@ -58,11 +58,15 @@ All commands use **Bun** as the package manager. Run from the repo root.
 ```
 apps/
   design-plugin/    — Figma plugin app (build.ts bundles to dist/)
+  chrome-extension/ — Chrome extension that captures a page into a .frottage file (build.ts bundles to dist/)
   storybook/        — Storybook component documentation
   docs/             — Documentation site (Next.js + Fumadocs, port 3000)
 packages/
   common/           — Shared types and network event definitions (@repo/common)
   ui/               — UI components, styles, and app shell (@repo/ui)
+  capture-schema/   — Capture schema, Zod validation and the .frottage container (@repo/capture-schema)
+  capture-dom/      — DOM walker that produces a capture in the page (@repo/capture-dom)
+  figma-mapper/     — Maps a capture to Figma layer plans (@repo/figma-mapper)
 ```
 
 ### Workspace Imports

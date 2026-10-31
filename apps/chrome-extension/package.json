@@ -1,0 +1,30 @@
+{
+  "name": "@repo/chrome-extension",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "NODE_ENV=production bun build.ts",
+    "dev": "bun build.ts --watch",
+    "types": "tsc --noEmit",
+    "analyze": "NODE_ENV=production bun build.ts --analyze",
+    "lint": "biome check .",
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "@repo/capture-dom": "workspace:*",
+    "@repo/capture-schema": "workspace:*",
+    "@repo/ui": "workspace:*",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "@types/chrome": "^0.3.7",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "bun-plugin-tailwind": "^0.1.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
+  }
+}

@@ -2,7 +2,16 @@
   "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
   "changelog": ["@changesets/changelog-github", { "repo": "bromso/figma-plugin-frottage" }],
   "commit": false,
-  "fixed": [["@repo/ui", "@repo/common"]],
+  "fixed": [
+    ["@repo/ui", "@repo/common"],
+    [
+      "@repo/design-plugin",
+      "@repo/chrome-extension",
+      "@repo/capture-schema",
+      "@repo/capture-dom",
+      "@repo/figma-mapper"
+    ]
+  ],
   "linked": [],
   "access": "restricted",
   "baseBranch": "master",
