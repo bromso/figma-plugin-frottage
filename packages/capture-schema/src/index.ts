@@ -1,3 +1,10 @@
+export {
+  type FrottageErrorCode,
+  FrottageFileError,
+  LIMITS,
+  packFrottage,
+  unpackFrottage,
+} from "./container";
 export { captureJsonSchema } from "./json-schema";
 export { countNodes, type ParseResult, parseCapture } from "./parse";
 export {
