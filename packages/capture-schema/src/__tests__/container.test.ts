@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { strToU8, zipSync } from "fflate";
-import { type Capture, FrottageFileError, LIMITS, packFrottage, unpackFrottage } from "../index";
+import {
+  type Capture,
+  type FrottageErrorCode,
+  FrottageFileError,
+  LIMITS,
+  packFrottage,
+  unpackFrottage,
+} from "../index";
 import { elementNode, minimalCapture, textNode, treeOfThree } from "./fixtures";
 
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
