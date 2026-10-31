@@ -2,15 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { strToU8, Unzip, Zip, ZipDeflate, ZipPassThrough, zipSync } from "fflate";
 import {
   type Capture,
+  captureSchema,
   type FrottageErrorCode,
   FrottageFileError,
   LIMITS,
-  PUSH_SLICE_BYTES,
   packFrottage,
+  parseCapture,
   unpackFrottage,
 } from "../index";
 import { elementNode, minimalCapture, textNode, treeOfThree } from "./fixtures";
 
+const SLICE = 16 * 1024;
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
 const sample: Capture = { ...minimalCapture(), root: treeOfThree() };
 
@@ -186,7 +188,7 @@ describe("unpackFrottage", () => {
     const result = unpackFrottage(out);
     expect(result.capture).toEqual(sample);
     expect(result.assets.get("abc")).toEqual(bigAsset);
-    expect(() => unpackFrottage(out, { ...LIMITS, captureJsonBytes: 100 })).toThrow();
+    expectCode(() => unpackFrottage(out, { ...LIMITS, captureJsonBytes: 100 }), "too-large");
   });
 
   test("pushes small slices and stops pushing after a failure", () => {
@@ -206,10 +208,10 @@ describe("unpackFrottage", () => {
     } finally {
       Unzip.prototype.push = original;
     }
-    expect(Math.max(...sizes)).toBeLessThanOrEqual(PUSH_SLICE_BYTES);
+    expect(Math.max(...sizes)).toBeLessThanOrEqual(SLICE);
     // The bomb's compressed bytes fit in the first slice or two; the 200 kB of
     // trailing bytes must never be pushed once the limit has fired.
-    expect(failedAt).toBeLessThan(Math.ceil(big.length / PUSH_SLICE_BYTES));
+    expect(failedAt).toBeLessThan(Math.ceil(big.length / SLICE));
   });
 
   test("rejects a 5,000-deep capture as too-deep", () => {
@@ -267,6 +269,10 @@ describe("unpackFrottage", () => {
     expect((caught as FrottageFileError).message.length).toBeLessThanOrEqual(500);
   });
 
+  test("FrottageFileError caps long messages", () => {
+    expect(new FrottageFileError("invalid-capture", "x".repeat(5000)).message.length).toBe(500);
+  });
+
   test("FrottageFileError has a default message per code", () => {
     expect(new FrottageFileError("too-large").message.length).toBeGreaterThan(0);
   });
@@ -287,3 +293,166 @@ function deepJson(levels: number): string {
   const wrapped = `${pre}${inner}${post}`;
   return JSON.stringify({ ...minimalCapture(), root: "@@" }).replace('"@@"', wrapped);
 }
+
+/** Exactly `n` element levels, the deepest a leaf with no children. */
+function chainJson(n: number): string {
+  return chainWithChildren(n - 1, JSON.stringify(elementNode("leaf")));
+}
+
+function repeatJoin(item: string, count: number): string {
+  return `${`${item},`.repeat(count - 1)}${item}`;
+}
+
+/** Element chain `depth` levels deep, then `body` as the children of the deepest. */
+function chainWithChildren(depth: number, body: string): string {
+  const proto = JSON.stringify(elementNode("n"));
+  const i = proto.lastIndexOf('"children":[]');
+  const pre = `${proto.slice(0, i)}"children":[`;
+  const post = `]${proto.slice(i + 13)}`;
+  return `${pre.repeat(depth)}${body}${post.repeat(depth)}`;
+}
+
+function withRoot(rootJson: string, patch?: (json: string) => string): Uint8Array {
+  const json = JSON.stringify({ ...minimalCapture(), root: "@@" }).replace('"@@"', rootJson);
+  return zipWithRaw(patch ? patch(json) : json);
+}
+
+function timed(fn: () => unknown, code: FrottageErrorCode) {
+  const start = performance.now();
+  let caught: unknown;
+  try {
+    fn();
+  } catch (e) {
+    caught = e;
+  }
+  const ms = performance.now() - start;
+  expect(caught).toBeInstanceOf(FrottageFileError);
+  expect((caught as FrottageFileError).code).toBe(code);
+  expect((caught as FrottageFileError).message.length).toBeLessThanOrEqual(500);
+  expect(ms).toBeLessThan(2000);
+}
+
+describe("depth boundary", () => {
+  test("accepts 256 levels and rejects 257", () => {
+    expect(() => unpackFrottage(withRoot(chainJson(256)))).not.toThrow();
+    expectCode(() => unpackFrottage(withRoot(chainJson(257))), "too-deep");
+  });
+
+  test("honours a smaller depth limit exactly", () => {
+    const limits = { ...LIMITS, depth: 5 };
+    expect(() => unpackFrottage(withRoot(chainJson(5)), limits)).not.toThrow();
+    expectCode(() => unpackFrottage(withRoot(chainJson(6)), limits), "too-deep");
+  });
+
+  test("honours the node limit exactly", () => {
+    const three = JSON.stringify(treeOfThree());
+    expect(() => unpackFrottage(withRoot(three), { ...LIMITS, nodes: 3 })).not.toThrow();
+    expectCode(() => unpackFrottage(withRoot(three), { ...LIMITS, nodes: 2 }), "too-many-nodes");
+  });
+});
+
+describe("hostile captures fail fast with a coded error", () => {
+  test("a 1 MiB fonts array of {}", () => {
+    const fonts = `[${repeatJoin("{}", Math.floor((1024 * 1024) / 3))}]`;
+    const zip = withRoot(JSON.stringify(elementNode("r")), (j) =>
+      j.replace('"fonts":[]', `"fonts":${fonts}`)
+    );
+    timed(() => unpackFrottage(zip), "invalid-capture");
+  });
+
+  test("children made of scalars", () => {
+    const zip = withRoot(chainWithChildren(1, repeatJoin("1", 500_000)));
+    timed(() => unpackFrottage(zip), "invalid-capture");
+  });
+
+  test("a single text node with a huge runs array of {}", () => {
+    const text = JSON.stringify(textNode("t")).replace(
+      /"runs":\[.*\]\}$/,
+      `"runs":[${repeatJoin("{}", 300_000)}]}`
+    );
+    timed(() => unpackFrottage(withRoot(text)), "invalid-capture");
+  });
+
+  test("19,700 invalid leaves under a legal 255-level chain", () => {
+    const zip = withRoot(chainWithChildren(255, repeatJoin('{"kind":"element"}', 19_700)));
+    timed(() => unpackFrottage(zip), "invalid-capture");
+  });
+
+  test("a huge filters array of numbers", () => {
+    const el = JSON.stringify(elementNode("e")).replace(
+      '"filters":[]',
+      `"filters":[${repeatJoin("1", 500_000)}]`
+    );
+    timed(() => unpackFrottage(withRoot(el)), "invalid-capture");
+  });
+});
+
+describe("parseCapture", () => {
+  test("agrees with captureSchema on a full valid capture", () => {
+    const color = { r: 0.1, g: 0.2, b: 0.3, a: 1 };
+    const el = elementNode("e") as unknown as {
+      style: { backgroundImages: unknown[]; boxShadows: unknown[]; filters: string[] };
+    };
+    el.style.backgroundImages = [
+      {
+        type: "linear-gradient",
+        css: "x",
+        angle: 90,
+        stops: [
+          { color, position: 0 },
+          { color, position: 1 },
+        ],
+      },
+      { type: "image", css: "url(a)", assetHash: "abc" },
+    ];
+    el.style.boxShadows = [{ inset: false, x: 1, y: 2, blur: 3, spread: 4, color }];
+    el.style.filters = ["blur(2px)"];
+    const base = textNode("t") as unknown as Record<string, unknown>;
+    const image = {
+      ...base,
+      id: "i",
+      kind: "image",
+      fit: "cover",
+      objectPosition: "0 0",
+      assetHash: "abc",
+      extra: 1,
+    };
+    const svg = { ...base, id: "s", kind: "svg", markup: "<svg/>" };
+    const ph = { ...base, id: "p", kind: "placeholder", placeholderKind: "canvas" };
+    const full = {
+      ...minimalCapture(),
+      unknownTopLevel: true,
+      tokens: { cssCustomProperties: { "--a": "1", "--b": "2" } },
+      fonts: [{ family: "Inter", weight: 400, style: "normal", loadedAsWebFont: false }],
+      assets: [
+        {
+          hash: "abc",
+          mime: "image/png",
+          width: 1,
+          height: 2,
+          sourceUrl: "u",
+          downscaledFrom: { w: 4, h: 4 },
+        },
+      ],
+      warnings: [{ code: "w", nodeId: "t", detail: "d" }],
+      root: elementNode("root", [
+        el as never,
+        textNode("t"),
+        image as never,
+        svg as never,
+        ph as never,
+      ]),
+    };
+    const viaSchema = captureSchema.parse(full);
+    const result = parseCapture(full);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.capture).toEqual(viaSchema);
+  });
+
+  test("is safe to call directly on hostile input", () => {
+    const root = JSON.parse(chainWithChildren(1, repeatJoin("1", 100_000)));
+    const result = parseCapture({ ...minimalCapture(), root });
+    expect(result).toMatchObject({ ok: false, reason: "invalid" });
+    if (!result.ok) expect(result.detail.length).toBeLessThanOrEqual(500);
+  });
+});

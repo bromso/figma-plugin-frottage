@@ -1,16 +1,11 @@
 import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from "fflate";
-import { countNodes, parseCapture } from "./parse";
+import { LIMITS, parseCapture } from "./parse";
 import type { Capture, CaptureNode } from "./schema";
 
-export const LIMITS = {
-  totalBytes: 268_435_456,
-  captureJsonBytes: 67_108_864,
-  nodes: 20_000,
-  depth: 256,
-};
+export { LIMITS };
 
 /** Compressed bytes handed to fflate per push; bounds how much one step can inflate. */
-export const PUSH_SLICE_BYTES = 16_384;
+const PUSH_SLICE_BYTES = 16_384;
 
 export type FrottageErrorCode =
   | "not-a-frottage-file"
@@ -66,14 +61,6 @@ export function packFrottage(capture: Capture, assets: Map<string, Uint8Array>):
   return zipSync(files);
 }
 
-function tooLarge(): FrottageFileError {
-  return new FrottageFileError("too-large", "The .frottage file is too large to open");
-}
-
-function notFrottage(detail = "This is not a .frottage file"): FrottageFileError {
-  return new FrottageFileError("not-a-frottage-file", detail);
-}
-
 function concat(chunks: Uint8Array[], length: number): Uint8Array {
   const out = new Uint8Array(length);
   let offset = 0;
@@ -111,7 +98,7 @@ function readEntries(
     if (!isCapture && !assetMatch) return;
     const key = isCapture ? CAPTURE_ENTRY : (assetMatch?.[1] ?? "");
     if (seen.has(key)) {
-      failure = notFrottage("The file repeats an entry");
+      failure = new FrottageFileError("not-a-frottage-file", "The file repeats an entry");
       return;
     }
     seen.add(key);
@@ -124,13 +111,13 @@ function readEntries(
     file.ondata = (err, chunk, final) => {
       if (failure) return;
       if (err) {
-        failure = notFrottage();
+        failure = new FrottageFileError("not-a-frottage-file");
         throw failure;
       }
       size += chunk.length;
       total += chunk.length;
       if (total > limits.totalBytes || (isCapture && size > limits.captureJsonBytes)) {
-        failure = tooLarge();
+        failure = new FrottageFileError("too-large");
         throw failure;
       }
       chunks.push(chunk);
@@ -152,50 +139,32 @@ function readEntries(
       unzip.push(bytes.subarray(i, end), end >= bytes.length);
     }
   } catch {
-    throw failure ?? notFrottage();
+    throw failure ?? new FrottageFileError("not-a-frottage-file");
   }
   if (failure) throw failure;
-  if (!pending.every((isDone) => isDone())) throw notFrottage("The .frottage file is truncated");
+  if (!pending.every((isDone) => isDone()))
+    throw new FrottageFileError("not-a-frottage-file", "The .frottage file is truncated");
   return { capture, assets };
 }
 
-function collectAssetHashes(node: CaptureNode, into: Set<string>): void {
-  if (node.kind === "image" || node.kind === "placeholder") {
-    if (node.assetHash) into.add(node.assetHash);
-  } else if (node.kind === "element") {
-    for (const bg of node.style.backgroundImages) {
-      if (bg.assetHash) into.add(bg.assetHash);
+function collectAssetHashes(root: CaptureNode, into: Set<string>): void {
+  const stack: CaptureNode[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node) break;
+    if (node.kind === "image" || node.kind === "placeholder") {
+      if (node.assetHash) into.add(node.assetHash);
+    } else if (node.kind === "element") {
+      for (const bg of node.style.backgroundImages) {
+        if (bg.assetHash) into.add(bg.assetHash);
+      }
+      for (const child of node.children) stack.push(child);
     }
-    for (const child of node.children) collectAssetHashes(child, into);
   }
 }
 
-/**
- * Walk the parsed JSON iteratively, before Zod sees it, so a deep or huge tree
- * is rejected without recursion. Only follows `children` arrays of objects.
- */
-function checkShape(root: unknown, limits: typeof LIMITS): void {
-  if (typeof root !== "object" || root === null) return;
-  const top = (root as { root?: unknown }).root;
-  if (typeof top !== "object" || top === null) return;
-  const stack: Array<{ node: unknown; depth: number }> = [{ node: top, depth: 1 }];
-  let nodes = 0;
-  while (stack.length > 0) {
-    const item = stack.pop();
-    if (!item) break;
-    if (typeof item.node !== "object" || item.node === null) continue;
-    if (item.depth > limits.depth) {
-      throw new FrottageFileError("too-deep");
-    }
-    nodes++;
-    if (nodes > limits.nodes) {
-      throw new FrottageFileError("too-many-nodes");
-    }
-    const children = (item.node as { children?: unknown }).children;
-    if (Array.isArray(children)) {
-      for (const child of children) stack.push({ node: child, depth: item.depth + 1 });
-    }
-  }
+function isStackOverflow(e: unknown): boolean {
+  return e instanceof RangeError && /call stack/i.test(e.message);
 }
 
 export function unpackFrottage(
@@ -203,32 +172,31 @@ export function unpackFrottage(
   limits: typeof LIMITS = LIMITS
 ): { capture: Capture; assets: Map<string, Uint8Array> } {
   const { capture: captureBytes, assets } = readEntries(bytes, limits);
-  if (!captureBytes) throw notFrottage("The file has no capture.json");
+  if (!captureBytes) {
+    throw new FrottageFileError("not-a-frottage-file", "The file has no capture.json");
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(captureBytes));
+  } catch (e) {
+    if (isStackOverflow(e)) throw new FrottageFileError("too-deep");
+    throw new FrottageFileError("invalid-capture", "capture.json is not valid JSON");
+  }
+
+  const parsed = parseCapture(json, limits);
+  if (!parsed.ok) {
+    const code = {
+      invalid: "invalid-capture",
+      "newer-version": "newer-version",
+      "too-many-nodes": "too-many-nodes",
+      "too-deep": "too-deep",
+    } as const;
+    throw new FrottageFileError(code[parsed.reason], parsed.detail);
+  }
+  const { capture } = parsed;
 
   try {
-    let json: unknown;
-    try {
-      json = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(captureBytes));
-    } catch (e) {
-      if (e instanceof RangeError) throw e;
-      throw new FrottageFileError("invalid-capture", "capture.json is not valid JSON");
-    }
-
-    checkShape(json, limits);
-
-    const parsed = parseCapture(json);
-    if (!parsed.ok) {
-      throw new FrottageFileError(
-        parsed.reason === "newer-version" ? "newer-version" : "invalid-capture",
-        parsed.detail
-      );
-    }
-    const { capture } = parsed;
-
-    if (countNodes(capture.root) > limits.nodes) {
-      throw new FrottageFileError("too-many-nodes");
-    }
-
     const referenced = new Set<string>();
     collectAssetHashes(capture.root, referenced);
     for (const hash of referenced) {
@@ -239,9 +207,9 @@ export function unpackFrottage(
         );
       }
     }
-    return { capture, assets };
   } catch (e) {
-    if (e instanceof RangeError) throw new FrottageFileError("too-deep");
+    if (isStackOverflow(e)) throw new FrottageFileError("too-deep");
     throw e;
   }
+  return { capture, assets };
 }

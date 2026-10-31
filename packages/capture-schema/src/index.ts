@@ -2,7 +2,6 @@ export {
   type FrottageErrorCode,
   FrottageFileError,
   LIMITS,
-  PUSH_SLICE_BYTES,
   packFrottage,
   unpackFrottage,
 } from "./container";

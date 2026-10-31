@@ -212,3 +212,38 @@ export const captureSchema = z.object({
 });
 
 export type Capture = z.infer<typeof captureSchema>;
+
+/**
+ * Pieces of the schema for `parseCapture`, which validates in bounded steps:
+ * one object at a time, arrays item by item, so a hostile file can never make
+ * Zod build an unbounded list of issues. `captureSchema` stays the source of
+ * truth; a test keeps both paths in step.
+ */
+export const parts = {
+  // Item schemas for every array in the format.
+  font: captureSchema.shape.fonts.element,
+  asset: captureSchema.shape.assets.element,
+  warning: captureSchema.shape.warnings.element,
+  box,
+  textRun,
+  boxShadow,
+  backgroundImage: backgroundImage.omit({ stops: true }),
+  stop: z.object({ color, position: z.number() }),
+  string: z.string(),
+  // Top level without its unbounded members.
+  captureShell: captureSchema.omit({
+    fonts: true,
+    assets: true,
+    warnings: true,
+    tokens: true,
+    root: true,
+  }),
+  // Node kinds without `children` or any array.
+  element: elementBase.extend({
+    style: style.omit({ backgroundImages: true, boxShadows: true, filters: true }),
+  }),
+  text: textNode.omit({ lines: true, runs: true }),
+  image: imageNode,
+  svg: svgNode,
+  placeholder: placeholderNode,
+};
