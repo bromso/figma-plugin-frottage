@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shadow DOM</title>
+<style>
+body { margin: 0; font: 14px/1.4 "Frottage Novum", Helvetica; color: #111; }
+x-theme, x-link, x-icon, x-card, x-login { display: block; }
+.hdr { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: #f4f4f4; }
+.icons { display: flex; gap: 8px; padding: 12px; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 12px; }
+h1 { margin: 12px; font-size: 24px; }
+</style>
+<script>
+  // Test-only hook: a closed shadow root is unreachable from the page, so the fixture
+  // exposes each one here. The e2e env passes it to the walker as getShadowRoot.
+  window.__frottageClosedRoots = new WeakMap();
+
+  class XTheme extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      this.attachShadow({ mode: "open" }).innerHTML =
+        '<style>:host { display: block; background: #fff; }</style><slot></slot>';
+    }
+  }
+
+  class XLink extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      const n = this.getAttribute("data-n");
+      this.attachShadow({ mode: "open" }).innerHTML =
+        '<style>a { display: inline-block; padding: 4px 8px; color: #06c; font-family: "Frottage Novum", Helvetica; text-decoration: none; }</style>' +
+        `<a href="/link/${n}">Link ${n} <slot name="badge"></slot></a>`;
+    }
+  }
+
+  class XIcon extends HTMLElement {
+    connectedCallback() {
+      if (window.__frottageClosedRoots.has(this)) return;
+      const root = this.attachShadow({ mode: "closed" });
+      window.__frottageClosedRoots.set(this, root);
+      root.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="#06c"></circle></svg>';
+    }
+  }
+
+  class XCard extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      const root = this.attachShadow({ mode: "open" });
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(
+        ".card { padding: 16px; border: 1px solid #ccc; border-radius: 8px; background: #fafafa; }"
+      );
+      root.adoptedStyleSheets = [sheet];
+      root.innerHTML = '<div class="card"><slot>Fallback copy</slot></div>';
+    }
+  }
+
+  class XLogin extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      this.attachShadow({ mode: "open" }).innerHTML =
+        '<input type="password" value="shadow-secret" placeholder="shadow-placeholder">' +
+        '<input type="text" placeholder="Shadow email">';
+    }
+  }
+
+  customElements.define("x-theme", XTheme);
+  customElements.define("x-link", XLink);
+  customElements.define("x-icon", XIcon);
+  customElements.define("x-card", XCard);
+  customElements.define("x-login", XLogin);
+</script>
+</head>
+<body>
+<x-theme>
+  <h1>Slotted heading</h1>
+  <header class="hdr">
+    <x-link data-n="1"></x-link><x-link data-n="2"></x-link><x-link data-n="3"></x-link>
+    <x-link data-n="4"></x-link><x-link data-n="5"></x-link><x-link data-n="6"></x-link>
+    <x-link data-n="7"></x-link><x-link data-n="8"></x-link><x-link data-n="9"></x-link>
+    <x-link data-n="10"></x-link><x-link data-n="11"></x-link>
+    <x-link data-n="12"><span slot="badge">New</span></x-link>
+  </header>
+  <div class="icons">
+    <x-icon></x-icon><x-icon></x-icon><x-icon></x-icon>
+    <x-icon></x-icon><x-icon></x-icon><x-icon></x-icon>
+  </div>
+  <div class="grid">
+    <x-card>Card body one</x-card>
+    <x-card></x-card>
+    <x-card><p slot="nowhere">ORPHAN-SLOTTED</p></x-card>
+  </div>
+  <x-login></x-login>
+</x-theme>
+</body>
+</html>
