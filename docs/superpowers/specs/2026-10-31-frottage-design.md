@@ -1,6 +1,6 @@
 # Frottage design
 
-Date: 2026-10-31. Status: approved by the owner on 2026-10-31, including the recommended answers on positioning and on this repository becoming Frottage.
+Date: 2026-10-31. Status: approved by the owner on 2026-10-31, including the recommended answers on positioning and on this repository becoming Frottage. Revised the same day with Phase 0 findings; the revision awaits owner approval.
 
 The owner skipped the question round and asked for the document directly. So apart from the starting point in the brief, **the product decisions below began as the author's calls**, which the owner reviewed in approving this document. Those calls are collected in [Calls to confirm](#calls-to-confirm). API facts were checked against Context7 and vendor documentation on 2026-10-31; anything not confirmed there is listed under [Unverified](#unverified-settled-by-phase-0).
 
@@ -299,7 +299,7 @@ Fixed and sticky elements appear at the position they hold with the page scrolle
 | **Overflow** | `hidden`, `clip`, `scroll` become `clipsContent = true` at the visible box. Scroll content stays in the layer tree. Outer pages expand to full height |
 | **Canvas, video, cross-origin iframe** | Placeholder frame with the right size, or a frame image when readable; named with the source |
 | **Very long pages** | Node cap: warn at 5,000, stop at 20,000 with an option to reduce depth by collapsing decorative wrappers. Images over 4096 px are downscaled |
-| **Sandbox performance** | Batches of about 200 nodes with a yield between them, one font load per family and style up front, image creation de-duplicated by hash. `figma.commitUndo` after import, so one undo removes everything if the API allows it (Phase 0). Cancel removes the partial root frame |
+| **Sandbox performance** | Batches of about 50 nodes with a yield between them, setting auto layout as each frame is created, one font load per family and style up front, image creation de-duplicated by hash. `figma.commitUndo` after import, so one undo removes everything if the API allows it (Phase 0). Cancel removes the partial root frame |
 
 ### Naming, tokens, accessibility
 
@@ -373,16 +373,7 @@ Author's call: **free and MIT licensed, like the template, with no accounts.** R
 
 ## Unverified, settled by Phase 0
 
-These affect the design, and documentation did not confirm them:
-
-1. A plugin iframe can read a user-chosen file with `<input type="file">` in both desktop and browser Figma, and whether OS file drops reach the iframe's DOM. Without the picker, transport needs rethinking.
-2. Auto layout results can be read back synchronously in the sandbox, which verification depends on. If not, the check needs a yield per frame, which affects performance.
-3. monorepo-networker carries `Uint8Array` payloads efficiently through Figma's `postMessage`.
-4. Actual time and stability for 5,000 and 20,000 nodes.
-5. `figma.commitUndo` makes an import undoable as one step, and annotations work on all plans.
-6. `activeTab` access survives the popup-driven flow through multiple asynchronous steps, including after the service worker sleeps.
-7. The walker gets correct geometry in DevTools device mode.
-8. Runtime message size limits between the capture script and the extension.
+Phase 0 results are in `docs/superpowers/specs/2026-10-31-frottage-phase-0-findings.md`. Six of the eight items passed, in Figma desktop where Figma was involved. Still open: browser Figma, the image and 20,000-node runs, undo after the plugin closes, and annotations on a confirmed free plan.
 
 ## Left to the builder
 
