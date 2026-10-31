@@ -40,13 +40,19 @@ jobs:
         run: bun run test
 
       - name: Install Playwright browser
-        run: bunx playwright install --with-deps chromium
+        run: bun run --filter @repo/capture-dom e2e:install
 
       - name: End-to-end tests (DOM walker)
         run: bun run --filter @repo/capture-dom test:e2e
 
       - name: Build plugin
         run: bun run --filter @repo/design-plugin build
+
+      - name: Build extension
+        run: bun run --filter @repo/chrome-extension build
+
+      - name: Check bundle boundaries
+        run: bash scripts/check-bundles.sh
 
       - name: Build Storybook
         run: bunx turbo run build-storybook
