@@ -1,12 +1,12 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
-  "changelog": ["@changesets/changelog-github", { "repo": "bromso/figma-plugin-template" }],
+  "changelog": ["@changesets/changelog-github", { "repo": "bromso/figma-plugin-frottage" }],
   "commit": false,
   "fixed": [["@repo/ui", "@repo/common"]],
   "linked": [],
   "access": "restricted",
   "baseBranch": "master",
   "updateInternalDependencies": "patch",
-  "ignore": ["@repo/storybook", "@repo/design-plugin", "@repo/docs"],
+  "ignore": ["@repo/storybook", "@repo/docs"],
   "privatePackages": true
 }

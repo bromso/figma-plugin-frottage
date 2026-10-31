@@ -2,30 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Building Your Plugin (No Coding Required)
+## About Frottage
 
-This template comes with an AI skill that lets you describe what you want and have Claude build it for you.
+Frottage is a Figma plugin plus a Chrome extension that imports rendered web pages into editable Figma files. The extension captures a page's rendered DOM; the plugin turns the pasted capture into native Figma layers. The plugin makes no network requests (`networkAccess` stays `["none"]`). This repository began as a Figma plugin template, and the UI sampler in `packages/ui/src/app.tsx` is still a placeholder.
 
-### Quick Start
-
-1. Open this project in Claude Code
-2. Describe your plugin idea: "I want a plugin that..."
-3. Claude will ask a few questions, then build the entire plugin
-4. Follow the installation guide to test it in Figma
-
-### Example Prompts
-
-- "Build a plugin that renames all selected layers to lowercase"
-- "I want a plugin that lets me pick a color and apply it to selected frames"
-- "Make a plugin that counts how many text layers are on the current page"
-- "Add a settings panel to my plugin with a dropdown for font selection"
-- "My plugin button doesn't do anything — can you fix it?"
-
-### Available Skills
-
-- **build-figma-plugin** — Build a complete plugin from a plain English description. This is the only skill shipped with the template; install others into your own Claude Code setup if you want them.
-
-### MCP Servers (pre-configured in `.mcp.json`)
+## MCP Servers (pre-configured in `.mcp.json`)
 
 - **Figma** (Figma's official remote server, `https://mcp.figma.com/mcp`) — Lets Claude read your Figma files from a pasted link; sign in once with `/mcp` → figma → Authenticate (no API key)
 - **Context7** — Fetches up-to-date library documentation to reduce errors
@@ -48,7 +29,7 @@ Claude Code asks you to approve these project servers on first start; `/mcp` sho
 
 ## Project Overview
 
-Figma/FigJam plugin boilerplate using React, Bun, TypeScript, and Turborepo monorepo. Originally based on [CoconutGoodie/figma-plugin-react-vite](https://github.com/CoconutGoodie/figma-plugin-react-vite); the build is now Bun and the UI is a [shadcn/ui](https://ui.shadcn.com) component library on Tailwind CSS 4, themed to Figma's UI3 design and documented in Storybook.
+Frottage, a Figma plugin and Chrome extension, built with React, Bun, TypeScript, and Turborepo monorepo. Originally based on [CoconutGoodie/figma-plugin-react-vite](https://github.com/CoconutGoodie/figma-plugin-react-vite); the build is now Bun and the UI is a [shadcn/ui](https://ui.shadcn.com) component library on Tailwind CSS 4, themed to Figma's UI3 design and documented in Storybook.
 
 ## Commands
 
@@ -145,7 +126,3 @@ The UI package uses Tailwind CSS 4 only; there are no CSS Modules. `packages/ui/
 ## Plugin Configuration
 
 `apps/design-plugin/figma.manifest.ts` exports the Figma plugin manifest (`documentAccess: "dynamic-page"` and `networkAccess` are required fields; keep them). Update `id` with your plugin's ID from Figma. This generates `dist/manifest.json` at build time. The window is opened in `apps/design-plugin/src/plugin/plugin.ts` at 320 × 480 with `themeColors: true`; keep that flag or the UI loses Figma's theme.
-
-## Available Skills
-
-- `build-figma-plugin` (`.claude/skills/build-figma-plugin/`) — Build a complete Figma plugin from a plain English description; its `references/` cover the architecture, the UI components and the Figma API patterns this template uses. No third-party skills are vendored into the repository.

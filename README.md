@@ -1,7 +1,7 @@
-# figma-plugin-template
+# Frottage
 
-[![CI](https://github.com/bromso/figma-plugin-template/actions/workflows/ci.yml/badge.svg)](https://github.com/bromso/figma-plugin-template/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/github/license/bromso/figma-plugin-template)](LICENSE)
+[![CI](https://github.com/bromso/figma-plugin-frottage/actions/workflows/ci.yml/badge.svg)](https://github.com/bromso/figma-plugin-frottage/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/bromso/figma-plugin-frottage)](LICENSE)
 ![Bun](https://img.shields.io/badge/bun-1.4-f9f1e1?logo=bun)
 ![TypeScript](https://img.shields.io/badge/typescript-7-3178c6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/react-19-61dafb?logo=react&logoColor=black)
@@ -10,7 +10,9 @@
 ![Storybook](https://img.shields.io/badge/storybook-10-ff4785?logo=storybook&logoColor=white)
 ![Figma](https://img.shields.io/badge/figma-plugin-a259ff?logo=figma&logoColor=white)
 
-Figma/FigJam plugin boilerplate with React, Bun, TypeScript, and Turborepo monorepo.
+Frottage imports rendered web pages into editable Figma designs. A Chrome extension captures the page; the Figma plugin turns the capture into native layers. Built with React, Bun, TypeScript and a Turborepo monorepo.
+
+> Phase 1 is in progress: the repository was a plugin template and the UI is still its sampler.
 
 ## Features
 
@@ -26,9 +28,9 @@ Figma/FigJam plugin boilerplate with React, Bun, TypeScript, and Turborepo monor
 ## Quick Start
 
 ```bash
-# Clone the template
-git clone https://github.com/bromso/figma-plugin-template.git
-cd figma-plugin-template
+# Clone the repository
+git clone https://github.com/bromso/figma-plugin-frottage.git
+cd figma-plugin-frottage
 
 # Install dependencies
 bun install
@@ -98,8 +100,8 @@ Edit `apps/design-plugin/figma.manifest.ts` to set your plugin name, ID, and per
 
 ```ts
 export default {
-  name: "My Plugin",
-  id: "your-plugin-id-from-figma",
+  name: "Frottage",
+  id: "frottage-dev",
   documentAccess: "dynamic-page",
   networkAccess: { allowedDomains: ["none"] },
   // ...
