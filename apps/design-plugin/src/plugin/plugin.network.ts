@@ -1,4 +1,5 @@
 import { PLUGIN, UI } from "@repo/common/networkSides";
+import { createApplier } from "./applier";
 
 export const PLUGIN_CHANNEL = PLUGIN.channelBuilder()
   .emitsTo(UI, (message) => {
@@ -20,3 +21,32 @@ PLUGIN_CHANNEL.registerMessageHandler("ping", () => {
 PLUGIN_CHANNEL.registerMessageHandler("hello", (text) => {
   console.log("UI side said:", text);
 });
+
+// ---------- Import
+
+const applier = createApplier(figma);
+let batchTotal = 0;
+let batchDone = 0;
+
+PLUGIN_CHANNEL.registerMessageHandler("listFonts", async () => {
+  const fonts = await figma.listAvailableFontsAsync();
+  return fonts.map((f) => ({ family: f.fontName.family, style: f.fontName.style }));
+});
+
+PLUGIN_CHANNEL.registerMessageHandler("importBegin", async (meta) => {
+  batchTotal = meta.totalOps;
+  batchDone = 0;
+  await applier.begin(meta);
+});
+
+PLUGIN_CHANNEL.registerMessageHandler("importImage", (hash, bytes) =>
+  applier.addImage(hash, bytes)
+);
+
+PLUGIN_CHANNEL.registerMessageHandler("importBatch", async (ops) => {
+  await applier.applyBatch(ops);
+  batchDone += ops.length;
+  PLUGIN_CHANNEL.emit(UI, "importProgress", [batchDone, batchTotal]);
+});
+
+PLUGIN_CHANNEL.registerMessageHandler("importEnd", () => applier.end());

@@ -23,6 +23,7 @@
       },
       "devDependencies": {
         "@figma/plugin-typings": "^1.142.0",
+        "@repo/figma-mapper": "workspace:*",
         "@types/bun": "^1.4.4",
         "bun-plugin-tailwind": "^0.1.2",
         "tailwindcss": "^4.3.3",
@@ -118,6 +119,7 @@
         "monorepo-networker": "^2.1.0",
       },
       "devDependencies": {
+        "@repo/figma-mapper": "workspace:*",
         "@types/bun": "^1.4.4",
         "typescript": "^7.0.2",
       },
