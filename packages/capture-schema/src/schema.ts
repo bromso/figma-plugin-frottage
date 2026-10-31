@@ -70,9 +70,21 @@ const layout = z.object({
   gap: z.tuple([z.number(), z.number()]).optional(),
   padding: four,
   margin: four,
+  // `margin` holds used pixels, so this says which sides were `auto`: [top, right, bottom, left].
+  marginAuto: z.tuple([z.boolean(), z.boolean(), z.boolean(), z.boolean()]).optional(),
   order: z.number(),
   grow: z.number(),
   shrink: z.number(),
+  rowGap: z.number().optional(),
+  columnGap: z.number().optional(),
+  // Resolved px tracks, as computed style gives them.
+  gridTemplateColumns: z.string().optional(),
+  gridTemplateRows: z.string().optional(),
+  // The stylesheet's value, kept only when it shows `fr`, which computed style resolves away.
+  authoredGridTemplateColumns: z.string().optional(),
+  authoredGridTemplateRows: z.string().optional(),
+  gridColumn: z.string().optional(),
+  gridRow: z.string().optional(),
 });
 
 const semantic = z.object({

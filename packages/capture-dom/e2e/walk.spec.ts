@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
-import { type Capture, type CaptureNode, countNodes, parseCapture } from "@repo/capture-schema";
+import {
+  type Capture,
+  type CaptureNode,
+  countNodes,
+  type ElementNode,
+  parseCapture,
+} from "@repo/capture-schema";
 
 // Bundle the walker once into an IIFE global (`globalThis.__frottageCapture`), so it runs in the
 // page exactly as the extension would inject it. Playwright runs under Node, so the bundle is built
@@ -936,4 +942,44 @@ test("pseudo-elements of a flex container sit beside its first and last child", 
   expect(last && last.box.x).toBeGreaterThanOrEqual(
     (spans[spans.length - 1]?.box.x ?? 0) + (spans[spans.length - 1]?.box.w ?? 0)
   );
+});
+
+test("grids record resolved tracks, authored fr values and placement", async ({ page }) => {
+  const root = (await capture(page, "layout.html")).root;
+  const body = root.kind === "element" ? root.children[0] : undefined;
+  if (body?.kind !== "element") throw new Error("no body");
+  const [cards, plain, inline] = body.children as ElementNode[];
+  expect(cards?.layout).toMatchObject({
+    gridTemplateColumns: "192px 192px 100px",
+    authoredGridTemplateColumns: "repeat(2, minmax(0px, 1fr)) 100px",
+    rowGap: 4,
+    columnGap: 8,
+  });
+  expect(cards?.layout.gridTemplateRows?.split(" ")).toHaveLength(2);
+  expect(cards?.children.map((c) => (c as ElementNode).layout.gridColumn)).toEqual([
+    "span 2",
+    undefined,
+    "1 / -1",
+  ]);
+  expect(plain?.layout.gridTemplateColumns).toBe("100px 200px");
+  expect(plain?.layout.authoredGridTemplateColumns).toBeUndefined();
+  expect(inline?.layout.authoredGridTemplateColumns).toBe("1fr 3fr");
+});
+
+test("authored fr tracks are read from a shadow root's stylesheet", async ({ page }) => {
+  const host = findKind(
+    await capture(page, "layout.html"),
+    "element",
+    (n) => n.layout.gridTemplateColumns === "200px 100px"
+  );
+  expect(host.layout.authoredGridTemplateColumns).toBe("2fr 1fr");
+});
+
+test("an auto margin is told apart from its used pixel value", async ({ page }) => {
+  const c = await capture(page, "layout.html");
+  const bar = findKind(c, "element", (n) => n.layout.display === "flex");
+  const [logo, push] = bar.children as ElementNode[];
+  expect(push?.layout.margin[3]).toBeGreaterThan(300);
+  expect(push?.layout.marginAuto).toEqual([false, false, false, true]);
+  expect(logo?.layout.marginAuto).toBeUndefined();
 });

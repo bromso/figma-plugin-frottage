@@ -8,6 +8,7 @@ import type {
 } from "@repo/capture-schema";
 import type { Rgba } from "./color";
 import { flatChildren, shadowRootOf } from "./flatten";
+import { authoredTracksReader } from "./grid";
 import {
   collapse,
   noteApproximations,
@@ -22,6 +23,7 @@ import {
   px,
   readBorders,
   readLayout,
+  readMarginAuto,
   readRadii,
   readStyle,
   readTransform,
@@ -142,6 +144,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   const familyCache = new Map<string, string>();
   const installedCache = new Map<string, boolean>();
   const mergeable = new WeakMap<Element, boolean>();
+  const authoredTracks = authoredTracksReader(win);
   let counter = 0;
   let limitHit = false;
   /** Ids and node budget in one: nothing is emitted once MAX_NODES ids have been handed out. */
@@ -734,6 +737,21 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return node;
   }
 
+  /** Computed layout, plus what only the element itself can still tell: auto margins and `fr` tracks. */
+  function layoutOf(el: Element, s: CSSStyleDeclaration): ElementNode["layout"] {
+    const layout = readLayout(s);
+    if (layout.margin.some((m) => m > 0)) {
+      const marginAuto = readMarginAuto(el);
+      if (marginAuto) layout.marginAuto = marginAuto;
+    }
+    if (layout.gridTemplateColumns !== undefined) {
+      const { columns, rows } = authoredTracks(el);
+      if (columns) layout.authoredGridTemplateColumns = columns;
+      if (rows) layout.authoredGridTemplateRows = rows;
+    }
+    return layout;
+  }
+
   function visitChildren(el: Element, depth: number): CaptureNode[] {
     const out: CaptureNode[] = [];
     let group: Item[] = [];
@@ -852,7 +870,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       ...common,
       kind: "element",
       style: readStyle(s, box.w, box.h),
-      layout: readLayout(s),
+      layout: layoutOf(el, s),
       children: [],
     };
     // Overflow on these two propagates to the viewport instead of clipping the element itself.

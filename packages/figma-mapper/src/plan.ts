@@ -38,7 +38,41 @@ export type PlanRun = {
   textCase: "ORIGINAL" | "UPPER" | "LOWER" | "TITLE";
 };
 
-export type PlanOp =
+export type PlanTrack = { type: "FIXED" | "FLEX" | "HUG"; value: number };
+
+/** Padding is [top, right, bottom, left], and takes in the CSS border, which Figma does not lay out. */
+export type PlanLayout =
+  | { mode: "NONE" }
+  | {
+      mode: "HORIZONTAL" | "VERTICAL";
+      wrap: boolean;
+      itemSpacing: number;
+      /** Positive, or null to follow `itemSpacing`. */
+      counterSpacing: number | null;
+      padding: [number, number, number, number];
+      primaryAlign: "MIN" | "MAX" | "CENTER" | "SPACE_BETWEEN" | "SPACE_AROUND" | "SPACE_EVENLY";
+      counterAlign: "MIN" | "MAX" | "CENTER" | "BASELINE";
+      sizingH: "FIXED" | "HUG";
+      sizingV: "FIXED" | "HUG";
+    }
+  | {
+      mode: "GRID";
+      rows: PlanTrack[];
+      columns: PlanTrack[];
+      rowGap: number;
+      columnGap: number;
+      padding: [number, number, number, number];
+    };
+
+export type PlanChildLayout = {
+  positioning: "AUTO" | "ABSOLUTE";
+  sizingH: "FIXED" | "HUG" | "FILL";
+  sizingV: "FIXED" | "HUG" | "FILL";
+  /** Zero-based; only under a GRID parent. */
+  cell?: { row: number; column: number };
+};
+
+export type PlanOp = (
   | {
       op: "frame";
       id: string;
@@ -55,6 +89,7 @@ export type PlanOp =
       opacity: number;
       effects: PlanEffect[];
       clips: boolean;
+      layout: PlanLayout;
     }
   | {
       op: "text";
@@ -116,7 +151,11 @@ export type PlanOp =
       h: number;
       opacity: number;
       label: string;
-    };
+    }
+) & {
+  /** How the node sits in an auto layout parent; absent under a parent with mode NONE. */
+  childLayout?: PlanChildLayout;
+};
 
 export type ImportReport = {
   nodes: number;

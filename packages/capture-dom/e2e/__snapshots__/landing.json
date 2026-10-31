@@ -1332,7 +1332,13 @@
          ],
          "order": 0,
          "grow": 0,
-         "shrink": 1
+         "shrink": 1,
+         "marginAuto": [
+          false,
+          true,
+          false,
+          true
+         ]
         },
         "children": [
          {
@@ -1456,7 +1462,13 @@
          ],
          "order": 0,
          "grow": 0,
-         "shrink": 1
+         "shrink": 1,
+         "marginAuto": [
+          false,
+          true,
+          false,
+          true
+         ]
         },
         "children": [
          {
@@ -3597,7 +3609,12 @@
        "gap": [
         24,
         24
-       ]
+       ],
+       "gridTemplateColumns": "270px 270px 270px 270px",
+       "gridTemplateRows": "74px 74px",
+       "rowGap": 24,
+       "columnGap": 24,
+       "authoredGridTemplateColumns": "repeat(4, 1fr)"
       },
       "children": [
        {

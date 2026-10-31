@@ -254,8 +254,28 @@ export function readLayout(cs: CSSStyleDeclaration): Layout {
     layout.alignItems = cs.alignItems;
     layout.gap = [px(cs.rowGap), px(cs.columnGap)];
   }
+  if (display.includes("grid")) {
+    layout.gridTemplateColumns = cs.gridTemplateColumns;
+    layout.gridTemplateRows = cs.gridTemplateRows;
+    layout.rowGap = px(cs.rowGap);
+    layout.columnGap = px(cs.columnGap);
+  }
   if (cs.alignSelf && cs.alignSelf !== "auto") layout.alignSelf = cs.alignSelf;
+  if (cs.gridColumn && cs.gridColumn !== "auto") layout.gridColumn = cs.gridColumn;
+  if (cs.gridRow && cs.gridRow !== "auto") layout.gridRow = cs.gridRow;
   return layout;
+}
+
+/**
+ * Which margins are `auto`. Computed style gives their used pixels, which look like any other
+ * margin; only the typed style map still says `auto`. Undefined when none is.
+ */
+export function readMarginAuto(el: Element): Layout["marginAuto"] {
+  const map = el.computedStyleMap?.();
+  if (!map) return undefined;
+  const auto = (side: string) => String(map.get(`margin-${side}`)) === "auto";
+  const sides: Layout["marginAuto"] = [auto("top"), auto("right"), auto("bottom"), auto("left")];
+  return sides.some(Boolean) ? sides : undefined;
 }
 
 /** A 2D matrix from a computed transform, or undefined for none or 3D. */

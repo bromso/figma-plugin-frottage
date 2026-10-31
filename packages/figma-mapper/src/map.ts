@@ -1,9 +1,19 @@
 import type { Capture, CaptureNode, ElementNode, TextNode } from "@repo/capture-schema";
 import { matchFont } from "./fonts";
+import {
+  collapseTarget,
+  inferChildLayout,
+  inferLayout,
+  repeatedItems,
+  textLeading,
+  visualOrder,
+} from "./layout";
 import type {
   FontRef,
   LayerPlan,
+  PlanChildLayout,
   PlanEffect,
+  PlanLayout,
   PlanOp,
   PlanPaint,
   PlanRgb,
@@ -129,6 +139,16 @@ function dominantAlign(runs: TextNode["runs"]): string | undefined {
   return best?.align;
 }
 
+/** A frame that fills its parent is not also hugging its content: Figma has one sizing per axis. */
+function settle(layout: PlanLayout, childLayout: PlanChildLayout | undefined): PlanLayout {
+  if (!childLayout || (layout.mode !== "HORIZONTAL" && layout.mode !== "VERTICAL")) return layout;
+  return {
+    ...layout,
+    sizingH: childLayout.sizingH === "FILL" ? "FIXED" : layout.sizingH,
+    sizingV: childLayout.sizingV === "FILL" ? "FIXED" : layout.sizingV,
+  };
+}
+
 export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
   const ops: PlanOp[] = [];
   const fonts = new Map<string, FontRef>();
@@ -227,9 +247,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     report.texts++;
     // The captured y is the top of the glyph box; a fixed Figma line height starts at the top of
     // the line box, half the leading higher.
-    const lineHeight = node.runs[0]?.lineHeight;
-    const firstLine = node.lines[0];
-    const leading = lineHeight != null && firstLine ? (lineHeight - firstLine.h) / 2 : 0;
+    const leading = textLeading(node);
     return {
       op: "text",
       id: node.id,
@@ -271,10 +289,19 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
 
   // Iterative pre-order walk: parents always come before their children, and
   // no recursion limit applies however deep the capture is.
-  type Item = { node: CaptureNode; parent: ElementNode | null; parentId: string | null };
-  const stack: Item[] = [{ node: capture.root, parent: null, parentId: null }];
+  // `outer` differs from `node` when wrappers collapsed: it is what the parent laid out.
+  type Item = {
+    node: CaptureNode;
+    outer: CaptureNode;
+    parent: ElementNode | null;
+    parentId: string | null;
+    parentLayout: PlanLayout | null;
+  };
+  const stack: Item[] = [
+    { node: capture.root, outer: capture.root, parent: null, parentId: null, parentLayout: null },
+  ];
   while (stack.length > 0) {
-    const { node, parent, parentId } = stack.pop() as Item;
+    const { node, outer, parent, parentId, parentLayout } = stack.pop() as Item;
     // visibility:hidden on a parent does not hide visible children, so an
     // invisible element with children stays as an unpainted frame.
     const hidden = !node.visible;
@@ -282,10 +309,20 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     const x = node.box.x - (parent?.box.x ?? 0);
     const y = node.box.y - (parent?.box.y ?? 0);
     let op: PlanOp | null = null;
+    const childLayout =
+      parent && parentLayout && parentLayout.mode !== "NONE"
+        ? inferChildLayout(outer, parentLayout, parent, node)
+        : undefined;
 
     switch (node.kind) {
       case "element": {
         const s = node.style;
+        const inferred = inferLayout(
+          node,
+          node.children,
+          parentLayout ? { parent: parentLayout } : {}
+        );
+        const layout = settle(inferred, childLayout);
         op = {
           op: "frame",
           id: node.id,
@@ -302,9 +339,19 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
           opacity: node.opacity,
           effects: hidden ? [] : mapEffects(s),
           clips: s.overflow.split(/\s+/).some((o) => o !== "" && o !== "visible"),
+          layout,
         };
-        for (let i = node.children.length - 1; i >= 0; i--) {
-          stack.push({ node: node.children[i] as CaptureNode, parent: node, parentId: node.id });
+        const children = visualOrder(node, node.children, layout);
+        const repeated = repeatedItems(children);
+        for (let i = children.length - 1; i >= 0; i--) {
+          const child = children[i] as CaptureNode;
+          stack.push({
+            node: collapseTarget(child, repeated),
+            outer: child,
+            parent: node,
+            parentId: node.id,
+            parentLayout: layout,
+          });
         }
         break;
       }
@@ -368,7 +415,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
         );
         break;
     }
-    if (op) ops.push(op);
+    if (op) ops.push(childLayout ? { ...op, childLayout } : op);
   }
 
   report.nodes = ops.length;

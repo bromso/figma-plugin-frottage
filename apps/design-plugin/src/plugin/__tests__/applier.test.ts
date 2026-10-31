@@ -23,6 +23,7 @@ const frame = (id: string, parent: string | null = null, extra: object = {}): Pl
   opacity: 1,
   effects: [],
   clips: true,
+  layout: { mode: "NONE" },
   ...extra,
 });
 const run = (start: number, end: number, fontName: FontRef): PlanRun => ({

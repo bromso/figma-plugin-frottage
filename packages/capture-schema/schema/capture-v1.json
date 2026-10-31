@@ -743,6 +743,26 @@
                   "minItems": 4,
                   "maxItems": 4
                 },
+                "marginAuto": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 4,
+                  "maxItems": 4
+                },
                 "order": {
                   "type": "number"
                 },
@@ -751,6 +771,30 @@
                 },
                 "shrink": {
                   "type": "number"
+                },
+                "rowGap": {
+                  "type": "number"
+                },
+                "columnGap": {
+                  "type": "number"
+                },
+                "gridTemplateColumns": {
+                  "type": "string"
+                },
+                "gridTemplateRows": {
+                  "type": "string"
+                },
+                "authoredGridTemplateColumns": {
+                  "type": "string"
+                },
+                "authoredGridTemplateRows": {
+                  "type": "string"
+                },
+                "gridColumn": {
+                  "type": "string"
+                },
+                "gridRow": {
+                  "type": "string"
                 }
               },
               "required": ["display", "position", "padding", "margin", "order", "grow", "shrink"],
