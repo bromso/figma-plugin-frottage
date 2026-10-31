@@ -542,7 +542,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     if (s.display === "contents") return visitChildren(el, depth - 1);
 
     const box = boxOf(el, s);
-    const clipped = s.overflowX !== "visible" || s.overflowY !== "visible";
+    const clipped = el !== doc.body && (s.overflowX !== "visible" || s.overflowY !== "visible");
     if (!isRoot && boxArea(box) <= 0 && clipped) return [];
 
     const n = nextId();
@@ -615,6 +615,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       layout: readLayout(s),
       children: [],
     };
+    // Overflow on these two propagates to the viewport instead of clipping the element itself.
+    if (el === root || el === doc.body) element.style.overflow = "visible";
 
     const leafControl = tag === "input" || tag === "textarea" || tag === "select";
     if (leafControl) {

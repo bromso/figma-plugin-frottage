@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overflow on body</title>
+<style>
+html, body { height: 100%; margin: 0; }
+body { overflow-x: hidden; font: 16px/1.5 Arial, sans-serif; background: #fff; }
+section { height: 900px; border-bottom: 1px solid #ccc; }
+.card { height: 40px; overflow: hidden; }
+</style>
+</head>
+<body>
+<section><h1>First screen</h1></section>
+<section><h2>Second screen</h2></section>
+<section><h2>Below the fold</h2><div class="card">Clipped card</div></section>
+</body>
+</html>

@@ -265,6 +265,24 @@ test("keeps the subtree of a zero-area element whose children have area", async 
   expect(findText(c, "Overflowing child")).toBeTruthy();
 });
 
+test("overflow on html and body reaches the viewport, so neither clips the page", async ({
+  page,
+}) => {
+  const c = await capture(page, "overflow-body.html");
+  expect(c.root.kind === "element" && c.root.style.overflow).toBe("visible");
+  expect(findElement(c, "body").style.overflow).toBe("visible");
+  const last = findText(c, "Below the fold");
+  expect(last.box.y).toBeGreaterThan(800);
+  expect(c.root.box.h).toBeGreaterThan(last.box.y);
+  // Other elements keep their own overflow.
+  expect(findText(c, "Clipped card")).toBeTruthy();
+  let card: Extract<CaptureNode, { kind: "element" }> | undefined;
+  each(c, (n) => {
+    if (n.kind === "element" && n.style.overflow === "hidden") card = n;
+  });
+  expect(card?.semantic.tag).toBe("div");
+});
+
 test("records alignment, weight, radius and borders", async ({ page }) => {
   const c = await capture(page, "landing.html");
   expect(findText(c, "Product analytics").runs[0]).toMatchObject({ align: "center", weight: 700 });
