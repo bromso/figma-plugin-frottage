@@ -1,4 +1,4 @@
-export { matchFont, weightName } from "./fonts";
+export { matchFont } from "./fonts";
 export { batchOps, mapCapture } from "./map";
 export type {
   FontRef,

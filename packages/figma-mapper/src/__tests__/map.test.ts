@@ -63,7 +63,10 @@ describe("mapCapture", () => {
       text: "Hello",
       runs: [run({ start: 3, end: 99 }), run({ start: 50, end: 60 })],
     });
-    expect(textOp(withText(t)).runs).toMatchObject([{ start: 3, end: 5 }]);
+    expect(textOp(withText(t)).runs).toMatchObject([
+      { start: 0, end: 3 },
+      { start: 3, end: 5 },
+    ]);
   });
   test("maps run styling", () => {
     const t = textNode("t", {
@@ -269,6 +272,87 @@ describe("mapCapture", () => {
   test("output survives a JSON round trip", () => {
     const plan = mapCapture(centredHeading(), inter);
     expect(JSON.parse(JSON.stringify(plan))).toEqual(plan);
+  });
+});
+
+describe("run coverage and visibility", () => {
+  const covers = (runs: { start: number; end: number }[], len: number) => {
+    let at = 0;
+    for (const r of runs) {
+      expect(r.start).toBe(at);
+      at = r.end;
+    }
+    expect(at).toBe(len);
+  };
+  test("runs: [] gets a full-range Inter Regular run, listed in fonts", () => {
+    const plan = mapCapture(withText(textNode("t", { runs: [] })), inter);
+    const t = plan.ops.find((o) => o.op === "text") as TextPlanOp;
+    covers(t.runs, 5);
+    expect(t.runs[0]?.fontName).toEqual({ family: "Inter", style: "Regular" });
+    expect(plan.fonts).toContainEqual({ family: "Inter", style: "Regular" });
+  });
+  test("partial coverage is filled, overlaps trimmed", () => {
+    const t = textNode("t", {
+      text: "0123456789",
+      runs: [
+        run({ start: 6, end: 8, family: "Inter", weight: 700 }),
+        run({ start: 2, end: 4 }),
+        run({ start: 3, end: 5 }),
+      ],
+    });
+    const plan = mapCapture(withText(t), inter);
+    const op = plan.ops.find((o) => o.op === "text") as TextPlanOp;
+    covers(op.runs, 10);
+    expect(op.runs.map((r) => [r.start, r.end])).toEqual([
+      [0, 2],
+      [2, 4],
+      [4, 5],
+      [5, 6],
+      [6, 8],
+      [8, 10],
+    ]);
+    expect(plan.fonts).toContainEqual({ family: "Inter", style: "Regular" });
+  });
+  test("with no Inter available the first font is used and reported", () => {
+    const avail = [{ family: "Roboto", style: "Light" }];
+    const plan = mapCapture(withText(textNode("t", { runs: [] })), avail);
+    const t = plan.ops.find((o) => o.op === "text") as TextPlanOp;
+    expect(t.runs[0]?.fontName).toEqual(avail[0]);
+    expect(plan.fonts).toEqual(avail);
+    expect(plan.report.substitutedFonts).toEqual([{ from: "Inter", to: "Roboto Light" }]);
+  });
+  test("an invisible parent with a visible child becomes an unpainted frame", () => {
+    const hiddenStyle = {
+      ...el("x", [0, 0]).style,
+      backgroundColor: { r: 1, g: 0, b: 0, a: 1 },
+    };
+    const c = cap(
+      el(
+        "root",
+        [0, 0],
+        [
+          el("hid", [10, 10], [el("kid", [15, 25])], { visible: false, style: hiddenStyle }),
+          el("leaf", [0, 0], [], { visible: false }),
+          textNode("txt", { visible: false }),
+        ]
+      )
+    );
+    const plan = mapCapture(c, inter);
+    expect(plan.ops.map((o) => o.id)).toEqual(["root", "hid", "kid"]);
+    expect(plan.ops[1]).toMatchObject({ fills: [], strokes: null, effects: [] });
+    expect(plan.ops[2]).toMatchObject({ x: 5, y: 15 });
+  });
+  test("align comes from the longest run, first on ties", () => {
+    const t = textNode("t", {
+      text: "abcdefgh",
+      runs: [run({ start: 0, end: 2, align: "left" }), run({ start: 2, end: 8, align: "right" })],
+    });
+    expect(textOp(withText(t)).align).toBe("RIGHT");
+    const tie = textNode("t", {
+      text: "abcd",
+      runs: [run({ start: 0, end: 2, align: "center" }), run({ start: 2, end: 4, align: "right" })],
+    });
+    expect(textOp(withText(tie)).align).toBe("CENTER");
   });
 });
 

@@ -2,18 +2,6 @@ import type { FontRef } from "./plan";
 
 const FALLBACK: FontRef = { family: "Inter", style: "Regular" };
 
-const NAMES: Record<number, string> = {
-  100: "Thin",
-  200: "Extra Light",
-  300: "Light",
-  400: "Regular",
-  500: "Medium",
-  600: "Semi Bold",
-  700: "Bold",
-  800: "Extra Bold",
-  900: "Black",
-};
-
 // Lower-case, spaceless style words to weights.
 const WEIGHTS: Record<string, number> = {
   thin: 100,
@@ -43,11 +31,6 @@ function parseStyle(style: string): { weight: number; italic: boolean } | null {
   return weight === undefined ? null : { weight, italic };
 }
 
-export function weightName(weight: number): string {
-  const rounded = Math.min(900, Math.max(100, Math.round(weight / 100) * 100));
-  return NAMES[rounded] ?? "Regular";
-}
-
 /**
  * Picks a style from `available`: same family (case-insensitive), upright
  * unless italic is wanted and exists, then the nearest weight with ties going
@@ -60,7 +43,7 @@ export function matchFont(
   available: FontRef[]
 ): { font: FontRef; substituted: boolean } {
   const wanted = family.trim().toLowerCase();
-  const inFamily = available.filter((f) => f.family.toLowerCase() === wanted);
+  const inFamily = available.filter((f) => f.family.trim().toLowerCase() === wanted);
   if (inFamily.length === 0) return { font: { ...FALLBACK }, substituted: true };
 
   const parsed = inFamily.flatMap((font) => {

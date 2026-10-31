@@ -48,6 +48,7 @@ const style = z.object({
     bottom: border,
     left: border,
   }),
+  // [topLeft, topRight, bottomRight, bottomLeft]
   borderRadius: four,
   boxShadows: z.array(boxShadow),
   filters: z.array(z.string()),

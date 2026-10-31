@@ -34,6 +34,8 @@ function imageFit(fit: "cover" | "contain" | "fill" | "none" | "tile"): Fit {
   }
 }
 
+// Phase 3 approximation: any repeat (including repeat-x and repeat-y, which
+// Figma cannot express as a paint) is treated as TILE.
 function backgroundFit(size: string | undefined, repeat: string | undefined): Fit {
   if (repeat && repeat !== "no-repeat" && !/^no-repeat/.test(repeat)) return "TILE";
   return size?.trim() === "contain" ? "FIT" : "FILL";
@@ -114,6 +116,14 @@ function mapCase(t: string): PlanRun["textCase"] {
   return "ORIGINAL";
 }
 
+function dominantAlign(runs: TextNode["runs"]): string | undefined {
+  let best: TextNode["runs"][number] | undefined;
+  for (const r of runs) {
+    if (!best || r.end - r.start > best.end - best.start) best = r;
+  }
+  return best?.align;
+}
+
 export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
   const ops: PlanOp[] = [];
   const fonts = new Map<string, FontRef>();
@@ -144,15 +154,32 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     return m.font;
   };
 
+  let fallbackFont: FontRef | undefined;
+  const defaultFont = (): FontRef => {
+    if (!fallbackFont) {
+      const m = matchFont("Inter", 400, false, available);
+      let chosen = m.font;
+      if (m.substituted && available[0]) {
+        chosen = { family: available[0].family, style: available[0].style };
+        if (!substituted.has("Inter")) {
+          substituted.set("Inter", `${chosen.family} ${chosen.style}`);
+        }
+      }
+      fonts.set(`${chosen.family}\u0000${chosen.style}`, chosen);
+      fallbackFont = chosen;
+    }
+    return fallbackFont;
+  };
+
   const mapText = (node: TextNode, parent: string, x: number, y: number): PlanOp | null => {
     const len = node.text.length;
     if (len === 0) return null;
-    const runs: PlanRun[] = [];
+    const valid: PlanRun[] = [];
     for (const r of node.runs) {
       const start = Math.max(0, Math.min(r.start, len));
       const end = Math.max(0, Math.min(r.end, len));
       if (!(end > start)) continue;
-      runs.push({
+      valid.push({
         start,
         end,
         fontName: font(r.family, r.weight, r.style),
@@ -165,6 +192,32 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
         textCase: mapCase(r.transform),
       });
     }
+    // Cover the whole string with no gaps or overlaps: the applier sets every
+    // range, so uncovered text would have no listed font.
+    valid.sort((a, b) => a.start - b.start);
+    const seed = node.runs[0];
+    const filler = (start: number, end: number): PlanRun => ({
+      start,
+      end,
+      fontName: defaultFont(),
+      fontSize: seed?.size ?? 16,
+      lineHeight: seed?.lineHeight ?? null,
+      letterSpacing: seed?.letterSpacing ?? 0,
+      color: seed ? rgb(seed.color) : { r: 0, g: 0, b: 0 },
+      opacity: seed?.color.a ?? 1,
+      decoration: seed ? mapDecoration(seed.decoration) : "NONE",
+      textCase: seed ? mapCase(seed.transform) : "ORIGINAL",
+    });
+    const runs: PlanRun[] = [];
+    let cursor = 0;
+    for (const r of valid) {
+      const start = Math.max(r.start, cursor);
+      if (r.end <= start) continue;
+      if (start > cursor) runs.push(filler(cursor, start));
+      runs.push({ ...r, start });
+      cursor = r.end;
+    }
+    if (cursor < len) runs.push(filler(cursor, len));
     report.texts++;
     return {
       op: "text",
@@ -177,7 +230,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
       h: node.box.h,
       text: node.text,
       runs,
-      align: mapAlign(node.runs[0]?.align),
+      align: mapAlign(dominantAlign(node.runs)),
       wrap: node.lines.length > 1,
     };
   };
@@ -209,7 +262,10 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
   const stack: Item[] = [{ node: capture.root, parent: null, parentId: null }];
   while (stack.length > 0) {
     const { node, parent, parentId } = stack.pop() as Item;
-    if (!node.visible) continue;
+    // visibility:hidden on a parent does not hide visible children, so an
+    // invisible element with children stays as an unpainted frame.
+    const hidden = !node.visible;
+    if (hidden && !(node.kind === "element" && node.children.length > 0)) continue;
     const x = node.box.x - (parent?.box.x ?? 0);
     const y = node.box.y - (parent?.box.y ?? 0);
     let op: PlanOp | null = null;
@@ -226,11 +282,12 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
           y,
           w: node.box.w,
           h: node.box.h,
-          fills: mapFills(s, hashes),
-          strokes: mapStroke(s),
+          fills: hidden ? [] : mapFills(s, hashes),
+          strokes: hidden ? null : mapStroke(s),
+          // [topLeft, topRight, bottomRight, bottomLeft], as the walker emits.
           radius: [...s.borderRadius] as [number, number, number, number],
           opacity: node.opacity,
-          effects: mapEffects(s),
+          effects: hidden ? [] : mapEffects(s),
           clips: s.overflow.split(/\s+/).some((o) => o !== "" && o !== "visible"),
         };
         for (let i = node.children.length - 1; i >= 0; i--) {

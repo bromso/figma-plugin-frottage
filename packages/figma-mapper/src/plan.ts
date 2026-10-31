@@ -50,6 +50,7 @@ export type PlanOp =
       h: number;
       fills: PlanPaint[];
       strokes: PlanStroke | null;
+      /** [topLeft, topRight, bottomRight, bottomLeft]. */
       radius: [number, number, number, number];
       opacity: number;
       effects: PlanEffect[];
