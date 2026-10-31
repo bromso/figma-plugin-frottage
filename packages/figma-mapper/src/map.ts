@@ -243,6 +243,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
       runs,
       align: mapAlign(dominantAlign(node.runs)),
       wrap: node.lines.length > 1,
+      lineCount: Math.max(node.lines.length, 1),
     };
   };
 

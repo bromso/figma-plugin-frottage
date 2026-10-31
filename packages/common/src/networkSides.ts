@@ -15,5 +15,10 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
   importImage(hash: string, bytes: Uint8Array): { ok: boolean; error?: string };
   importBatch(ops: PlanOp[]): void;
   importCancel(): void;
-  importEnd(): { rootId: string; failedOps: number; missingImages: number };
+  importEnd(): {
+    rootId: string;
+    failedOps: number;
+    missingImages: number;
+    rewrappedTexts: number;
+  };
 }>();

@@ -102,7 +102,7 @@ export function frottageFile(texts: number, version = 1, name = "page.frottage")
 export type FakePort = ImportPort & {
   log: string[];
   batchSizes: number[];
-  endResult: { rootId: string; failedOps: number; missingImages?: number };
+  endResult: { rootId: string; failedOps: number; missingImages?: number; rewrappedTexts?: number };
   failOn?: "batch" | "end";
   beginMeta?: Parameters<ImportPort["begin"]>[0];
 };

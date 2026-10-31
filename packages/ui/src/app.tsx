@@ -13,7 +13,7 @@ function Report({
   notice: string;
   headingRef: React.Ref<HTMLParagraphElement>;
 }) {
-  const { report, failedOps, missingImages } = state;
+  const { report, failedOps, missingImages, rewrappedTexts } = state;
   const rows: [string, number][] = [
     ["Layers", report.nodes],
     ["Text", report.texts],
@@ -23,6 +23,7 @@ function Report({
   if (report.downscaledImages > 0) rows.push(["Images downscaled", report.downscaledImages]);
   if (failedOps > 0) rows.push(["Failed layers", failedOps]);
   if (missingImages > 0) rows.push(["Missing images", missingImages]);
+  if (rewrappedTexts > 0) rows.push(["Text blocks that wrap differently", rewrappedTexts]);
   return (
     <div className="flex flex-col gap-2">
       <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">

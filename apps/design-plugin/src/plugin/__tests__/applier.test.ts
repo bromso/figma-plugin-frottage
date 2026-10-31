@@ -37,7 +37,13 @@ const run = (start: number, end: number, fontName: FontRef): PlanRun => ({
   decoration: "NONE",
   textCase: "ORIGINAL",
 });
-const textOp = (id: string, parent: string, runs: PlanRun[], wrap = false): PlanOp => ({
+const textOp = (
+  id: string,
+  parent: string,
+  runs: PlanRun[],
+  wrap = false,
+  extra: object = {}
+): PlanOp => ({
   op: "text",
   id,
   parent,
@@ -50,6 +56,8 @@ const textOp = (id: string, parent: string, runs: PlanRun[], wrap = false): Plan
   runs,
   align: "LEFT",
   wrap,
+  lineCount: 1,
+  ...extra,
 });
 const imageOp = (hash: string): PlanOp => ({
   op: "image",
@@ -324,7 +332,7 @@ test("an import with no root op returns an empty rootId and counts a failure", a
   const a = createApplier(f.figma);
   await a.begin(meta);
   const r = await a.end();
-  expect(r).toEqual({ rootId: "", failedOps: 1, missingImages: 0 });
+  expect(r).toEqual({ rootId: "", failedOps: 1, missingImages: 0, rewrappedTexts: 0 });
 });
 
 test("a failed root op is counted once and fails its children", async () => {
@@ -445,14 +453,140 @@ test("a bad stroke weight drops the stroke, not the frame", async () => {
   expect(f.node(r.rootId).strokes).toBeUndefined();
 });
 
-test("centred single-line text keeps the captured box width", async () => {
+const textNodeOf = (f: ReturnType<typeof fakeFigma>) =>
+  f.created.find((n) => n.type === "TEXT") as any;
+
+test("centred single-line text wider than w stays one line, centred on the captured box", async () => {
   const f = fakeFigma();
   const a = createApplier(f.figma);
   await a.begin(meta);
-  const op = { ...textOp("t", "a", [run(0, 5, inter)]), align: "CENTER" } as PlanOp;
+  // 11 chars at 5 per char = 55 wide in a captured box of 40 at x=100.
+  const op = textOp("t", "a", [run(0, 11, inter)], false, {
+    text: "hello world",
+    align: "CENTER",
+    x: 100,
+    w: 40,
+  });
   await a.applyBatch([frame("a"), op]);
-  const t = f.created.find((n) => n.type === "TEXT") as any;
-  expect(t.textAutoResize).toBe("HEIGHT");
-  expect(t.width).toBe(80);
+  const t = textNodeOf(f);
+  expect(t.textAutoResize).toBe("WIDTH_AND_HEIGHT");
+  expect(t.height).toBe(12);
+  expect(t.width).toBe(55);
+  expect(t.x + t.width / 2).toBe(120);
+  expect(t.y).toBe(2);
   expect(t.textAlignHorizontal).toBe("CENTER");
+});
+
+test("right-aligned single-line text stays anchored to the right edge", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const op = textOp("t", "a", [run(0, 11, inter)], false, {
+    text: "hello world",
+    align: "RIGHT",
+    x: 100,
+    w: 40,
+  });
+  await a.applyBatch([frame("a"), op]);
+  const t = textNodeOf(f);
+  expect(t.x + t.width).toBe(140);
+  expect(t.height).toBe(12);
+});
+
+test("left and justified single-line text keep x", async () => {
+  for (const align of ["LEFT", "JUSTIFIED"]) {
+    const f = fakeFigma();
+    const a = createApplier(f.figma);
+    await a.begin(meta);
+    const op = textOp("t", "a", [run(0, 11, inter)], false, {
+      text: "hello world",
+      align,
+      x: 100,
+      w: 40,
+    });
+    await a.applyBatch([frame("a"), op]);
+    expect(textNodeOf(f).x).toBe(100);
+  }
+});
+
+const wrapped = (extra: object) =>
+  textOp("t", "a", [run(0, 17, inter)], true, {
+    text: "aaaaa bbbbb ccccc",
+    x: 100,
+    w: 105,
+    h: 24,
+    lineCount: 2,
+    align: "CENTER",
+    ...extra,
+  });
+
+test("wrapped text that needs 3 lines widens until 2 lines, keeping its centre", async () => {
+  const f = fakeFigma({ charWidth: 10 });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), wrapped({})]);
+  const r = await a.end();
+  const t = textNodeOf(f);
+  expect(t.textAutoResize).toBe("HEIGHT");
+  expect(t.height).toBe(24);
+  expect(t.width).toBeGreaterThan(105);
+  expect(t.width).toBeLessThanOrEqual(105 * 1.08 + 1e-9);
+  expect(t.x + t.width / 2).toBeCloseTo(100 + 105 / 2, 9);
+  expect(t.y).toBe(2);
+  expect(r.rewrappedTexts).toBe(0);
+});
+
+test("widening right-aligned wrapped text moves x left by the whole added width", async () => {
+  const f = fakeFigma({ charWidth: 10 });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), wrapped({ align: "RIGHT" })]);
+  const t = textNodeOf(f);
+  expect(t.height).toBe(24);
+  expect(t.x + t.width).toBeCloseTo(205, 9);
+});
+
+test("widening left-aligned wrapped text keeps x", async () => {
+  const f = fakeFigma({ charWidth: 10 });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), wrapped({ align: "LEFT" })]);
+  const t = textNodeOf(f);
+  expect(t.height).toBe(24);
+  expect(t.x).toBe(100);
+});
+
+test("wrapped text that cannot fit at 8% stops there and counts rewrappedTexts", async () => {
+  const f = fakeFigma({ charWidth: 10 });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), wrapped({ w: 100 })]);
+  const r = await a.end();
+  const t = textNodeOf(f);
+  expect(t.width).toBeCloseTo(108, 9);
+  expect(t.height).toBe(36);
+  expect(t.x + t.width / 2).toBeCloseTo(150, 9);
+  expect(r.rewrappedTexts).toBe(1);
+  expect(r.failedOps).toBe(0);
+});
+
+test("wrapped text that already fits is not widened", async () => {
+  const f = fakeFigma({ charWidth: 10 });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), wrapped({ w: 120 })]);
+  const r = await a.end();
+  expect(textNodeOf(f).width).toBe(120);
+  expect(r.rewrappedTexts).toBe(0);
+});
+
+test("wrapped text uses the first run's pixel line height to judge the line count", async () => {
+  const f = fakeFigma({ charWidth: 10 });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a"),
+    wrapped({ runs: [{ ...run(0, 17, inter), lineHeight: 20 }], h: 40 }),
+  ]);
+  expect(textNodeOf(f).height).toBe(40);
 });

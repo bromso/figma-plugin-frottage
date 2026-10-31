@@ -13,13 +13,26 @@ import type {
  */
 
 export type ImportMeta = { name: string; fonts: FontRef[]; totalOps: number };
-export type EndResult = { rootId: string; failedOps: number; missingImages: number };
+export type EndResult = {
+  rootId: string;
+  failedOps: number;
+  missingImages: number;
+  rewrappedTexts: number;
+};
 
 type Corners = [number, number, number, number];
 
 const FALLBACK: FontRef = { family: "Inter", style: "Regular" };
 const GAP = 100;
 const MIN_SIZE = 0.01;
+const MAX_WIDEN_STEPS = 8;
+
+/** x for a text box of `actual` width that must stay anchored inside the captured `w`. */
+function alignedX(align: string, x: number, w: number, actual: number): number {
+  if (align === "CENTER") return x + (w - actual) / 2;
+  if (align === "RIGHT") return x + w - actual;
+  return x;
+}
 
 const fontKey = (f: FontRef) => `${f.family}\u0000${f.style}`;
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -41,6 +54,7 @@ export function createApplier(api: PluginAPI) {
   let fallbackOk = true;
   let failedOps = 0;
   let missingImages = 0;
+  let rewrappedTexts = 0;
 
   function reset() {
     if (root) {
@@ -63,6 +77,7 @@ export function createApplier(api: PluginAPI) {
     fallbackOk = true;
     failedOps = 0;
     missingImages = 0;
+    rewrappedTexts = 0;
   }
 
   async function loadFont(f: FontRef): Promise<void> {
@@ -233,19 +248,28 @@ export function createApplier(api: PluginAPI) {
           if (start < end) runProps(node, run, start, end);
         }
         node.textAlignHorizontal = op.align;
-        if (op.wrap) {
-          node.textAutoResize = "HEIGHT";
-          node.resize(clampSize(op.w), clampSize(op.h));
-        } else {
-          node.textAutoResize = "WIDTH_AND_HEIGHT";
-          // Single-line text that is centred or right-aligned inside its captured
-          // box needs that box width, or x would be off by the width difference.
-          if (op.align !== "LEFT" && Math.abs(node.width - op.w) > 0.5) {
-            node.textAutoResize = "HEIGHT";
-            node.resize(clampSize(op.w), clampSize(node.height));
-          }
+        // Figma's Inter runs slightly wider than the browser's, so a box sized to the
+        // captured width can wrap differently. Single-line text never wraps; wrapped
+        // text is widened until it is back to the captured line count.
+        node.textAutoResize = "WIDTH_AND_HEIGHT";
+        if (!op.wrap) {
+          node.x = alignedX(op.align, op.x, op.w, node.width);
+          node.y = op.y;
+          return node;
         }
-        node.x = op.x;
+        const first = op.runs[0];
+        const oneLine = node.height;
+        const lineHeight = first && first.lineHeight !== null ? first.lineHeight : oneLine;
+        const expected = Math.max(op.lineCount, 1) * lineHeight;
+        node.textAutoResize = "HEIGHT";
+        node.resize(clampSize(op.w), clampSize(op.h));
+        let added = 0;
+        for (let step = 1; node.height > expected + 0.5 && step <= MAX_WIDEN_STEPS; step++) {
+          added = (op.w * step) / 100;
+          node.resize(clampSize(op.w + added), clampSize(node.height));
+        }
+        if (node.height > expected + 0.5) rewrappedTexts++;
+        node.x = alignedX(op.align, op.x, op.w, op.w + added);
         node.y = op.y;
         return node;
       }
@@ -317,7 +341,7 @@ export function createApplier(api: PluginAPI) {
         // The root op failed (already counted) or never arrived (count it now).
         if (!rootAttempted) failedOps++;
         api.commitUndo();
-        return { rootId: "", failedOps, missingImages };
+        return { rootId: "", failedOps, missingImages, rewrappedTexts };
       }
       api.commitUndo();
       try {
@@ -326,7 +350,7 @@ export function createApplier(api: PluginAPI) {
       } catch {
         // the user may have switched pages; the import itself is done
       }
-      const result = { rootId: done.id, failedOps, missingImages };
+      const result = { rootId: done.id, failedOps, missingImages, rewrappedTexts };
       root = null; // keep the layers; reset() would remove them
       return result;
     } finally {

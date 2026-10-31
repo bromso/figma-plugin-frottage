@@ -69,6 +69,8 @@ export type PlanOp =
       runs: PlanRun[];
       align: "LEFT" | "CENTER" | "RIGHT" | "JUSTIFIED";
       wrap: boolean;
+      /** Lines the browser laid the text out on; the applier keeps this count. */
+      lineCount: number;
     }
   | {
       op: "image";

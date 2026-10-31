@@ -19,6 +19,7 @@ export type ImportState =
       report: ImportReport;
       failedOps: number;
       missingImages: number;
+      rewrappedTexts: number;
     }
   | { step: "error"; message: string };
 
@@ -27,7 +28,12 @@ export type ImportPort = {
   begin(meta: { name: string; fonts: FontRef[]; totalOps: number }): Promise<void>;
   image(hash: string, bytes: Uint8Array): Promise<{ ok: boolean }>;
   batch(ops: PlanOp[]): Promise<void>;
-  end(): Promise<{ rootId: string; failedOps: number; missingImages?: number }>;
+  end(): Promise<{
+    rootId: string;
+    failedOps: number;
+    missingImages?: number;
+    rewrappedTexts?: number;
+  }>;
   cancel(): Promise<void>;
 };
 
@@ -118,6 +124,7 @@ export async function runImport(
       report: plan.report,
       failedOps: result.failedOps,
       missingImages: result.missingImages ?? 0,
+      rewrappedTexts: result.rewrappedTexts ?? 0,
     });
   } catch (error) {
     if (begun) {

@@ -46,6 +46,10 @@ describe("mapCapture", () => {
   test("centred wrapped text keeps its width and alignment", () => {
     expect(textOp(centredHeading())).toMatchObject({ align: "CENTER", wrap: true, w: 760 });
   });
+  test("lineCount comes from the capture's lines", () => {
+    expect(textOp(centredHeading()).lineCount).toBe(2);
+    expect(textOp(withText(textNode("t", {}))).lineCount).toBe(1);
+  });
   test("collects each needed font once", () => {
     expect(mapCapture(twoRunsSameFont(), inter).fonts).toHaveLength(1);
   });

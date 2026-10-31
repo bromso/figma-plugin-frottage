@@ -111,10 +111,10 @@ describe("runImport", () => {
 
   test("done carries the report and failed counts", async () => {
     const port = fakePort();
-    port.endResult = { rootId: "1:2", failedOps: 3, missingImages: 1 };
+    port.endResult = { rootId: "1:2", failedOps: 3, missingImages: 1, rewrappedTexts: 4 };
     const { states } = await run(frottageFile(2), port);
     const last = states.at(-1);
-    expect(last).toMatchObject({ step: "done", failedOps: 3, missingImages: 1 });
+    expect(last).toMatchObject({ step: "done", failedOps: 3, missingImages: 1, rewrappedTexts: 4 });
     if (last?.step === "done") expect(last.report.texts).toBe(2);
   });
 

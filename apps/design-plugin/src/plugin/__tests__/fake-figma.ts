@@ -19,6 +19,10 @@ type Options = {
   existingBounds?: { x: number; width: number }[];
   /** selection assignment or scrollAndZoomIntoView throws. */
   viewportThrows?: boolean;
+  /** Text measure rule: every character is this wide (default 5). */
+  charWidth?: number;
+  /** Auto line height when no pixel line height is set (default 12). */
+  lineHeight?: number;
 };
 
 const fontId = (f: { family: string; style: string }) => `${f.family}|${f.style}`;
@@ -148,12 +152,54 @@ export function fakeFigma(opts: Options = {}) {
           font = v;
         },
       });
+      // Text measure: fixed width per character, greedy word wrapping at node.width.
+      const charWidth = opts.charWidth ?? 5;
+      let autoResize = "NONE";
+      const lineHeightPx = () => {
+        const r = (t.ranges ?? []).find((x: any) => x.m === "setRangeLineHeight");
+        return r?.v?.unit === "PIXELS" ? r.v.value : (opts.lineHeight ?? 12);
+      };
+      const countLines = (width: number) => {
+        let lines = 1;
+        let cur = 0;
+        for (const word of chars.split(" ")) {
+          const w = word.length * charWidth;
+          if (cur === 0) cur = w;
+          else if (cur + charWidth + w <= width + 1e-9) cur += charWidth + w;
+          else {
+            lines++;
+            cur = w;
+          }
+        }
+        return lines;
+      };
+      const layout = () => {
+        if (autoResize === "WIDTH_AND_HEIGHT") {
+          t.width = Math.max(chars.length * charWidth, 0.01);
+          t.height = lineHeightPx();
+        } else if (autoResize === "HEIGHT") {
+          t.height = countLines(t.width) * lineHeightPx();
+        }
+      };
+      Object.defineProperty(t, "textAutoResize", {
+        get: () => autoResize,
+        set: (v: string) => {
+          autoResize = v;
+          layout();
+        },
+      });
+      const baseResize = t.resize;
+      t.resize = (w: number, h: number) => {
+        baseResize(w, h);
+        layout();
+      };
       Object.defineProperty(t, "characters", {
         get: () => chars,
         set: (v: string) => {
           calls.push("characters");
           if (!loaded.has(fontId(font))) throw new Error(`font not loaded: ${fontId(font)}`);
           chars = v;
+          layout();
         },
       });
       for (const m of [
@@ -174,6 +220,7 @@ export function fakeFigma(opts: Options = {}) {
           }
           if (!t.ranges) t.ranges = [];
           t.ranges.push({ m, s, e, v });
+          if (m === "setRangeLineHeight") layout();
         };
       }
       return t;
