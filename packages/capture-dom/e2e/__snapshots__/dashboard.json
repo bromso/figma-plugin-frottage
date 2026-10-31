@@ -24,13 +24,7 @@
   "--muted",
   "--surface"
  ],
- "warnings": [
-  {
-   "code": "svg-placeholder",
-   "nodeId": "n53",
-   "detail": "Inline SVG is emitted as a placeholder in Phase 1"
-  }
- ],
+ "warnings": [],
  "root": {
   "id": "n0",
   "paintOrder": 0,
@@ -3693,8 +3687,14 @@
             "semantic": {
              "tag": "svg"
             },
-            "kind": "placeholder",
-            "placeholderKind": "blocked-image"
+            "kind": "svg",
+            "markup": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\" fill=\"none\" stroke=\"#0d9488\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M7 15l4-4 3 3 5-6\" fill=\"none\" stroke=\"#0d9488\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
+            "box": {
+             "x": 296,
+             "y": 265,
+             "w": 20,
+             "h": 20
+            }
            },
            {
             "id": "n54",

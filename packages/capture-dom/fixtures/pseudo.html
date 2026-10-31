@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pseudo-elements</title>
+<style>
+body { margin: 0; padding: 16px; font: 14px/20px Arial, sans-serif; color: #111; counter-reset: item; }
+.card { position: relative; width: 200px; height: 80px; margin-bottom: 16px; background: #eee; }
+.card::after { content: ""; position: absolute; top: 4px; right: 6px; width: 10px; height: 10px; background: rgb(255, 0, 0); border-radius: 5px; }
+.tag::before { content: "NEW"; display: inline-block; background: rgb(0, 160, 0); color: #fff; padding: 2px 4px; }
+.arrow::after { content: " \2192"; }
+.items li { list-style: none; }
+.items li::before { counter-increment: item; content: counter(item) ". "; }
+.ref::after { content: " (" attr(data-ref) ")"; color: #666; }
+.none::before { content: none; background: rgb(0, 0, 255); }
+.normal::before { background: rgb(0, 0, 255); }
+.url::before { content: url(/assets/dot.gif); }
+.hidden::before { content: "HIDDEN-PSEUDO"; display: none; }
+.invisible::before { content: "INVISIBLE-PSEUDO"; visibility: hidden; }
+.q::before { content: "Quote " "two"; }
+.nested span::before { content: "["; }
+.nested span::after { content: "]"; }
+</style>
+</head>
+<body>
+<div class="card" id="card">Card</div>
+<p class="tag" id="tag">Offer</p>
+<p class="arrow" id="arrow">Continue</p>
+<ul class="items"><li>Alpha</li><li>Beta</li></ul>
+<p class="ref" data-ref="/docs">Docs</p>
+<p class="none">None</p>
+<p class="normal">Normal</p>
+<p class="url">Url</p>
+<p class="hidden">Visible text</p>
+<p class="invisible">Seen text</p>
+<p class="q">After quote</p>
+<p class="nested">One <span>two</span> three</p>
+</body>
+</html>

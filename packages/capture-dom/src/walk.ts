@@ -9,6 +9,15 @@ import type {
 import type { Rgba } from "./color";
 import { flatChildren, shadowRootOf } from "./flatten";
 import {
+  collapse,
+  noteApproximations,
+  type Pseudo,
+  type PseudoCtx,
+  pseudoNodes,
+  readPseudo,
+  type Which,
+} from "./pseudo";
+import {
   colorOf,
   px,
   readBorders,
@@ -17,6 +26,7 @@ import {
   readStyle,
   readTransform,
 } from "./styles";
+import { MAX_SVG_BYTES, serialiseSvg } from "./svg";
 import { cleanCss, cleanUrl, rememberUrl } from "./urls";
 
 export type CaptureEnv = {
@@ -27,6 +37,15 @@ export type CaptureEnv = {
 };
 
 type Box = { x: number; y: number; w: number; h: number };
+/** A generated rect inside a text group, placed once the real rects around it are known. */
+type Rect = Box & { gen?: Which };
+/** `::before` or `::after` text that joins the text of the group it sits in. */
+class PseudoItem {
+  constructor(readonly pseudo: Pseudo) {}
+}
+type Item = Node | PseudoItem;
+// A class, not a `"pseudo" in` test: newer browsers give every Element a `pseudo` method.
+const isPseudoItem = (i: Item): i is PseudoItem => i instanceof PseudoItem;
 type Run = TextNode["runs"][number];
 type Font = Capture["fonts"][number];
 type Warning = Capture["warnings"][number];
@@ -99,6 +118,7 @@ const SECRET_AUTOCOMPLETE =
   /\b(current-password|new-password|one-time-code|cc-number|cc-csc|cc-exp)\b/;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+const utf8Length = (text: string): number => new TextEncoder().encode(text).length;
 
 /**
  * Whether a field's content must never be read. Looks at attributes only, never at `value`.
@@ -149,6 +169,20 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   });
   const area = (r: { width: number; height: number }) => r.width * r.height;
   const boxArea = (b: Box) => b.w * b.h;
+
+  const pseudoCtx: PseudoCtx = {
+    win,
+    cs: (el, pseudo) => win.getComputedStyle(el, pseudo),
+    nextId: () => nextId(),
+    warn: (code, nodeId, detail) => warn(code, nodeId, detail),
+    pageBox: (el) => pageBox(el.getBoundingClientRect()),
+    scroll: { x: scrollX, y: scrollY },
+    viewport: { w: root.clientWidth, h: root.clientHeight },
+    measure: (text, style) => measure(text, style),
+    isSecret: isSecretField,
+    text: (value, style, box, tag) => boxedText(value, style, box, tag),
+    cache: new WeakMap(),
+  };
 
   // ---------- Fonts
 
@@ -279,6 +313,12 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         s.borderLeftStyle === "none" &&
         s.mixBlendMode === "normal";
       if (ok) {
+        // A painted or positioned pseudo-element needs a node of its own, which a merged span cannot give.
+        for (const which of ["before", "after"] as const) {
+          if (readPseudo(el, which, pseudoCtx)?.mode === "box") ok = false;
+        }
+      }
+      if (ok) {
         for (const child of childrenOf(el)) {
           if (child.nodeType !== 1) continue;
           if (IGNORED_TAGS.has((child as Element).localName)) continue;
@@ -293,10 +333,101 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return ok;
   }
 
-  function buildText(group: Node[], parent: Element): TextNode | null {
+  /**
+   * Gives generated rects a position from the real rects around them: `::before` ends where the
+   * next real rect starts, `::after` starts where the previous one ends. With no real rect on the
+   * needed side the nearest other side is used, and with none at all the parent's content edge.
+   * A canvas cannot measure generated content, so none of these has a rect of its own.
+   */
+  function placeGenerated(rects: Rect[], parent: Element) {
+    if (!rects.some((r) => r.gen)) return;
+    const placed = new Set<Rect>();
+    const at = (r: Rect, x: number, anchor: Box) => {
+      r.x = round2(x);
+      r.y = anchor.y;
+      r.h = anchor.h;
+      placed.add(r);
+    };
+    let prev: Rect | undefined;
+    for (const r of rects) {
+      if (!r.gen) prev = r;
+      else if (r.gen === "after" && prev) {
+        at(r, prev.x + prev.w, prev);
+        prev = r;
+      }
+    }
+    let next: Rect | undefined;
+    for (let i = rects.length - 1; i >= 0; i--) {
+      const r = rects[i] as Rect;
+      if (!r.gen) next = r;
+      else if (r.gen === "before" && next) {
+        at(r, next.x - r.w, next);
+        next = r;
+      }
+    }
+    const real = rects.filter((r) => !r.gen);
+    const first = real[0];
+    const last = real[real.length - 1];
+    let head = first?.x ?? 0;
+    let tail = last ? last.x + last.w : 0;
+    let fallback: Box | undefined;
+    for (const r of rects) {
+      if (!r.gen || placed.has(r)) continue;
+      if (first && last) {
+        if (r.gen === "before") {
+          at(r, tail, last);
+          tail += r.w;
+        } else {
+          head -= r.w;
+          at(r, head, first);
+        }
+      } else {
+        if (!fallback) {
+          const ps = cs(parent);
+          const b = pageBox(parent.getBoundingClientRect());
+          fallback = {
+            x: b.x + px(ps.borderLeftWidth) + px(ps.paddingLeft),
+            y: b.y + px(ps.borderTopWidth) + px(ps.paddingTop),
+            w: 0,
+            h: r.h,
+          };
+        }
+        at(r, fallback.x + fallback.w, fallback);
+        fallback.w += r.w;
+      }
+    }
+  }
+
+  /** The items a text group sees inside an element: its inline `::before`, its children, its inline `::after`. */
+  function inlineItems(el: Element): Item[] {
+    const out: Item[] = [];
+    const before = readPseudo(el, "before", pseudoCtx);
+    if (before?.mode === "inline") out.push(new PseudoItem(before));
+    out.push(...childrenOf(el));
+    const after = readPseudo(el, "after", pseudoCtx);
+    if (after?.mode === "inline") out.push(new PseudoItem(after));
+    return out;
+  }
+
+  /** Width of `text` in the font of `style`; falls back to an average glyph when no canvas exists. */
+  function measure(text: string, style: CSSStyleDeclaration): number {
+    const ctx = measureCtx();
+    const shown =
+      style.textTransform === "uppercase"
+        ? text.toUpperCase()
+        : style.textTransform === "lowercase"
+          ? text.toLowerCase()
+          : text;
+    const spacing = style.letterSpacing === "normal" ? 0 : px(style.letterSpacing);
+    if (!ctx) return round2(shown.length * (px(style.fontSize) * 0.5 + spacing));
+    ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    return round2(ctx.measureText(shown).width + spacing * shown.length);
+  }
+
+  function buildText(group: Item[], parent: Element): TextNode | null {
     let text = "";
     const runs: Run[] = [];
-    const rects: Box[] = [];
+    const rects: Rect[] = [];
     const range = doc.createRange();
 
     const append = (piece: string, run: Run) => {
@@ -333,9 +464,27 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       append(piece, runOf(s, 0, 0));
     };
 
-    const addNodes = (nodes: Iterable<Node>, styleEl: Element) => {
+    const addPseudo = (p: Pseudo) => {
+      noteApproximations(p, undefined, pseudoCtx);
+      const s = p.style;
+      if (s.visibility !== "visible") return;
+      const ws = s.whiteSpace;
+      let piece = collapse(p.text, ws);
+      const collapses = ws !== "pre" && ws !== "pre-wrap" && ws !== "break-spaces";
+      if (collapses && piece.startsWith(" ") && (text === "" || /[ \n]$/.test(text))) {
+        piece = piece.slice(1);
+      }
+      if (!piece) return;
+      const lineH = px(s.lineHeight) || px(s.fontSize) * 1.2;
+      rects.push({ x: 0, y: 0, w: measure(piece, s), h: round2(lineH), gen: p.which });
+      append(piece, runOf(s, 0, 0));
+    };
+
+    const addNodes = (nodes: Iterable<Item>, styleEl: Element) => {
       for (const n of nodes) {
-        if (n.nodeType === 3) {
+        if (isPseudoItem(n)) {
+          addPseudo(n.pseudo);
+        } else if (n.nodeType === 3) {
           addText(n as Text, styleEl);
         } else if (n.nodeType === 1) {
           const e = n as Element;
@@ -353,12 +502,13 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
             }
             append("\n", runOf(cs(e), 0, 0));
           } else {
-            addNodes(childrenOf(e), e);
+            addNodes(inlineItems(e), e);
           }
         }
       }
     };
     addNodes(group, parent);
+    placeGenerated(rects, parent);
 
     const trimmed = text.replace(/[ \n]+$/, "");
     if (!trimmed || rects.length === 0) return null;
@@ -382,7 +532,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
           continue;
         }
       }
-      lines.push({ ...r });
+      lines.push({ x: r.x, y: r.y, w: r.w, h: r.h });
     }
     const left = Math.min(...lines.map((l) => l.x));
     const top = Math.min(...lines.map((l) => l.y));
@@ -441,10 +591,23 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       w: round2(Math.max(0, box.w - bw("left") - bw("right") - pad("left") - pad("right"))),
       h: round2(Math.max(0, box.h - bw("top") - bw("bottom") - pad("top") - pad("bottom"))),
     };
-    const run = runOf(s, 0, content.value.length);
-    if (content.placeholder) run.color = { ...run.color, a: round2(run.color.a * 0.5) } as Rgba;
-    // A textarea starts at the top of its box rather than centring one line in it, so its first
-    // line is one line tall and the mapper's leading correction leaves it there.
+    return boxedText(content.value, s, inner, tag, content.placeholder);
+  }
+
+  /**
+   * A text node for a string the page does not hold in a text node (a control's label, generated
+   * content), set in `inner`. A textarea starts at the top of its box rather than centring one line
+   * in it, so its first line is one line tall and the mapper's leading correction leaves it there.
+   */
+  function boxedText(
+    value: string,
+    s: CSSStyleDeclaration,
+    inner: Box,
+    tag: string,
+    dim = false
+  ): TextNode | null {
+    const run = runOf(s, 0, value.length);
+    if (dim) run.color = { ...run.color, a: round2(run.color.a * 0.5) } as Rgba;
     const line =
       tag === "textarea" && run.lineHeight !== null ? { ...inner, h: run.lineHeight } : inner;
     const n = nextId();
@@ -457,8 +620,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       visible: true,
       opacity: 1,
       blendMode: "normal",
-      semantic: { tag: el.localName },
-      text: content.value,
+      semantic: { tag },
+      text: value,
       lines: [line],
       runs: [run],
     };
@@ -528,15 +691,50 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
   }
 
+  function imageNode(
+    common: Omit<ImageNode, "kind" | "fit" | "objectPosition" | "borders" | "borderRadius">,
+    sourceUrl: string | undefined,
+    s: CSSStyleDeclaration,
+    box: Box
+  ): ImageNode {
+    const fitRaw = s.objectFit;
+    const fit: ImageNode["fit"] =
+      fitRaw === "cover" || fitRaw === "contain" || fitRaw === "none" || fitRaw === "fill"
+        ? fitRaw
+        : fitRaw === "scale-down"
+          ? "contain"
+          : "fill";
+    const node: ImageNode = {
+      ...common,
+      kind: "image",
+      ...(sourceUrl ? { sourceUrl: cleanUrl(sourceUrl) } : {}),
+      fit,
+      objectPosition: s.objectPosition,
+      borders: readBorders(s),
+      borderRadius: readRadii(s, box.w, box.h),
+    };
+    if (sourceUrl) rememberUrl(node, sourceUrl);
+    return node;
+  }
+
   function visitChildren(el: Element, depth: number): CaptureNode[] {
     const out: CaptureNode[] = [];
-    let group: Node[] = [];
+    let group: Item[] = [];
     const flush = () => {
       if (group.length === 0) return;
       const node = buildText(group, el);
       if (node) out.push(node);
       group = [];
     };
+    const generated = (which: Which) => {
+      const p = readPseudo(el, which, pseudoCtx);
+      if (p?.mode === "inline") group.push(new PseudoItem(p));
+      else if (p) {
+        flush();
+        out.push(...pseudoNodes(el, which, pseudoCtx));
+      }
+    };
+    generated("before");
     for (const child of childrenOf(el)) {
       if (child.nodeType === 3) {
         group.push(child);
@@ -551,6 +749,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         }
       }
     }
+    generated("after");
     flush();
     return out;
   }
@@ -586,14 +785,30 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     }
 
     if (el.namespaceURI === SVG_NS && tag === "svg") {
-      warn("svg-placeholder", id, "Inline SVG is emitted as a placeholder in Phase 1");
-      return [placeholder(common, "blocked-image")];
+      let markup: string;
+      try {
+        markup = serialiseSvg(el as SVGSVGElement);
+      } catch {
+        markup = "";
+      }
+      if (markup === "" || markup.length > MAX_SVG_BYTES || utf8Length(markup) > MAX_SVG_BYTES) {
+        warn(
+          "svg-too-large",
+          id,
+          `An inline SVG over ${MAX_SVG_BYTES / 1024} KiB was left as a placeholder`
+        );
+        return [placeholder(common, "blocked-image")];
+      }
+      return [{ ...common, kind: "svg", markup }];
     }
     if (el.namespaceURI === XHTML) {
       if (tag === "canvas") return [placeholder(common, "canvas")];
       if (tag === "video") {
         const v = el as HTMLVideoElement;
-        return [placeholder(common, "video", v.poster || v.currentSrc || undefined)];
+        // A poster is an image like any other: collectAssets fetches it, or turns it into a
+        // placeholder when it cannot be read.
+        if (v.poster) return [imageNode(common, v.poster, s, box)];
+        return [placeholder(common, "video", v.currentSrc || undefined)];
       }
       if (tag === "iframe") {
         return [
@@ -606,24 +821,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         if (img.complete && img.naturalWidth === 0) {
           return [placeholder(common, "blocked-image", sourceUrl)];
         }
-        const fitRaw = s.objectFit;
-        const fit: ImageNode["fit"] =
-          fitRaw === "cover" || fitRaw === "contain" || fitRaw === "none" || fitRaw === "fill"
-            ? fitRaw
-            : fitRaw === "scale-down"
-              ? "contain"
-              : "fill";
-        const node: ImageNode = {
-          ...common,
-          kind: "image",
-          ...(sourceUrl ? { sourceUrl: cleanUrl(sourceUrl) } : {}),
-          fit,
-          objectPosition: s.objectPosition,
-          borders: readBorders(s),
-          borderRadius: readRadii(s, box.w, box.h),
-        };
-        if (sourceUrl) rememberUrl(node, sourceUrl);
-        return [node];
+        return [imageNode(common, sourceUrl, s, box)];
       }
     }
 

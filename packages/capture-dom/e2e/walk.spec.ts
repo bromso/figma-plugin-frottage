@@ -112,6 +112,30 @@ function findElement(c: Capture, tag: string) {
   return hit;
 }
 
+function findKind<K extends CaptureNode["kind"]>(
+  c: Capture,
+  kind: K,
+  pick: (n: Extract<CaptureNode, { kind: K }>) => boolean = () => true
+) {
+  let hit: Extract<CaptureNode, { kind: K }> | undefined;
+  each(c, (n) => {
+    if (!hit && n.kind === kind && pick(n as Extract<CaptureNode, { kind: K }>)) {
+      hit = n as Extract<CaptureNode, { kind: K }>;
+    }
+  });
+  if (!hit) throw new Error(`no ${kind} node`);
+  return hit;
+}
+const findByName = (c: Capture, tag: string) =>
+  findKind(c, "element", (n) => n.semantic.tag === tag);
+function svgs(c: Capture) {
+  const out: Extract<CaptureNode, { kind: "svg" }>[] = [];
+  each(c, (n) => {
+    if (n.kind === "svg") out.push(n);
+  });
+  return out;
+}
+
 /**
  * The snapshot keeps only what is the same on every machine:
  * - structure: kind, tag, role, heading level, landmark, href, alt, children, ids, paintOrder
@@ -312,15 +336,18 @@ test("collapses repeated warnings into one with a count", async ({ page }) => {
     for (let i = 0; i < 5; i++) {
       document.body.insertAdjacentHTML(
         "beforeend",
-        '<svg width="10" height="10"><rect width="10" height="10"/></svg>'
+        '<p class="x" style="width:50px">a<span style="display:inline">b</span></p>'
       );
     }
+    const style = document.createElement("style");
+    style.textContent = ".x::before { content: counter(c); }";
+    document.head.appendChild(style);
   });
   await page.addScriptTag({ content: bundle });
   const c = await runCapture(page, "x");
-  const svg = c.warnings.filter((w) => w.code === "svg-placeholder");
-  expect(svg).toHaveLength(1);
-  expect(svg[0]?.detail).toContain("(5 times)");
+  const warned = c.warnings.filter((w) => w.code === "pseudo-approximate");
+  expect(warned).toHaveLength(1);
+  expect(warned[0]?.detail).toContain("(5 times)");
 });
 
 test("keeps the subtree of a zero-area element whose children have area", async ({ page }) => {
@@ -435,13 +462,18 @@ test("reads open and closed shadow roots", async ({ page }) => {
   const c = await capture(page, "shadow.html", { closedShadow: true });
   expect(textOf(c)).toContain("Link 12");
   expect(countTag(c, "x-icon")).toBe(6);
-  // Each closed root holds an inline svg, which Phase 1 emits as a placeholder.
-  expect(c.warnings.find((w) => w.code === "svg-placeholder")?.detail).toContain("(6 times)");
+  // Each closed root holds an inline svg, which is serialised from inside the shadow root.
+  const icons = svgs(c);
+  expect(icons).toHaveLength(6);
+  for (const icon of icons) {
+    expect(icon.markup).toContain("<circle");
+    expect(icon.markup).toContain("fill");
+  }
 });
 
 test("a closed root is not read without a getShadowRoot that reaches it", async ({ page }) => {
   const c = await capture(page, "shadow.html");
-  expect(c.warnings.some((w) => w.code === "svg-placeholder")).toBe(false);
+  expect(svgs(c)).toHaveLength(0);
 });
 
 test("slotted content appears once", async ({ page }) => {
@@ -603,4 +635,258 @@ test("a nested slot with display: none does not reveal its content", async ({ pa
   const t = textOf(await runCapture(page, "x"));
   expect(t).toContain("Outer start");
   expect(t).not.toContain("HIDDEN-SLOTTED");
+});
+
+// ---------- Pseudo-elements
+
+test("::before text becomes a text node before the content", async ({ page }) => {
+  const c = await capture(page, "landing.html");
+  expect(textOf(c)).toMatch(/→ Read more/);
+  // One text node: the generated arrow and the link text read as one line.
+  const t = findText(c, "Read more");
+  expect(t.text).toBe("→ Read more");
+  expect(t.runs.map((r) => [r.start, r.end])).toEqual([[0, 11]]);
+  expect(t.runs[0]?.weight).toBe(600);
+});
+
+test("a painted ::after becomes a synthetic element", async ({ page }) => {
+  const c = await capture(page, "pseudo.html");
+  const after = findByName(c, "::after");
+  expect(after.style.backgroundColor.a).toBe(1);
+  expect(after.style.backgroundColor.r).toBe(1);
+  expect(after.box).toMatchObject({ w: 10, h: 10 });
+  expect(after.style.borderRadius).toEqual([5, 5, 5, 5]);
+  // top: 4px; right: 6px inside a 200px card.
+  const card = findKind(c, "element", (n) => n.children.some((k) => k === after));
+  expect(after.box.x).toBeCloseTo(card.box.x + card.box.w - 6 - 10, 1);
+  expect(after.box.y).toBeCloseTo(card.box.y + 4, 1);
+  expect(after.layout.position).toBe("absolute");
+});
+
+test("a painted inline ::before keeps its text and paint", async ({ page }) => {
+  const c = await capture(page, "pseudo.html");
+  const before = findByName(c, "::before");
+  const label = before.children[0];
+  expect(label?.kind === "text" && label.text).toBe("NEW");
+  expect(before.style.backgroundColor.g).toBeGreaterThan(0.5);
+});
+
+test("unpainted ::after text joins the element's text", async ({ page }) => {
+  expect(findText(await capture(page, "pseudo.html"), "Continue").text).toBe("Continue →");
+});
+
+test("content none and normal emit nothing; display none and hidden pseudo emit no text", async ({
+  page,
+}) => {
+  const c = await capture(page, "pseudo.html");
+  const json = JSON.stringify(c);
+  expect(json).not.toContain("HIDDEN-PSEUDO");
+  expect(json).not.toContain("INVISIBLE-PSEUDO");
+  expect(findText(c, "None").text).toBe("None");
+  expect(findText(c, "Normal").text).toBe("Normal");
+  // Neither blue background belongs to a generated box.
+  let blue = 0;
+  each(c, (n) => {
+    if (
+      n.kind === "element" &&
+      n.style.backgroundColor.b === 1 &&
+      n.style.backgroundColor.a === 1
+    ) {
+      blue++;
+    }
+  });
+  expect(blue).toBe(0);
+});
+
+test("counter() and url() content warn and leave the text out", async ({ page }) => {
+  const c = await capture(page, "pseudo.html");
+  // The literal ". " stays; only the counter itself is left out.
+  expect(findText(c, "Alpha").text).toBe(". Alpha");
+  expect(findText(c, "Beta").text).toBe(". Beta");
+  expect(findText(c, "Url").text).toBe("Url");
+  const w = c.warnings.find((x) => x.code === "pseudo-approximate");
+  expect(w).toBeTruthy();
+  expect(w?.detail).toMatch(/\(\d+ times\)/);
+});
+
+test("quoted strings and attr() are kept", async ({ page }) => {
+  const c = await capture(page, "pseudo.html");
+  expect(findText(c, "Docs").text).toBe("Docs (/docs)");
+  expect(findText(c, "After quote").text).toBe("Quote twoAfter quote");
+});
+
+test("pseudo text on inline children keeps its order", async ({ page }) => {
+  expect(findText(await capture(page, "pseudo.html"), "One").text).toBe("One [two] three");
+});
+
+test("pseudo-element nodes have unique ids and the capture parses", async ({ page }) => {
+  const c = await capture(page, "pseudo.html");
+  const ids = new Set<string>();
+  let total = 0;
+  each(c, (n) => {
+    ids.add(n.id);
+    total++;
+  });
+  expect(ids.size).toBe(total);
+  expect(parseCapture(c).ok).toBe(true);
+});
+
+test("pseudo-element text honours the node cap", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/pseudo.html");
+  await page.evaluate(() => {
+    const host = document.createElement("div");
+    for (let i = 0; i < 25000; i++) {
+      const d = document.createElement("div");
+      d.className = "card";
+      d.style.cssText = "width:10px;height:2px";
+      host.appendChild(d);
+    }
+    document.body.appendChild(host);
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  expect(countNodes(c.root)).toBeLessThanOrEqual(20000);
+  expect(parseCapture(c).ok).toBe(true);
+});
+
+// ---------- Inline SVG
+
+test("inline SVG is stored as markup with currentColor resolved", async ({ page }) => {
+  const svg = findKind(await capture(page, "dashboard.html"), "svg");
+  expect(svg.markup).toContain("<svg");
+  expect(svg.markup).not.toContain("currentColor");
+  expect(svg.markup).not.toContain("<script");
+  // The page's brand colour (#0d9488) is inlined as the stroke.
+  expect(svg.markup).toMatch(/stroke="#0d9488"/i);
+});
+
+test("computed colours, classes and gradients are inlined and the page CSS is not needed", async ({
+  page,
+}) => {
+  const c = await capture(page, "svg.html");
+  const byId = (id: string) => {
+    const hit = svgs(c).find((s) => s.markup.includes(`id="${id}"`));
+    if (!hit) throw new Error(`no svg ${id}`);
+    return hit.markup;
+  };
+  // .ico path { fill: currentColor } with color rgb(200, 0, 0)
+  expect(byId("plain")).toMatch(/fill="#c80000"/i);
+  // A class rule: fill rgb(0, 128, 0) and opacity from the attribute.
+  expect(byId("classy")).toMatch(/fill="#008000"/i);
+  expect(byId("classy")).toMatch(/opacity="0\.5"/);
+  // A fill that points at an internal gradient keeps the reference.
+  expect(byId("grad-user")).toContain("url(#grad)");
+  expect(byId("grad-user")).toContain("<linearGradient");
+  expect(byId("grad-user")).not.toContain("currentColor");
+});
+
+test("<use> is inlined from the same tree", async ({ page }) => {
+  const c = await capture(page, "svg.html");
+  const used = svgs(c).find((s) => s.markup.includes('id="used"'));
+  expect(used?.markup).not.toContain("<use");
+  expect(used?.markup).toContain("M2 2h20v20H2z");
+  expect(used?.markup).toMatch(/fill="#c80000"/i);
+});
+
+test("hostile SVG markup loses scripts, handlers and external references", async ({ page }) => {
+  const c = await capture(page, "svg.html");
+  const markup = svgs(c).find((s) => s.markup.includes('id="hostile"'))?.markup ?? "";
+  expect(markup).toContain("<circle");
+  for (const bad of [
+    "<script",
+    "alert",
+    "onload",
+    "onclick",
+    "evil.example",
+    "SECRET",
+    "<style",
+    "@import",
+    "javascript:",
+    "<foreignObject",
+    "TYPED-SECRET",
+    "<set",
+    "<use",
+  ]) {
+    expect(markup).not.toContain(bad);
+  }
+  // The inline style survives as computed colour.
+  expect(markup).toMatch(/fill="#010203"/i);
+  expect(JSON.stringify(c)).not.toContain("SECRET-TOKEN");
+});
+
+test("circular <use> references terminate", async ({ page }) => {
+  const c = await capture(page, "svg.html");
+  const loop = svgs(c).find((s) => s.markup.includes('id="loop"'));
+  expect(loop?.markup).toContain("<rect");
+});
+
+test("an SVG over 256 KiB stays a placeholder with a warning", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/svg.html");
+  await page.evaluate(() => {
+    const d = `M0 0${"h1v1h-1z".repeat(40000)}`;
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<svg id="huge" width="24" height="24"><path d="${d}"/></svg>`
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const warn = c.warnings.find((w) => w.code === "svg-too-large");
+  expect(warn).toBeTruthy();
+  expect(svgs(c).some((s) => s.markup.includes('id="huge"'))).toBe(false);
+  expect(findKind(c, "placeholder", (p) => p.id === warn?.nodeId).placeholderKind).toBe(
+    "blocked-image"
+  );
+  expect(parseCapture(c).ok).toBe(true);
+});
+
+test("repeated identical SVGs are not deduplicated", async ({ page }) => {
+  const c = await capture(page, "shadow.html", { closedShadow: true });
+  const markups = svgs(c).map((s) => s.markup);
+  expect(markups).toHaveLength(6);
+  expect(new Set(markups).size).toBe(1);
+});
+
+test("SVG capture never reads typed values", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/svg.html");
+  await page.addScriptTag({ content: bundle });
+  const reads = await page.evaluate(() => {
+    let count = 0;
+    for (const input of document.querySelectorAll("input")) {
+      Object.defineProperty(input, "value", {
+        get() {
+          count++;
+          return "";
+        },
+      });
+    }
+    (globalThis as unknown as Hook).__frottageCapture.captureDocument(document, {
+      now: () => "x",
+      toolVersion: "t",
+    });
+    return count;
+  });
+  expect(reads).toBe(0);
+});
+
+test("a video with a poster becomes an image node", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/images.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<video id="v" poster="/assets/photo.png?token=SECRET" width="120" height="80"></video><video id="bare" width="40" height="30"></video>'
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const poster = findKind(c, "image", (n) => n.semantic.tag === "video");
+  expect(poster.sourceUrl).toBe("http://localhost:4173/assets/photo.png");
+  expect(poster.box).toMatchObject({ w: 120, h: 80 });
+  expect(JSON.stringify(c)).not.toContain("SECRET");
+  // Without a poster it stays a video placeholder.
+  expect(findKind(c, "placeholder", (n) => n.placeholderKind === "video")).toBeTruthy();
 });

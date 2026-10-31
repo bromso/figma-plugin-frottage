@@ -178,6 +178,43 @@ test("a CORS-blocked image becomes a sized placeholder with its URL", async ({ p
   expect(r.capture.warnings.some((w) => w.code === "image-blocked")).toBe(true);
 });
 
+function videos(c: Capture) {
+  const out: CaptureNode[] = [];
+  const go = (n: CaptureNode) => {
+    if (n.semantic.tag === "video") out.push(n);
+    if (n.kind === "element") for (const child of n.children) go(child);
+  };
+  go(c.root);
+  return out;
+}
+
+test("a video with a poster becomes an image whose bytes are stored", async ({ page }) => {
+  const r = await runAssets(page, "images.html");
+  const poster = videos(r.capture).find((n) => n.box.w === 120);
+  expect(poster).toMatchObject({
+    kind: "image",
+    sourceUrl: "http://localhost:4173/assets/photo.png",
+  });
+  const hash = poster?.kind === "image" ? poster.assetHash : undefined;
+  expect(hash).toMatch(/^[0-9a-f]{64}$/);
+  // The poster is the same file as the local PNG, so it is stored once.
+  expect(hash).toBe(findImage(r.capture, "local-png").assetHash);
+  expect(JSON.stringify(r.capture)).not.toContain("poster=1");
+});
+
+test("a CORS-blocked poster becomes a blocked-image placeholder", async ({ page }) => {
+  const r = await runAssets(page, "images.html");
+  const poster = videos(r.capture).find((n) => n.box.w === 90);
+  expect(poster).toMatchObject({
+    kind: "placeholder",
+    placeholderKind: "blocked-image",
+    sourceUrl: "http://localhost:4174/assets/photo.png",
+  });
+  expect(poster?.box.h).toBe(70);
+  expect(JSON.stringify(r.capture)).not.toContain("poster=2");
+  expect(parseCapture(r.capture).ok).toBe(true);
+});
+
 test("the same image used twice is stored once", async ({ page }) => {
   const r = await runAssets(page, "images.html");
   const a = findImage(r.capture, "dup-a").assetHash;
