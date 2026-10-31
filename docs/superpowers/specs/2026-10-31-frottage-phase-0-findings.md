@@ -42,7 +42,7 @@ Navigation during capture reported an error instead of hanging. A real page went
 
 ## Still open
 
-- **Browser Figma is untested.** Everything Figma-side ran in the desktop app only. A pass in one environment does not meet the plan's rule. Development plugins are expected to need the desktop app, so this waits until Frottage can be installed as a private plugin in Phase 1. Treat it as the first Phase 1 check.
+- **Browser Figma is untested.** Everything Figma-side ran in the desktop app only. A pass in one environment does not meet the plan's rule. Checked at the start of Phase 1: a development plugin imported in the desktop app does not appear in Figma's quick actions in Chrome, so the browser test needs a private plugin. It runs as the last Phase 1 step.
 - The 200-image benchmark and the 20,000-node run.
 - Undo after the plugin has closed.
 - Annotations on a confirmed free plan.
