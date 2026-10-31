@@ -145,12 +145,41 @@ export function fakeFigma(opts: Options = {}) {
       calls.push("createNodeFromSvg");
       svgSources.push(svg);
       if (opts.svgThrows) throw new Error("Invalid SVG");
-      // Figma returns an unfilled frame that holds the vectors; its clipping is Figma's choice.
+      // Figma returns an unfilled frame that holds the vectors.
       const n = makeNode("FRAME");
       n.fills = [];
-      n.clipsContent = false;
+      n.clipsContent = true;
       n.width = 24;
       n.height = 24;
+      const vector: FakeNode = {
+        id: `n${++seq}`,
+        type: "VECTOR",
+        children: [],
+        parent: n,
+        x: 0,
+        y: 0,
+        width: 24,
+        height: 24,
+        constraints: { horizontal: "MIN", vertical: "MIN" },
+      };
+      n.children.push(vector);
+      // As in Figma, resizing a frame scales a child only when its constraints are SCALE.
+      const base = n.resize;
+      n.resize = (w: number, h: number) => {
+        const sx = w / n.width;
+        const sy = h / n.height;
+        base(w, h);
+        for (const c of n.children) {
+          if (c.constraints?.horizontal === "SCALE") {
+            c.x *= sx;
+            c.width *= sx;
+          }
+          if (c.constraints?.vertical === "SCALE") {
+            c.y *= sy;
+            c.height *= sy;
+          }
+        }
+      };
       return n;
     },
     createRectangle() {

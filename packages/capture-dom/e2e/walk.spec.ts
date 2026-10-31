@@ -890,3 +890,50 @@ test("a video with a poster becomes an image node", async ({ page }) => {
   // Without a poster it stays a video placeholder.
   expect(findKind(c, "placeholder", (n) => n.placeholderKind === "video")).toBeTruthy();
 });
+
+test("a quoted local clip-path reference survives", async ({ page }) => {
+  const c = await capture(page, "svg.html");
+  const q = svgs(c).find((x) => x.markup.includes('id="quoted"'))?.markup ?? "";
+  expect(q).toContain('clip-path="url(#cp)"');
+  expect(q).toContain("<clipPath");
+  expect(q).toMatch(/transform="matrix\(/);
+});
+
+test("an SVG takes its name from aria-labelledby or a first-child title", async ({ page }) => {
+  const c = await capture(page, "svg.html");
+  const name = (id: string) => {
+    const hit = svgs(c).find((x) => x.markup.includes(`id="${id}"`));
+    if (!hit) throw new Error(id);
+    return hit.semantic.ariaLabel;
+  };
+  expect(name("quoted")).toBe("Quoted clip");
+  expect(name("titled")).toBe("Titled icon");
+  expect(name("plain")).toBeUndefined();
+});
+
+test("URLs in generated text are cleaned and control elements get none", async ({ page }) => {
+  const c = await capture(page, "pseudo.html");
+  const json = JSON.stringify(c);
+  expect(json).not.toContain("SECRET-TOKEN");
+  expect(json).not.toContain("SECRET-FRAG");
+  expect(json).not.toContain("SECRET-VALUE");
+  expect(json).not.toContain("user:pw");
+  expect(findText(c, "Link").text).toBe("Link (https://example.com/a)");
+  expect(findText(c, "Go").text).toBe("Go");
+});
+
+test("pseudo-elements of a flex container sit beside its first and last child", async ({
+  page,
+}) => {
+  const c = await capture(page, "pseudo.html");
+  const row = findKind(c, "element", (n) => n.layout.display === "flex" && n.children.length === 4);
+  const [first, ...rest] = row.children;
+  const last = rest[rest.length - 1];
+  expect(first?.semantic.tag).toBe("::before");
+  expect(last?.semantic.tag).toBe("::after");
+  const spans = row.children.filter((k) => !k.semantic.tag.startsWith("::"));
+  expect(first && first.box.x + first.box.w + 8).toBeLessThanOrEqual((spans[0]?.box.x ?? 0) + 0.5);
+  expect(last && last.box.x).toBeGreaterThanOrEqual(
+    (spans[spans.length - 1]?.box.x ?? 0) + (spans[spans.length - 1]?.box.w ?? 0)
+  );
+});

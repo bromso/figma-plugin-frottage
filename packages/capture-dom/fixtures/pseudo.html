@@ -18,6 +18,11 @@ body { margin: 0; padding: 16px; font: 14px/20px Arial, sans-serif; color: #111;
 .hidden::before { content: "HIDDEN-PSEUDO"; display: none; }
 .invisible::before { content: "INVISIBLE-PSEUDO"; visibility: hidden; }
 .q::before { content: "Quote " "two"; }
+.tok::after { content: " (" attr(href) ")"; }
+.val::after { content: " " attr(value); }
+.row { display: flex; gap: 8px; align-items: center; }
+.row::before { content: ""; width: 6px; height: 6px; background: rgb(0, 128, 200); }
+.row::after { content: ""; width: 6px; height: 6px; background: rgb(255, 128, 0); }
 .nested span::before { content: "["; }
 .nested span::after { content: "]"; }
 </style>
@@ -34,6 +39,9 @@ body { margin: 0; padding: 16px; font: 14px/20px Arial, sans-serif; color: #111;
 <p class="hidden">Visible text</p>
 <p class="invisible">Seen text</p>
 <p class="q">After quote</p>
+<a class="tok" href="https://user:pw@example.com/a?token=SECRET-TOKEN#SECRET-FRAG">Link</a>
+<button class="val" value="SECRET-VALUE">Go</button>
+<div class="row" id="row"><span>Left</span><span>Right</span></div>
 <p class="nested">One <span>two</span> three</p>
 </body>
 </html>

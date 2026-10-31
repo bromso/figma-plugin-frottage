@@ -341,10 +341,19 @@ export function createApplier(api: PluginAPI) {
           node.y = op.y;
           return node;
         }
-        // The frame keeps the clipping Figma gave it.
         pending = imported;
         parent.appendChild(imported);
         imported.name = op.name;
+        // Resizing moves a frame's children only when they scale with it, so a CSS-scaled SVG
+        // (rendered size different from its own) needs SCALE constraints first.
+        if (Math.abs(imported.width - op.w) > 0.5 || Math.abs(imported.height - op.h) > 0.5) {
+          for (const child of imported.children) {
+            if ("constraints" in child) {
+              child.constraints = { horizontal: "SCALE", vertical: "SCALE" };
+            }
+          }
+        }
+        imported.clipsContent = false;
         imported.resize(clampSize(op.w), clampSize(op.h));
         imported.opacity = op.opacity;
         imported.x = op.x;

@@ -87,7 +87,7 @@ const INHERITED = [
 const REFERENCING = ["clip-path", "mask", "filter", "marker-start", "marker-mid", "marker-end"];
 
 const DATA_IMAGE = /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]*$/i;
-const EXTERNAL_URL = /url\(\s*(['"]?)\s*(?!#)/i;
+const EXTERNAL_URL = /url\(\s*(?!['"]?\s*#)/i;
 const LOCAL_URL = /url\(\s*['"]?\s*(#[^'")\s]+)\s*['"]?\s*\)/i;
 
 const round3 = (n: number) => String(Math.round(n * 1000) / 1000);
@@ -113,6 +113,8 @@ type Flags = {
   explicit: Set<string>;
   /** The `<use>` whose style the target inherits, or null outside an instance. */
   from: Element | null;
+  /** Computed style of `from`, read once. */
+  fromStyle: CSSStyleDeclaration | null;
   inDefs: boolean;
   depth: number;
   stack: Element[];
@@ -126,7 +128,8 @@ function colorValue(value: string): { value: string; alpha: number } | null {
   if (local) return { value: `url(${local[1]})`, alpha: 1 };
   if (/url\(/i.test(v)) return { value: "none", alpha: 1 };
   const c = parseComputedColor(v);
-  if (!c) return null;
+  // Never omit a paint: an unreadable colour keeps a plain keyword, else becomes none.
+  if (!c) return { value: /^[a-z]+$/i.test(v) ? v.toLowerCase() : "none", alpha: 1 };
   return { value: `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`, alpha: c.a };
 }
 
@@ -188,10 +191,7 @@ function inlineStyle(st: State, orig: Element, clone: Element, s: CSSStyleDeclar
     if (m) st.refs.add(idOf((m[1] as string).slice(1)));
   };
   // Inside a <use> instance, what the target does not declare itself comes from the <use>.
-  const own = (prop: string) =>
-    f.from && !f.explicit.has(prop)
-      ? f.from.ownerDocument.defaultView?.getComputedStyle(f.from)
-      : s;
+  const own = (prop: string) => (f.fromStyle && !f.explicit.has(prop) ? f.fromStyle : s);
   const read = (prop: string) => (own(prop) ?? s).getPropertyValue(prop);
 
   for (const prop of REFERENCING) {
@@ -212,7 +212,7 @@ function inlineStyle(st: State, orig: Element, clone: Element, s: CSSStyleDeclar
   if (!LEAVES.has(tag)) return;
 
   // `fill="currentColor"` written on the target reads the <use>'s colour, not the sprite's.
-  const colorOfSource = () => f.from?.ownerDocument.defaultView?.getComputedStyle(f.from).color;
+  const colorOfSource = () => f.fromStyle?.color;
   const paint = (prop: "fill" | "stroke") => {
     let raw = read(prop);
     if (f.from && /^currentcolor$/i.test((orig.getAttribute(prop) ?? "").trim())) {
@@ -302,6 +302,10 @@ function copyElement(
   if (!isRoot) {
     const opacity = Number.parseFloat(s.opacity);
     if (Number.isFinite(opacity) && opacity !== 1) clone.setAttribute("opacity", round3(opacity));
+    // A CSS transform (from a rule) is not in the attributes; the computed one covers both.
+    if (s.transform && s.transform !== "none" && s.transform.startsWith("matrix(")) {
+      clone.setAttribute("transform", s.transform);
+    }
     inlineStyle(st, orig, clone, s, f);
   }
   parent?.appendChild(clone);
@@ -338,6 +342,7 @@ function inlineUse(st: State, use: Element, parent: Element, f: Flags) {
   const flags: Flags = {
     explicit: new Set(),
     from: use,
+    fromStyle: s,
     inDefs: false,
     depth: f.depth + 1,
     stack: [...f.stack, target],
@@ -389,7 +394,14 @@ export function serialiseSvg(el: SVGSVGElement): string {
     have: new Set(),
     tried: new Set(),
   };
-  const flags: Flags = { explicit: new Set(), from: null, inDefs: false, depth: 0, stack: [] };
+  const flags: Flags = {
+    explicit: new Set(),
+    from: null,
+    fromStyle: null,
+    inDefs: false,
+    depth: 0,
+    stack: [],
+  };
   const root = copyElement(st, el, null, flags, true);
   if (!root) throw new Error("not an svg element");
 

@@ -669,9 +669,27 @@ test("applier creates a vector frame and sizes it", async () => {
   expect(v.name).toBe("Svg");
   expect([v.x, v.y, v.width, v.height, v.opacity]).toEqual([7, 8, 24, 16, 0.5]);
   expect(v.parent).toBe(f.node(r.rootId));
-  // The frame keeps the clipping Figma gave it.
   expect(v.clipsContent).toBe(false);
   expect(r.failedOps).toBe(0);
+});
+
+test("an svg shown at another size scales its vectors", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp("<svg/>", { w: 48, h: 12 })]);
+  const v = f.node((await a.end()).rootId).children[0];
+  expect(v.children[0].constraints).toEqual({ horizontal: "SCALE", vertical: "SCALE" });
+  expect([v.children[0].width, v.children[0].height]).toEqual([48, 12]);
+});
+
+test("an svg already at its size keeps its default constraints", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp("<svg/>", { w: 24.3, h: 24 })]);
+  const v = f.node((await a.end()).rootId).children[0];
+  expect(v.children[0].constraints).toEqual({ horizontal: "MIN", vertical: "MIN" });
 });
 
 test("a rejected svg becomes a placeholder and the import continues", async () => {

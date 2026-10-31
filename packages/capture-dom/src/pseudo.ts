@@ -1,5 +1,6 @@
 import type { CaptureNode, ElementNode, TextNode } from "@repo/capture-schema";
 import { colorOf, px, readLayout, readStyle, readTransform } from "./styles";
+import { cleanText } from "./urls";
 
 export type Box = { x: number; y: number; w: number; h: number };
 export type Which = "before" | "after";
@@ -36,6 +37,7 @@ export type Pseudo = {
   mode: "inline" | "box";
 };
 
+const CONTROLS = new Set(["input", "textarea", "select", "button", "option", "output"]);
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function unescapeString(body: string): string {
@@ -49,13 +51,10 @@ function unescapeString(body: string): string {
 
 /**
  * The text of a computed `content` value, or null when nothing is generated (`none`, `normal`).
- * Quoted strings are kept; `attr()` is read from the element's attributes unless the element is a
- * secret field; everything else is left out and named in `approximated`.
+ * Quoted strings are kept (the browser has already turned `attr()` into one); everything else is
+ * left out and named in `approximated`. URLs inside the text lose query, fragment and userinfo.
  */
-export function parseContent(
-  value: string,
-  attr: (name: string) => string
-): { text: string; approximated: string[] } | null {
+export function parseContent(value: string): { text: string; approximated: string[] } | null {
   const v = value.trim();
   if (v === "" || v === "none" || v === "normal") return null;
   let text = "";
@@ -89,10 +88,8 @@ export function parseContent(
           else if (c === "(") depth++;
           else if (c === ")" && --depth === 0) break;
         }
-        const args = v.slice(j + 1, k);
-        if (name === "attr")
-          text += attr((args.trim().split(/[\s,]/)[0] ?? "").replace(/^.*\|/, ""));
-        else approximated.push(`${name}()`);
+        // Browsers resolve attr() before the computed value is read; one left here is unreadable.
+        approximated.push(`${name}()`);
         i = k + 1;
       } else {
         approximated.push(name || "content");
@@ -100,7 +97,7 @@ export function parseContent(
       }
     }
   }
-  return { text, approximated };
+  return { text: cleanText(text), approximated };
 }
 
 function paints(s: CSSStyleDeclaration): boolean {
@@ -137,10 +134,10 @@ function compute(el: Element, which: Which, ctx: PseudoCtx): Pseudo | null {
   if (ctx.isSecret(el)) return null;
   const style = ctx.cs(el, `::${which}`);
   if (style.display === "none") return null;
-  const parsed = parseContent(style.content, (name) =>
-    name && !ctx.isSecret(el) ? (el.getAttribute(name) ?? "") : ""
-  );
+  const parsed = parseContent(style.content);
   if (!parsed) return null;
+  // Generated text on a form control is never kept; its box and paint still are.
+  if (CONTROLS.has(el.localName)) parsed.text = "";
   const flow =
     style.display === "inline" &&
     style.position === "static" &&
@@ -264,6 +261,14 @@ export function pseudoNodes(el: Element, which: Which, ctx: PseudoCtx): CaptureN
       which === "before"
         ? hostBox.y + px(host.borderTopWidth) + px(host.paddingTop)
         : hostBox.y + hostBox.h - px(host.borderBottomWidth) - px(host.paddingBottom) - h;
+    // In a row flex container a generated box is an item, next to the first or last child.
+    const sibling = which === "before" ? el.firstElementChild : el.lastElementChild;
+    if (host.display.includes("flex") && host.flexDirection.startsWith("row") && sibling) {
+      const sb = ctx.pageBox(sibling);
+      const gap = px(host.columnGap);
+      x = which === "before" ? sb.x - gap - w : sb.x + sb.w + gap;
+      y = sb.y;
+    }
   }
   const box: Box = { x: round2(x), y: round2(y), w: round2(w), h: round2(h) };
   if (!(box.w > 0 && box.h > 0)) return [];

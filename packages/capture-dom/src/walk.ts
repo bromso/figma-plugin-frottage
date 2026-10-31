@@ -26,7 +26,7 @@ import {
   readStyle,
   readTransform,
 } from "./styles";
-import { MAX_SVG_BYTES, serialiseSvg } from "./svg";
+import { MAX_SVG_BYTES, SvgTooLargeError, serialiseSvg } from "./svg";
 import { cleanCss, cleanUrl, rememberUrl } from "./urls";
 
 export type CaptureEnv = {
@@ -629,6 +629,19 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   // ---------- Elements
 
+  /** An SVG's accessible name from `aria-labelledby` or a first-child `<title>`; text only. */
+  function svgName(el: Element): string {
+    const tree = el.getRootNode() as Partial<Document>;
+    const ids = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean);
+    const named = ids
+      .map((id) => tree.getElementById?.(id)?.textContent?.trim() ?? "")
+      .filter(Boolean)
+      .join(" ");
+    if (named) return named;
+    const first = el.firstElementChild;
+    return first?.localName === "title" ? (first.textContent?.trim() ?? "") : "";
+  }
+
   function semanticOf(el: Element): ElementNode["semantic"] {
     const tag = el.localName;
     const semantic: ElementNode["semantic"] = { tag };
@@ -636,6 +649,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     if (role) semantic.role = role;
     const label = el.getAttribute("aria-label");
     if (label) semantic.ariaLabel = label;
+    else if (tag === "svg" && el.namespaceURI === SVG_NS) {
+      const name = svgName(el);
+      if (name) semantic.ariaLabel = name;
+    }
     if (/^h[1-6]$/.test(tag)) semantic.headingLevel = Number(tag[1]);
     const landmarks: Record<string, string> = {
       header: "banner",
@@ -785,18 +802,19 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     }
 
     if (el.namespaceURI === SVG_NS && tag === "svg") {
-      let markup: string;
+      let markup = "";
+      let why = "it could not be serialised";
       try {
         markup = serialiseSvg(el as SVGSVGElement);
-      } catch {
-        markup = "";
+        if (utf8Length(markup) > MAX_SVG_BYTES) {
+          why = `it is over ${MAX_SVG_BYTES / 1024} KiB`;
+          markup = "";
+        }
+      } catch (e) {
+        if (e instanceof SvgTooLargeError) why = "it has too many elements";
       }
-      if (markup === "" || markup.length > MAX_SVG_BYTES || utf8Length(markup) > MAX_SVG_BYTES) {
-        warn(
-          "svg-too-large",
-          id,
-          `An inline SVG over ${MAX_SVG_BYTES / 1024} KiB was left as a placeholder`
-        );
+      if (markup === "") {
+        warn("svg-too-large", id, `An inline SVG was left as a placeholder: ${why}`);
         return [placeholder(common, "blocked-image")];
       }
       return [{ ...common, kind: "svg", markup }];
