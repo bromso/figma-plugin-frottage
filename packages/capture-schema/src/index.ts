@@ -2,10 +2,10 @@ export {
   type FrottageErrorCode,
   FrottageFileError,
   LIMITS,
+  PUSH_SLICE_BYTES,
   packFrottage,
   unpackFrottage,
 } from "./container";
-export { captureJsonSchema } from "./json-schema";
 export { countNodes, type ParseResult, parseCapture } from "./parse";
 export {
   type Capture,
