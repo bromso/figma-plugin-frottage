@@ -14,18 +14,28 @@ const DOWNLOAD_MAX_POLLS = 240;
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+// Concurrent callers share one createDocument call (the pattern in Chrome's docs). This
+// only de-duplicates within one worker run; it is not state a run depends on.
+let creating: Promise<void> | null = null;
+
 async function ensureOffscreen(): Promise<void> {
   const existing = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
   if (existing.length > 0) return;
-  try {
-    await chrome.offscreen.createDocument({
-      url: OFFSCREEN_URL,
-      reasons: ["BLOBS"],
-      justification: "Pack the capture and create a Blob URL for the download.",
-    });
-  } catch (error) {
-    if (!/single offscreen/i.test(errorText(error))) throw error;
+  if (!creating) {
+    creating = chrome.offscreen
+      .createDocument({
+        url: OFFSCREEN_URL,
+        reasons: ["BLOBS"],
+        justification: "Pack the capture and create a Blob URL for the download.",
+      })
+      .catch((error) => {
+        if (!/single offscreen/i.test(errorText(error))) throw error;
+      })
+      .finally(() => {
+        creating = null;
+      });
   }
+  await creating;
 }
 
 async function toOffscreen(message: OffscreenMessage): Promise<Reply | undefined> {
@@ -35,7 +45,7 @@ async function toOffscreen(message: OffscreenMessage): Promise<Reply | undefined
 
 async function startCapture(tabId: number): Promise<Reply> {
   const runId = crypto.randomUUID();
-  const started = await toOffscreen({ target: "offscreen", type: "run-start", runId, tabId });
+  const started = await toOffscreen({ target: "offscreen", type: "run-start", runId });
   if (!started?.ok) return started ?? { ok: false, error: "The capture could not start" };
   try {
     await chrome.scripting.executeScript({
@@ -61,7 +71,9 @@ async function saveFile(url: string, filename: string): Promise<Reply> {
     const id = await chrome.downloads.download({ url, filename, saveAs: false });
     for (let i = 0; i < DOWNLOAD_MAX_POLLS; i++) {
       const [item] = await chrome.downloads.search({ id });
-      if (item?.state === "complete") return { ok: true };
+      if (item?.state === "complete") {
+        return { ok: true, filename: item.filename.split(/[\\/]/).pop() };
+      }
       if (item?.state === "interrupted") {
         return { ok: false, error: `The download was interrupted (${item.error})` };
       }
@@ -86,10 +98,14 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
     saveFile(message.url, message.filename).then(sendResponse);
     return true;
   }
+  if (message.type === "close-offscreen") {
+    chrome.offscreen.closeDocument().catch(() => {});
+    return;
+  }
 });
 
 // The page script's port ends here; every message is passed on to the offscreen document
-// over a second port, so a closed page shows up there as a disconnect.
+// over a second port, so a closed or navigated page shows up there as a disconnect.
 chrome.runtime.onConnect.addListener((port) => {
   if (!port.name.startsWith(CAPTURE_PORT)) return;
   const runId = port.name.slice(CAPTURE_PORT.length);
@@ -98,12 +114,3 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onDisconnect.addListener(() => relay.disconnect());
   relay.onDisconnect.addListener(() => port.disconnect());
 });
-
-// A navigation destroys the page script, so the worker watches for it. The offscreen
-// document knows which tab is being captured and ignores the rest.
-const forwardTabEvent = (tabId: number) =>
-  chrome.runtime.sendMessage({ target: "offscreen", type: "tab-event", tabId }).catch(() => {});
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status === "loading") forwardTabEvent(tabId);
-});
-chrome.tabs.onRemoved.addListener((tabId) => forwardTabEvent(tabId));

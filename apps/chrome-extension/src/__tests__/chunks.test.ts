@@ -26,6 +26,19 @@ describe("chunks", () => {
     expect(Math.max(...sizes)).toBeLessThanOrEqual(CHUNK_BYTES);
   });
 
+  const wire = (c: string) => new TextEncoder().encode(JSON.stringify({ data: c })).length;
+
+  test.each([
+    ["CJK", "中", 12_000_000],
+    ["quotes", '"', 10_000_000],
+    ["control characters", "\u0001", 6_000_000],
+    ["emoji", "😀", 8_000_000],
+  ])("serialised chunk messages stay within the limit (%s)", (_name, ch, n) => {
+    const chunks = splitIntoChunks((ch as string).repeat(n as number));
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const c of chunks) expect(wire(c)).toBeLessThanOrEqual(CHUNK_BYTES);
+  });
+
   test("chunks may arrive out of order and the text is returned once", () => {
     const text = "0123456789".repeat(5);
     const chunks = splitIntoChunks(text, 10);

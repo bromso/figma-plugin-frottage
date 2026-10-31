@@ -14,7 +14,8 @@ export type RunDeps = {
   pack: (capture: Capture, assets: Map<string, Uint8Array>) => Uint8Array;
   makeBlobUrl: (bytes: Uint8Array) => string;
   revokeUrl: (url: string) => void;
-  download: (req: { url: string; filename: string }) => Promise<void>;
+  /** Resolves with the basename Chrome actually saved (it may differ from the requested one). */
+  download: (req: { url: string; filename: string }) => Promise<string | undefined>;
   report: (status: RunStatus) => void;
   setTimer: (fn: () => void, ms: number) => unknown;
   clearTimer: (handle: unknown) => void;
@@ -31,7 +32,6 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
  */
 export class CaptureRun {
   private runId: string | null = null;
-  private tabId = -1;
   private active = false;
   private capture: ChunkAssembler | null = null;
   private captureText: string | null = null;
@@ -40,10 +40,9 @@ export class CaptureRun {
 
   constructor(private deps: RunDeps) {}
 
-  start(runId: string, tabId: number): void {
+  start(runId: string): void {
     if (this.active) throw new Error("A capture is already running");
     this.runId = runId;
-    this.tabId = tabId;
     this.active = true;
     this.capture = new ChunkAssembler();
     this.captureText = null;
@@ -85,12 +84,25 @@ export class CaptureRun {
 
   onPortClosed(runId: string): void {
     if (!this.mine(runId) || this.status.state !== "capturing") return;
-    this.fail("The page closed the connection before the capture finished");
+    this.fail("The page closed or navigated before the capture finished");
   }
 
-  onTabEvent(tabId: number): void {
-    if (!this.active || tabId !== this.tabId || this.status.state !== "capturing") return;
-    this.fail("The tab navigated or closed before the capture finished");
+  /** The page is still working (for example fetching images); restart the no-progress timer. */
+  onHeartbeat(runId: string): void {
+    if (!this.mine(runId) || this.status.state !== "capturing") return;
+    this.arm();
+  }
+
+  /** Returns the current status; a finished run's status is handed out once, then cleared. */
+  take(): RunStatus {
+    const status = this.status;
+    if (status.state === "saved" || status.state === "error") this.status = { state: "idle" };
+    return status;
+  }
+
+  /** The popup confirmed it received `status`, so it need not be held for the next open. */
+  acknowledge(status: RunStatus): RunStatus | undefined {
+    return this.status === status ? this.take() : undefined;
   }
 
   /** Called by the worker when injection fails. */
@@ -137,9 +149,9 @@ export class CaptureRun {
       url = this.deps.makeBlobUrl(bytes);
       const filename = captureFilename(capture.source.url, this.deps.now());
       this.set({ state: "saving" });
-      await this.deps.download({ url, filename });
+      const saved = await this.deps.download({ url, filename });
       this.active = false;
-      this.set({ state: "saved", filename });
+      this.set({ state: "saved", filename: saved ?? filename });
     } catch (e) {
       this.fail(`Could not save the file: ${message(e)}`);
     } finally {

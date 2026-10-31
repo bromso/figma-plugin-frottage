@@ -17,6 +17,7 @@ function setup(over: Partial<RunDeps> = {}) {
     revokeUrl: (u) => revoked.push(u),
     download: async (req) => {
       downloads.push(req);
+      return undefined;
     },
     report: (s) => statuses.push(s),
     setTimer: (fn, ms) => {
@@ -57,7 +58,7 @@ describe("CaptureRun", () => {
   let t: ReturnType<typeof setup>;
   beforeEach(() => {
     t = setup();
-    t.run.start("r1", 7);
+    t.run.start("r1");
   });
 
   test("happy path: chunks, end, pack, download with the page's hostname", async () => {
@@ -114,12 +115,57 @@ describe("CaptureRun", () => {
     expect(last(t.statuses)).toMatchObject({ state: "saved" });
   });
 
-  test("navigation of the captured tab reports an error; other tabs are ignored", () => {
-    t.run.onTabEvent(99);
-    expect(last(t.statuses)).toMatchObject({ state: "capturing" });
-    t.run.onTabEvent(7);
+  test("disconnect before end (navigation, close, crash) reports an error", () => {
+    t.run.onPortClosed("r1");
     expect(last(t.statuses)).toMatchObject({ state: "error" });
-    expect((last(t.statuses) as { message: string }).message).toMatch(/navigat|closed/i);
+    expect((last(t.statuses) as { message: string }).message).toMatch(/closed or navigated/);
+  });
+
+  test("a heartbeat restarts the no-progress timer", () => {
+    const before = [...t.timers.keys()][0];
+    t.run.onHeartbeat("r1");
+    expect(t.timers.size).toBe(1);
+    expect([...t.timers.keys()][0]).not.toBe(before);
+    expect(last(t.statuses)).toMatchObject({ state: "capturing" });
+  });
+
+  test("a finished status is handed out once, then cleared", async () => {
+    t.run.onPageError("r1", "boom");
+    const first = t.run.take();
+    expect(first).toMatchObject({ state: "error" });
+    expect(t.run.take()).toEqual({ state: "idle" });
+  });
+
+  test("a run saved while the popup is closed is still held", async () => {
+    sendCapture(t.run, "r1");
+    t.run.onEnd("r1");
+    await tick();
+    expect(t.run.take()).toEqual({ state: "saved", filename: "example.com-2026-10-31.frottage" });
+    expect(t.run.take()).toEqual({ state: "idle" });
+  });
+
+  test("an acknowledged status is not held for the next open", () => {
+    t.run.onPageError("r1", "boom");
+    const status = t.run.status;
+    expect(t.run.acknowledge(status)).toBe(status);
+    expect(t.run.take()).toEqual({ state: "idle" });
+  });
+
+  test("a busy status is never cleared by take", () => {
+    expect(t.run.take()).toEqual({ state: "capturing" });
+    expect(t.run.take()).toEqual({ state: "capturing" });
+  });
+
+  test("the saved name is the basename Chrome reports", async () => {
+    const f = setup({ download: async () => "example.com-2026-10-31 (1).frottage" });
+    f.run.start("r3");
+    sendCapture(f.run, "r3");
+    f.run.onEnd("r3");
+    await tick();
+    expect(last(f.statuses)).toEqual({
+      state: "saved",
+      filename: "example.com-2026-10-31 (1).frottage",
+    });
   });
 
   test("a page error is reported", () => {
@@ -153,7 +199,7 @@ describe("CaptureRun", () => {
         throw new Error("disk full");
       },
     });
-    f.run.start("r2", 1);
+    f.run.start("r2");
     sendCapture(f.run, "r2");
     f.run.onEnd("r2");
     await tick();
@@ -176,6 +222,6 @@ describe("CaptureRun", () => {
   });
 
   test("a second start while running is refused", () => {
-    expect(() => t.run.start("r2", 1)).toThrow(/already/i);
+    expect(() => t.run.start("r2")).toThrow(/already/i);
   });
 });

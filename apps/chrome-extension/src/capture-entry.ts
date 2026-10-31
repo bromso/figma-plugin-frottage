@@ -6,6 +6,9 @@ import pkg from "../package.json";
 import { splitIntoChunks } from "./chunks";
 import { CAPTURE_PORT, type PageMessage } from "./messages";
 
+/** The offscreen timeout is 60 s; stay well inside it. */
+const HEARTBEAT_MS = 10_000;
+
 type RunWindow = Window & { __frottageRunId?: string };
 
 (() => {
@@ -16,6 +19,11 @@ type RunWindow = Window & { __frottageRunId?: string };
 
   const port = chrome.runtime.connect({ name: `${CAPTURE_PORT}${runId}` });
   const send = (message: PageMessage) => port.postMessage(message);
+
+  // Tells the offscreen document the page is still working, so its 60 s no-progress timer
+  // restarts. It fires during asynchronous work (image fetches); a synchronous walk blocks it.
+  send({ type: "heartbeat" });
+  const heartbeat = setInterval(() => send({ type: "heartbeat" }), HEARTBEAT_MS);
 
   try {
     const capture = captureDocument(document, {
@@ -31,5 +39,8 @@ type RunWindow = Window & { __frottageRunId?: string };
     send({ type: "end" });
   } catch (error) {
     send({ type: "error", message: error instanceof Error ? error.message : String(error) });
+  } finally {
+    clearInterval(heartbeat);
+    port.disconnect();
   }
 })();

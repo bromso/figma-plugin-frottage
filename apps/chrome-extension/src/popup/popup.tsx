@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { RunStatus } from "../capture-run";
 import type { PopupMessage, Reply } from "../messages";
-import { isRestrictedUrl } from "../page";
+import { friendlyError, isRestrictedUrl } from "../page";
 
 const dark = window.matchMedia("(prefers-color-scheme: dark)");
 const applyTheme = () => document.documentElement.classList.toggle("dark", dark.matches);
@@ -36,13 +36,21 @@ function Popup() {
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       setTabId(tab?.id ?? null);
-      setRestricted(tab?.id === undefined || isRestrictedUrl(tab.url));
+      setRestricted(isRestrictedUrl(tab?.url));
     });
+    // A run that finished while the popup was closed is shown once; the offscreen document
+    // clears it when read.
     currentStatus().then((s) => {
-      if (s && BUSY.has(s.state)) setStatus(s);
+      if (s && s.state !== "idle") setStatus(s);
     });
-    const onMessage = (message: PopupMessage) => {
-      if (message?.target === "popup" && message.type === "status") setStatus(message.status);
+    const onMessage = (
+      message: PopupMessage,
+      _sender: chrome.runtime.MessageSender,
+      sendResponse: (reply: { received: boolean }) => void
+    ) => {
+      if (message?.target !== "popup" || message.type !== "status") return;
+      setStatus(message.status);
+      sendResponse({ received: true });
     };
     chrome.runtime.onMessage.addListener(onMessage);
     return () => chrome.runtime.onMessage.removeListener(onMessage);
@@ -93,7 +101,7 @@ function Popup() {
         {status.state === "saved" && <Type>Saved {status.filename} to your Downloads.</Type>}
         {status.state === "error" && (
           <Type role="alert" className="text-destructive">
-            {status.message}
+            {friendlyError(status.message)}
           </Type>
         )}
       </div>

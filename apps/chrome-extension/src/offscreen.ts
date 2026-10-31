@@ -10,7 +10,14 @@ import {
   type Reply,
 } from "./messages";
 
-const run = new CaptureRun({
+/** Once a finished run's status has been read, the offscreen document has nothing left to hold. */
+function finished(status?: RunStatus): void {
+  if (status && (status.state === "saved" || status.state === "error")) {
+    chrome.runtime.sendMessage({ target: "sw", type: "close-offscreen" }).catch(() => {});
+  }
+}
+
+const run: CaptureRun = new CaptureRun({
   parse: (text) => {
     const parsed = parseCapture(JSON.parse(text));
     if (!parsed.ok) throw new Error(parsed.detail ?? parsed.reason);
@@ -28,10 +35,18 @@ const run = new CaptureRun({
       filename,
     });
     if (!reply?.ok) throw new Error(reply ? reply.error : "The download did not start");
+    return reply.filename;
   },
   report: (status: RunStatus) => {
     const message: PopupMessage = { target: "popup", type: "status", status };
-    chrome.runtime.sendMessage(message).catch(() => {});
+    // A reply means a popup is open and showed the status; otherwise the run holds it until
+    // the popup next opens and asks.
+    chrome.runtime
+      .sendMessage(message)
+      .then((reply?: { received?: boolean }) => {
+        if (reply?.received) finished(run.acknowledge(status));
+      })
+      .catch(() => {});
   },
   setTimer: (fn, ms) => setTimeout(fn, ms),
   clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -44,7 +59,7 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
   switch (message.type) {
     case "run-start":
       try {
-        run.start(message.runId, message.tabId);
+        run.start(message.runId);
         sendResponse({ ok: true } satisfies Reply);
       } catch (error) {
         sendResponse({
@@ -57,12 +72,12 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
       run.onInjectFailed(message.runId, message.detail);
       sendResponse({ ok: true } satisfies Reply);
       return;
-    case "tab-event":
-      run.onTabEvent(message.tabId);
+    case "get-status": {
+      const status = run.take();
+      sendResponse(status);
+      finished(status);
       return;
-    case "get-status":
-      sendResponse(run.status);
-      return;
+    }
   }
 });
 
@@ -74,6 +89,9 @@ chrome.runtime.onConnect.addListener((port) => {
     switch (message.type) {
       case "chunk":
         run.onChunk(runId, message);
+        return;
+      case "heartbeat":
+        run.onHeartbeat(runId);
         return;
       case "end":
         run.onEnd(runId);

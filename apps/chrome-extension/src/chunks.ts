@@ -1,4 +1,4 @@
-/** Largest chunk, in UTF-16 code units. Runtime messages fail at 64 MiB (Phase 0); JSON-encoded, 16 MiB of text stays well under. */
+/** Largest serialised chunk message, in bytes. Runtime messages fail at 64 MiB (Phase 0). */
 export const CHUNK_BYTES = 16 * 1024 * 1024;
 
 /** One piece of a payload on its way from the page script to the offscreen document. */
@@ -11,16 +11,45 @@ export type ChunkMessage = {
   data: string;
 };
 
-export function splitIntoChunks(text: string, size: number = CHUNK_BYTES): string[] {
+/** Room in a chunk message for the JSON around `data`. */
+const ENVELOPE_BYTES = 1024;
+
+/** Worst-case JSON-serialised UTF-8 size of one UTF-16 unit (a lone surrogate or control char is `\\uXXXX`). */
+function wireCost(code: number): number {
+  if (code < 0x20) return 6;
+  if (code === 0x22 || code === 0x5c) return 2;
+  if (code < 0x80) return 1;
+  if (code < 0x800) return 2;
+  return 3;
+}
+
+/**
+ * Splits `text` so that each chunk, once JSON-serialised into a message, stays within
+ * `size` bytes (the default leaves room for the envelope). `String.length` is not enough:
+ * "中" is one unit and three bytes on the wire. A surrogate pair is never split.
+ */
+export function splitIntoChunks(
+  text: string,
+  size: number = CHUNK_BYTES - ENVELOPE_BYTES
+): string[] {
   if (text.length === 0) return [""];
   const chunks: string[] = [];
   let start = 0;
   while (start < text.length) {
-    let end = Math.min(start + size, text.length);
-    // Never end between the halves of a surrogate pair.
-    if (end < text.length && end - start > 1) {
-      const code = text.charCodeAt(end - 1);
-      if (code >= 0xd800 && code <= 0xdbff) end--;
+    let end = start;
+    let bytes = 0;
+    while (end < text.length) {
+      const code = text.charCodeAt(end);
+      const isPair =
+        code >= 0xd800 &&
+        code <= 0xdbff &&
+        end + 1 < text.length &&
+        (text.charCodeAt(end + 1) & 0xfc00) === 0xdc00;
+      const cost = isPair ? 4 : code >= 0xd800 && code <= 0xdfff ? 6 : wireCost(code);
+      // Always take at least one character so tiny budgets still progress.
+      if (end > start && bytes + cost > size) break;
+      bytes += cost;
+      end += isPair ? 2 : 1;
     }
     chunks.push(text.slice(start, end));
     start = end;

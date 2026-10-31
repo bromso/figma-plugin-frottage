@@ -7,21 +7,26 @@ export const CAPTURE_PORT = "frottage-capture:";
 export const RELAY_PORT = "frottage-relay:";
 
 /** What the page script sends over its port. */
-export type PageMessage = ChunkMessage | { type: "end" } | { type: "error"; message: string };
+export type PageMessage =
+  | ChunkMessage
+  | { type: "heartbeat" }
+  | { type: "end" }
+  | { type: "error"; message: string };
 
 /** Popup to worker. */
 export type SwMessage =
   | { target: "sw"; type: "start"; tabId: number }
-  | { target: "sw"; type: "download"; url: string; filename: string };
+  | { target: "sw"; type: "download"; url: string; filename: string }
+  | { target: "sw"; type: "close-offscreen" };
 
-/** Worker, popup or tab events to the offscreen document. */
+/** Worker and popup messages to the offscreen document. */
 export type OffscreenMessage =
-  | { target: "offscreen"; type: "run-start"; runId: string; tabId: number }
+  | { target: "offscreen"; type: "run-start"; runId: string }
   | { target: "offscreen"; type: "inject-failed"; runId: string; detail: string }
-  | { target: "offscreen"; type: "tab-event"; tabId: number }
   | { target: "offscreen"; type: "get-status" };
 
 /** Offscreen document to the popup. */
 export type PopupMessage = { target: "popup"; type: "status"; status: RunStatus };
 
-export type Reply = { ok: true } | { ok: false; error: string };
+/** `filename` is the saved basename, set by the worker for downloads. */
+export type Reply = { ok: true; filename?: string } | { ok: false; error: string };
