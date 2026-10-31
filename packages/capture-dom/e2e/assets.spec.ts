@@ -304,6 +304,19 @@ test("no query, fragment or userinfo reaches the capture or the plan, and fetche
   );
 });
 
+test("a huge data: link is stored as a short form", async ({ page }) => {
+  const r = await runAssets(page, "form.html", () => {
+    const a = document.createElement("a");
+    a.textContent = "Export";
+    a.style.display = "block";
+    a.href = `data:text/csv;base64,${"A".repeat(2_000_000)}`;
+    document.body.append(a);
+  });
+  const json = JSON.stringify(r.capture);
+  expect(json.length).toBeLessThan(200_000);
+  expect(json).toContain("[2000021 chars]");
+});
+
 function bgLayersAll(c: Capture) {
   const out: Extract<CaptureNode, { kind: "element" }>["style"]["backgroundImages"] = [];
   const go = (n: CaptureNode) => {

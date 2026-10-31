@@ -52,6 +52,7 @@ const sendCapture = (run: CaptureRun, runId: string, text = JSON.stringify(CAPTU
     });
   });
 };
+const TOO_MUCH = "This page has too much content to capture. Try a smaller section.";
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe("CaptureRun", () => {
@@ -191,6 +192,54 @@ describe("CaptureRun", () => {
     await tick();
     expect(last(t.statuses)).toMatchObject({ state: "error" });
     expect(t.downloads).toEqual([]);
+  });
+
+  test("capture JSON over the import limit fails with a plain message and packs nothing", async () => {
+    let packed = 0;
+    const big = setup({
+      maxCaptureBytes: 100,
+      pack: () => {
+        packed++;
+        return new Uint8Array();
+      },
+    });
+    big.run.start("r");
+    sendCapture(big.run, "r", JSON.stringify({ ...CAPTURE, pad: "x".repeat(200) }));
+    big.run.onEnd("r");
+    await tick();
+    expect(packed).toBe(0);
+    expect(big.downloads).toHaveLength(0);
+    expect(last(big.statuses)).toEqual({ state: "error", message: TOO_MUCH });
+  });
+
+  test("the limit counts bytes, not characters", async () => {
+    const text = JSON.stringify({ ...CAPTURE, pad: "中".repeat(40) });
+    expect(text.length).toBeLessThan(120);
+    const big = setup({ maxCaptureBytes: 120 });
+    big.run.start("r");
+    sendCapture(big.run, "r", text);
+    big.run.onEnd("r");
+    await tick();
+    expect(last(big.statuses)).toEqual({ state: "error", message: TOO_MUCH });
+  });
+
+  test("the default limit is the importer's", async () => {
+    const { LIMITS } = await import("@repo/capture-schema");
+    const big = setup();
+    big.run.start("r");
+    const text = "x".repeat(LIMITS.captureJsonBytes + 1);
+    big.run.onChunk("r", {
+      type: "chunk",
+      kind: "capture",
+      key: "capture",
+      index: 0,
+      total: 1,
+      data: text,
+    });
+    big.run.onEnd("r");
+    await tick();
+    expect(last(big.statuses)).toEqual({ state: "error", message: TOO_MUCH });
+    expect(big.downloads).toHaveLength(0);
   });
 
   test("a failed download reports an error and revokes the URL", async () => {

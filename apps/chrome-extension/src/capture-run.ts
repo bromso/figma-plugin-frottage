@@ -1,4 +1,4 @@
-import type { Capture } from "@repo/capture-schema";
+import { type Capture, LIMITS } from "@repo/capture-schema";
 import { AssetAssembler, ChunkAssembler, type ChunkMessage } from "./chunks";
 import { captureFilename } from "./page";
 
@@ -24,6 +24,8 @@ export type RunDeps = {
   timeoutMs: number;
   /** Most image bytes accepted from the page. Default 180 MiB, as in the page's budget. */
   maxAssetBytes?: number;
+  /** Most capture JSON bytes packed. Default the importer's limit, so no file it refuses is saved. */
+  maxCaptureBytes?: number;
 };
 
 /** Decoded size of base64 text, without decoding it. */
@@ -33,6 +35,8 @@ const decodedSize = (b64: string) =>
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** 180 MiB of images plus up to 64 MiB of capture.json stays under the 256 MiB import limit. */
 const MAX_ASSET_BYTES = 180 * 1024 * 1024;
+
+const TOO_MUCH_CONTENT = "This page has too much content to capture. Try a smaller section.";
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -112,6 +116,11 @@ export class CaptureRun {
     const text = this.captureText;
     if (text == null) {
       this.fail("The page finished before sending the whole capture");
+      return;
+    }
+    const limit = this.deps.maxCaptureBytes ?? LIMITS.captureJsonBytes;
+    if (new TextEncoder().encode(text).length > limit) {
+      this.fail(TOO_MUCH_CONTENT);
       return;
     }
     this.clear();

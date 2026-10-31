@@ -6,7 +6,8 @@ export const GENERIC_ERROR =
 const MESSAGES = {
   "not-a-frottage-file":
     "This isn't a Frottage file. Capture a page with the extension, then choose its .frottage file.",
-  "too-large": "This file is too large to import. Frottage opens files up to 256 MB.",
+  "too-large":
+    "This file is too large to import. Frottage opens files up to 256 MB, with up to 64 MB of page data. Try capturing a smaller section.",
   "too-many-nodes": "This page has too many elements to import. Try capturing a smaller section.",
   "too-deep": "This page is nested too deeply to import. Try capturing a smaller section.",
   "invalid-capture": "This file is damaged or incomplete. Capture the page again.",

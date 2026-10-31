@@ -9,6 +9,14 @@ async function run(file: File, port = fakePort()) {
   return { port, states };
 }
 
+describe("messageForError", () => {
+  test("too-large names both limits, so oversized page data is not told only 256 MB", () => {
+    const text = messageForError(new FrottageFileError("too-large"));
+    expect(text).toContain("256 MB");
+    expect(text).toContain("64 MB");
+  });
+});
+
 describe("runImport", () => {
   test("sends images before ops, and ops in batches of 50", async () => {
     const port = fakePort();
