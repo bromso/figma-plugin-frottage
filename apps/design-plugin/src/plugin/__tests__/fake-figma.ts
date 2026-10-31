@@ -23,6 +23,8 @@ type Options = {
   charWidth?: number;
   /** Auto line height when no pixel line height is set (default 12). */
   lineHeight?: number;
+  /** Extra px per line, simulating the rounding real Figma applies to line heights. */
+  lineHeightDrift?: number;
 };
 
 const fontId = (f: { family: string; style: string }) => `${f.family}|${f.style}`;
@@ -156,8 +158,12 @@ export function fakeFigma(opts: Options = {}) {
       const charWidth = opts.charWidth ?? 5;
       let autoResize = "NONE";
       const lineHeightPx = () => {
-        const r = (t.ranges ?? []).find((x: any) => x.m === "setRangeLineHeight");
-        return r?.v?.unit === "PIXELS" ? r.v.value : (opts.lineHeight ?? 12);
+        // The tallest pixel line height among the runs, else the automatic height.
+        const px = (t.ranges ?? [])
+          .filter((x: any) => x.m === "setRangeLineHeight" && x.v?.unit === "PIXELS")
+          .map((x: any) => x.v.value as number);
+        const base = px.length > 0 ? Math.max(...px) : (opts.lineHeight ?? 12);
+        return base + (opts.lineHeightDrift ?? 0);
       };
       const countLines = (width: number) => {
         let lines = 1;

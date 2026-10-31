@@ -590,3 +590,43 @@ test("wrapped text uses the first run's pixel line height to judge the line coun
   ]);
   expect(textNodeOf(f).height).toBe(40);
 });
+
+test("a larger later run sets the line height, so the first run's smaller one does not force widening", async () => {
+  const f = fakeFigma({ charWidth: 10 });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a"),
+    wrapped({
+      w: 120,
+      h: 40,
+      runs: [
+        { ...run(0, 5, inter), lineHeight: 10 },
+        { ...run(5, 17, inter), lineHeight: 20 },
+      ],
+    }),
+  ]);
+  const r = await a.end();
+  expect(textNodeOf(f).width).toBe(120);
+  expect(r.rewrappedTexts).toBe(0);
+});
+
+test("the line check counts lines, not pixels, for long paragraphs with fractional line heights", async () => {
+  const f = fakeFigma({ charWidth: 10, lineHeightDrift: 0.05 });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const words = Array.from({ length: 12 }, () => "aaaaa").join(" ");
+  await a.applyBatch([
+    frame("a"),
+    wrapped({
+      text: words,
+      runs: [{ ...run(0, words.length, inter), lineHeight: 12.4 }],
+      w: 50,
+      h: 150,
+      lineCount: 12,
+    }),
+  ]);
+  const r = await a.end();
+  expect(textNodeOf(f).width).toBe(50);
+  expect(r.rewrappedTexts).toBe(0);
+});

@@ -69,7 +69,11 @@ export type PlanOp =
       runs: PlanRun[];
       align: "LEFT" | "CENTER" | "RIGHT" | "JUSTIFIED";
       wrap: boolean;
-      /** Lines the browser laid the text out on; the applier keeps this count. */
+      /**
+       * Lines the browser laid the text out on; the applier keeps this count. Limitation: it
+       * judges lines by total height, so a block whose runs have very different line heights
+       * can pass with a different line count.
+       */
       lineCount: number;
     }
   | {

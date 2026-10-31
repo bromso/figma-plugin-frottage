@@ -257,18 +257,25 @@ export function createApplier(api: PluginAPI) {
           node.y = op.y;
           return node;
         }
-        const first = op.runs[0];
+        // The tallest line sets the line height: the largest pixel value across runs,
+        // or the measured one-line height when a run uses AUTO.
         const oneLine = node.height;
-        const lineHeight = first && first.lineHeight !== null ? first.lineHeight : oneLine;
+        const pixels = op.runs.flatMap((r) => (r.lineHeight === null ? [] : [r.lineHeight]));
+        const lineHeight = Math.max(
+          ...pixels,
+          pixels.length < op.runs.length || pixels.length === 0 ? oneLine : 0
+        );
         const expected = Math.max(op.lineCount, 1) * lineHeight;
+        // Half a line of slack, so the check counts lines and ignores rounding.
+        const slack = lineHeight / 2;
         node.textAutoResize = "HEIGHT";
         node.resize(clampSize(op.w), clampSize(op.h));
         let added = 0;
-        for (let step = 1; node.height > expected + 0.5 && step <= MAX_WIDEN_STEPS; step++) {
+        for (let step = 1; node.height > expected + slack && step <= MAX_WIDEN_STEPS; step++) {
           added = (op.w * step) / 100;
           node.resize(clampSize(op.w + added), clampSize(node.height));
         }
-        if (node.height > expected + 0.5) rewrappedTexts++;
+        if (node.height > expected + slack) rewrappedTexts++;
         node.x = alignedX(op.align, op.x, op.w, op.w + added);
         node.y = op.y;
         return node;
