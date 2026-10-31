@@ -247,8 +247,8 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     }
     if (cursor < len) runs.push(filler(cursor, len));
     report.texts++;
-    // The captured y is the top of the glyph box; a fixed Figma line height starts at the top of
-    // the line box, half the leading higher.
+    // The captured box is the glyph box; a fixed Figma line height starts at the top of the line
+    // box, half the leading higher, and the line box is what auto layout stacks.
     const leading = textLeading(node);
     return {
       op: "text",
@@ -258,7 +258,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
       x,
       y: y - leading,
       w: node.box.w,
-      h: node.box.h,
+      h: node.box.h + 2 * leading,
       text: node.text,
       runs,
       align: mapAlign(dominantAlign(node.runs)),
@@ -350,6 +350,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
           effects: hidden ? [] : mapEffects(s),
           clips: s.overflow.split(/\s+/).some((o) => o !== "" && o !== "visible"),
           layout,
+          childCount: 0, // known once the walk has seen what the children turn into
         };
         const children = visualOrder(node, node.children, layout);
         const repeated = repeatedItems(children);
@@ -434,6 +435,14 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
         break;
     }
     if (op) ops.push(childLayout ? { ...op, childLayout } : op);
+  }
+
+  const childCounts = new Map<string, number>();
+  for (const { parent } of ops) {
+    if (parent !== null) childCounts.set(parent, (childCounts.get(parent) ?? 0) + 1);
+  }
+  for (const op of ops) {
+    if (op.op === "frame") op.childCount = childCounts.get(op.id) ?? 0;
   }
 
   report.nodes = ops.length;

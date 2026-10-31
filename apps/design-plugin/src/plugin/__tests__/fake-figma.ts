@@ -1,7 +1,9 @@
+import { type LayoutOptions, layoutModel } from "./fake-auto-layout";
+
 /**
  * Minimal in-memory stand-in for the Figma plugin API, enforcing the rules the
  * real one does that the applier can trip over (font loading, range bounds,
- * effect fields, minimum size, default frame fill).
+ * effect fields, minimum size, default frame fill, auto layout).
  */
 
 export type FakeNode = Record<string, any> & {
@@ -10,7 +12,7 @@ export type FakeNode = Record<string, any> & {
   children: FakeNode[];
 };
 
-type Options = {
+type Options = LayoutOptions & {
   createImageThrows?: boolean;
   /** Setting a node's name to this value throws, which fails the op. */
   failOn?: string;
@@ -27,6 +29,10 @@ type Options = {
   lineHeight?: number;
   /** Extra px per line, simulating the rounding real Figma applies to line heights. */
   lineHeightDrift?: number;
+  /** Text measures this much wider than the charWidth rule, as Figma's does than Chrome's. */
+  textWiderBy?: number;
+  /** Setting this layout property throws, as for a value Figma refuses. */
+  failLayout?: string;
 };
 
 const fontId = (f: { family: string; style: string }) => `${f.family}|${f.style}`;
@@ -38,6 +44,7 @@ export function fakeFigma(opts: Options = {}) {
   const created: FakeNode[] = [];
   const svgSources: string[] = [];
   const loaded = new Set<string>();
+  const model = layoutModel(opts);
   let seq = 0;
 
   const page: FakeNode = {
@@ -95,20 +102,57 @@ export function fakeFigma(opts: Options = {}) {
         effects = v;
       },
       appendChild(child: FakeNode) {
-        child.parent?.children.splice(child.parent.children.indexOf(child), 1);
-        child.parent = node;
-        node.children.push(child);
+        calls.push("appendChild");
+        const cell = model.isGrid(node) ? model.freeCell(node) : null;
+        join(child, cell);
+      },
+      appendChildAt(child: FakeNode, row: number, column: number) {
+        if (!model.isGrid(node)) throw new Error("appendChildAt needs a grid");
+        calls.push("appendChild");
+        model.checkCell(node, row, column);
+        if (model.occupied(node, row, column)) throw new Error(`cell ${row},${column} is taken`);
+        join(child, [row, column]);
       },
       resize(w: number, h: number) {
         if (!(w >= 0.01) || !(h >= 0.01)) throw new Error("resize below 0.01");
         node.width = w;
         node.height = h;
+        node.layoutState.fix();
+        model.reflow(node);
+        if (model.isLaidOut(node.parent)) model.reflow(node.parent);
       },
       remove() {
+        const parent = node.parent;
         node.removed = true;
-        node.parent?.children.splice(node.parent.children.indexOf(node), 1);
+        parent?.children.splice(parent.children.indexOf(node), 1);
+        if (model.isLaidOut(parent)) model.reflow(parent);
       },
     };
+    const join = (child: FakeNode, cell: [number, number] | null) => {
+      const old = child.parent;
+      old?.children.splice(old.children.indexOf(child), 1);
+      if (model.isLaidOut(old)) model.reflow(old);
+      child.parent = node;
+      node.children.push(child);
+      if (cell) [child.gridRowAnchorIndex, child.gridColumnAnchorIndex] = cell;
+      model.reflow(node);
+    };
+    model.installChild(node);
+    if (type === "FRAME") {
+      model.installFrame(node, () => calls.push("layoutMode"));
+      if (opts.failLayout) {
+        const { get } = Object.getOwnPropertyDescriptor(
+          node,
+          opts.failLayout
+        ) as PropertyDescriptor;
+        Object.defineProperty(node, opts.failLayout, {
+          get,
+          set: () => {
+            throw new Error(`Figma refused ${opts.failLayout}`);
+          },
+        });
+      }
+    }
     page.children.push(node);
     nodes.set(id, node);
     created.push(node);
@@ -199,7 +243,7 @@ export function fakeFigma(opts: Options = {}) {
         },
       });
       // Text measure: fixed width per character, greedy word wrapping at node.width.
-      const charWidth = opts.charWidth ?? 5;
+      const charWidth = (opts.charWidth ?? 5) * (1 + (opts.textWiderBy ?? 0));
       let autoResize = "NONE";
       const lineHeightPx = () => {
         // The tallest pixel line height among the runs, else the automatic height.
@@ -230,7 +274,9 @@ export function fakeFigma(opts: Options = {}) {
         } else if (autoResize === "HEIGHT") {
           t.height = countLines(t.width) * lineHeightPx();
         }
+        if (model.isLaidOut(t.parent)) model.reflow(t.parent);
       };
+      t.remeasure = layout;
       Object.defineProperty(t, "textAutoResize", {
         get: () => autoResize,
         set: (v: string) => {
@@ -294,6 +340,9 @@ export function fakeFigma(opts: Options = {}) {
     hashOf: (bytes: Uint8Array) => hashes.get(Array.from(bytes).join(",")),
     lastRectangle: () => [...created].reverse().find((n) => n.type === "RECTANGLE") as FakeNode,
     lastFrame: () => [...created].reverse().find((n) => n.type === "FRAME") as FakeNode,
+    /** Whether the first call of `a` came before the first call of `b`. */
+    order: (a: string, b: string) => (calls.indexOf(a) < calls.indexOf(b) ? "before" : "after"),
+    frame: (name: string) => created.find((n) => n.name === name) as FakeNode,
     created,
     svgSources,
     page,

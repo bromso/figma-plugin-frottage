@@ -446,6 +446,34 @@ describe("mapCapture", () => {
     expect(at(null)).toBe(100);
     expect(at(12)).toBe(103);
   });
+  test("a text op's box is its line box, which is what auto layout stacks", () => {
+    const op = textOp(
+      withText(
+        textNode("t", {
+          box: { x: 0, y: 100, w: 100, h: 18 },
+          lines: [{ x: 0, y: 100, w: 100, h: 18 }],
+          runs: [run({ lineHeight: 24 })],
+        })
+      )
+    );
+    expect(op).toMatchObject({ y: 97, h: 24 });
+  });
+  test("frames count the direct child ops the applier will receive", () => {
+    const empty = textNode("gone", { text: "", runs: [] });
+    const c = cap(
+      el(
+        "root",
+        [0, 0],
+        [el("a", [0, 0], [textNode("t", {}), empty, el("b", [0, 0])]), el("c", [0, 0])]
+      )
+    );
+    const { ops } = mapCapture(c, inter);
+    const count = (id: string) => (ops.find((o) => o.id === id) as FramePlanOp).childCount;
+    expect(count("root")).toBe(ops.filter((o) => o.parent === "root").length);
+    expect(count("root")).toBe(2);
+    expect(count("a")).toBe(2);
+    expect(count("b")).toBe(0);
+  });
   test("text with no line boxes keeps its y", () => {
     const op = textOp(
       withText(

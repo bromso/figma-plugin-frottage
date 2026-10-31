@@ -24,6 +24,7 @@ const frame = (id: string, parent: string | null = null, extra: object = {}): Pl
   effects: [],
   clips: true,
   layout: { mode: "NONE" },
+  childCount: 0,
   ...extra,
 });
 const run = (start: number, end: number, fontName: FontRef): PlanRun => ({
@@ -333,7 +334,15 @@ test("an import with no root op returns an empty rootId and counts a failure", a
   const a = createApplier(f.figma);
   await a.begin(meta);
   const r = await a.end();
-  expect(r).toEqual({ rootId: "", failedOps: 1, missingImages: 0, rewrappedTexts: 0 });
+  expect(r).toEqual({
+    rootId: "",
+    failedOps: 1,
+    missingImages: 0,
+    rewrappedTexts: 0,
+    autoLayoutFrames: 0,
+    fallbackFrames: 0,
+    fallbackReasons: {},
+  });
 });
 
 test("a failed root op is counted once and fails its children", async () => {

@@ -90,6 +90,8 @@ export type PlanOp = (
       effects: PlanEffect[];
       clips: boolean;
       layout: PlanLayout;
+      /** Direct child ops that follow, so the applier knows when this frame is complete. */
+      childCount: number;
     }
   | {
       op: "text";
