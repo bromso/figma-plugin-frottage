@@ -124,6 +124,14 @@ type Loaded =
  * Mutates and returns `capture`.
  */
 export async function collectAssets(capture: Capture, deps: AssetDeps): Promise<AssetResult> {
+  try {
+    return await collect(capture, deps);
+  } finally {
+    resetDataUrls();
+  }
+}
+
+async function collect(capture: Capture, deps: AssetDeps): Promise<AssetResult> {
   const concurrency = deps.concurrency ?? CONCURRENCY;
   const timeoutMs = deps.timeoutMs ?? TIMEOUT_MS;
   const budget = deps.budgetBytes ?? ASSET_BUDGET_BYTES;
@@ -269,7 +277,6 @@ export async function collectAssets(capture: Capture, deps: AssetDeps): Promise<
 
   const assets = new Map<string, Uint8Array>();
   for (const hash of seen) assets.set(hash, bytesByHash.get(hash) as Uint8Array);
-  resetDataUrls();
   return { capture, assets };
 }
 
@@ -326,24 +333,32 @@ export function readHeader(head: Uint8Array, kind: Kind): Header | null {
   if (kind === "png") return head.length >= 24 ? ok(be32(16), be32(20)) : null;
   if (kind === "gif") return head.length >= 10 ? ok(le16(6), le16(8)) : null;
   if (kind === "webp") {
-    if (head.length < 25) return null;
-    const fourcc = String.fromCharCode(at(12), at(13), at(14), at(15));
-    if (fourcc === "VP8X" && head.length >= 30) {
-      const w = 1 + (at(24) | (at(25) << 8) | (at(26) << 16));
-      return ok(w, 1 + (at(27) | (at(28) << 8) | (at(29) << 16)));
-    }
-    if (fourcc === "VP8L" && at(20) === 0x2f) {
-      const bits = (at(21) | (at(22) << 8) | (at(23) << 16) | (at(24) << 24)) >>> 0;
-      return ok((bits & 0x3fff) + 1, ((bits >>> 14) & 0x3fff) + 1);
-    }
-    if (
-      fourcc === "VP8 " &&
-      head.length >= 30 &&
-      at(23) === 0x9d &&
-      at(24) === 0x01 &&
-      at(25) === 0x2a
-    ) {
-      return ok(le16(26) & 0x3fff, le16(28) & 0x3fff);
+    // RIFF chunks from byte 12: VP8X (canvas size) comes first when present; otherwise walk past
+    // ALPH, ICCP and the like to the image chunk. The loop is bounded by the head we hold.
+    let off = 12;
+    for (let n = 0; n < 64 && off + 8 <= head.length; n++) {
+      const fourcc = String.fromCharCode(at(off), at(off + 1), at(off + 2), at(off + 3));
+      const size =
+        (at(off + 4) | (at(off + 5) << 8) | (at(off + 6) << 16) | (at(off + 7) << 24)) >>> 0;
+      const d = off + 8;
+      if (fourcc === "VP8X" && d + 10 <= head.length) {
+        const w = 1 + (at(d + 4) | (at(d + 5) << 8) | (at(d + 6) << 16));
+        return ok(w, 1 + (at(d + 7) | (at(d + 8) << 8) | (at(d + 9) << 16)));
+      }
+      if (fourcc === "VP8L" && d + 5 <= head.length && at(d) === 0x2f) {
+        const bits = (at(d + 1) | (at(d + 2) << 8) | (at(d + 3) << 16) | (at(d + 4) << 24)) >>> 0;
+        return ok((bits & 0x3fff) + 1, ((bits >>> 14) & 0x3fff) + 1);
+      }
+      if (
+        fourcc === "VP8 " &&
+        d + 10 <= head.length &&
+        at(d + 3) === 0x9d &&
+        at(d + 4) === 0x01 &&
+        at(d + 5) === 0x2a
+      ) {
+        return ok(le16(d + 6) & 0x3fff, le16(d + 8) & 0x3fff);
+      }
+      off = d + size + (size & 1);
     }
     return null;
   }
@@ -474,7 +489,9 @@ async function rasteriseSvg(blob: Blob, hint?: { w: number; h: number }): Promis
  */
 export async function browserNormalise(
   blob: Blob,
-  hint?: { w: number; h: number }
+  hint?: { w: number; h: number },
+  decode: (blob: Blob, options?: ImageBitmapOptions) => Promise<ImageBitmap> = (b, o) =>
+    createImageBitmap(b, o)
 ): Promise<Normalised> {
   const head = new Uint8Array(await blob.slice(0, HEAD_BYTES).arrayBuffer());
   const kind = sniff(head, blob.type);
@@ -493,13 +510,21 @@ export async function browserNormalise(
         : { w: header.w, h: header.h };
   }
   const target = natural ? fitWithin(natural.w, natural.h) : null;
-  const bitmap = await createImageBitmap(
+  const bitmap = await decode(
     blob,
     target?.scaled
       ? { resizeWidth: target.w, resizeHeight: target.h, resizeQuality: "high" }
       : undefined
   );
   try {
+    // The 100 MP cap is best-effort protection for honest large images (the page already
+    // rendered them), not a security boundary. An unknown header skips the check above and relies
+    // on this one, after the decode.
+    if (bitmap.width * bitmap.height > MAX_PIXELS) {
+      throw new Error(
+        `Image is ${bitmap.width} x ${bitmap.height}, over ${MAX_PIXELS / 1e6} megapixels`
+      );
+    }
     // Without a header, or if resizing was not honoured, size comes from the bitmap itself.
     const from = natural ?? { w: bitmap.width, h: bitmap.height };
     const size = fitWithin(bitmap.width, bitmap.height);

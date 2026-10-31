@@ -77,6 +77,24 @@ describe("readHeader", () => {
     expect(readHeader(jpeg(40, 20, 6), "jpeg")).toEqual({ w: 40, h: 20, orientation: 6 });
     expect(readHeader(jpeg(40, 20, 3, true), "jpeg")).toEqual({ w: 40, h: 20, orientation: 3 });
   });
+  test("WebP with ALPH and ICCP chunks before the image chunk", () => {
+    const chunk = (cc: string, payload: number[]) => [
+      ...[...cc].map((c) => c.charCodeAt(0)),
+      payload.length & 255,
+      0,
+      0,
+      0,
+      ...payload,
+      ...(payload.length % 2 ? [0] : []),
+    ];
+    const head = bytes(
+      [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50],
+      chunk("ALPH", [1, 2, 3]),
+      chunk("ICCP", [9, 9, 9, 9, 9, 9]),
+      chunk("VP8 ", [0, 0, 0, 0x9d, 0x01, 0x2a, ...le16(333), ...le16(222)])
+    );
+    expect(readHeader(head, "webp")).toEqual({ w: 333, h: 222, orientation: 1 });
+  });
   test("truncated or unknown headers give null", () => {
     expect(readHeader(bytes([0x89, 0x50, 0x4e, 0x47]), "png")).toBeNull();
     expect(readHeader(bytes([0xff, 0xd8, 0xff]), "jpeg")).toBeNull();
@@ -89,6 +107,21 @@ describe("browserNormalise", () => {
     const blob = new Blob([png(20000, 20000) as BlobPart]);
     expect(20000 * 20000).toBeGreaterThan(MAX_PIXELS);
     await expect(browserNormalise(blob)).rejects.toThrow(/megapixels/);
+  });
+  test("an unreadable header is checked after the decode and the bitmap is closed", async () => {
+    let closed = false;
+    const fake = async () =>
+      ({
+        width: 12000,
+        height: 12000,
+        close: () => {
+          closed = true;
+        },
+      }) as unknown as ImageBitmap;
+    await expect(
+      browserNormalise(new Blob([bytes([1, 2, 3, 4]) as BlobPart]), undefined, fake)
+    ).rejects.toThrow(/megapixels/);
+    expect(closed).toBe(true);
   });
   test("refuses a huge JPEG and WebP the same way", async () => {
     await expect(browserNormalise(new Blob([jpeg(15000, 15000) as BlobPart]))).rejects.toThrow(
