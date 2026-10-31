@@ -417,6 +417,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   function controlNode(el: Element, s: CSSStyleDeclaration, box: Box): TextNode | null {
     const content = controlText(el);
     if (!content?.value.trim()) return null;
+    const tag = el.localName;
     const bw = (side: string) => px(s.getPropertyValue(`border-${side}-width`));
     const pad = (side: string) => px(s.getPropertyValue(`padding-${side}`));
     const inner: Box = {
@@ -427,6 +428,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
     const run = runOf(s, 0, content.value.length);
     if (content.placeholder) run.color = { ...run.color, a: round2(run.color.a * 0.5) } as Rgba;
+    // A textarea starts at the top of its box rather than centring one line in it, so its first
+    // line is one line tall and the mapper's leading correction leaves it there.
+    const line =
+      tag === "textarea" && run.lineHeight !== null ? { ...inner, h: run.lineHeight } : inner;
     const n = nextId();
     if (n === null) return null;
     return {
@@ -439,7 +444,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       blendMode: "normal",
       semantic: { tag: el.localName },
       text: content.value,
-      lines: [inner],
+      lines: [line],
       runs: [run],
     };
   }

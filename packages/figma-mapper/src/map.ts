@@ -21,6 +21,7 @@ function nameOf(node: CaptureNode, fallback: string): string {
   return tag ? tag.charAt(0).toUpperCase() + tag.slice(1) : fallback;
 }
 
+// Phase 3: CSS `object-fit: fill` stretches, while Figma's FILL crops to keep the aspect ratio.
 function imageFit(fit: "cover" | "contain" | "fill" | "none" | "tile"): Fit {
   switch (fit) {
     case "contain":
@@ -34,11 +35,15 @@ function imageFit(fit: "cover" | "contain" | "fill" | "none" | "tile"): Fit {
   }
 }
 
-// Phase 3 approximation: any repeat (including repeat-x and repeat-y, which
-// Figma cannot express as a paint) is treated as TILE.
+// Cover and contain come first: `repeat` is the CSS default, so it only means tiling when the
+// image does not already span the box. Phase 3 approximation: any other repeat (including
+// repeat-x and repeat-y, which Figma cannot express as a paint) is treated as TILE.
 function backgroundFit(size: string | undefined, repeat: string | undefined): Fit {
+  const fit = size?.trim();
+  if (fit === "cover") return "FILL";
+  if (fit === "contain") return "FIT";
   if (repeat && repeat !== "no-repeat" && !/^no-repeat/.test(repeat)) return "TILE";
-  return size?.trim() === "contain" ? "FIT" : "FILL";
+  return "FILL";
 }
 
 function mapFills(style: ElementNode["style"], hashes: Set<string>): PlanPaint[] {
@@ -219,13 +224,18 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     }
     if (cursor < len) runs.push(filler(cursor, len));
     report.texts++;
+    // The captured y is the top of the glyph box; a fixed Figma line height starts at the top of
+    // the line box, half the leading higher.
+    const lineHeight = node.runs[0]?.lineHeight;
+    const firstLine = node.lines[0];
+    const leading = lineHeight != null && firstLine ? (lineHeight - firstLine.h) / 2 : 0;
     return {
       op: "text",
       id: node.id,
       parent,
       name: nameOf(node, "Text"),
       x,
-      y,
+      y: y - leading,
       w: node.box.w,
       h: node.box.h,
       text: node.text,

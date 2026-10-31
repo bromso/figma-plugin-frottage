@@ -264,6 +264,48 @@ describe("mapCapture", () => {
       "TILE",
     ]);
   });
+  test.each([
+    ["cover", "repeat", "FILL"],
+    ["cover", "no-repeat", "FILL"],
+    ["contain", "repeat", "FIT"],
+    ["contain", "no-repeat", "FIT"],
+    ["auto", "repeat", "TILE"],
+    ["auto", "no-repeat", "FILL"],
+  ])("background size %s with %s maps to %s", (size, repeat, fit) => {
+    const style = {
+      ...el("x", [0, 0]).style,
+      backgroundImages: [{ type: "image" as const, css: "", assetHash: "h", size, repeat }],
+    };
+    const c = cap(el("root", [0, 0], [], { style }));
+    expect(frame(c, "root").fills[0]).toEqual({ type: "IMAGE", hash: "h", fit: fit as "FILL" });
+  });
+  test("line height moves text up by half the leading, or down when tighter", () => {
+    const at = (lineHeight: number | null, h = 18) =>
+      textOp(
+        withText(
+          textNode("t", {
+            box: { x: 0, y: 100, w: 100, h },
+            lines: [{ x: 0, y: 100, w: 100, h }],
+            runs: [run({ lineHeight })],
+          })
+        )
+      ).y;
+    expect(at(24)).toBe(97);
+    expect(at(null)).toBe(100);
+    expect(at(12)).toBe(103);
+  });
+  test("text with no line boxes keeps its y", () => {
+    const op = textOp(
+      withText(
+        textNode("t", {
+          box: { x: 0, y: 7, w: 9, h: 9 },
+          lines: [],
+          runs: [run({ lineHeight: 24 })],
+        })
+      )
+    );
+    expect(op.y).toBe(7);
+  });
   test("carries the capture's warnings", () => {
     const c = cap(el("root", [0, 0]));
     c.warnings = [{ code: "w", detail: "careful" }];
