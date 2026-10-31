@@ -6,7 +6,7 @@ import { elementNode, minimalCapture, textNode, treeOfThree } from "./fixtures";
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
 const sample: Capture = { ...minimalCapture(), root: treeOfThree() };
 
-function expectCode(fn: () => unknown, code: string) {
+function expectCode(fn: () => unknown, code: FrottageErrorCode) {
   let caught: unknown;
   try {
     fn();
