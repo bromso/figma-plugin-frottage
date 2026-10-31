@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## About Frottage
 
-Frottage is a Figma plugin plus a Chrome extension that imports rendered web pages into editable Figma files. The extension captures a page's rendered DOM; the plugin turns a `.frottage` file into native Figma layers. The plugin makes no network requests (`networkAccess` stays `["none"]`). This repository began as a Figma plugin template, and the UI sampler in `packages/ui/src/app.tsx` is still a placeholder.
+Frottage is a Figma plugin plus a Chrome extension that imports rendered web pages into editable Figma files. The extension captures a page's rendered DOM; the plugin turns a `.frottage` file into native Figma layers. The plugin makes no network requests (`networkAccess` stays `["none"]`). This repository began as a Figma plugin template, and `packages/ui/src/app.tsx` is now the import screen.
 
 ## MCP Servers (pre-configured in `.mcp.json`)
 
@@ -82,7 +82,7 @@ Packages are **JIT source-only** — they export raw TypeScript (no build step).
 The plugin runs as **two separate processes** that communicate via message passing:
 
 - **Plugin side** (`apps/design-plugin/src/plugin/`) — Runs in Figma's sandbox with access to the Figma API (`figma.*`). No DOM access. Entry: `plugin.ts`.
-- **UI side** (`packages/ui/src/`) — Runs in an iframe. React app built from the `@repo/ui` components. Entry: `main.tsx` → `app.tsx`; `app.tsx` is the sampler laid out like a Figma properties panel and is the reference for new screens.
+- **UI side** (`packages/ui/src/`) — Runs in an iframe. React app built from the `@repo/ui` components. Entry: `main.tsx` → `app.tsx`; `app.tsx` is the import screen.
 - **Common** (`packages/common/src/`) — Shared between both sides. Contains network event type definitions.
 
 ### UI Components
