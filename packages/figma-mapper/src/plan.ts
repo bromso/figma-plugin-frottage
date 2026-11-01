@@ -227,6 +227,7 @@ export type ImportReport = {
   substitutedFonts: { from: string; to: string }[];
   warnings: string[];
   components: number;
+  /** On the canvas, where one inside a definition counts for the main and for each copy of it. */
   instances: number;
 };
 

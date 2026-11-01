@@ -11,6 +11,7 @@ type InstanceOp = Extract<PlanOp, { op: "instance" }>;
 type TextOp = Extract<PlanOp, { op: "text" }>;
 
 const on = { ...DEFAULT_IMPORT_OPTIONS, components: true };
+const absolute = { ...on, autoLayout: false };
 const off = { ...DEFAULT_IMPORT_OPTIONS, components: false };
 
 const red = { r: 1, g: 0, b: 0, a: 1 };
@@ -44,6 +45,18 @@ const flexRow = (over: Partial<ElementNode["layout"]> = {}): Pick<ElementNode, "
     grow: 0,
     shrink: 1,
     ...over,
+  },
+});
+
+const gridOf = (): Pick<ElementNode, "layout"> => ({
+  layout: {
+    ...flexRow({ display: "grid", flexDirection: undefined, flexWrap: undefined }).layout,
+    gridTemplateColumns: "100px 100px",
+    gridTemplateRows: "20px",
+    authoredGridTemplateColumns: "100px 100px",
+    authoredGridTemplateRows: "20px",
+    rowGap: 0,
+    columnGap: 0,
   },
 });
 
@@ -353,6 +366,110 @@ describe("the signature", () => {
   });
 });
 
+describe("placement inside a component", () => {
+  const dot = (id: string, at: [number, number], over: Partial<ElementNode> = {}) =>
+    painted(el(id, at, [], over, [20, 20]), red);
+  const box = (id: string, children: CaptureNode[], size: [number, number] = [100, 100]) =>
+    tagged("x-box", id, children, {}, size);
+
+  test("an inner dot at x=0 and at x=80 stay separate", () => {
+    const same = plan([box("a", [dot("ad", [0, 0])]), box("b", [dot("bd", [0, 0])])], absolute);
+    expect(keys(same)).toEqual(["x-box#1"]);
+    const moved = plan([box("a", [dot("ad", [0, 0])]), box("b", [dot("bd", [80, 0])])], absolute);
+    expect(definitions(moved)).toEqual([]);
+  });
+
+  test("a root with no auto layout and a child pinned right stays separate at 100 and 300 wide", () => {
+    const p = plan(
+      [box("a", [dot("ad", [80, 0])], [100, 100]), box("b", [dot("bd", [280, 0])], [300, 100])],
+      absolute
+    );
+    expect(definitions(p)).toEqual([]);
+  });
+
+  test("a root with no auto layout compares its size once it has children", () => {
+    const p = plan(
+      [box("a", [dot("ad", [0, 0])], [100, 100]), box("b", [dot("bd", [0, 0])], [300, 100])],
+      absolute
+    );
+    expect(definitions(p)).toEqual([]);
+  });
+
+  test("an ABSOLUTE badge at x=0 and at x=90 in a flex row stay separate", () => {
+    const pinned = { ...tagged("div", "x").layout, position: "absolute" };
+    const row = (id: string, x: number) =>
+      tagged(
+        "x-row",
+        id,
+        [
+          tagged(
+            "div",
+            `${id}f`,
+            [],
+            { ...flexRow(), style: painted(tagged("div", "y"), blue).style },
+            [50, 20]
+          ),
+          dot(`${id}b`, [x, 0], { layout: pinned }),
+        ],
+        flexRow(),
+        [200, 20]
+      );
+    const same = plan([row("a", 90), row("b", 90)]);
+    const badge = same.ops.find(
+      (o) => o.op === "frame" && o.childLayout?.positioning === "ABSOLUTE"
+    );
+    expect(badge).toBeDefined();
+    expect(keys(same)).toEqual(["x-row#1"]);
+    expect(definitions(plan([row("a", 0), row("b", 90)]))).toEqual([]);
+  });
+
+  test("grid items in swapped cells stay separate", () => {
+    const item = (id: string, x: number) => dot(id, [x, 0]);
+    const grid = (id: string, first: number, second: number) =>
+      tagged("x-grid", id, [item(`${id}1`, first), item(`${id}2`, second)], gridOf(), [200, 20]);
+    const same = plan([grid("a", 0, 100), grid("b", 0, 100)]);
+    expect(same.ops.some((o) => o.childLayout?.cell?.column === 1)).toBe(true);
+    expect(keys(same)).toEqual(["x-grid#1"]);
+    expect(definitions(plan([grid("a", 0, 100), grid("b", 100, 0)]))).toEqual([]);
+  });
+
+  test("a label keeps its aligned edge, so labels of different widths merge", () => {
+    const line = (id: string, x: number, w: number, align: string) =>
+      textNode(id, {
+        box: { x, y: 0, w, h: 20 },
+        lines: [{ x, y: 0, w, h: 20 }],
+        runs: [run({ align })],
+      });
+    const pair = (a: CaptureNode, b: CaptureNode) => plan([box("a", [a]), box("b", [b])], absolute);
+    const merged = (a: CaptureNode, b: CaptureNode) => pair(a, b).report.components === 1;
+    expect(merged(line("l", 0, 30, "left"), line("m", 0, 60, "left"))).toBe(true);
+    expect(merged(line("l", 70, 30, "right"), line("m", 40, 60, "right"))).toBe(true);
+    expect(merged(line("l", 35, 30, "center"), line("m", 20, 60, "center"))).toBe(true);
+    expect(merged(line("l", 0, 30, "left"), line("m", 10, 60, "left"))).toBe(false);
+    expect(merged(line("l", 70, 30, "right"), line("m", 30, 60, "right"))).toBe(false);
+    expect(merged(line("l", 35, 30, "center"), line("m", 30, 60, "center"))).toBe(false);
+  });
+
+  test("the occurrence root's own placement does not count", () => {
+    const q = plan(
+      [
+        el("a", [1, 2], [], { semantic: { tag: "x-a" } }),
+        el("b", [30, 40], [], { semantic: { tag: "x-a" } }),
+      ],
+      absolute
+    );
+    expect(keys(q)).toEqual(["x-a#1"]);
+  });
+
+  test("rounding noise in a position does not split a component", () => {
+    const p = plan(
+      [box("a", [dot("ad", [20, 0])]), box("b", [dot("bd", [20.000000001, 0])])],
+      absolute
+    );
+    expect(keys(p)).toEqual(["x-box#1"]);
+  });
+});
+
 describe("hug sizes", () => {
   /** A link around a painted button, each as wide as its label. */
   const link = (id: string, text: string, w: number) => {
@@ -460,7 +577,6 @@ describe("overrides", () => {
 
 describe("resize", () => {
   test("a root with no auto layout is fixed, so a different size says so", () => {
-    const absolute = { ...DEFAULT_IMPORT_OPTIONS, components: true, autoLayout: false };
     const p = plan(
       [
         tagged("x-a", "a", [], {}, [100, 40]),
@@ -488,7 +604,7 @@ describe("nesting", () => {
     const outer = definitions(p)[1] as FrameOp;
     const held = p.ops.filter((o) => o.parent === outer.id);
     expect(held).toMatchObject([{ op: "instance", key: "x-icon#1" }]);
-    expect(p.report).toMatchObject({ components: 2, instances: 3 });
+    expect(p.report).toMatchObject({ components: 2 });
     expect(
       instances(p)
         .filter((o) => o.key === "x-row#1")
@@ -582,7 +698,7 @@ describe("nesting", () => {
     expect(definitions(p)).toEqual([]);
   });
 
-  test("a swapped instance is compared with what it was swapped to", () => {
+  test("everything below a swap is written out, as a swap may not keep what was set", () => {
     const badge = (id: string, text: string, color: typeof red) =>
       painted(tagged("x-badge", id, [label(`${id}t`, text)]), color);
     const card = (id: string, inner: CaptureNode) => tagged("x-card", id, [inner]);
@@ -593,10 +709,52 @@ describe("nesting", () => {
       painted(tagged("div", "w2", [badge("s2", "Blue", blue)]), blue),
     ]);
     expectInnerFirst(p);
-    expect(instance(p, "b")?.overrides).toEqual([
+    // "Blue" is what the swapped-to definition already says, and it is still listed.
+    expect(instance(p, "b")?.overrides).toMatchObject([
       { path: [0], kind: "swap", key: instance(p, "s2")?.key as string },
+      { path: [0, 0], kind: "text", text: "Blue" },
     ]);
     expect(instance(p, "s2")?.overrides).toEqual([]);
+  });
+
+  test("images below a swap are written out too", () => {
+    const pic = (id: string, color: typeof red) =>
+      painted(tagged("x-pic", id, [image(`${id}i`, "same")]), color);
+    const card = (id: string, inner: CaptureNode) => tagged("x-card", id, [inner]);
+    const p = plan([
+      card("a", pic("ap", red)),
+      card("b", pic("bp", blue)),
+      painted(tagged("div", "w1", [pic("s1", red)]), blue),
+      painted(tagged("div", "w2", [pic("s2", blue)]), blue),
+    ]);
+    expect(instance(p, "b")?.overrides).toMatchObject([
+      { path: [0], kind: "swap" },
+      { path: [0, 0], kind: "image", hash: "same" },
+    ]);
+  });
+
+  test("rows holding a dot with no auto layout at 16 and 24 px stay separate", () => {
+    const dot = (id: string, size: number) => tagged("x-dot", id, [], {}, [size, size]);
+    const row = (id: string, size: number) => tagged("x-row", id, [dot(`${id}d`, size)]);
+    const p = plan([row("a", 16), row("b", 16), row("c", 24), row("d", 24)], absolute);
+    expect(instance(p, "a")?.key).toBe(instance(p, "b")?.key as string);
+    expect(instance(p, "c")?.key).toBe(instance(p, "d")?.key as string);
+    expect(instance(p, "a")?.key).not.toBe(instance(p, "c")?.key as string);
+  });
+
+  test("report.instances counts each instance on the canvas, those in a definition per copy", () => {
+    const p = plan([row("a", icon("ai")), row("b", icon("bi"))]);
+    // Two rows on the page, an icon in each, and the icon inside the row's main.
+    expect(instances(p)).toHaveLength(3);
+    expect(p.report.instances).toBe(5);
+  });
+
+  test("report.instances multiplies through every level of nesting", () => {
+    const three = (id: string) =>
+      tagged("x-three", id, [tagged("x-two", `${id}t`, [icon(`${id}i`)])]);
+    const p = plan([three("a"), three("b")]);
+    // Threes: 2. Twos: one in each three and in its main, 3. Icons: one in each two and in its main, 4.
+    expect(p.report).toMatchObject({ components: 3, instances: 9 });
   });
 
   test("a rotated occurrence stays plain, and the repeats inside it can still be instances", () => {

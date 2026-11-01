@@ -16,7 +16,10 @@ type Tree = {
   component?: Component;
 };
 
-/** Top-level op fields a look does not depend on. Anything else compares, including new fields. */
+/**
+ * Top-level op fields a look does not depend on. Anything else compares, including new fields.
+ * A child's placement comes back in its parent's signature, by `placement`.
+ */
 const PLACEMENT = ["id", "parent", "name", "x", "y", "childLayout"];
 const CONTENT: Partial<Record<PlanOp["op"], string[]>> = {
   text: ["text", "runs"], // the runs' looks are added back by `runLooks`
@@ -57,9 +60,34 @@ function hugged(op: PlanOp): string[] {
   return [...(sizingH === "HUG" ? ["w"] : []), ...(sizingV === "HUG" ? ["h"] : [])];
 }
 
-/** What a definition's root leaves out: only `FIXED` in auto layout compares its size. */
-function rootSize(op: PlanOp): string[] {
-  return op.op === "frame" && !isAuto(op.layout) ? ["w", "h"] : hugged(op);
+/** What a definition's root leaves out. Without auto layout, a resize would not move its children. */
+function rootSize({ op, children }: Tree): string[] {
+  if (op.op !== "frame" || isAuto(op.layout)) return hugged(op);
+  return children.length > 0 ? [] : ["w", "h"];
+}
+
+/** Positions come from subtracting page coordinates, so they carry rounding noise. */
+const tenth = (n: number) => Math.round(n * 10) / 10;
+
+/** The edge a label stays on as its text changes; other layers are placed by their left edge. */
+function anchorX(op: PlanOp): number {
+  if (op.op !== "text" || op.wrap) return op.x;
+  if (op.align === "CENTER") return op.x + op.w / 2;
+  return op.align === "RIGHT" ? op.x + op.w : op.x;
+}
+
+/** How a child sits in its parent. `x` and `y` count only where the parent's layout does not set them. */
+function placement({ op }: Tree, parent: Tree): string {
+  const free =
+    (parent.op.op === "frame" && parent.op.layout.mode === "NONE") ||
+    op.childLayout?.positioning === "ABSOLUTE";
+  const at = free ? [tenth(anchorX(op)), tenth(op.y)] : [];
+  return JSON.stringify([op.childLayout ?? null, ...at]);
+}
+
+/** What a repeated child adds: its tag, so it can be swapped, and any size an instance won't take on its own. */
+function bareTag(tag: string, { op }: Tree): string {
+  return op.op === "frame" && isAuto(op.layout) ? `tag:${tag}` : `tag:${tag}:${op.w}x${op.h}`;
 }
 
 function buildForest(ops: PlanOp[]): Tree[] {
@@ -110,12 +138,15 @@ function findComponents(nodes: Tree[], tags: Map<string, string>): Component[] {
     const groups = new Map<string, Tree[]>();
     for (const node of level) {
       const below = node.children
-        .map((c) => (c.component ? `tag:${c.component.tag}` : c.signature))
+        .map((c) => {
+          const look = c.component ? bareTag(c.component.tag, c) : c.signature;
+          return `${placement(c, node)}${look}`;
+        })
         .join(",");
       node.signature = intern(`${ownLook(node.op, hugged(node.op))}|${below}`);
       const tag = tags.get(node.op.id);
       if (!tag?.includes("-") || node.op.op !== "frame" || !node.parent || node.rotated) continue;
-      const group = `${tag}\0${ownLook(node.op, rootSize(node.op))}|${below}`;
+      const group = `${tag}\0${ownLook(node.op, rootSize(node))}|${below}`;
       const members = groups.get(group);
       if (members) members.push(node);
       else groups.set(group, [node]);
@@ -141,27 +172,32 @@ const childAt = (children: Tree[], i: number) => children[i] as Tree;
 /** How `occurrence` differs from its component's first occurrence, parents before children. */
 function overridesOf(occurrence: Tree): PlanOverride[] {
   const first = occurrence.component?.occurrences[0] as Tree;
+  if (occurrence === first) return [];
   const overrides: PlanOverride[] = [];
-  const stack = [{ base: first, node: occurrence, path: [] as number[] }];
+  const stack = [{ base: first, node: occurrence, path: [] as number[], swapped: false }];
   for (let at = stack.pop(); at; at = stack.pop()) {
     const { node, path } = at;
-    let { base } = at;
+    let { base, swapped } = at;
     if (node.component && base.component !== node.component) {
       overrides.push({ path, kind: "swap", key: node.component.key });
       base = node.component.occurrences[0] as Tree;
+      // A swap may keep or drop what was set below it, so nothing there can be taken as read.
+      swapped = true;
     }
     if (base.op.op === "text" && node.op.op === "text") {
       const { text, runs } = node.op;
       const same = text === base.op.text && JSON.stringify(runs) === JSON.stringify(base.op.runs);
-      if (!same) overrides.push({ path, kind: "text", text, runs });
-    } else if (base.op.op === "image" && node.op.op === "image" && base.op.hash !== node.op.hash) {
-      overrides.push({ path, kind: "image", hash: node.op.hash });
+      if (swapped || !same) overrides.push({ path, kind: "text", text, runs });
+    } else if (base.op.op === "image" && node.op.op === "image") {
+      const { hash } = node.op;
+      if (swapped || hash !== base.op.hash) overrides.push({ path, kind: "image", hash });
     }
     for (let i = node.children.length - 1; i >= 0; i--) {
       stack.push({
         base: childAt(base.children, i),
         node: childAt(node.children, i),
         path: [...path, i],
+        swapped,
       });
     }
   }
@@ -220,9 +256,33 @@ function definition(component: Component): PlanOp[] {
 }
 
 /**
+ * Every instance on the canvas. An instance inside a definition exists once in the main and once
+ * in each copy of it, and `found` is inner-first, so going backwards each copy count is final.
+ */
+function canvasInstances(found: Component[], definitions: PlanOp[][], page: PlanOp[]): number {
+  const copies = new Map(found.map((c) => [c.key, 1]));
+  const count = (ops: PlanOp[], times: number): number => {
+    let total = 0;
+    for (const op of ops) {
+      if (op.op !== "instance") continue;
+      copies.set(op.key, (copies.get(op.key) ?? 1) + times);
+      total += times;
+    }
+    return total;
+  };
+  let total = count(page, 1);
+  for (let i = found.length - 1; i >= 0; i--) {
+    const { key } = found[i] as Component;
+    total += count(definitions[i] as PlanOp[], copies.get(key) ?? 1);
+  }
+  return total;
+}
+
+/**
  * Hoists repeated custom elements to definitions at the front of `ops`, inner-first, and turns each
  * occurrence, the first too, into an `instance` op. A component is one tag and one signature used
- * at least twice. `tags` maps a node id to its tag.
+ * at least twice. `tags` maps a node id to its tag. `instances` counts them on the canvas, so it
+ * can exceed the `instance` ops.
  */
 export function extractComponents(
   ops: PlanOp[],
@@ -232,10 +292,11 @@ export function extractComponents(
   const found = findComponents(nodes, tags);
   if (found.length === 0) return { ops, components: 0, instances: 0 };
   const roots = nodes.filter((n) => n.parent === null);
-  const out = [...found.flatMap(definition), ...roots.flatMap((r) => flatten(r, (id) => id))];
+  const definitions = found.map(definition);
+  const page = roots.flatMap((r) => flatten(r, (id) => id));
   return {
-    ops: out,
+    ops: [...definitions.flat(), ...page],
     components: found.length,
-    instances: out.filter((op) => op.op === "instance").length,
+    instances: canvasInstances(found, definitions, page),
   };
 }
