@@ -429,6 +429,21 @@ describe("mode limits", () => {
     expect(tokens.counts()).toMatchObject({ modes: 0, modesDropped: 2, tokenFailures: 1 });
   });
 
+  test("a collection whose modes can't be settled fits no variable", async () => {
+    const f = fakeFigma();
+    const token = color("color/flat", [INK, INK]);
+    await settle(f, set({ colors: [token] }));
+    const [collection] = collectionsIn(f);
+    Object.defineProperty(collection, "modes", {
+      get: () => {
+        throw new Error("no modes");
+      },
+    });
+    const tokens = await settle(f, set({ colors: [token] }));
+    expect(tokens.color(token.key)).toBeUndefined();
+    expect(tokens.counts().tokenFailures).toBe(1);
+  });
+
   test("a full collection still reuses the labels it has", async () => {
     const f = fakeFigma({ modeLimit: 2 });
     await settle(f, set({ modes: ["A", "B"] }));
@@ -692,6 +707,45 @@ describe("repeat imports", () => {
     expect(tokens.counts()).toMatchObject({ variablesCreated: 0, variablesReused: 1 });
     expect(channel(f.tokens.valueIn(variable, modeId(collection, "Night")))).toBe(PAPER.g);
     expect(channel(f.tokens.valueIn(variable, modeId(collection, "Day")))).toBe(INK.g);
+  });
+
+  test("a mode Figma copied gets the value asked for, with no duplicate", async () => {
+    const f = fakeFigma();
+    const flat = () => color("color/a", [INK, PAPER]);
+    await settle(f, set({ colors: [flat()] }));
+    const [collection] = collectionsIn(f);
+    const [variable] = variablesIn(f);
+    // The new mode copies Dark, but holds the first value in this set.
+    const tokens = await settle(f, set({ modes: ["Day", "Dark"], colors: [flat()] }));
+    expect(modeNames(collection)).toEqual(["Light", "Dark", "Day"]);
+    expect(channel(variable.valuesByMode[modeId(collection, "Day")])).toBe(INK.g);
+    expect(tokens.counts()).toMatchObject({ variablesCreated: 0, variablesReused: 1 });
+    expect(variablesIn(f)).toHaveLength(1);
+  });
+
+  test("a bound style survives a mode Figma copied", async () => {
+    const f = fakeFigma();
+    const body = () => role("body/1", [16, 14], [24, 24]);
+    await settle(f, set({ colors: [], textStyles: [body()] }));
+    const [collection] = collectionsIn(f);
+    const tokens = await settle(
+      f,
+      set({ modes: ["Day", "Dark"], colors: [], textStyles: [body()] })
+    );
+    expect(stylesIn(f)).toHaveLength(1);
+    expect(tokens.counts()).toMatchObject({ stylesReused: 1, variablesReused: 1 });
+    const size = variableNamed(f, "type/body/1/size");
+    expect(size.valuesByMode[modeId(collection, "Day")]).toBe(16);
+  });
+
+  test("a value the user changed in a mode that was there still rules a variable out", async () => {
+    const f = fakeFigma();
+    await settle(f);
+    const [collection] = collectionsIn(f);
+    const [variable] = variablesIn(f);
+    variable.setValueForMode(modeId(collection, "Dark"), SKY);
+    const tokens = await settle(f, set({ modes: ["Day", "Dark"] }));
+    expect(tokens.counts()).toMatchObject({ variablesCreated: 1, variablesReused: 0 });
   });
 
   test("a reused role fills the modes it adds, and gains no new binding", async () => {
@@ -1008,6 +1062,25 @@ describe("a renamed collection", () => {
     expect(modeNames(theirs)).toEqual(["Light", "Dark"]);
     expect(collectionsIn(f).at(-1).name).toBe("example.com (Frottage)");
     expect(variablesIn(f)).toHaveLength(2);
+  });
+
+  test("an early tag with no host counts as tagged, by name", async () => {
+    const f = fakeFigma();
+    const early = f.tokens.seedCollection("example.com");
+    early.setSharedPluginData("frottage", "collection", "1");
+    f.tokens.seedVariable("mine", early, SKY);
+    const tokens = await settle(f);
+    expect(collectionsIn(f)).toEqual([early]);
+    expect(tokens.modeOf(0)?.collection.id).toBe(early.id);
+  });
+
+  test("an early tag on a collection of another name isn't this host's", async () => {
+    const f = fakeFigma();
+    const early = f.tokens.seedCollection("other.org");
+    early.setSharedPluginData("frottage", "collection", "1");
+    await settle(f);
+    expect(collectionsIn(f)).toHaveLength(2);
+    expect(modeNames(early)).toEqual(["Mode 1"]);
   });
 
   test("of another host isn't", async () => {

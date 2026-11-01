@@ -82,7 +82,7 @@ type Kind<T> = {
 type Home = {
   collection: VariableCollection;
   taken: Set<string>;
-  /** Modes added just now, which hold no value of their own yet. */
+  /** Modes added just now. Figma copies the previous mode's values in, so those mean nothing. */
   added: Set<string>;
 };
 
@@ -330,6 +330,8 @@ function findOwnCollection(
   const own = collections.filter((c) => {
     if (c.isExtension || c.remote) return false;
     const host = hostOf(c);
+    // "1" is an early tag with no host: tagged, so it's left to the name to say whose it is.
+    if (host === "1") return true;
     if (host !== "") return host === hostname;
     return c.variableIds.length > 0 && c.variableIds.every((id) => tagged.has(id));
   });
@@ -625,22 +627,25 @@ export function createTokenSet(api: PluginAPI) {
     };
 
     /**
-     * What a variable in the home collection lacks: the modes with no value yet, each with what it
-     * should read. Null if it can't be used, because a value it holds says otherwise, or because
-     * it's the user's and would need a write. A mode outside the set may hold anything, but the
-     * default reads `first`, or an edited variable would pass when every label is new.
+     * What a variable in the home collection lacks: the modes added just now or with no value yet,
+     * each with what it should read. Null if it can't be used, because a value it holds says
+     * otherwise, or because it's the user's and would need a write, or because there's no home to
+     * read it in. A mode outside the set may hold anything, but the default reads `first`, or an
+     * edited variable would pass when every label is new.
      */
     const staleModes = <T>(variable: Variable, wants: Map<string, T>, first: T, kind: Kind<T>) => {
+      if (!home) return null;
       const values = held.get(variable.id);
       const defaultId = defaults.get(variable.variableCollectionId) ?? "";
       if (!wants.has(defaultId) && !kind.same(values?.[defaultId], first)) return null;
+      const own = tagged.has(variable.id);
       const stale: [string, T][] = [];
-      for (const { modeId } of home?.collection.modes ?? []) {
+      for (const { modeId } of home.collection.modes) {
         const want = wants.get(modeId);
-        const have = values?.[modeId];
+        const have = home.added.has(modeId) ? undefined : values?.[modeId];
         if (have !== undefined) {
           if (want !== undefined && !kind.same(have, want)) return null;
-        } else if (tagged.has(variable.id)) {
+        } else if (own) {
           stale.push([modeId, want ?? first]);
         } else if (want !== undefined) {
           return null;

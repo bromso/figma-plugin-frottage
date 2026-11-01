@@ -181,6 +181,12 @@ export function tokenModel(
         }
         writes.push(`${collection.name}: add mode ${modeName}`);
         const modeId = `${id}/${nextMode++}`;
+        // Measured: variables already here take the previous mode's values.
+        const previous = collection.modes.at(-1)?.modeId;
+        for (const v of variables.values()) {
+          const value = v.valuesByMode[previous];
+          if (v.variableCollectionId === id && value !== undefined) v.valuesByMode[modeId] = value;
+        }
         collection.modes = [...collection.modes, { modeId, name: modeName }];
         return modeId;
       },
