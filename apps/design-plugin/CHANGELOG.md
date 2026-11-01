@@ -1,5 +1,23 @@
 # @repo/design-plugin
 
+## 0.2.0
+
+### Minor Changes
+
+- [#5](https://github.com/bromso/figma-plugin-frottage/pull/5) [`c3b73c2`](https://github.com/bromso/figma-plugin-frottage/commit/c3b73c2d8dcd23b8c9d696870a74d2558d3fe9bd) Thanks [@bromso](https://github.com/bromso)! - Import several files at once: choose or drop up to 8 `.frottage` files (600 MB in all). Files of one page are ordered widest first, then themes and languages, and import one after another with progress per file. The review step shows once, with the missing fonts of every file. A file that fails is named in the report and the others carry on, and the report lists each version.
+
+- [#5](https://github.com/bromso/figma-plugin-frottage/pull/5) [`d7e51c9`](https://github.com/bromso/figma-plugin-frottage/commit/d7e51c983e326a062ba0878f53f50c12254a508c) Thanks [@bromso](https://github.com/bromso)! - One `.frottage` file with several sizes now imports as one set, with a frame and a mode for each size.
+
+- [#5](https://github.com/bromso/figma-plugin-frottage/pull/5) [`bf74eb0`](https://github.com/bromso/figma-plugin-frottage/commit/bf74eb0c36fffe30df8e4517b508eea72f09990f) Thanks [@bromso](https://github.com/bromso)! - Gaps and padding whose length a spacing custom property holds, such as `--space-4: 16px`, now bind to a number variable named `spacing/4`, when the value is used three times or more. Only names that say spacing count: `space` at the start of a word, `spacing`, `gap`, `gutter`, `margin`, `padding` or `inset`, and never a name that also says `font`, `radius`, `border`, `shadow`, `line`, `height`, `width` or `breakpoint`, or that starts a word with `letter` or `word`. Across versions the variable gets a value per mode, joined by the custom property's name. Your own variables are never matched or changed.
+
+- [#5](https://github.com/bromso/figma-plugin-frottage/pull/5) [`1bf5a22`](https://github.com/bromso/figma-plugin-frottage/commit/1bf5a221705c9fdb8fa1d855907beb411a94cfd6) Thanks [@bromso](https://github.com/bromso)! - Import a set of versions as one: files of one page land side by side as `<page> — <label>`, each frame on its own mode of one shared variable collection, with its component section below it. One undo removes the whole set and Cancel takes it all back. A version that fails is named and the others stay. The report lists the modes, and says how many frames kept plain values when Figma has too few modes. In a set, uses count across its versions, so a heading set once at each of three widths becomes a text style that varies by mode. Adding a width to a set that's already in the file reuses its variables and styles and adds only a mode. Cancel in a later set keeps the sets already done and reports them.
+
+### Patch Changes
+
+- Updated dependencies [[`1bf5a22`](https://github.com/bromso/figma-plugin-frottage/commit/1bf5a221705c9fdb8fa1d855907beb411a94cfd6)]:
+  - @repo/ui@2.1.0
+  - @repo/common@2.1.0
+
 ## 0.1.0
 
 ### Minor Changes
