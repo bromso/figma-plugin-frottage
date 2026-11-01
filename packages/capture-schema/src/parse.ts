@@ -66,14 +66,30 @@ function checkNode(raw: Record<string, unknown>, where: string): Record<string, 
   switch (raw.kind) {
     case "element": {
       const style = isRecord(raw.style) ? raw.style : undefined;
+      // A hover that is not an object stays as it is, for the schema to refuse.
+      const hover = isRecord(raw.hover) ? raw.hover : undefined;
       const out = check<Record<string, unknown>>(
         parts.element,
         {
-          ...rest(raw, "children"),
+          ...rest(raw, "children", "hover"),
           style: style && rest(style, "backgroundImages", "boxShadows", "filters"),
+          ...(raw.hover === undefined
+            ? {}
+            : { hover: hover ? rest(hover, "boxShadows") : raw.hover }),
         },
         where
       );
+      if (hover?.boxShadows !== undefined) {
+        const list = hover.boxShadows;
+        if (!Array.isArray(list) || list.length > parts.maxHoverShadows) {
+          throw new Reject("invalid", `${where}.hover.boxShadows: expected a short array`);
+        }
+        (out.hover as Record<string, unknown>).boxShadows = checkList(
+          parts.boxShadow,
+          list,
+          `${where}.hover.boxShadows`
+        );
+      }
       const styleOut = out.style as Record<string, unknown>;
       styleOut.backgroundImages = checkBackgrounds(
         style?.backgroundImages,

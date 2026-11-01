@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hover rules</title>
+<link rel="stylesheet" href="http://localhost:4174/assets/hover-other.css">
+<style>
+:root { --hot: #cc0000; }
+body { margin: 0; font: 14px/1.4 Helvetica, Arial, sans-serif; color: #111; }
+x-btn, x-tile, x-once, x-pill, x-edit, x-shadow, x-closed { display: block; margin: 4px; padding: 8px; background: #eee; }
+.card { padding: 6px; background: #fff; }
+.title { margin: 0; font-size: 16px; }
+
+/* a plain hover, a var() with and without a value, an authored named colour */
+x-btn.plain:hover { background-color: #00aa55; }
+x-btn.vars:hover { color: var(--hot); background: var(--missing, rgb(0 0 0 / 0.5)); }
+x-btn.shadow:hover { box-shadow: 0 2px 4px #000, inset 0 0 0 1px rgb(255 0 0 / .5); }
+x-btn.deco:hover { text-decoration: underline; }
+x-btn.fade:hover { opacity: 50%; border-color: red; }
+x-btn.ord:hover { color: red; }
+x-btn.ord:hover { color: blue; }
+x-btn.nest { color: #111; }
+x-btn.nest { &:hover { background-color: #ffee00; } }
+x-btn.mq:hover { opacity: 0.25; }
+@media (min-width: 100px) { x-btn.mq:hover { opacity: 0.75; } }
+@media (max-width: 10px) { x-btn.mq:hover { opacity: 0.1; } }
+@supports (display: grid) { x-btn.sup:hover { background-color: #123456; } }
+
+/* descendants of a hovered ancestor */
+.card:hover .title { color: #0000ff; }
+
+/* skipped or counted */
+x-btn.not:not(:hover) { background-color: #999999; }
+x-btn.pseudo:hover::after { content: "x"; color: red; }
+x-btn.has:has(:hover) { background-color: #888888; }
+x-pill:hover { color: #009900; transform: scale(2); }
+x-pill.cur:hover { color: currentcolor; background-color: #abcdef; cursor: pointer; transition: all .2s; }
+x-once:hover { background-color: #112233; }
+x-edit:hover { background-color: #445566; }
+x-edit b:hover { color: #778899; }
+x-btn.secret { --token: s3cr3t-abc-123; }
+x-btn.secret:hover { background-color: var(--token); box-shadow: 0 0 0 var(--token) #000; }
+</style>
+<script>
+  window.__frottageClosedRoots = new WeakMap();
+  class XShadow extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML =
+        '<style>:host { display: block; margin: 4px; padding: 8px; background: #eee; } :host(:hover) { box-shadow: 0 2px 4px #000; } button:hover { background-color: #ff00ff; } :host(:hover) > b { color: red; }</style>' +
+        '<button>Inside</button><p class="inner">Adopted</p>';
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(".inner:hover { opacity: 0.5; }");
+      root.adoptedStyleSheets = [sheet];
+    }
+  }
+  class XClosed extends HTMLElement {
+    connectedCallback() {
+      if (window.__frottageClosedRoots.has(this)) return;
+      const root = this.attachShadow({ mode: "closed" });
+      window.__frottageClosedRoots.set(this, root);
+      root.innerHTML =
+        '<style>:host(:hover) { opacity: 0.4; } span { display: block; } span:hover { color: #00ffff; }</style><span>Closed</span>';
+    }
+  }
+  customElements.define("x-shadow", XShadow);
+  customElements.define("x-closed", XClosed);
+</script>
+</head>
+<body>
+  <x-btn class="plain">Plain</x-btn>
+  <x-btn class="plain">Plain again</x-btn>
+  <x-btn class="vars">Vars</x-btn>
+  <x-btn class="shadow">Shadow</x-btn>
+  <x-btn class="deco">Deco</x-btn>
+  <x-btn class="fade">Fade</x-btn>
+  <x-btn class="ord">Order</x-btn>
+  <x-btn class="nest">Nest</x-btn>
+  <x-btn class="mq">Media</x-btn>
+  <x-btn class="sup">Supports</x-btn>
+  <x-btn class="not">Not</x-btn>
+  <x-btn class="pseudo">Pseudo</x-btn>
+  <x-btn class="has">Has<i>i</i></x-btn>
+  <x-btn class="secret">Secret</x-btn>
+  <x-tile><div class="card"><h3 class="title">One</h3></div></x-tile>
+  <x-tile><div class="card"><h3 class="title">Two</h3></div></x-tile>
+  <x-pill class="a">Pill</x-pill>
+  <x-pill class="cur">Pill</x-pill>
+  <x-once>Only one</x-once>
+  <x-edit contenteditable="true"><b>Typed</b></x-edit>
+  <x-edit contenteditable="true"><b>Typed too</b></x-edit>
+  <x-shadow></x-shadow>
+  <x-shadow></x-shadow>
+  <x-closed></x-closed>
+  <x-closed></x-closed>
+</body>
+</html>

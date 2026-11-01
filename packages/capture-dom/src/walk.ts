@@ -9,6 +9,7 @@ import type {
 import type { Rgba } from "./color";
 import { flatChildren, insideEditable, isEditable, shadowRootOf } from "./flatten";
 import { authoredTracksReader } from "./grid";
+import { type Hover, hoverCandidates, readHover } from "./hover";
 import {
   collapse,
   type Inherited,
@@ -1161,6 +1162,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
     // Overflow on these two propagates to the viewport instead of clipping the element itself.
     if (el === root || el === doc.body) element.style.overflow = "visible";
+    const hover = hovers.get(el);
+    if (hover) element.hover = hover;
 
     const leafControl = tag === "input" || tag === "textarea" || tag === "select";
     if (isEditable(el)) {
@@ -1186,6 +1189,27 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       return [];
     }
     return [element];
+  }
+
+  // Hover differences are read once, up front, from the stylesheets; the walk only looks them up.
+  let hovers = new Map<Element, Hover>();
+  try {
+    const { candidates, roots } = hoverCandidates(doc, env);
+    hovers = readHover(roots, candidates, {
+      win,
+      computed: cs,
+      report: (code, count) =>
+        warnEach(
+          count,
+          code,
+          "",
+          code === "hover-unreadable"
+            ? "A stylesheet could not be read, so its :hover rules were left out"
+            : "A :hover rule was only partly read, so part of it was left out"
+        ),
+    });
+  } catch {
+    warn("hover-unreadable", undefined, "Hover styles could not be read");
   }
 
   const [tree] = visit(root, 1, true, { link: undefined, decoration: "none" });

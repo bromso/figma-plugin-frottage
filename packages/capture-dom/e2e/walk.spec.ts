@@ -1761,3 +1761,174 @@ test("background-clip: text is captured and the text paints with the first gradi
   // h1: -webkit-text-fill-color transparent over a red-to-blue gradient; h2: color transparent over green.
   expect(colours.slice(0, 4)).toEqual([{ r: 1, g: 0, b: 0 }, 1, { r: 0, g: 128 / 255, b: 0 }, 1]);
 });
+
+// ---------- Hover
+
+type El = Extract<CaptureNode, { kind: "element" }>;
+function elements(c: Capture, pick: (n: El) => boolean): El[] {
+  const out: El[] = [];
+  each(c, (n) => {
+    if (n.kind === "element" && pick(n)) out.push(n);
+  });
+  return out;
+}
+const withClass = (c: Capture, tag: string, cls: string) =>
+  elements(c, (n) => n.semantic.tag === tag && n.semantic.className === cls);
+const hoverOf = (c: Capture, tag: string, cls: string) => withClass(c, tag, cls)[0]?.hover;
+const rgb = (r: number, g: number, b: number, a = 1) => ({ r, g, b, a });
+const near = (value: number | undefined, to: number) => expect(value).toBeCloseTo(to, 2);
+
+test("a :hover background is stored on a repeated element", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const hover = hoverOf(c, "x-btn", "plain");
+  near(hover?.backgroundColor?.g, 0xaa / 255);
+  expect(hover?.backgroundColor?.a).toBe(1);
+  expect(withClass(c, "x-btn", "plain")).toHaveLength(2);
+});
+
+test("a var() value is resolved, with its fallback", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const hover = hoverOf(c, "x-btn", "vars");
+  near(hover?.color?.r, 0xcc / 255);
+  expect(hover?.backgroundColor).toEqual(rgb(0, 0, 0, 0.5));
+});
+
+test("authored hex, named, rgb and shadow forms are read", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const shadows = hoverOf(c, "x-btn", "shadow")?.boxShadows;
+  expect(shadows).toEqual([
+    { inset: false, x: 0, y: 2, blur: 4, spread: 0, color: rgb(0, 0, 0) },
+    { inset: true, x: 0, y: 0, blur: 0, spread: 1, color: rgb(1, 0, 0, 0.5) },
+  ]);
+  expect(hoverOf(c, "x-btn", "deco")?.decoration).toBe("underline");
+  const fade = hoverOf(c, "x-btn", "fade");
+  expect(fade?.opacity).toBe(0.5);
+  expect(fade?.borderColor).toEqual(rgb(1, 0, 0));
+});
+
+test("the later rule wins for the same property", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(hoverOf(c, "x-btn", "ord")?.color).toEqual(rgb(0, 0, 1));
+});
+
+test("nested rules, matching @media and @supports count; the rest do not", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  near(hoverOf(c, "x-btn", "nest")?.backgroundColor?.b, 0);
+  expect(hoverOf(c, "x-btn", "nest")?.backgroundColor?.r).toBe(1);
+  expect(hoverOf(c, "x-btn", "mq")?.opacity).toBe(0.75);
+  near(hoverOf(c, "x-btn", "sup")?.backgroundColor?.b, 0x56 / 255);
+});
+
+test(".card:hover .title reaches the descendant", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const titles = withClass(c, "h3", "title");
+  expect(titles).toHaveLength(2);
+  for (const t of titles) expect(t.hover?.color).toEqual(rgb(0, 0, 1));
+  expect(withClass(c, "div", "card").every((n) => n.hover === undefined)).toBe(true);
+});
+
+test("rules inside shadow roots and adoptedStyleSheets count", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const buttons = elements(c, (n) => n.semantic.tag === "button");
+  expect(buttons.length).toBe(2);
+  for (const b of buttons) expect(b.hover?.backgroundColor).toEqual(rgb(1, 0, 1));
+  const inner = withClass(c, "p", "inner");
+  expect(inner.length).toBe(2);
+  for (const p of inner) expect(p.hover?.opacity).toBe(0.5);
+});
+
+test(":host(:hover) reaches the host, in open and closed roots", async ({ page }) => {
+  const c = await capture(page, "hover.html", { closedShadow: true });
+  const open = elements(c, (n) => n.semantic.tag === "x-shadow");
+  expect(open).toHaveLength(2);
+  for (const h of open) expect(h.hover?.boxShadows).toHaveLength(1);
+  const closed = elements(c, (n) => n.semantic.tag === "x-closed");
+  expect(closed).toHaveLength(2);
+  for (const h of closed) expect(h.hover?.opacity).toBe(0.4);
+  const spans = elements(c, (n) => n.semantic.tag === "span");
+  expect(spans.some((s) => s.hover?.color?.g === 1 && s.hover.color.b === 1)).toBe(true);
+});
+
+test("a closed root is not read when the environment cannot reach it", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(elements(c, (n) => n.semantic.tag === "x-closed").every((n) => !n.hover)).toBe(true);
+});
+
+test("an element whose tag appears once stores nothing", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(elements(c, (n) => n.semantic.tag === "x-once")[0]?.hover).toBeUndefined();
+});
+
+test("a cross-origin sheet is skipped and counted", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const w = c.warnings.find((x) => x.code === "hover-unreadable");
+  expect(w?.detail).toContain("could not be read");
+  expect(w?.detail).not.toContain("localhost");
+  // its #ff0000 rule is not applied
+  expect(hoverOf(c, "x-btn", "plain")?.backgroundColor?.r).toBe(0);
+});
+
+test("a selector the reader cannot answer is skipped and counted", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(hoverOf(c, "x-btn", "pseudo")).toBeUndefined();
+  expect(hoverOf(c, "x-btn", "has")).toBeUndefined();
+  const partial = c.warnings.find((x) => x.code === "hover-partial");
+  expect(partial?.detail).toMatch(/\(\d+ times\)$/);
+});
+
+test(":not(:hover) is skipped", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(hoverOf(c, "x-btn", "not")).toBeUndefined();
+});
+
+test("a rule with an unsupported property keeps what it can and is counted", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const pill = hoverOf(c, "x-pill", "a");
+  expect(pill?.color?.g).toBeCloseTo(0.6, 2);
+  expect(JSON.stringify(pill)).not.toContain("transform");
+  // currentcolor can't be pinned down, so the earlier rule's green stays; the colour beside it is read
+  const cur = hoverOf(c, "x-pill", "cur");
+  expect(cur?.color?.g).toBeCloseTo(0.6, 2);
+  near(cur?.backgroundColor?.r, 0xab / 255);
+  expect(c.warnings.some((x) => x.code === "hover-partial")).toBe(true);
+});
+
+test("editable elements store nothing, nor does anything in them", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const edits = elements(c, (n) => n.semantic.tag === "x-edit");
+  expect(edits).toHaveLength(2);
+  expect(edits.every((n) => !n.hover)).toBe(true);
+  expect(elements(c, (n) => n.semantic.tag === "b").every((n) => !n.hover)).toBe(true);
+});
+
+test("the DOM is unchanged after capture", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/hover.html");
+  await page.addScriptTag({ content: bundle });
+  const snapshot = () =>
+    page.evaluate(() => ({
+      html: document.documentElement.outerHTML,
+      sheets: document.styleSheets.length,
+      adopted: document.adoptedStyleSheets.length,
+      shadow: Array.from(document.querySelectorAll("x-shadow")).map(
+        (e) => e.shadowRoot?.innerHTML ?? ""
+      ),
+    }));
+  const before = await snapshot();
+  await runCapture(page, "2026-01-01T00:00:00.000Z");
+  expect(await snapshot()).toEqual(before);
+});
+
+test("a secret in a custom property never reaches hover", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(hoverOf(c, "x-btn", "secret")).toBeUndefined();
+  expect(JSON.stringify(c)).not.toContain("s3cr3t");
+  expect(JSON.stringify(c)).not.toContain("hover-other.css");
+});
+
+test("a capture with hover still parses", async ({ page }) => {
+  const c = await capture(page, "hover.html", { closedShadow: true });
+  const parsed = parseCapture(c);
+  expect(parsed.ok).toBe(true);
+  expect(elements(c, (n) => n.hover !== undefined).length).toBeGreaterThan(5);
+});

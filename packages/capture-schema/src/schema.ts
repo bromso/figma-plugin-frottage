@@ -61,6 +61,20 @@ const style = z.object({
   clip: box.optional(),
 });
 
+const MAX_HOVER_SHADOWS = 8;
+
+/** What `:hover` changes on an element: only these properties, only their parsed values. */
+const hoverBase = z.object({
+  backgroundColor: color.optional(),
+  color: color.optional(),
+  borderColor: color.optional(),
+  opacity: unit.optional(),
+  decoration: z.string().max(60).optional(),
+});
+const hover = hoverBase.extend({
+  boxShadows: z.array(boxShadow).max(MAX_HOVER_SHADOWS).optional(),
+});
+
 const marginAuto = z.tuple([z.boolean(), z.boolean(), z.boolean(), z.boolean()]);
 
 const layout = z.object({
@@ -188,6 +202,7 @@ const elementBase = z.object({
   kind: z.literal("element"),
   style,
   layout,
+  hover: hover.optional(),
 });
 
 const elementNode = z.object({
@@ -271,6 +286,7 @@ export const parts = {
   box,
   textRun,
   boxShadow,
+  maxHoverShadows: MAX_HOVER_SHADOWS,
   backgroundImage: backgroundImage.omit({ stops: true }),
   stop,
   string: z.string(),
@@ -285,6 +301,7 @@ export const parts = {
   // Node kinds without `children` or any array.
   element: elementBase.extend({
     style: style.omit({ backgroundImages: true, boxShadows: true, filters: true }),
+    hover: hoverBase.optional(),
   }),
   text: textNode.omit({ lines: true, runs: true }),
   image: imageNode,

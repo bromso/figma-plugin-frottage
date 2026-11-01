@@ -168,25 +168,62 @@ export function parseBackgroundImages(cs: CSSStyleDeclaration): BackgroundImage[
   return out;
 }
 
-export function parseBoxShadows(value: string): Shadow[] {
+const PLAIN_LENGTH = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:px)?$/i;
+/** Words that mean "the element's colour" or "whatever is inherited", which no stylesheet value pins down. */
+const UNPINNED = /^(?:currentcolor|inherit|initial|unset|revert|revert-layer)$/i;
+
+function shadowLayers(value: string, strict: boolean): Shadow[] | null {
   if (!value || value === "none") return [];
-  return splitTop(value).flatMap((layer) => {
+  const out: Shadow[] = [];
+  for (const layer of splitTop(value)) {
     const tokens = splitTop(layer, " ");
     const inset = tokens.includes("inset");
-    const colorToken = tokens.find((t) => /^[a-z-]+\(/.test(t) || t === "transparent");
-    const nums = tokens.filter((t) => /^-?[\d.]/.test(t)).map(px);
-    if (nums.length < 2) return [];
-    return [
-      {
-        inset,
-        x: nums[0] ?? 0,
-        y: nums[1] ?? 0,
-        blur: nums[2] ?? 0,
-        spread: nums[3] ?? 0,
-        color: colorToken ? colorOf(colorToken) : BLACK,
-      },
-    ];
-  });
+    // Authored values name colours with hex and keywords as well as functions.
+    const colorToken = tokens.find((t) =>
+      strict ? t !== "inset" && !/^[-+.\d]/.test(t) : /^[a-z-]+\(/.test(t) || t === "transparent"
+    );
+    const lengths = tokens.filter((t) => /^[-+.\d]/.test(t));
+    if (strict && lengths.some((t) => !PLAIN_LENGTH.test(t))) return null;
+    if (strict && lengths.length > 4) return null;
+    const nums = lengths.map(px);
+    if (nums.length < 2) {
+      if (strict) return null;
+      continue;
+    }
+    let color = BLACK;
+    if (colorToken) {
+      if (strict) {
+        const parsed = UNPINNED.test(colorToken) ? null : parseComputedColor(colorToken);
+        if (!parsed) return null;
+        color = parsed;
+      } else {
+        color = colorOf(colorToken);
+      }
+    } else if (strict) {
+      return null; // the colour would be currentcolor
+    }
+    out.push({
+      inset,
+      x: nums[0] ?? 0,
+      y: nums[1] ?? 0,
+      blur: nums[2] ?? 0,
+      spread: nums[3] ?? 0,
+      color,
+    });
+  }
+  return out;
+}
+
+export function parseBoxShadows(value: string): Shadow[] {
+  return shadowLayers(value, false) ?? [];
+}
+
+/**
+ * `parseBoxShadows` for a value as authored in a stylesheet: null unless every layer is plain
+ * pixels with a colour that can be read, so nothing is guessed (no `em`, `calc()` or `currentcolor`).
+ */
+export function parseAuthoredBoxShadows(value: string): Shadow[] | null {
+  return shadowLayers(value.trim(), true);
 }
 
 export function parseFilters(value: string): string[] {

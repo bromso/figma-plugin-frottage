@@ -35,6 +35,14 @@ describe("parseComputedColor", () => {
     }
   });
 
+  test("parses authored hex forms", () => {
+    expect(parseComputedColor("#fff")).toEqual({ r: 1, g: 1, b: 1, a: 1 });
+    expect(parseComputedColor("#FF000080")?.a).toBeCloseTo(0.5, 2);
+    expect(parseComputedColor("#f008")?.a).toBeCloseTo(0.533, 2);
+    expect(parseComputedColor("#ff")).toBeNull();
+    expect(parseComputedColor("#gggggg")).toBeNull();
+  });
+
   test("returns null for garbage", () => {
     expect(parseComputedColor("not a colour")).toBeNull();
     expect(parseComputedColor("")).toBeNull();
