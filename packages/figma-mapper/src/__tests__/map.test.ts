@@ -1181,3 +1181,161 @@ describe("transforms", () => {
     expect(rotation("t")).toBeUndefined();
   });
 });
+
+describe("content of rotated frames", () => {
+  type Matrix = NonNullable<ElementNode["transform"]>;
+  type B = { x: number; y: number; w: number; h: number };
+  const matrix = (deg: number): Matrix => {
+    const t = (deg * Math.PI) / 180;
+    return [Math.cos(t), Math.sin(t), -Math.sin(t), Math.cos(t), 0, 0];
+  };
+  /** Where a browser reports a local box once its parent turns by `deg` about `centre`. */
+  function forward(b: B, centre: { x: number; y: number }, deg: number): B {
+    const t = (deg * Math.PI) / 180;
+    // A browser's own maths gives whole numbers at right angles; so does this.
+    const c = Math.round(Math.cos(t) * 1e12) / 1e12;
+    const s = Math.round(Math.sin(t) * 1e12) / 1e12;
+    const dx = b.x + b.w / 2 - centre.x;
+    const dy = b.y + b.h / 2 - centre.y;
+    const x = centre.x + dx * c - dy * s;
+    const y = centre.y + dx * s + dy * c;
+    const w = b.w * Math.abs(c) + b.h * Math.abs(s);
+    const h = b.w * Math.abs(s) + b.h * Math.abs(c);
+    return { x: x - w / 2, y: y - h / 2, w, h };
+  }
+  const close = (op: PlanOp | undefined, [x, y, w, h]: number[]) => {
+    expect(op).toBeDefined();
+    const o = op as PlanOp;
+    expect([o.x, o.y, o.w, o.h].map((n) => Number(n.toFixed(6)))).toEqual([x, y, w, h]);
+  };
+  const frameBox: B = { x: 100, y: 100, w: 200, h: 100 };
+  const centre = { x: 200, y: 150 };
+  const kidLocal: B = { x: 110, y: 120, w: 40, h: 20 };
+  const textLocal: B = { x: 160, y: 140, w: 60, h: 16 };
+  const rotatedPage = (deg: number) => {
+    const text = textNode("t", {
+      box: forward(textLocal, centre, deg),
+      lines: [forward(textLocal, centre, deg)],
+    });
+    const kid = el("kid", [0, 0], [], {}, [0, 0]);
+    kid.box = forward(kidLocal, centre, deg);
+    const parent = el("p", [frameBox.x, frameBox.y], [kid, text], { transform: matrix(deg) }, [
+      frameBox.w,
+      frameBox.h,
+    ]);
+    return cap(el("root", [0, 0], [parent], {}, [800, 600]));
+  };
+  const ops = (c: Parameters<typeof mapCapture>[0]) => mapCapture(c, inter).ops;
+
+  test.each([30, -20, 90, 180, 270])(
+    "a child and a text land in local space at %i degrees",
+    (deg) => {
+      const c = rotatedPage(deg);
+      const plan = ops(c);
+      close(
+        plan.find((o) => o.id === "kid"),
+        [10, 20, 40, 20]
+      );
+      const t = plan.find((o) => o.id === "t") as PlanOp;
+      expect(t.x).toBeCloseTo(60, 6);
+      expect(t.w).toBeCloseTo(60, 6);
+      expect((t as { rotation?: number }).rotation).toBeUndefined();
+      expect(plan.find((o) => o.id === "p")).toMatchObject({ x: 100, y: 100, w: 200, h: 100 });
+    }
+  );
+  test("90 degrees swaps width and height exactly", () => {
+    const kid = ops(rotatedPage(90)).find((o) => o.id === "kid") as PlanOp;
+    expect([kid.x, kid.y, kid.w, kid.h]).toEqual([10, 20, 40, 20]);
+  });
+  test("nested rotations accumulate", () => {
+    // Inner frame: local box inside the outer frame, turned 20 degrees more.
+    const innerLocal: B = { x: 120, y: 110, w: 100, h: 60 };
+    const innerCentre = { x: 170, y: 140 };
+    const leafLocal: B = { x: 140, y: 125, w: 30, h: 10 };
+    const outerDeg = 30;
+    const innerDeg = 20;
+    // The inner frame is untransformed-size and centred where the outer turn puts its centre.
+    const innerPage = forward({ ...innerLocal }, centre, outerDeg);
+    const innerCentrePage = {
+      x: innerPage.x + innerPage.w / 2,
+      y: innerPage.y + innerPage.h / 2,
+    };
+    const innerBox = {
+      x: innerCentrePage.x - 50,
+      y: innerCentrePage.y - 30,
+      w: 100,
+      h: 60,
+    };
+    // The leaf turns by the inner angle about the inner centre, then by the outer one.
+    const afterInner = forward(leafLocal, innerCentre, innerDeg);
+    const leaf = el("leaf", [0, 0], [], {}, [0, 0]);
+    leaf.box = forward(afterInner, centre, outerDeg);
+    // forward() swells the bounds by each turn in turn; the true bounds are those of the total.
+    const total = forward(leafLocal, innerCentre, innerDeg + outerDeg);
+    leaf.box = {
+      ...leaf.box,
+      w: total.w,
+      h: total.h,
+      x: leaf.box.x + leaf.box.w / 2 - total.w / 2,
+      y: leaf.box.y + leaf.box.h / 2 - total.h / 2,
+    };
+    const inner = el(
+      "inner",
+      [innerBox.x, innerBox.y],
+      [leaf],
+      { transform: matrix(innerDeg) },
+      [100, 60]
+    );
+    const outer = el("outer", [100, 100], [inner], { transform: matrix(outerDeg) }, [200, 100]);
+    const plan = ops(cap(el("root", [0, 0], [outer], {}, [800, 600])));
+    const p = (id: string) => plan.find((o) => o.id === id) as PlanOp;
+    expect(p("outer")).toMatchObject({ rotation: 30 });
+    expect((p("inner") as { rotation?: number }).rotation).toBeCloseTo(20, 4);
+    expect(p("inner").x).toBeCloseTo(20, 4);
+    expect(p("inner").y).toBeCloseTo(10, 4);
+    expect(p("leaf").w).toBeCloseTo(30, 4);
+    expect(p("leaf").h).toBeCloseTo(10, 4);
+    expect(p("leaf").x).toBeCloseTo(20, 4);
+    expect(p("leaf").y).toBeCloseTo(15, 4);
+  });
+  test("45 degrees keeps the rotated bounds and reports once", () => {
+    const c = rotatedPage(45);
+    const plan = mapCapture(c, inter);
+    const warnings = plan.report.warnings.filter((w) => w.includes("rotated-content"));
+    expect(warnings).toHaveLength(1);
+    const kid = plan.ops.find((o) => o.id === "kid") as PlanOp;
+    const bounds = forward(kidLocal, centre, 45);
+    expect(kid.w).toBeCloseTo(bounds.w, 6);
+    expect(kid.h).toBeCloseTo(bounds.h, 6);
+  });
+  test("a rotated svg with no children is unchanged", () => {
+    const base = {
+      box: { x: 10, y: 10, w: 40, h: 20 },
+      paintOrder: 0,
+      visible: true,
+      opacity: 1,
+      blendMode: "normal",
+      semantic: { tag: "svg" },
+      transform: matrix(30),
+    };
+    const c = cap(el("root", [0, 0], [{ ...base, id: "s", kind: "svg", markup: "<svg/>" }]));
+    const s = ops(c).find((o) => o.id === "s") as PlanOp;
+    expect([s.x, s.y, s.w, s.h]).toEqual([10, 10, 40, 20]);
+  });
+  test("an element with its own transform keeps its size", () => {
+    const c = rotatedPage(30);
+    const parent = c.root.kind === "element" ? (c.root.children[0] as ElementNode) : undefined;
+    const spinning = el("spin", [0, 0], [], { transform: matrix(10) }, [40, 20]);
+    const at = forward({ x: 120, y: 120, w: 40, h: 20 }, centre, 30);
+    spinning.box = { x: at.x + at.w / 2 - 20, y: at.y + at.h / 2 - 10, w: 40, h: 20 };
+    parent?.children.push(spinning);
+    const spin = ops(c).find((o) => o.id === "spin") as PlanOp;
+    expect([spin.w, spin.h]).toEqual([40, 20]);
+    expect(spin.x).toBeCloseTo(20, 6);
+    expect(spin.y).toBeCloseTo(20, 6);
+  });
+  test("a page without rotation is untouched", () => {
+    const c = cap(el("root", [0, 0], [el("a", [10, 10])]));
+    expect(ops(c).find((o) => o.id === "a")).toMatchObject({ x: 10, y: 10, w: 100, h: 100 });
+  });
+});

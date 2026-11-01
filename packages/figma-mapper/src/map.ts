@@ -28,6 +28,7 @@ import type {
 } from "./plan";
 import { extractTokens } from "./tokens";
 import { readMotion } from "./transform";
+import { unrotateTree } from "./unrotate";
 
 type Fit = "FILL" | "FIT" | "CROP" | "TILE";
 type Color = { r: number; g: number; b: number; a: number };
@@ -386,6 +387,8 @@ export function mapCapture(
   };
 
   const ignoredFilters = new Map<string, number>();
+  // Boxes inside a rotated element are turned back first, so everything below reads local space.
+  const pageRoot = unrotateTree(capture.root, warn);
   let scaledLayers = 0;
   let skewedLayers = 0;
   /** The rotation to apply to a layer, counting the scale and skew of its transform that are left out. */
@@ -555,8 +558,8 @@ export function mapCapture(
   };
   const stack: Item[] = [
     {
-      node: capture.root,
-      outer: capture.root,
+      node: pageRoot,
+      outer: pageRoot,
       parent: null,
       parentId: null,
       parentLayout: null,
