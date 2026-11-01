@@ -33,8 +33,9 @@ type Renames = { colors: Map<string, string>; styles: Map<string, string> };
 function uniqueLabels(labels: string[]): string[] {
   const taken = new Set<string>();
   return labels.map((label) => {
+    const base = label.replace(/ \(\d+\)$/, "");
     let unique = label;
-    for (let n = 2; taken.has(unique); n++) unique = `${label} (${n})`;
+    for (let n = 2; taken.has(unique); n++) unique = `${base} (${n})`;
     taken.add(unique);
     return unique;
   });
@@ -82,11 +83,16 @@ function joinStyles(
 }
 
 /**
- * A token's key is the value, so this is the values by mode, with an empty place for a missing one:
- * sorting them would give two themes with their values swapped the same key.
+ * The name, then each mode's value with its label, sorted by label. Labels keep values with their
+ * modes, so a repeat import finds the token in any order, and swapped themes don't.
  */
-const mergedKey = <T extends { key: string; name: string }>(seed: T, joins: Joins<T>) =>
-  [seed.name, ...joins.map((version) => version.get(seed)?.key ?? "")].join("|");
+function mergedKey(name: string, modes: string[], valueAt: (mode: number) => string | undefined) {
+  const parts = modes.flatMap((label, mode) => {
+    const value = valueAt(mode);
+    return value === undefined ? [] : [`${label}=${value}`];
+  });
+  return [name, ...parts.sort()].join("|");
+}
 
 function perMode<T, V>(seed: T, joins: Joins<T>, value: (token: T) => V): ModeValue<V>[] {
   return joins.flatMap((version, mode) => {
@@ -145,9 +151,10 @@ export function mergeVersions(versions: TokenVersion[]): {
       : joinStyles(seedStyles, v.plan.tokens.textStyles)
   );
 
+  const modes = uniqueLabels(versions.map((v) => v.label));
   const colors = seedColors.map(
     (seed): PlanModeColor => ({
-      key: mergedKey(seed, colorJoins),
+      key: mergedKey(seed.name, modes, (mode) => colorJoins[mode]?.get(seed)?.key),
       name: seed.name,
       ...(seed.cssVar ? { cssVar: seed.cssVar } : {}),
       values: perMode(seed, colorJoins, (t) => t.rgba),
@@ -156,7 +163,7 @@ export function mergeVersions(versions: TokenVersion[]): {
   );
   const textStyles = seedStyles.map(
     (seed): PlanModeType => ({
-      key: mergedKey(seed, styleJoins),
+      key: mergedKey(seed.name, modes, (mode) => styleJoins[mode]?.get(seed)?.key),
       name: seed.name,
       fontName: seed.fontName,
       letterSpacing: seed.letterSpacing,
@@ -171,7 +178,6 @@ export function mergeVersions(versions: TokenVersion[]): {
   const renamesOf = (tokens: { key: string; from: (string | null)[] }[], version: number) =>
     new Map(tokens.flatMap((t) => (t.from[version] ? [[t.from[version], t.key] as const] : [])));
 
-  const modes = uniqueLabels(versions.map((v) => v.label));
   const plans = versions.map(({ plan }, i): LayerPlan => {
     const renames = { colors: renamesOf(colors, i), styles: renamesOf(textStyles, i) };
     return {

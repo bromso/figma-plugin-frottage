@@ -388,7 +388,16 @@ describe("mode labels", () => {
       version("1440 (2)", planOf({})),
       version("1440", planOf({})),
     ]);
-    expect(new Set(r.tokens.modes).size).toBe(3);
+    expect(r.tokens.modes).toEqual(["1440", "1440 (2)", "1440 (3)"]);
+  });
+
+  test("a clash with a numbered label counts on from it, and never doubles the suffix", () => {
+    const r = mergeVersions([
+      version("1440", planOf({})),
+      version("1440", planOf({})),
+      version("1440 (2)", planOf({})),
+    ]);
+    expect(r.tokens.modes).toEqual(["1440", "1440 (2)", "1440 (3)"]);
   });
 
   test("the report names the unique label and counts both kinds", () => {
@@ -416,6 +425,27 @@ describe("keys", () => {
     const first = mergeVersions(set("#000000")).tokens.colors[0]?.key;
     expect(mergeVersions(set("#000000")).tokens.colors[0]?.key).toBe(first as string);
     expect(mergeVersions(set("#010101")).tokens.colors[0]?.key).not.toBe(first as string);
+  });
+
+  test("a key carries each value with its label, sorted by label", () => {
+    expect(mergeVersions(set("#101010")).tokens.colors[0]?.key).toBe(
+      "color/bg|Dark=#101010|Light=#ffffff"
+    );
+  });
+
+  test("the same versions the other way round give the same key", () => {
+    const reversed = set("#101010").reverse();
+    expect(mergeVersions(reversed).tokens.colors[0]?.key).toBe(
+      mergeVersions(set("#101010")).tokens.colors[0]?.key as string
+    );
+  });
+
+  test("a mode with no value leaves its label out", () => {
+    const r = mergeVersions([
+      version("b", planOf({ colors: [color("#112233", "color/1")] })),
+      version("a", planOf({})),
+    ]);
+    expect(r.tokens.colors[0]?.key).toBe("color/1|b=#112233");
   });
 
   test("swapping values between modes gives a new key", () => {

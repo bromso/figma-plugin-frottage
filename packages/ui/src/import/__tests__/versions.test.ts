@@ -24,7 +24,7 @@ describe("groupVersions", () => {
     expect(sets[0]?.versions[1]?.capture.version?.label).toBe("1440");
   });
 
-  test("theme and language versions follow in file order", async () => {
+  test("themes follow viewports, and languages follow themes", async () => {
     const files = await Promise.all([
       load(versionFile({ name: "dark", width: 1440, label: "Dark", kind: "theme" })),
       load(versionFile({ name: "narrow", width: 834, label: "834" })),
@@ -54,7 +54,20 @@ describe("groupVersions", () => {
     expect(sets.map((s) => names(s.versions))).toEqual([["a", "c"], ["b"]]);
   });
 
-  test("equal widths keep file order", async () => {
+  test("any file order gives one version order: kind, width descending, label", async () => {
+    const files = await Promise.all([
+      load(versionFile({ name: "sv", width: 1440, label: "Svenska", kind: "language" })),
+      load(versionFile({ name: "light", width: 1440, label: "Light", kind: "theme" })),
+      load(versionFile({ name: "dark", width: 1440, label: "Dark", kind: "theme" })),
+      load(versionFile({ name: "dark-narrow", width: 834, label: "A", kind: "theme" })),
+      load(versionFile({ name: "wide", width: 1440, label: "1440" })),
+    ]);
+    const order = ["wide", "dark", "light", "dark-narrow", "sv"];
+    expect(names(groupVersions(files)[0]?.versions ?? [])).toEqual(order);
+    expect(names(groupVersions([...files].reverse())[0]?.versions ?? [])).toEqual(order);
+  });
+
+  test("the same kind, width and label keep file order", async () => {
     const files = await Promise.all([
       load(versionFile({ name: "first", width: 1440, label: "1440" })),
       load(versionFile({ name: "second", width: 1440, label: "1440" })),
