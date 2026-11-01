@@ -260,7 +260,7 @@ export function devtoolsSteps(widths: number[]): string[] | null {
   if (narrow.length === 0) return null;
   return [
     `${joinNumbers(narrow)} can't be reached by resizing the window, so the run skips ${narrow.length === 1 ? "it" : "them"}. Capture ${narrow.length === 1 ? "it" : "each"} yourself:`,
-    "In Chrome, choose View, then Developer, then Developer Tools.",
+    "Open Developer Tools (F12, or Cmd+Option+I on Mac), or choose View, then Developer, then Developer Tools.",
     "Click the device toolbar button (the phone and tablet icon).",
     "Set the width to the one you want.",
     "Press Capture this page.",

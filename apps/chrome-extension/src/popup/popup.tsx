@@ -11,7 +11,7 @@ import {
   Type,
 } from "@repo/ui";
 import "@repo/ui/styles.css";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { RunStatus } from "../capture-run";
 import type { PopupMessage, Reply } from "../messages";
@@ -142,6 +142,11 @@ function Popup() {
     }
   }
 
+  // Whether Cancel was clicked, and the widths of the last run, for a re-run after image access.
+  const [stopping, setStopping] = useState(false);
+  const runWidths = useRef<number[] | null>(null);
+  const results = useRef<HTMLDivElement>(null);
+
   const wanted = parseWidths(choices.filter((c) => c.on).map((c) => c.text));
   const steps = devtoolsSteps(wanted);
 
@@ -155,21 +160,23 @@ function Popup() {
     }
   }
 
-  async function captureWidths() {
-    if (tabId === null || wanted.length === 0) return;
+  async function captureWidths(widths: number[] = wanted) {
+    if (tabId === null || widths.length === 0) return;
+    runWidths.current = widths;
+    setStopping(false);
     setDeclined(false);
     setStatus({
       state: "viewport",
       index: 1,
-      total: wanted.length,
-      label: String(wanted[0]),
+      total: widths.length,
+      label: String(widths[0]),
     });
     try {
       const reply: Reply | undefined = await chrome.runtime.sendMessage({
         target: "sw",
         type: "viewport-start",
         tabId,
-        widths: wanted,
+        widths,
       });
       if (reply && !reply.ok) setStatus({ state: "error", message: reply.error });
     } catch (error) {
@@ -181,6 +188,7 @@ function Popup() {
   }
 
   function cancelRun() {
+    setStopping(true);
     chrome.runtime.sendMessage({ target: "offscreen", type: "viewport-cancel" }).catch(() => {});
   }
 
@@ -190,20 +198,27 @@ function Popup() {
       () => chrome.permissions.request(IMAGE_ORIGINS),
       () => {
         setAccessHeld(true);
-        void capture(collapsed);
+        // After a viewport run the same widths run again, so the files get their images.
+        if (status.state === "viewport-done") void captureWidths(runWidths.current ?? wanted);
+        else void capture(collapsed);
       }
     );
     setDeclined(!granted);
   };
 
   const busy = BUSY.has(status.state);
+  const finishedRun = status.state === "viewport-done";
+  const offerShown =
+    (status.state === "saved" || finishedRun) && accessHeld === false && status.blockedImages > 0;
+  useEffect(() => {
+    if (finishedRun || offerShown) results.current?.scrollIntoView?.({ block: "nearest" });
+  }, [finishedRun, offerShown]);
   const advice = status.state === "saved" ? nodeAdvice(status.nodes, status.nodeLimit) : null;
   const images =
     (status.state === "saved" || status.state === "viewport-done") && accessHeld !== null
       ? imageAdvice(status.blockedImages, accessHeld)
       : null;
   const run = status.state === "viewport-done" ? viewportAdvice(status) : null;
-  const runNodes = run?.nodeWarning ?? null;
 
   return (
     <main className="flex w-[320px] flex-col gap-3 bg-background p-4 text-foreground">
@@ -232,8 +247,8 @@ function Popup() {
                 : "Capture this page"}
           </Button>
           {status.state === "viewport" && (
-            <Button variant="secondary" onClick={cancelRun}>
-              Cancel
+            <Button variant="secondary" disabled={stopping} onClick={cancelRun}>
+              {stopping ? "Stopping…" : "Cancel"}
             </Button>
           )}
           <details className="flex flex-col gap-2">
@@ -256,12 +271,15 @@ function Popup() {
                     value={choice.text}
                     maxLength={5}
                     aria-label={`Width ${index + 1} in pixels`}
-                    aria-invalid={parseWidths([choice.text]).length === 0}
+                    aria-invalid={choice.on && parseWidths([choice.text]).length === 0}
                     onChange={(e) => editChoice(index, { text: e.target.value })}
                   />
-                  <Label htmlFor={`width-on-${index}`} className="text-muted-foreground">
-                    px
-                  </Label>
+                  <span className="text-muted-foreground">px</span>
+                  {choice.on && parseWidths([choice.text]).length === 0 && (
+                    <Type size="xsmall" className="text-destructive">
+                      Not a width, skipped
+                    </Type>
+                  )}
                 </div>
               ))}
               <Type size="xsmall" className="text-muted-foreground">
@@ -284,11 +302,16 @@ function Popup() {
               )}
               <Button
                 variant="secondary"
-                onClick={captureWidths}
+                onClick={() => captureWidths()}
                 disabled={busy || tabId === null || wanted.length === 0}
               >
                 Capture at these widths
               </Button>
+              {wanted.length === 0 && (
+                <Type size="xsmall" className="text-muted-foreground">
+                  Tick at least one width from 320 to 3840 to capture.
+                </Type>
+              )}
             </fieldset>
           </details>
           <fieldset className="flex flex-col gap-2" disabled={busy}>
@@ -324,7 +347,7 @@ function Popup() {
           </fieldset>
         </>
       )}
-      <div aria-live="polite">
+      <div aria-live="polite" ref={results}>
         {status.state === "saved" && <Type>Saved {status.filename} to your Downloads.</Type>}
         {run && (
           <div className="flex flex-col gap-1">
@@ -353,7 +376,7 @@ function Popup() {
                 </ol>
               </div>
             )}
-            {runNodes && <Type className="text-muted-foreground">{runNodes}</Type>}
+            {run.nodeWarning && <Type className="text-muted-foreground">{run.nodeWarning}</Type>}
           </div>
         )}
         {advice?.warning && <Type className="text-muted-foreground">{advice.warning}</Type>}
@@ -371,6 +394,9 @@ function Popup() {
             Allow image access
           </Button>
           <Type size="xsmall" className="text-muted-foreground">
+            {status.state === "viewport-done"
+              ? "The widths will be captured again, and new files saved. "
+              : ""}
             This lets Frottage download images from any site, only to put them in the file while you
             capture. The access stays until you remove it in Chrome's extension settings. Nothing is
             sent anywhere.
