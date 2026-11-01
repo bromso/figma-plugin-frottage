@@ -94,9 +94,14 @@ function Review({
   onDecide: (decision: ReviewDecision | null) => void;
 }) {
   const [options, setOptions] = useState(state.options);
-  const [choices, setChoices] = useState<Record<string, string>>({});
+  const headingRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => headingRef.current?.focus(), []);
+  const [choices, setChoices] = useState<ReadonlyMap<string, string>>(new Map());
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">
+        Import settings
+      </SectionTitle>
       <div
         data-testid="review-scroll"
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto"
@@ -110,7 +115,7 @@ function Review({
             fonts={state.missing}
             families={state.families}
             choices={choices}
-            onChoose={(family, choice) => setChoices((c) => ({ ...c, [family]: choice }))}
+            onChoose={(family, choice) => setChoices((c) => new Map(c).set(family, choice))}
           />
         )}
       </div>
@@ -122,8 +127,8 @@ function Review({
           onClick={() =>
             onDecide({
               options,
-              fonts: Object.fromEntries(
-                state.missing.map((m) => [m.family, choices[m.family] ?? m.choice])
+              fonts: new Map(
+                state.missing.map((m) => [m.family, choices.get(m.family) ?? m.choice])
               ),
             })
           }

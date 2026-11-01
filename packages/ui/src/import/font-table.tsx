@@ -10,7 +10,7 @@ export function FontTable({
 }: {
   fonts: ReviewFont[];
   families: string[];
-  choices: Record<string, string>;
+  choices: ReadonlyMap<string, string>;
   onChoose: (family: string, choice: string) => void;
 }) {
   return (
@@ -20,7 +20,10 @@ export function FontTable({
         {fonts.map(({ family, choice }) => (
           <li key={family} className="flex items-center justify-between gap-2">
             <span className="min-w-0 truncate">{family}</span>
-            <Select value={choices[family] ?? choice} onValueChange={(v) => onChoose(family, v)}>
+            <Select
+              value={choices.get(family) ?? choice}
+              onValueChange={(v) => onChoose(family, v)}
+            >
               <SelectTrigger aria-label={`Replacement for ${family}`} className="w-36 shrink-0">
                 <SelectValue />
               </SelectTrigger>

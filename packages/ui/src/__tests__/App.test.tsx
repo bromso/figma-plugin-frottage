@@ -221,6 +221,14 @@ describe("App (options and font table)", () => {
     expect(port.prefs.get("font:Nimbus Sans")).toBe("Roboto");
   });
 
+  it("moves focus to the review heading", async () => {
+    const user = userEvent.setup();
+    render(<App port={fakePort(fonts)} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), fontFile("Nimbus Sans"));
+    const heading = await screen.findByText("Import settings");
+    await waitFor(() => expect(heading).toHaveFocus());
+  });
+
   it("cancels back to the drop area with nothing created", async () => {
     const user = userEvent.setup();
     const port = fakePort(fonts);

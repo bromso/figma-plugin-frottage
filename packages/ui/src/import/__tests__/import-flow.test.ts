@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { FrottageFileError } from "@repo/capture-schema";
+import { FrottageFileError, packFrottage } from "@repo/capture-schema";
 import { DEFAULT_IMPORT_OPTIONS } from "@repo/figma-mapper";
 import {
   type ImportState,
@@ -9,7 +9,14 @@ import {
   runImport,
   yieldToPaint,
 } from "../import-flow";
-import { fakePort, fontFile, frottageFile, imageFile, namedFile } from "./helpers";
+import {
+  captureWithTexts,
+  fakePort,
+  fontFile,
+  frottageFile,
+  imageFile,
+  namedFile,
+} from "./helpers";
 
 async function run(file: File, port = fakePort()) {
   const states: ImportState[] = [];
@@ -249,6 +256,19 @@ const fonts = [
   { family: "Roboto", style: "Regular" },
 ];
 
+/** Two side-by-side texts in a flex row, the first one linked. */
+function linkedFlexFile(): File {
+  const capture = captureWithTexts(2);
+  const root = capture.root as unknown as {
+    layout: { display: string };
+    children: { box: { x: number; w: number }; runs: { href?: string }[] }[];
+  };
+  root.layout.display = "flex";
+  for (const [i, child] of root.children.entries()) child.box = { ...child.box, x: i * 50, w: 50 };
+  if (root.children[0]?.runs[0]) root.children[0].runs[0].href = "https://example.com/x";
+  return new File([packFrottage(capture, new Map()) as BlobPart], "p.frottage");
+}
+
 function confirm(decision: ReviewDecision | null, forceReview = false) {
   const session: ReviewSession & { asked: number } = {
     forceReview,
@@ -302,7 +322,7 @@ describe("the review step", () => {
     const states = await runWith(
       fontFile("Nimbus Sans"),
       port,
-      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: {} })
+      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: new Map() })
     );
     expect(states.at(-1)?.step).toBe("done");
     expect(port.beginMeta?.fonts).toEqual([{ family: "Inter", style: "Regular" }]);
@@ -313,7 +333,7 @@ describe("the review step", () => {
     await runWith(
       fontFile("Nimbus Sans"),
       port,
-      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: { "Nimbus Sans": "Roboto" } })
+      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: new Map([["Nimbus Sans", "Roboto"]]) })
     );
     expect(port.beginMeta?.fonts).toEqual([{ family: "Roboto", style: "Regular" }]);
   });
@@ -323,7 +343,7 @@ describe("the review step", () => {
     await runWith(
       fontFile("Nimbus Sans"),
       port,
-      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: { "Nimbus Sans": "Roboto" } })
+      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: new Map([["Nimbus Sans", "Roboto"]]) })
     );
     expect(port.prefs.get("font:Nimbus Sans")).toBe("Roboto");
     const states = await runWith(fontFile("Nimbus Sans"), port, confirm(null));
@@ -345,7 +365,7 @@ describe("the review step", () => {
   test("options are remembered per domain", async () => {
     const port = fakePort(fonts);
     const chosen = { ...DEFAULT_IMPORT_OPTIONS, autoLayout: false, htmlNames: true };
-    await runWith(frottageFile(1), port, confirm({ options: chosen, fonts: {} }, true));
+    await runWith(frottageFile(1), port, confirm({ options: chosen, fonts: new Map() }, true));
     expect(port.prefs.get("options:example.com")).toEqual(chosen);
     expect(port.tokensOptions).toEqual(chosen);
     // A plain drop uses them without asking.
@@ -379,7 +399,7 @@ describe("the review step", () => {
     const states = await runWith(
       fontFile("Nimbus Sans"),
       port,
-      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: {} })
+      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: new Map() })
     );
     expect(states.at(-1)?.step).toBe("done");
   });
@@ -396,5 +416,59 @@ describe("the review step", () => {
     expect(states.at(-1)).toEqual({ step: "idle" });
     expect(port.log).not.toContain("begin");
     expect(port.log.some((l) => l.startsWith("setPrefs"))).toBe(false);
+  });
+
+  test("an accepted prefilled font is applied but not remembered", async () => {
+    const port = fakePort(fonts);
+    const states = await runWith(
+      fontFile("Nimbus Sans"),
+      port,
+      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: new Map([["Nimbus Sans", "Inter"]]) })
+    );
+    expect(states.at(-1)?.step).toBe("done");
+    expect(port.log.some((l) => l.startsWith("setPrefs font:"))).toBe(false);
+  });
+
+  test("a stored choice accepted unchanged keeps its pref", async () => {
+    const port = fakePort(fonts);
+    port.prefs.set("font:Nimbus Sans", "Roboto");
+    await runWith(
+      fontFile("Nimbus Sans"),
+      port,
+      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: new Map([["Nimbus Sans", "Roboto"]]) })
+    );
+    expect(port.prefs.get("font:Nimbus Sans")).toBe("Roboto");
+    expect(port.beginMeta?.fonts).toEqual([{ family: "Roboto", style: "Regular" }]);
+  });
+
+  test("families named like Object members keep their choice", async () => {
+    const port = fakePort(fonts);
+    await runWith(
+      fontFile("constructor"),
+      port,
+      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: new Map([["constructor", "Roboto"]]) })
+    );
+    expect(port.beginMeta?.fonts).toEqual([{ family: "Roboto", style: "Regular" }]);
+    expect(port.prefs.get("font:constructor")).toBe("Roboto");
+  });
+
+  test("switching options off changes the plan, not only the options", async () => {
+    const run = async (over: Partial<typeof DEFAULT_IMPORT_OPTIONS>) => {
+      const port = fakePort(fonts);
+      const ops: unknown[] = [];
+      port.batch = async (b) => {
+        ops.push(...b);
+      };
+      await runWith(
+        linkedFlexFile(),
+        port,
+        confirm({ options: { ...DEFAULT_IMPORT_OPTIONS, ...over }, fonts: new Map() }, true)
+      );
+      return JSON.stringify(ops);
+    };
+    const base = await run({});
+    expect(await run({ htmlNames: true })).not.toBe(base);
+    expect(await run({ autoLayout: false })).not.toBe(base);
+    expect(await run({ hyperlinks: false })).not.toBe(base);
   });
 });

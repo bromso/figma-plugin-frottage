@@ -72,7 +72,7 @@ export type ImportPort = {
 };
 
 /** What the user confirmed in the review step. `fonts` maps a missing family to a chosen one. */
-export type ReviewDecision = { options: ImportOptions; fonts: Record<string, string> };
+export type ReviewDecision = { options: ImportOptions; fonts: ReadonlyMap<string, string> };
 
 export type ReviewSession = {
   /** Review even when no font is missing. */
@@ -198,20 +198,20 @@ export async function runImport(
         return;
       }
       options = sanitizeOptions(decision.options);
-      const overrides: Record<string, string> = {};
-      for (const { family } of reviewFonts) {
-        const chosen = decision.fonts[family];
-        if (typeof chosen === "string" && families.includes(chosen)) overrides[family] = chosen;
+      // Prefilled choices the user left alone still apply to the plan, but are not remembered.
+      const overrides: Record<string, string> = Object.create(null);
+      const changed: [string, string][] = [];
+      for (const { family, choice } of reviewFonts) {
+        const picked = decision.fonts.get(family);
+        const chosen = typeof picked === "string" && families.includes(picked) ? picked : choice;
+        overrides[family] = chosen;
+        if (chosen !== choice) changed.push([family, chosen]);
       }
-      // Prefilled choices not touched by the user are still the answer the user accepted.
-      for (const { family, choice } of reviewFonts) overrides[family] ??= choice;
       onState({ step: "working", done: 0, total: 0 });
       await yieldToPaint();
       plan = mapCapture(capture, available, options, overrides);
       if (hostname) await writePref(port, `options:${hostname}`, options);
-      for (const [family, chosen] of Object.entries(overrides)) {
-        await writePref(port, `font:${family}`, chosen);
-      }
+      for (const [family, chosen] of changed) await writePref(port, `font:${family}`, chosen);
     }
     const total = plan.ops.length;
     onState({ step: "working", done: 0, total });
