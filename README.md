@@ -21,7 +21,8 @@ Capture a page with the Chrome extension, then open the `.frottage` file in the 
 - **Components and hover variants** — repeated custom elements become components with instances, and their `:hover` rules become a Hover variant
 - **Paint and transforms** — gradients, filters, rotation and z-index order come through as native fills, effects and layers
 - **Image access** — images a site blocks from the page can be fetched by the extension, after you allow it with one click
-- **Styles and variables** — repeated values become text styles and colour variables, reused on later imports
+- **Styles and variables** — repeated values become text styles and colour variables, and lengths held by custom properties named for spacing, such as `--space-4` or `--gutter`, become spacing variables, all reused on later imports
+- **Versions of a page** — capture at several widths, or label a capture by theme or language, then import the files together as a set: one frame per version side by side, each on its own mode of one variable collection, so switching a mode changes values, not structure. Files group by page URL, so language versions at different URLs import as separate pages
 - **Import options** — remembered per site, with a replacement picked for each missing font
 - **Turborepo monorepo** with Bun package manager — fast installs, cached builds
 - **React + TypeScript + Bun** build pipeline — one build script (`build.ts`) for the plugin; Vite is used only by Storybook
