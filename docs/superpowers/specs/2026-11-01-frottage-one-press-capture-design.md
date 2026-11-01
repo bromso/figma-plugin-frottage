@@ -61,6 +61,8 @@ Also measured the same day, with a real popup: the action popup always closes wh
 5. Always, however the run ended: move the tab back to its index, restore pinned and group, make it active, and close the run page.
 6. Save the one file, then report: set a toolbar badge (`chrome.action.setBadgeText`, no permission needed) and try `chrome.action.openPopup()`. The result is held until the popup next opens, as today.
 
+In Incognito an extension page can't load, so the placeholder is a static `data:` page and progress and Cancel live in the popup instead.
+
 The run page is a small extension page: "Capturing 1512 (1 of 3)…", a Cancel button, and "Leave the small window open." It uses the same `RunStatus` messages as the popup.
 
 If the user closes the small window, their tab is gone and no extension can stop that. The run stops, and the run page navigates to the recorded URL, so the page comes back in its place (reloaded). If the user closes the run page, the run carries on and the tab returns to the end of its window. If the whole window has gone, the tab stays in a new normal window. A cancelled or finished run clears the badge when the popup is next opened.
@@ -68,6 +70,13 @@ If the user closes the small window, their tab is gone and no extension can stop
 `minimum_chrome_version` rises from 116 to 127 for `openPopup`. If `openPopup` fails, the badge still shows.
 
 The user's own window is no longer resized, so `remember`, `restoreWindow`, the maximised handling and `MIN_WINDOW_WIDTH` go. So do `devtoolsSteps`, `narrow`, and the popup's Developer Tools instructions. `heldAt`'s minimum for its probe becomes the 120 floor.
+
+Settled during the build:
+
+- A width the window refuses is skipped and listed, and the run carries on. The small window opens at left 0, top 0.
+- A failed save reports its cause, is not retried, and drops the captures.
+- A tab that can't be moved back is reported as "Your tab couldn't be moved back. It's in the small window."
+- `viewport-done` carries the run's request, so a re-run repeats what the run was asked.
 
 Stopping early: Cancel, an error, a closed window or a navigated tab keeps what was captured. The file is saved with the sizes done so far, and the popup says which sizes it holds and why it stopped. With nothing captured, no file is saved. Today's guarantee is that saved files survive however a run ended; this keeps it.
 
