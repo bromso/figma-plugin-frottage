@@ -936,8 +936,13 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
     const generated = (which: Which) => {
       const p = readPseudo(el, which, pseudoCtx);
-      if (p?.mode === "inline") group.push(new PseudoItem(p));
-      else if (p) {
+      if (!p) return;
+      // An inline pseudo-element is a text node below `el`; a box one is an element and its text.
+      if (depth + (p.mode === "inline" ? 1 : 2) > MAX_DEPTH) {
+        warn("depth-limit", undefined, `Subtree below depth ${MAX_DEPTH} was not captured`);
+      } else if (p.mode === "inline") {
+        group.push(new PseudoItem(p));
+      } else {
         flush();
         out.push(...pseudoNodes(el, which, pseudoCtx));
       }

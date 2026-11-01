@@ -1424,3 +1424,54 @@ test("a same-document use and an embedded image are not reported", async ({ page
   expect(report[0]?.detail).toContain("3 times");
   expect(c.warnings.find((w) => w.code === "svg-foreign-object")?.detail).not.toContain("times");
 });
+
+// ---------- Depth
+
+test("a pseudo-element at the depth limit does not take the capture past it", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/form.html");
+  await page.addScriptTag({ content: bundle });
+  for (const kind of ["box", "line"]) {
+    for (let n = 250; n <= 258; n++) {
+      await page.evaluate(
+        ({ n, kind }) => {
+          document.head.innerHTML = `<style>
+            .box::before { content: "x"; display: block; background: #eee; }
+            .line::after { content: "y"; }
+          </style>`;
+          document.body.replaceChildren();
+          let at: Element = document.body;
+          for (let i = 0; i < n; i++) {
+            const d = document.createElement("div");
+            d.className = kind;
+            at.appendChild(d);
+            at = d;
+          }
+        },
+        { n, kind }
+      );
+      const c = await runCapture(page, "x");
+      expect(parseCapture(c).ok, `${kind} at ${n}`).toBe(true);
+    }
+  }
+});
+
+test("a pseudo-element left out at the depth limit is reported", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/form.html");
+  await page.addScriptTag({ content: bundle });
+  await page.evaluate(() => {
+    document.head.innerHTML = '<style>.box::before { content: "x"; background: #eee; }</style>';
+    document.body.replaceChildren();
+    let at: Element = document.body;
+    // <html> and <body> are depths 1 and 2, so the last div is at depth 256 with no children.
+    for (let i = 0; i < 254; i++) {
+      const d = document.createElement("div");
+      at.appendChild(d);
+      at = d;
+    }
+    at.className = "box";
+  });
+  const c = await runCapture(page, "x");
+  expect(c.warnings.map((w) => w.code)).toContain("depth-limit");
+});
