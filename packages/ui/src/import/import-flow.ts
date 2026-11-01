@@ -2,10 +2,13 @@ import { type Capture, FrottageFileError, unpackFrottage } from "@repo/capture-s
 import { sha256Hex } from "@repo/capture-schema/hash";
 import {
   batchOps,
+  DEFAULT_IMPORT_OPTIONS,
   type FontRef,
+  type ImportOptions,
   type ImportReport,
   mapCapture,
   type PlanOp,
+  type PlanTokens,
 } from "@repo/figma-mapper";
 import { messageForError } from "./messages";
 
@@ -23,12 +26,18 @@ export type ImportState =
       textDriftCount: number;
       autoLayoutFrames: number;
       fallbackFrames: number;
+      stylesCreated: number;
+      stylesReused: number;
+      variablesCreated: number;
+      variablesReused: number;
+      tokenFailures: number;
     }
   | { step: "error"; message: string };
 
 export type ImportPort = {
   listFonts(): Promise<FontRef[]>;
   begin(meta: { name: string; fonts: FontRef[]; totalOps: number }): Promise<void>;
+  tokens(tokens: PlanTokens, options: ImportOptions): Promise<void>;
   image(hash: string, bytes: Uint8Array): Promise<{ ok: boolean }>;
   batch(ops: PlanOp[]): Promise<void>;
   end(): Promise<{
@@ -39,6 +48,11 @@ export type ImportPort = {
     textDriftCount?: number;
     autoLayoutFrames?: number;
     fallbackFrames?: number;
+    stylesCreated?: number;
+    stylesReused?: number;
+    variablesCreated?: number;
+    variablesReused?: number;
+    tokenFailures?: number;
   }>;
   cancel(): Promise<void>;
 };
@@ -100,13 +114,15 @@ export async function runImport(
     await verifyAssets(assets);
 
     await yieldToPaint();
-    const plan = mapCapture(capture, await port.listFonts());
+    const options = DEFAULT_IMPORT_OPTIONS;
+    const plan = mapCapture(capture, await port.listFonts(), options);
     const total = plan.ops.length;
     onState({ step: "working", done: 0, total });
 
     // Set first: a begin that fails halfway may still have created state to cancel.
     begun = true;
     await port.begin({ name: importName(capture.source), fonts: plan.fonts, totalOps: total });
+    await port.tokens(plan.tokens, options);
 
     for (const hash of plan.assetHashes) {
       const data = assets.get(hash);
@@ -134,6 +150,11 @@ export async function runImport(
       textDriftCount: result.textDriftCount ?? 0,
       autoLayoutFrames: result.autoLayoutFrames ?? 0,
       fallbackFrames: result.fallbackFrames ?? 0,
+      stylesCreated: result.stylesCreated ?? 0,
+      stylesReused: result.stylesReused ?? 0,
+      variablesCreated: result.variablesCreated ?? 0,
+      variablesReused: result.variablesReused ?? 0,
+      tokenFailures: result.tokenFailures ?? 0,
     });
   } catch (error) {
     if (begun) {

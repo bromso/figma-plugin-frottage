@@ -8,6 +8,7 @@ export type {
   ImportReport,
   LayerPlan,
   PlanChildLayout,
+  PlanColor,
   PlanEffect,
   PlanLayout,
   PlanOp,
@@ -15,5 +16,7 @@ export type {
   PlanRgb,
   PlanRun,
   PlanStroke,
+  PlanTextStyle,
+  PlanTokens,
   PlanTrack,
 } from "./plan";

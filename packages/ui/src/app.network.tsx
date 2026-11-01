@@ -34,6 +34,7 @@ UI_CHANNEL.registerMessageHandler("importProgress", () => {});
 export const channelImportPort: ImportPort = {
   listFonts: () => UI_CHANNEL.request(PLUGIN, "listFonts", []),
   begin: (meta) => UI_CHANNEL.request(PLUGIN, "importBegin", [meta]),
+  tokens: (tokens, options) => UI_CHANNEL.request(PLUGIN, "importTokens", [tokens, options]),
   image: (hash, bytes) => UI_CHANNEL.request(PLUGIN, "importImage", [hash, bytes]),
   batch: (ops) => UI_CHANNEL.request(PLUGIN, "importBatch", [ops]),
   end: () => UI_CHANNEL.request(PLUGIN, "importEnd", []),

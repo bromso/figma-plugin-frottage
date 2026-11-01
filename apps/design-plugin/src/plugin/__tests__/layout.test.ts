@@ -929,6 +929,11 @@ describe("when to verify", () => {
       fallbackFrames: 0,
       fallbackReasons: {},
       textDriftCount: 0,
+      stylesCreated: 0,
+      stylesReused: 0,
+      variablesCreated: 0,
+      variablesReused: 0,
+      tokenFailures: 0,
     });
   });
 });

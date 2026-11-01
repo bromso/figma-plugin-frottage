@@ -39,6 +39,10 @@ PLUGIN_CHANNEL.registerMessageHandler("importBegin", async (meta) => {
   await applier.begin(meta);
 });
 
+PLUGIN_CHANNEL.registerMessageHandler("importTokens", (tokens, options) =>
+  applier.importTokens(tokens, options)
+);
+
 PLUGIN_CHANNEL.registerMessageHandler("importImage", (hash, bytes) =>
   applier.addImage(hash, bytes)
 );

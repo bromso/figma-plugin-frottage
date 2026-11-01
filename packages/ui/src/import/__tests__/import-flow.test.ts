@@ -64,6 +64,35 @@ describe("runImport", () => {
     expect(port.log.indexOf("begin")).toBeLessThan(port.log.indexOf("batch"));
   });
 
+  test("sends the tokens after begin and before any image or batch", async () => {
+    const { port } = await run(await imageFile(true));
+    expect(port.log.indexOf("tokens")).toBe(port.log.indexOf("begin") + 1);
+    expect(port.log.indexOf("tokens")).toBeLessThan(port.log.indexOf("image"));
+    expect(port.tokensSent?.collection).toBe(new URL("https://example.com").hostname);
+  });
+
+  test("the done state carries the token counts", async () => {
+    const port = fakePort();
+    port.endResult = {
+      ...port.endResult,
+      stylesCreated: 1,
+      stylesReused: 2,
+      variablesCreated: 3,
+      variablesReused: 4,
+      tokenFailures: 5,
+    };
+    const states: ImportState[] = [];
+    await runImport(frottageFile(1), port, (s) => states.push(s));
+    expect(states.at(-1)).toMatchObject({
+      step: "done",
+      stylesCreated: 1,
+      stylesReused: 2,
+      variablesCreated: 3,
+      variablesReused: 4,
+      tokenFailures: 5,
+    });
+  });
+
   test("sends each image before the first batch", async () => {
     const { port } = await run(await imageFile(true));
     expect(port.log.indexOf("image")).toBeGreaterThan(-1);

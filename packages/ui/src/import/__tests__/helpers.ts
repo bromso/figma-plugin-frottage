@@ -1,6 +1,6 @@
 import { type Capture, type CaptureNode, packFrottage } from "@repo/capture-schema";
 import { sha256Hex } from "@repo/capture-schema/hash";
-import type { FontRef, PlanOp } from "@repo/figma-mapper";
+import type { FontRef, PlanOp, PlanTokens } from "@repo/figma-mapper";
 import type { ImportPort } from "../import-flow";
 
 const box = { x: 0, y: 0, w: 100, h: 50 };
@@ -110,9 +110,15 @@ export type FakePort = ImportPort & {
     textDriftCount?: number;
     autoLayoutFrames?: number;
     fallbackFrames?: number;
+    stylesCreated?: number;
+    stylesReused?: number;
+    variablesCreated?: number;
+    variablesReused?: number;
+    tokenFailures?: number;
   };
   failOn?: "batch" | "end";
   beginMeta?: Parameters<ImportPort["begin"]>[0];
+  tokensSent?: PlanTokens;
 };
 
 export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular" }]): FakePort {
@@ -127,6 +133,10 @@ export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular"
     async begin(meta) {
       port.log.push("begin");
       port.beginMeta = meta;
+    },
+    async tokens(tokens) {
+      port.log.push("tokens");
+      port.tokensSent = tokens;
     },
     async image() {
       port.log.push("image");

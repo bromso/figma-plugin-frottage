@@ -1,10 +1,13 @@
 import type {
   FontRef,
+  ImportOptions,
   PlanEffect,
   PlanOp,
   PlanPaint,
+  PlanRgb,
   PlanRun,
   PlanStroke,
+  PlanTokens,
   PlanTrack,
 } from "@repo/figma-mapper";
 import {
@@ -15,6 +18,7 @@ import {
   type TextFit,
   widenToLines,
 } from "./layout-tracker";
+import { createTokenSet, NO_TOKENS, type TokenCounts, type TokenSet } from "./tokens";
 
 /**
  * Turns plan ops into Figma layers. Runs in the plugin sandbox. Only types come
@@ -22,7 +26,7 @@ import {
  */
 
 export type ImportMeta = { name: string; fonts: FontRef[]; totalOps: number };
-export type EndResult = {
+export type EndResult = TokenCounts & {
   rootId: string;
   failedOps: number;
   missingImages: number;
@@ -38,6 +42,7 @@ export type EndResult = {
 
 type Corners = [number, number, number, number];
 type FrameOp = Extract<PlanOp, { op: "frame" }>;
+type TextOp = Extract<PlanOp, { op: "text" }>;
 
 const FALLBACK: FontRef = { family: "Inter", style: "Regular" };
 const GAP = 100;
@@ -59,6 +64,7 @@ const CANCELLED: EndResult = {
   autoLayoutFrames: 0,
   fallbackFrames: 0,
   fallbackReasons: {},
+  ...NO_TOKENS,
 };
 
 const fontKey = (f: FontRef) => `${f.family}\u0000${f.style}`;
@@ -100,6 +106,12 @@ export function createApplier(api: PluginAPI) {
   let sliceStart = 0;
   /** Changes when an import ends, so that work suspended in a yield can tell. */
   let generation = 0;
+  /** This import's tokens, from `importTokens` until they are kept or taken back. */
+  let tokens: TokenSet | null = null;
+  /** Taking tokens back is asynchronous, and the next import must not read them halfway. */
+  let cleaning: Promise<unknown> = Promise.resolve();
+  /** Style links for the op being built, which need the node finished and in the tree. */
+  let styleLinks: (() => Promise<void>)[] = [];
 
   function reset() {
     generation++;
@@ -110,6 +122,8 @@ export function createApplier(api: PluginAPI) {
         // already gone
       }
     }
+    if (tokens) cleaning = Promise.all([cleaning, tokens.discard()]);
+    tokens = null;
     root = null;
     rootName = "";
     page = null;
@@ -125,6 +139,7 @@ export function createApplier(api: PluginAPI) {
     missingImages = 0;
     tracker = createLayoutTracker();
     fillFit = null;
+    styleLinks = [];
   }
 
   async function loadFont(f: FontRef): Promise<void> {
@@ -138,6 +153,7 @@ export function createApplier(api: PluginAPI) {
 
   async function begin(meta: ImportMeta): Promise<void> {
     reset();
+    await cleaning;
     api.commitUndo();
     active = true;
     rootName = meta.name;
@@ -155,6 +171,22 @@ export function createApplier(api: PluginAPI) {
     rootX = any ? right + GAP : 0;
   }
 
+  /** Settles the plan's tokens against the file. Comes before any batch that uses them. */
+  async function importTokens(plan: PlanTokens, options: ImportOptions): Promise<void> {
+    if (!active) throw new Error("import not started");
+    const run = generation;
+    tokens ??= createTokenSet(api);
+    sliceStart = Date.now();
+    await tokens.resolve(plan, options, {
+      overBudget,
+      breathe: () => breathe(run),
+      ensureFont: async (font) => {
+        if (!loadedFonts.has(fontKey(font))) await loadFont(font);
+        return loadedFonts.has(fontKey(font));
+      },
+    });
+  }
+
   async function addImage(
     hash: string,
     bytes: Uint8Array
@@ -167,11 +199,29 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
+  /** A plain paint, bound to its variable if it has one. A refused binding stays plain. */
+  function solidPaint(color: PlanRgb, opacity: number, colorKey?: string): SolidPaint {
+    const paint: SolidPaint = { type: "SOLID", color, opacity };
+    const binding = tokens?.color(colorKey);
+    if (!binding || !("variable" in binding)) return paint;
+    try {
+      return api.variables.setBoundVariableForPaint(paint, "color", binding.variable);
+    } catch {
+      tokens?.failed();
+      return paint;
+    }
+  }
+
+  function paintStyleId(colorKey?: string): string | undefined {
+    const binding = tokens?.color(colorKey);
+    return binding && "paintStyleId" in binding ? binding.paintStyleId : undefined;
+  }
+
   function paints(list: PlanPaint[]): Paint[] {
     const out: Paint[] = [];
     for (const p of list) {
       if (p.type === "SOLID") {
-        out.push({ type: "SOLID", color: p.color, opacity: p.opacity });
+        out.push(solidPaint(p.color, p.opacity, p.colorKey));
       } else {
         const imageHash = images.get(p.hash);
         if (!imageHash) {
@@ -306,18 +356,48 @@ export function createApplier(api: PluginAPI) {
     return /^https?:\/\//i.test(href);
   }
 
-  function runProps(node: TextNode, run: PlanRun, start: number, end: number) {
-    node.setRangeFontName(start, end, usableFont(run.fontName));
-    node.setRangeFontSize(start, end, run.fontSize);
-    node.setRangeFills(start, end, [{ type: "SOLID", color: run.color, opacity: run.opacity }]);
-    node.setRangeLineHeight(
-      start,
-      end,
-      run.lineHeight === null ? { unit: "AUTO" } : { unit: "PIXELS", value: run.lineHeight }
-    );
-    node.setRangeLetterSpacing(start, end, { unit: "PIXELS", value: run.letterSpacing });
-    node.setRangeTextDecoration(start, end, run.decoration);
-    node.setRangeTextCase(start, end, run.textCase);
+  /** Whether the range took the style. If not, the run sets its own fields. */
+  async function linkTextStyle(node: TextNode, styleId: string, start: number, end: number) {
+    const set = tokens;
+    try {
+      await node.setRangeTextStyleIdAsync(start, end, styleId);
+      return true;
+    } catch {
+      set?.failed();
+      return false;
+    }
+  }
+
+  /** A text style holds no colour, so this applies to every run. */
+  async function paintRun(node: TextNode, run: PlanRun, start: number, end: number) {
+    node.setRangeFills(start, end, [solidPaint(run.color, run.opacity, run.colorKey)]);
+    const styleId = paintStyleId(run.colorKey);
+    if (!styleId) return;
+    const set = tokens;
+    try {
+      await node.setRangeFillStyleIdAsync(start, end, styleId);
+    } catch {
+      set?.failed();
+    }
+  }
+
+  /** The style goes first, as linking one overrides the range's own type fields. */
+  async function runProps(node: TextNode, run: PlanRun, start: number, end: number) {
+    const styleId = tokens?.textStyleId(run.styleKey);
+    const styled = styleId !== undefined && (await linkTextStyle(node, styleId, start, end));
+    if (!styled) {
+      node.setRangeFontName(start, end, usableFont(run.fontName));
+      node.setRangeFontSize(start, end, run.fontSize);
+      node.setRangeLineHeight(
+        start,
+        end,
+        run.lineHeight === null ? { unit: "AUTO" } : { unit: "PIXELS", value: run.lineHeight }
+      );
+      node.setRangeLetterSpacing(start, end, { unit: "PIXELS", value: run.letterSpacing });
+      node.setRangeTextDecoration(start, end, run.decoration);
+      node.setRangeTextCase(start, end, run.textCase);
+    }
+    await paintRun(node, run, start, end);
     if (run.href !== undefined && isWebLink(run.href)) {
       try {
         node.setRangeHyperlink(start, end, { type: "URL", value: run.href });
@@ -326,8 +406,11 @@ export function createApplier(api: PluginAPI) {
         return;
       }
       // Figma restyles linked text (blue, underlined), so put the page's colour and decoration back.
-      node.setRangeFills(start, end, [{ type: "SOLID", color: run.color, opacity: run.opacity }]);
-      node.setRangeTextDecoration(start, end, run.decoration);
+      await paintRun(node, run, start, end);
+      // On a styled run, only a real difference is worth an override of the style.
+      if (!styled || node.getRangeTextDecoration(start, end) !== run.decoration) {
+        node.setRangeTextDecoration(start, end, run.decoration);
+      }
     }
   }
 
@@ -342,7 +425,9 @@ export function createApplier(api: PluginAPI) {
 
   function setStroke(node: FrameNode | RectangleNode, s: PlanStroke | null) {
     if (!s || !Object.values(s.weights).every(validWeight)) return;
-    node.strokes = [{ type: "SOLID", color: s.color, opacity: s.opacity }];
+    node.strokes = [solidPaint(s.color, s.opacity, s.colorKey)];
+    const styleId = paintStyleId(s.colorKey);
+    if (styleId) styleLinks.push(() => node.setStrokeStyleIdAsync(styleId));
     node.strokeAlign = "INSIDE";
     node.strokeTopWeight = s.weights.top;
     node.strokeRightWeight = s.weights.right;
@@ -362,6 +447,11 @@ export function createApplier(api: PluginAPI) {
     setLayout(node, op);
     node.clipsContent = op.clips;
     node.fills = paints(op.fills);
+    // A fill style replaces the whole list, so it needs the solid to be the only fill.
+    const [only] = op.fills;
+    const fillStyle =
+      op.fills.length === 1 && only?.type === "SOLID" ? paintStyleId(only.colorKey) : undefined;
+    if (fillStyle) styleLinks.push(() => node.setFillStyleIdAsync(fillStyle));
     setRadius(node, op.radius);
     setStroke(node, op.strokes);
     node.effects = effects(op.effects);
@@ -373,7 +463,59 @@ export function createApplier(api: PluginAPI) {
     return node;
   }
 
-  function build(op: PlanOp): Built {
+  async function buildText(op: TextOp, parent: FrameNode): Promise<TextNode> {
+    const font = usableFont(op.runs[0]?.fontName ?? FALLBACK);
+    const node = api.createText();
+    pending = node;
+    join(parent, node, op);
+    node.name = op.name;
+    await setText(node, op, font);
+    node.textAlignHorizontal = op.align;
+    // Figma's Inter runs slightly wider than the browser's, so a box sized to the
+    // captured width can wrap differently. Single-line text never wraps; wrapped
+    // text is widened until it is back to the captured line count.
+    node.textAutoResize = "WIDTH_AND_HEIGHT";
+    if (!op.wrap) {
+      place(node, parent, op, alignedX(op.align, op.x, op.w, node.width));
+      return node;
+    }
+    // The tallest line sets the line height: the largest pixel value across runs,
+    // or the measured one-line height when a run uses AUTO.
+    const oneLine = node.height;
+    const pixels = op.runs.flatMap((r) => (r.lineHeight === null ? [] : [r.lineHeight]));
+    const lineHeight = Math.max(
+      ...pixels,
+      pixels.length < op.runs.length || pixels.length === 0 ? oneLine : 0
+    );
+    // Half a line of slack, so the check counts lines and ignores rounding.
+    const fit = { w: op.w, limit: (Math.max(op.lineCount, 1) + 0.5) * lineHeight };
+    node.textAutoResize = "HEIGHT";
+    if (inLayout(parent) && op.childLayout?.sizingH === "FILL") {
+      node.layoutSizingHorizontal = "FILL";
+      fillFit = fit;
+      place(node, parent, op);
+      return node;
+    }
+    if (!widenToLines(node, fit)) tracker.noteRewrapped();
+    place(node, parent, op, alignedX(op.align, op.x, op.w, node.width));
+    return node;
+  }
+
+  /** Sets the characters and every run, which can take several trips to Figma. */
+  async function setText(node: TextNode, op: TextOp, font: FontRef) {
+    const run = generation;
+    node.fontName = font;
+    node.characters = op.text;
+    for (const planned of op.runs) {
+      const start = Math.max(planned.start, 0);
+      const end = Math.min(planned.end, op.text.length);
+      if (start >= end) continue;
+      await runProps(node, planned, start, end);
+      if (run !== generation) throw new Error("import ended");
+    }
+  }
+
+  function build(op: PlanOp): Built | Promise<Built> {
     if (op.op === "frame" && op.parent === null) {
       if (rootAttempted) throw new Error("more than one root op");
       rootAttempted = true;
@@ -385,49 +527,8 @@ export function createApplier(api: PluginAPI) {
     switch (op.op) {
       case "frame":
         return buildFrame(op, parent);
-      case "text": {
-        const font = usableFont(op.runs[0]?.fontName ?? FALLBACK);
-        const node = api.createText();
-        pending = node;
-        join(parent, node, op);
-        node.name = op.name;
-        node.fontName = font;
-        node.characters = op.text;
-        for (const run of op.runs) {
-          const start = Math.max(run.start, 0);
-          const end = Math.min(run.end, op.text.length);
-          if (start < end) runProps(node, run, start, end);
-        }
-        node.textAlignHorizontal = op.align;
-        // Figma's Inter runs slightly wider than the browser's, so a box sized to the
-        // captured width can wrap differently. Single-line text never wraps; wrapped
-        // text is widened until it is back to the captured line count.
-        node.textAutoResize = "WIDTH_AND_HEIGHT";
-        if (!op.wrap) {
-          place(node, parent, op, alignedX(op.align, op.x, op.w, node.width));
-          return node;
-        }
-        // The tallest line sets the line height: the largest pixel value across runs,
-        // or the measured one-line height when a run uses AUTO.
-        const oneLine = node.height;
-        const pixels = op.runs.flatMap((r) => (r.lineHeight === null ? [] : [r.lineHeight]));
-        const lineHeight = Math.max(
-          ...pixels,
-          pixels.length < op.runs.length || pixels.length === 0 ? oneLine : 0
-        );
-        // Half a line of slack, so the check counts lines and ignores rounding.
-        const fit = { w: op.w, limit: (Math.max(op.lineCount, 1) + 0.5) * lineHeight };
-        node.textAutoResize = "HEIGHT";
-        if (inLayout(parent) && op.childLayout?.sizingH === "FILL") {
-          node.layoutSizingHorizontal = "FILL";
-          fillFit = fit;
-          place(node, parent, op);
-          return node;
-        }
-        if (!widenToLines(node, fit)) tracker.noteRewrapped();
-        place(node, parent, op, alignedX(op.align, op.x, op.w, node.width));
-        return node;
-      }
+      case "text":
+        return buildText(op, parent);
       case "image": {
         const imageHash = images.get(op.hash);
         if (!imageHash) {
@@ -498,14 +599,18 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
-  function applyOp(op: PlanOp) {
+  async function applyOp(op: PlanOp): Promise<void> {
+    const run = generation;
     pending = null;
     fillFit = null;
     try {
-      const node = build(op);
+      const node = await build(op);
       nodes.set(op.id, node);
       tracker.track(op, node, fillFit);
     } catch {
+      // A cancel landed in the build: what follows belongs to the import after it.
+      if (run !== generation) return;
+      styleLinks = [];
       failed.add(op.id);
       failedOps++;
       const partial = pending as SceneNode | null;
@@ -518,6 +623,16 @@ export function createApplier(api: PluginAPI) {
       tracker.failed(op);
     }
     pending = null;
+    const links = styleLinks;
+    styleLinks = [];
+    const set = tokens;
+    for (const link of links) {
+      try {
+        await link();
+      } catch {
+        set?.failed();
+      }
+    }
   }
 
   const overBudget = () => Date.now() - sliceStart > MAX_SLICE_MS;
@@ -535,10 +650,13 @@ export function createApplier(api: PluginAPI) {
     sliceStart = Date.now();
     for (const op of ops) {
       if (overBudget() && !(await breathe(run))) return;
-      applyOp(op);
+      await applyOp(op);
+      if (run !== generation) return;
     }
     if (await tracker.drain(overBudget, () => breathe(run))) await tick();
   }
+
+  const tokenCounts = () => tokens?.counts() ?? NO_TOKENS;
 
   async function end(): Promise<EndResult> {
     if (!active) throw new Error("import not started");
@@ -549,7 +667,7 @@ export function createApplier(api: PluginAPI) {
         // The root op failed (already counted) or never arrived (count it now).
         if (!rootAttempted) failedOps++;
         api.commitUndo();
-        return { rootId: "", failedOps, missingImages, ...tracker.counts() };
+        return { rootId: "", failedOps, missingImages, ...tracker.counts(), ...tokenCounts() };
       }
       tracker.closeOpen();
       sliceStart = Date.now();
@@ -561,8 +679,15 @@ export function createApplier(api: PluginAPI) {
       } catch {
         // the user may have switched pages; the import itself is done
       }
-      const result = { rootId: done.id, failedOps, missingImages, ...tracker.counts() };
+      const result = {
+        rootId: done.id,
+        failedOps,
+        missingImages,
+        ...tracker.counts(),
+        ...tokenCounts(),
+      };
       root = null; // keep the layers; reset() would remove them
+      tokens = null; // and the tokens they use
       return result;
     } finally {
       if (run === generation) reset();
@@ -570,11 +695,15 @@ export function createApplier(api: PluginAPI) {
   }
 
   /** Abandon the import: remove the partial root and restore the undo point. */
-  function cancel(): void {
+  async function cancel(): Promise<void> {
     if (!active) return;
+    const hadTokens = tokens !== null;
     reset();
+    api.commitUndo();
+    if (!hadTokens) return;
+    await cleaning;
     api.commitUndo();
   }
 
-  return { begin, addImage, applyBatch, end, cancel, isActive: () => active };
+  return { begin, importTokens, addImage, applyBatch, end, cancel, isActive: () => active };
 }

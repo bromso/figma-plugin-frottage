@@ -24,6 +24,7 @@ import type {
   PlanRun,
   PlanStroke,
 } from "./plan";
+import { extractTokens } from "./tokens";
 
 type Fit = "FILL" | "FIT" | "CROP" | "TILE";
 type Color = { r: number; g: number; b: number; a: number };
@@ -482,7 +483,8 @@ export function mapCapture(
 
   report.nodes = ops.length;
   report.substitutedFonts = [...substituted].map(([from, to]) => ({ from, to }));
-  return { ops, fonts: [...fonts.values()], assetHashes: [...hashes], report };
+  const tokens = extractTokens(capture, ops, options);
+  return { ops, tokens, fonts: [...fonts.values()], assetHashes: [...hashes], report };
 }
 
 export function batchOps(ops: PlanOp[], size = 50): PlanOp[][] {
