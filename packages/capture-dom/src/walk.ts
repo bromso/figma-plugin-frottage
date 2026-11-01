@@ -822,7 +822,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     if (/^h[1-6]$/.test(tag)) semantic.headingLevel = Number(tag[1]);
     const landmark = LANDMARK_TAGS[tag];
     if (landmark) semantic.landmark = landmark;
-    if (tag === "a" && el.hasAttribute("href")) {
+    if (tag === "a" && el.namespaceURI === XHTML && el.hasAttribute("href")) {
       semantic.href = cleanUrl((el as HTMLAnchorElement).href);
     }
     const alt = el.getAttribute("alt");

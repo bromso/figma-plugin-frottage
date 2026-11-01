@@ -1532,3 +1532,30 @@ test("only drawing attributes of an SVG are stored", async ({ page }) => {
     expect(markup).toContain(kept);
   }
 });
+
+// ---------- Anchors outside HTML
+
+test("a MathML or SVG anchor outside an svg gives no link and does not stop the capture", async ({
+  page,
+}) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/form.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<math><mrow><a href="/maths"><mi>x</mi></a></mrow></math>'
+    );
+    const a = document.createElementNS("http://www.w3.org/2000/svg", "a");
+    a.setAttribute("href", "/vector");
+    a.setAttribute("style", "display:block;width:20px;height:20px");
+    document.body.appendChild(a);
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  expect(parseCapture(c).ok).toBe(true);
+  each(c, (n) => {
+    if (n.semantic.tag === "a") expect(n.semantic.href).toBeUndefined();
+  });
+  expect(JSON.stringify(c)).not.toContain("/maths");
+  expect(JSON.stringify(c)).not.toContain("/vector");
+});
