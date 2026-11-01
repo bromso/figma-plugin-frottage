@@ -29,7 +29,7 @@ import {
   readStyle,
   readTransform,
 } from "./styles";
-import { MAX_SVG_BYTES, type SvgReport, SvgTooLargeError, serialiseSvg } from "./svg";
+import { emptySvgReport, MAX_SVG_BYTES, SvgTooLargeError, serialiseSvg } from "./svg";
 import { cleanCss, cleanUrl, rememberUrl } from "./urls";
 
 export type CaptureEnv = {
@@ -857,6 +857,11 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     else warnings.set(code, { first: { code, ...(nodeId ? { nodeId } : {}), detail }, count: 1 });
   }
 
+  /** `warn`, counted `count` times. */
+  function warnEach(count: number, code: string, nodeId: string, detail: string) {
+    for (let i = 0; i < count; i++) warn(code, nodeId, detail);
+  }
+
   function placeholder(
     base: Omit<PlaceholderNode, "kind" | "placeholderKind" | "sourceUrl">,
     placeholderKind: PlaceholderNode["placeholderKind"],
@@ -990,7 +995,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     }
 
     if (el.namespaceURI === SVG_NS && tag === "svg") {
-      const report: SvgReport = { transform3d: 0 };
+      const report = emptySvgReport();
       let markup = "";
       let why = "it could not be serialised";
       try {
@@ -1006,10 +1011,24 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         warn("svg-too-large", id, `An inline SVG was left as a placeholder: ${why}`);
         return [placeholder(leaf, "blocked-image")];
       }
-      if (report.transform3d > 0) {
-        warn("svg-3d-transform", id, "A 3D transform inside an inline SVG was left out");
-        for (let i = 1; i < report.transform3d; i++) warn("svg-3d-transform", id, "");
-      }
+      warnEach(
+        report.transform3d,
+        "svg-3d-transform",
+        id,
+        "A 3D transform inside an inline SVG was left out"
+      );
+      warnEach(
+        report.externalRefs,
+        "svg-external-ref",
+        id,
+        "An inline SVG used an image or shape from another file, which was left out"
+      );
+      warnEach(
+        report.foreignObjects,
+        "svg-foreign-object",
+        id,
+        "HTML inside an inline SVG (foreignObject) was left out"
+      );
       return [
         {
           ...leaf,

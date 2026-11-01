@@ -111,7 +111,18 @@ type State = {
 };
 
 /** What serialising an SVG could not carry over. */
-export type SvgReport = { transform3d: number };
+export type SvgReport = {
+  transform3d: number;
+  /** `<use>` and `<image>` elements whose target lies outside the document. */
+  externalRefs: number;
+  foreignObjects: number;
+};
+
+export const emptySvgReport = (): SvgReport => ({
+  transform3d: 0,
+  externalRefs: 0,
+  foreignObjects: 0,
+});
 
 type Flags = {
   /** Properties some ancestor inside the current `<use>` target declares itself. */
@@ -151,6 +162,9 @@ function lookup(st: State, id: string): Element | null {
   const hit = typeof root.getElementById === "function" ? root.getElementById(id) : null;
   return hit && hit.namespaceURI === SVG_NS && !insideEditable(hit) ? hit : null;
 }
+
+const hrefOf = (el: Element) =>
+  (el.getAttribute("href") ?? el.getAttribute("xlink:href") ?? "").trim();
 
 function declares(el: Element, prop: string): boolean {
   return el.hasAttribute(prop) || ((el as SVGElement).style?.getPropertyValue(prop) ?? "") !== "";
@@ -315,6 +329,7 @@ function copyElement(
 ): Element | null {
   if (orig.namespaceURI !== SVG_NS) return null;
   const tag = orig.localName.toLowerCase();
+  if (tag === "foreignobject") st.report.foreignObjects++;
   if (DROP_TAGS.has(tag)) return null;
   if (tag === "use") {
     inlineUse(st, orig, parent as Element, f);
@@ -329,6 +344,7 @@ function copyElement(
   copyAttributes(st, orig, clone, colorValue(s.color)?.value ?? "#000000");
   // An image whose external source was dropped has nothing left to draw.
   if (tag === "image" && !clone.hasAttribute("href") && !clone.hasAttributeNS(XLINK_NS, "href")) {
+    if (hrefOf(orig) !== "") st.report.externalRefs++;
     return null;
   }
   const id = clone.getAttribute("id");
@@ -362,11 +378,13 @@ function copyElement(
 }
 
 function inlineUse(st: State, use: Element, parent: Element, f: Flags) {
-  const href = (use.getAttribute("href") ?? use.getAttribute("xlink:href") ?? "").trim();
+  const href = hrefOf(use);
+  if (href !== "" && !href.startsWith("#")) st.report.externalRefs++;
   if (!href.startsWith("#") || f.depth >= MAX_USE_DEPTH) return;
   const target = lookup(st, idOf(href.slice(1)));
   if (!target || f.stack.includes(target)) return;
   const tag = target.localName.toLowerCase();
+  if (tag === "foreignobject") st.report.foreignObjects++;
   if (DROP_TAGS.has(tag)) return;
   if (++st.elements > MAX_ELEMENTS) throw new SvgTooLargeError("too many elements");
 
@@ -421,7 +439,7 @@ function inlineUse(st: State, use: Element, parent: Element, f: Flags) {
   copyElement(st, target, wrapper, flags);
 }
 
-export function serialiseSvg(el: SVGSVGElement, report: SvgReport = { transform3d: 0 }): string {
+export function serialiseSvg(el: SVGSVGElement, report: SvgReport = emptySvgReport()): string {
   const doc = el.ownerDocument;
   const win = doc.defaultView as Window & typeof globalThis;
   const st: State = {

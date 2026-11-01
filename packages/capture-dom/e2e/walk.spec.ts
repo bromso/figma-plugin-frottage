@@ -1375,3 +1375,52 @@ test("inline blocks beside real text still merge", async ({ page }) => {
   const c = await capture(page, "inline-blocks.html");
   expect(findText(c, "Zeta").text).toBe("Zeta Single and Double omega");
 });
+
+// ---------- SVG content that cannot come along
+
+test("SVG content left behind is reported, without its address", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/form.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<svg width="20" height="20"><use href="/sprite.svg#arrow"/><use href="/sprite.svg?token=SECRET#other"/></svg>
+       <svg width="20" height="20"><image href="https://a.test/i.png?token=SECRET" width="4" height="4"/></svg>
+       <svg width="20" height="20"><foreignObject width="4" height="4"><div>x</div></foreignObject><foreignObject/></svg>`
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const warned = (code: string) => c.warnings.find((w) => w.code === code)?.detail;
+  expect(warned("svg-external-ref")).toContain("3 times");
+  expect(warned("svg-foreign-object")).toContain("2 times");
+  expect(JSON.stringify(c.warnings)).not.toContain("SECRET");
+  expect(JSON.stringify(c.warnings)).not.toContain("sprite.svg");
+  expect(parseCapture(c).ok).toBe(true);
+});
+
+test("an SVG left empty by an external use still imports", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/form.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<svg id="empty" width="20" height="20"><use href="/sprite.svg#arrow"/></svg>'
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const svg = findKind(c, "svg");
+  expect(svg.markup).not.toContain("<use");
+  expect(svg.markup).not.toContain("sprite");
+  expect(c.warnings.map((w) => w.code)).toContain("svg-external-ref");
+});
+
+test("a same-document use and an embedded image are not reported", async ({ page }) => {
+  const c = await capture(page, "svg.html");
+  const report = c.warnings.filter((w) => w.nodeId !== undefined && w.code === "svg-external-ref");
+  // The hostile fixture has one external use and two external images, and nothing else.
+  expect(report).toHaveLength(1);
+  expect(report[0]?.detail).toContain("3 times");
+  expect(c.warnings.find((w) => w.code === "svg-foreign-object")?.detail).not.toContain("times");
+});
