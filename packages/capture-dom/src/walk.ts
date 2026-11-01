@@ -355,10 +355,38 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   const ATOMIC_INLINE = new Set(["inline-block", "inline-flex", "inline-grid"]);
 
+  /** Whether all these rects sit on one line. */
+  function oneRow(rects: DOMRectList): boolean {
+    let first: DOMRect | undefined;
+    for (const r of rects) {
+      if (area(r) <= 0) continue;
+      first ??= r;
+      const overlap = Math.min(first.bottom, r.bottom) - Math.max(first.top, r.top);
+      if (overlap <= 0.5 * Math.min(first.height, r.height)) return false;
+    }
+    return true;
+  }
+
+  /** Whether something below `el` moves text along the line with padding or a margin. */
+  function spacedInside(el: Element): boolean {
+    for (const child of childrenOf(el)) {
+      if (child.nodeType !== 1) continue;
+      const s = cs(child as Element);
+      const sides = [
+        s.paddingInlineStart,
+        s.paddingInlineEnd,
+        s.marginInlineStart,
+        s.marginInlineEnd,
+      ];
+      if (sides.some((v) => parseFloat(v) !== 0) || spacedInside(child as Element)) return true;
+    }
+    return false;
+  }
+
   /**
-   * An atomic inline that is only a wrapper around its text: static, no margin, padding or
-   * overflow, and a box no different from the text inside it. Such an element cannot break
-   * internally, so merging it into the sentence loses nothing but its own (invisible) box.
+   * An atomic inline that is only a wrapper around one line of text: static, no margin, padding or
+   * overflow on it or below it, and a box no different from the text inside it. Merging such an
+   * element into the sentence loses nothing but its own (invisible) box.
    */
   function actsAsText(el: Element, s: CSSStyleDeclaration): boolean {
     if (s.position !== "static" || s.overflowX !== "visible" || s.overflowY !== "visible") {
@@ -369,8 +397,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       const margin = (s as unknown as Record<string, string>)[`margin${side}`];
       if (parseFloat(pad) !== 0 || parseFloat(margin) !== 0) return false;
     }
+    if (spacedInside(el)) return false;
     const range = doc.createRange();
     range.selectNodeContents(el);
+    if (!oneRow(range.getClientRects())) return false;
     const inner = range.getBoundingClientRect();
     const box = el.getBoundingClientRect();
     // Text rects are as tall as the glyphs, boxes as tall as their line, so allow the leading.
@@ -430,6 +460,22 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     }
     mergeable.set(el, ok);
     return ok;
+  }
+
+  const isAtomic = (el: Element) => ATOMIC_INLINE.has(cs(el).display);
+
+  /** Whether a text group item shows text outside any atomic inline. */
+  function holdsText(item: Item): boolean {
+    if (isPseudoItem(item)) return item.pseudo.text.trim() !== "";
+    if (item.nodeType === 3) return (item.nodeValue ?? "").trim() !== "";
+    if (item.nodeType !== 1 || isAtomic(item as Element)) return false;
+    return inlineItems(item as Element).some(holdsText);
+  }
+
+  /** Whether a text group item is, or holds, an atomic inline. */
+  function holdsAtomic(item: Item): boolean {
+    if (isPseudoItem(item) || item.nodeType !== 1) return false;
+    return isAtomic(item as Element) || childrenOf(item as Element).some(holdsAtomic);
   }
 
   /**
@@ -871,9 +917,17 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     let group: Item[] = [];
     const flush = () => {
       if (group.length === 0) return;
-      const node = buildText(group, el, link);
-      if (node) out.push(node);
+      const items = group;
       group = [];
+      // An atomic inline joins a sentence, not its neighbours: with no text to join it stays a box.
+      if (!items.some(holdsText) && items.some(holdsAtomic)) {
+        for (const item of items.filter(holdsAtomic)) {
+          out.push(...visit(item as Element, depth + 1, false, link));
+        }
+        return;
+      }
+      const node = buildText(items, el, link);
+      if (node) out.push(node);
     };
     const generated = (which: Which) => {
       const p = readPseudo(el, which, pseudoCtx);

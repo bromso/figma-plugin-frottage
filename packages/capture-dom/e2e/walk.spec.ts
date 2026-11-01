@@ -1335,3 +1335,43 @@ test("tags, roles and font families named after Object.prototype are plain strin
   expect(out.odd).toEqual([]);
   expect(out.fonts.every((t) => t === "string")).toBe(true);
 });
+
+// ---------- Inline blocks that are not part of a sentence
+
+test("a row of inline blocks with no text of its own stays a row", async ({ page }) => {
+  const c = await capture(page, "inline-blocks.html");
+  for (const id of ["row", "bare"]) {
+    const list = findKind(c, "element", (n) => n.semantic.id === id);
+    expect(list.children.map((n) => [n.kind, n.semantic.tag])).toEqual([
+      ["element", "li"],
+      ["element", "li"],
+    ]);
+  }
+  const nav = findKind(c, "element", (n) => n.semantic.id === "wrapped");
+  expect(nav.children.map((n) => n.semantic.tag)).toEqual(["a", "a"]);
+});
+
+test("an inline block on two lines stays separate", async ({ page }) => {
+  const c = await capture(page, "inline-blocks.html");
+  for (const id of ["lines", "wrap"]) {
+    const p = findKind(c, "element", (n) => n.semantic.id === id);
+    expect(p.children.filter((n) => n.kind === "element").map((n) => n.semantic.tag)).toEqual([
+      "span",
+    ]);
+  }
+});
+
+test("an inline block with inline padding or margin inside stays separate", async ({ page }) => {
+  const c = await capture(page, "inline-blocks.html");
+  for (const id of ["spaced", "margin"]) {
+    const p = findKind(c, "element", (n) => n.semantic.id === id);
+    expect(p.children.filter((n) => n.kind === "element").map((n) => n.semantic.tag)).toEqual([
+      "span",
+    ]);
+  }
+});
+
+test("inline blocks beside real text still merge", async ({ page }) => {
+  const c = await capture(page, "inline-blocks.html");
+  expect(findText(c, "Zeta").text).toBe("Zeta Single and Double omega");
+});
