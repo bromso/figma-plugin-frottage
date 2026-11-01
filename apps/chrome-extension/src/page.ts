@@ -61,17 +61,23 @@ const NARROW_UNDER = 500;
 
 /**
  * The version a capture records, in the page. A viewport's label is the width the page was laid out
- * at, which only the page knows; anything else keeps the label it was given. A plain capture of a
- * page laid out under 500 is DevTools' device mode, so it is labelled with that width.
+ * at, which only the page knows, followed by the typed label when there is one; anything else keeps
+ * the label it was given. A plain capture of a page laid out under 500 is DevTools' device mode, so
+ * it is labelled with that width.
  */
 export function pageVersion(
   kind: unknown,
   label: unknown,
   innerWidth: number
 ): CaptureVersion | undefined {
-  const given = normaliseVersion(kind, kind === "viewport" ? String(innerWidth) : label);
+  const typed = typeof label === "string" ? label.trim() : "";
+  const width = String(innerWidth);
+  const given = normaliseVersion(
+    kind,
+    kind === "viewport" ? (typed ? `${width} ${typed}` : width) : label
+  );
   if (given) return given;
-  return innerWidth < NARROW_UNDER ? normaliseVersion("viewport", String(innerWidth)) : undefined;
+  return innerWidth < NARROW_UNDER ? normaliseVersion("viewport", width) : undefined;
 }
 
 /**
@@ -101,10 +107,10 @@ function sanitiseLabel(label: string): string {
 }
 
 /**
- * `<hostname>-<YYYY-MM-DD>.frottage`, with `-<label>` before the extension for a labelled capture;
+ * `<hostname>-<YYYY-MM-DD>.frottage`, with `-<label>` before the extension for a labelled run;
  * `page` when there is no hostname (file: URLs).
  */
-export function captureFilename(url: string, date: Date, version?: CaptureVersion): string {
+export function captureFilename(url: string, date: Date, label?: string): string {
   let host = "";
   try {
     const u = new URL(url);
@@ -115,8 +121,8 @@ export function captureFilename(url: string, date: Date, version?: CaptureVersio
   }
   const pad = (n: number) => String(n).padStart(2, "0");
   const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-  const label = version ? sanitiseLabel(version.label) : "";
-  return `${host || "page"}-${day}${label ? `-${label}` : ""}.frottage`;
+  const part = label ? sanitiseLabel(label) : "";
+  return `${host || "page"}-${day}${part ? `-${part}` : ""}.frottage`;
 }
 
 const RESTRICTED_MESSAGE = "This page can't be captured.";

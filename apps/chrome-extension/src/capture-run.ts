@@ -1,6 +1,5 @@
 import { type Capture, countNodes, LIMITS } from "@repo/capture-schema";
 import { AssetAssembler, ChunkAssembler, type ChunkMessage } from "./chunks";
-import { captureFilename } from "./page";
 
 export type RunStatus =
   | { state: "idle" }
@@ -42,11 +41,8 @@ export type RunStatus =
 export type RunDeps = {
   /** Parses and validates capture JSON; throws when it is not a valid capture. */
   parse: (text: string) => Capture;
-  pack: (capture: Capture, assets: Map<string, Uint8Array>) => Uint8Array;
-  makeBlobUrl: (bytes: Uint8Array) => string;
-  revokeUrl: (url: string) => void;
-  /** Resolves with the basename Chrome actually saved (it may differ from the requested one). */
-  download: (req: { url: string; filename: string }) => Promise<string | undefined>;
+  /** Keeps a finished capture and the images it lists; false when the run's file has no room. */
+  keep: (capture: Capture, assets: Map<string, Uint8Array>) => boolean;
   report: (status: RunStatus) => void;
   setTimer: (fn: () => void, ms: number) => unknown;
   clearTimer: (handle: unknown) => void;
@@ -248,38 +244,34 @@ export class CaptureRun {
   }
 
   private async finish(text: string): Promise<void> {
-    let url: string | null = null;
     try {
       const capture = this.deps.parse(text);
-      // Pack exactly the images the capture lists; a missing one would leave a dangling hash.
+      // Keep exactly the images the capture lists; a missing one would leave a dangling hash.
       const listed = new Map<string, Uint8Array>();
       for (const { hash } of capture.assets) {
         const data = this.assets.get(hash);
         if (!data) throw new Error("image data is missing for an asset in the capture");
         listed.set(hash, data);
       }
-      const bytes = this.deps.pack(capture, listed);
-      url = this.deps.makeBlobUrl(bytes);
-      const filename = captureFilename(capture.source.url, this.deps.now(), capture.version);
+      if (!this.deps.keep(capture, listed)) {
+        this.fail("This size doesn't fit in the file.");
+        return;
+      }
       const nodes = capture.root ? countNodes(capture.root) : 0;
       const nodeLimit = (capture.warnings ?? []).some((w) => w.code === "node-limit");
-      const blocked = blockedImages(capture);
-      this.set({ state: "saving" });
-      const saved = await this.deps.download({ url, filename });
       this.active = false;
       this.set({
         state: "saved",
-        filename: saved ?? filename,
+        filename: "",
         nodes,
         nodeLimit,
-        blockedImages: blocked,
+        blockedImages: blockedImages(capture),
         width: capture.source.viewport.w,
         ...(capture.version ? { label: capture.version.label } : {}),
       });
     } catch (e) {
       this.fail(`Could not save the file: ${message(e)}`);
     } finally {
-      if (url) this.deps.revokeUrl(url);
       this.capture = null;
       this.captureText = null;
       this.resetAssets();

@@ -6,6 +6,7 @@ import {
   friendlyError,
   imageAdvice,
   isRestrictedUrl,
+  LABEL_MAX,
   nodeAdvice,
   normaliseVersion,
   pageOrigin,
@@ -162,18 +163,15 @@ describe("allowAccessAndRecapture", () => {
 describe("captureFilename with a version", () => {
   const day = new Date(2026, 9, 31, 12);
   test("adds the label to the name", () => {
-    expect(captureFilename("https://example.com/", day, { label: "Dark", kind: "theme" })).toBe(
+    expect(captureFilename("https://example.com/", day, "Dark")).toBe(
       "example.com-2026-10-31-Dark.frottage"
     );
-    expect(
-      captureFilename("https://example.com/", day, { label: "Svenska", kind: "language" })
-    ).toBe("example.com-2026-10-31-Svenska.frottage");
+    expect(captureFilename("https://example.com/", day, "Svenska")).toBe(
+      "example.com-2026-10-31-Svenska.frottage"
+    );
   });
   test("a filename stays safe with / and .. in a label", () => {
-    const name = captureFilename("https://example.com/", day, {
-      label: "../../etc/passwd\\x\u0000\n",
-      kind: "theme",
-    });
+    const name = captureFilename("https://example.com/", day, "../../etc/passwd\\x\u0000\n");
     expect(name).not.toMatch(/[/\\]/);
     expect([...name].some((c) => (c.codePointAt(0) ?? 0) < 0x20)).toBe(false);
     expect(name).not.toContain("..");
@@ -181,10 +179,10 @@ describe("captureFilename with a version", () => {
     expect(name.endsWith(".frottage")).toBe(true);
   });
   test("a label with nothing usable leaves the name as it was", () => {
-    expect(captureFilename("https://example.com/", day, { label: "///", kind: "theme" })).toBe(
+    expect(captureFilename("https://example.com/", day, "///")).toBe(
       "example.com-2026-10-31.frottage"
     );
-    expect(captureFilename("https://example.com/", day, { label: "...", kind: "theme" })).toBe(
+    expect(captureFilename("https://example.com/", day, "...")).toBe(
       "example.com-2026-10-31.frottage"
     );
   });
@@ -222,7 +220,28 @@ describe("normaliseVersion", () => {
 
 describe("pageVersion", () => {
   test("a viewport capture is labelled with what the page was laid out at", () => {
-    expect(pageVersion("viewport", "1512", 1440)).toEqual({ label: "1440", kind: "viewport" });
+    expect(pageVersion("viewport", "", 1440)).toEqual({ label: "1440", kind: "viewport" });
+  });
+
+  test("a width label carries the typed label", () => {
+    expect(pageVersion("viewport", "Dark", 1512)).toEqual({ label: "1512 Dark", kind: "viewport" });
+    expect(pageVersion("viewport", "  ", 1512)).toEqual({ label: "1512", kind: "viewport" });
+  });
+
+  test("a long typed label is cut to fit", () => {
+    const label = pageVersion("viewport", "x".repeat(40), 1512)?.label ?? "";
+    expect(label.length).toBeLessThanOrEqual(LABEL_MAX);
+    expect(label.startsWith("1512 ")).toBe(true);
+  });
+
+  test("the filename has no width, and carries a typed label", () => {
+    const day = new Date(2026, 10, 1);
+    expect(captureFilename("https://www.volvogroup.com/", day)).toBe(
+      "www.volvogroup.com-2026-11-01.frottage"
+    );
+    expect(captureFilename("https://www.volvogroup.com/", day, "Dark")).toBe(
+      "www.volvogroup.com-2026-11-01-Dark.frottage"
+    );
   });
 
   test("a theme or language keeps the label it was given", () => {
@@ -359,7 +378,7 @@ describe("pageVersion under 500", () => {
 
 describe("a label in a filename", () => {
   const nameFor = (label: string) =>
-    captureFilename("https://example.com/", new Date(2026, 10, 1), { label, kind: "theme" });
+    captureFilename("https://example.com/", new Date(2026, 10, 1), label);
   const part = (label: string) => nameFor(label).replace("example.com-2026-11-01", "");
 
   test.each([
