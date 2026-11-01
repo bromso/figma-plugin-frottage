@@ -11,6 +11,8 @@ export type TokenOptions = {
   failTokens?: string[];
   /** A name that createVariable refuses. */
   failVariableName?: string;
+  /** A text style field that refuses its variable, as `setBoundVariable` can. */
+  failStyleBinding?: string;
   /** Modes a collection can hold: 10 on this owner's plan, 1 on Starter. */
   modeLimit?: number;
 };
@@ -129,6 +131,7 @@ export function tokenModel(
     }
     style.setBoundVariable = (field: string, variable: Fake) => {
       called("textStyle.setBoundVariable");
+      if (opts.failStyleBinding === field) throw new Error(`${field} refused`);
       writes.push(`${state.name}: bound ${field}`);
       if (typeof variable === "string") throw new Error("dynamic-page needs the variable");
       if (!["fontSize", "lineHeight", "letterSpacing"].includes(field))

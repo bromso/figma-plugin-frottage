@@ -833,29 +833,39 @@ export function createTokenSet(api: PluginAPI) {
       counts.variablesCreated++;
     };
 
-    /** Binds a float variable to a style just made. A refused binding leaves the style's value. */
+    /** Binds a float variable to a style, noting a new one in `made`. False if it can't be bound. */
     const bindType = async (
       style: TextStyle,
       { field, name, key, first, wants }: TypeField,
-      target: Home
-    ): Promise<void> => {
+      target: Home,
+      made: Variable[]
+    ): Promise<boolean> => {
       try {
         const reused = await reuseOwn(key, wants, first, FLOAT, target);
-        if (closed) return;
+        if (closed) return true;
         const variable =
           reused ?? (await makeVariable({ name, key, kind: FLOAT, first, wants }, target));
-        if (!variable) return;
-        try {
-          style.setBoundVariable(field, variable);
-        } catch (e) {
-          if (!reused) dropVariable(variable);
-          throw e;
-        }
+        if (!variable) return true;
+        if (!reused) made.push(variable);
+        style.setBoundVariable(field, variable);
         if (reused) counts.variablesReused++;
-        else counts.variablesCreated++;
+        return true;
       } catch {
         failed();
+        return false;
       }
+    };
+
+    /**
+     * A style that can't vary would show its first value in every frame, so it goes, with the
+     * variables made for it, and its runs keep their plain fields.
+     */
+    const dropRole = (key: string, style: TextStyle, made: Variable[]) => {
+      styleIds.delete(key);
+      createdStyles = createdStyles.filter((s) => s !== style);
+      counts.stylesCreated--;
+      style.remove();
+      for (const variable of made) dropVariable(variable);
     };
 
     /** The variable a style is bound to for a field, if it's in the home collection and fits. */
@@ -920,10 +930,14 @@ export function createTokenSet(api: PluginAPI) {
       createdStyles.push(style);
       styleIds.set(role.key, style.id);
       counts.stylesCreated++;
+      const made: Variable[] = [];
       for (const { field, varying } of fields) {
         if (closed) return;
-        if (varying) await bindType(style, field, target);
+        if (!varying || (await bindType(style, field, target, made))) continue;
+        dropRole(role.key, style, made);
+        return;
       }
+      counts.variablesCreated += made.length;
     };
 
     const settleRole = async (role: PlanModeType): Promise<void> => {

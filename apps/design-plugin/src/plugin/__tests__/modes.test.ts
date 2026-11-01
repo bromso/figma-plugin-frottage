@@ -339,13 +339,31 @@ describe("text styles", () => {
     expect(stylesIn(f)).toHaveLength(2);
   });
 
-  test("a refused binding counts and keeps the style at its first values", async () => {
+  test("a refused binding counts and takes the style away, so its runs stay plain", async () => {
     const f = fakeFigma({ failTokens: ["textStyle.setBoundVariable"] });
     const body = role("body/1", [16, 14], [24, 24]);
     const tokens = await settle(f, set({ colors: [], textStyles: [body] }));
-    expect(tokens.textStyleId(body.key)).toBeDefined();
+    expect(tokens.textStyleId(body.key)).toBeUndefined();
+    expect(stylesIn(f)).toHaveLength(0);
     expect(tokens.counts().tokenFailures).toBe(1);
+    expect(tokens.counts().stylesCreated).toBe(0);
     expect(f.tokens.variables.size).toBe(0);
+  });
+
+  test("a field refused after another bound takes back the style and that variable", async () => {
+    const f = fakeFigma({ failStyleBinding: "lineHeight" });
+    const body = role("body/1", [16, 14], [24, 20]);
+    const other = color("color/primary", [INK, PAPER]);
+    const tokens = await settle(f, set({ colors: [other], textStyles: [body] }));
+    expect(tokens.textStyleId(body.key)).toBeUndefined();
+    expect(stylesIn(f)).toHaveLength(0);
+    expect(variablesIn(f).map((v) => v.name)).toEqual(["color/primary"]);
+    expect(tokens.counts()).toMatchObject({
+      tokenFailures: 1,
+      stylesCreated: 0,
+      variablesCreated: 1,
+    });
+    expect(tokens.modeOf(1)).not.toBeNull();
   });
 
   test("a font that won't load counts and leaves the role plain", async () => {
