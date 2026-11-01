@@ -106,6 +106,17 @@ export function frottageFile(texts: number, version = 1, name = "page.frottage")
   return new File([bytes as BlobPart], name);
 }
 
+/** A File of `count` copies of one custom element, each holding a text layer. */
+export function repeatedFile(count: number): File {
+  const capture = captureWithTexts(0);
+  const cards = Array.from({ length: count }, (_, i) => {
+    const card = element(`c${i}`, [text(`t${i}`)]);
+    return { ...card, semantic: { tag: "x-card" } } as CaptureNode;
+  });
+  capture.root = element("root", cards);
+  return new File([packFrottage(capture, new Map()) as BlobPart], "page.frottage");
+}
+
 export type FakePort = ImportPort & {
   log: string[];
   batchSizes: number[];
@@ -117,6 +128,15 @@ export type FakePort = ImportPort & {
     textDriftCount?: number;
     autoLayoutFrames?: number;
     fallbackFrames?: number;
+    componentsCreated?: number;
+    instancesCreated?: number;
+    overrideFailures?: number;
+    overrideFailuresInMains?: number;
+    layoutFailures?: number;
+    hoverVariants?: number;
+    hoverFailures?: number;
+    resizedFallbacks?: number;
+    paintFailures?: number;
     stylesCreated?: number;
     stylesReused?: number;
     variablesCreated?: number;

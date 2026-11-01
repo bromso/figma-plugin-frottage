@@ -6,6 +6,17 @@ export const CAPTURE_PORT = "frottage-capture:";
 /** Prefix of the port the service worker opens to the offscreen document to pass chunks on. */
 export const RELAY_PORT = "frottage-relay:";
 
+/** Prefix of the port the page script opens, one per image: `<prefix><runId>:<nonce>`. */
+export const IMAGE_PORT = "frottage-image:";
+
+/** Page script to worker, once per image port. */
+export type ImageRequest = { type: "fetch-image"; url: string };
+
+/** Worker to page script. Never carries the URL. */
+export type ImageReply =
+  | { type: "image-chunk"; mime: string; index: number; total: number; data: string }
+  | { type: "image-error"; message: string };
+
 /** What the page script sends over its port. */
 export type PageMessage =
   | ChunkMessage
@@ -15,7 +26,7 @@ export type PageMessage =
 
 /** Popup to worker. */
 export type SwMessage =
-  | { target: "sw"; type: "start"; tabId: number }
+  | { target: "sw"; type: "start"; tabId: number; collapseWrappers?: boolean }
   | { target: "sw"; type: "download"; url: string; filename: string }
   | { target: "sw"; type: "close-offscreen" };
 
@@ -23,6 +34,7 @@ export type SwMessage =
 export type OffscreenMessage =
   | { target: "offscreen"; type: "run-start"; runId: string }
   | { target: "offscreen"; type: "inject-failed"; runId: string; detail: string }
+  | { target: "offscreen"; type: "run-live"; runId: string }
   | { target: "offscreen"; type: "get-status" };
 
 /** Offscreen document to the popup. */

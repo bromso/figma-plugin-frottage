@@ -151,6 +151,17 @@ test("an SVG becomes a PNG at twice its display size", async ({ page }) => {
   expect([a.width, a.height]).toEqual([80, 80]);
 });
 
+test.describe("on a high-density screen", () => {
+  test.use({ deviceScaleFactor: 3 });
+  test("an SVG source rasterises at device pixel ratio, at least 2, within 4096 px", async ({
+    page,
+  }) => {
+    const a = assetFor(await runAssets(page, "images.html"), "local-svg");
+    expect([a.width, a.height]).toEqual([120, 120]);
+    expect(Math.max(a.width, a.height)).toBeLessThanOrEqual(4096);
+  });
+});
+
 test("a data: URI image is captured with a short source URL", async ({ page }) => {
   const r = await runAssets(page, "images.html");
   expect(assetFor(r, "data-uri").mime).toBe("image/gif");

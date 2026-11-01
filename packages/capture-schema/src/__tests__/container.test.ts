@@ -546,6 +546,24 @@ describe("bounded validation reads a hostile list only up to the first failure",
     expect(reads).toBeLessThanOrEqual(3);
   });
 
+  test("a gradient may hold 256 stops and no more", () => {
+    const withStops = (n: number) => ({
+      ...minimalCapture(),
+      root: elementWith({
+        backgroundImages: [
+          {
+            type: "linear-gradient",
+            css: "x",
+            stops: Array.from({ length: n }, (_, i) => ({ color, position: i / n })),
+          },
+        ],
+      }),
+    });
+    expect(parseCapture(withStops(256)).ok).toBe(true);
+    expect(parseCapture(withStops(257))).toMatchObject({ ok: false, reason: "invalid" });
+    expect(captureSchema.safeParse(withStops(257)).success).toBe(false);
+  });
+
   test("a valid stops list still round-trips", () => {
     const stops = [
       { color, position: 0 },

@@ -14,6 +14,12 @@ describe("manifest", () => {
     expect(manifest.manifest_version).toBe(3);
   });
 
+  test("host access is optional, and required permissions are unchanged", () => {
+    expect(manifest.optional_host_permissions).toEqual(["<all_urls>"]);
+    expect(manifest).not.toHaveProperty("host_permissions");
+    expect(manifest.permissions).not.toContain("<all_urls>");
+  });
+
   test("version comes from package.json", () => {
     expect(manifest.version).toBe(pkg.version);
   });

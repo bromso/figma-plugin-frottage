@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hover limits</title>
+<style>
+x-lim, x-sh, x-bh { display: block; margin: 4px; padding: 8px; background: #eee; }
+@container (min-width: 1px) { x-lim:hover { color: #ff0000; } }
+x-lim.custom:hover { --anything: 1; }
+x-lim.good:hover { color: #00ff00; }
+</style>
+<script>
+  // One sheet adopted by two roots must be read in each root and counted once.
+  const shared = new CSSStyleSheet();
+  shared.replaceSync(".y:hover { color: #ff0000; transform: scale(2); }");
+  const bare = new CSSStyleSheet();
+  bare.replaceSync(":host .z:hover { color: #ff0000; }");
+  class XSh extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML = '<p class="y">Y</p>';
+      root.adoptedStyleSheets = [shared];
+    }
+  }
+  class XBh extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML = '<p class="z">Z</p>';
+      root.adoptedStyleSheets = [bare];
+    }
+  }
+  customElements.define("x-sh", XSh);
+  customElements.define("x-bh", XBh);
+  // Past the 2,000 hover rule cap.
+  const many = new CSSStyleSheet();
+  many.replaceSync(Array.from({ length: 2100 }, (_, i) => `x-cap.k${i}:hover { color: #0000ff; }`).join("\n"));
+  // Read last: its root holds the last of the candidates.
+  class XCap extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      this.attachShadow({ mode: "open" }).adoptedStyleSheets = [many];
+    }
+  }
+  customElements.define("x-cap", XCap);
+</script>
+</head>
+<body>
+  <x-lim class="custom">One</x-lim>
+  <x-lim class="good">Two</x-lim>
+  <x-sh></x-sh>
+  <x-sh></x-sh>
+  <x-bh></x-bh>
+  <x-bh></x-bh>
+  <x-cap></x-cap>
+  <x-cap></x-cap>
+</body>
+</html>

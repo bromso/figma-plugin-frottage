@@ -65,3 +65,63 @@ export function friendlyError(raw: string): string {
   }
   return raw;
 }
+
+/** Layers in a capture at which the popup starts to warn that Figma may be slow. */
+export const NODE_WARN = 5_000;
+/** The most layers a capture holds; the walker stops here. */
+export const NODE_LIMIT = 20_000;
+
+/** What the popup says about a finished capture's size, in plain words. */
+export function nodeAdvice(
+  nodes: number,
+  nodeLimit: boolean
+): { warning: string | null; offerCollapse: boolean } {
+  const stopped = nodeLimit || nodes >= NODE_LIMIT;
+  if (stopped) {
+    return {
+      warning: `This page has more than ${NODE_LIMIT.toLocaleString("en-US")} layers. The rest was left out of the file.`,
+      offerCollapse: true,
+    };
+  }
+  if (nodes >= NODE_WARN) {
+    return {
+      warning: `This capture has ${nodes.toLocaleString("en-US")} layers. Importing more than ${NODE_WARN.toLocaleString("en-US")} layers can be slow in Figma.`,
+      offerCollapse: false,
+    };
+  }
+  return { warning: null, offerCollapse: false };
+}
+
+/** What the popup says about images left as placeholders, and whether it offers access. */
+export function imageAdvice(
+  blocked: number,
+  accessHeld: boolean
+): { message: string; offerAccess: boolean } | null {
+  if (blocked <= 0) return null;
+  const these = blocked === 1 ? "1 image" : `${blocked.toLocaleString("en-US")} images`;
+  const left = `${blocked === 1 ? "It was" : "They were"} left as placeholders.`;
+  // With access held the worker already tried, so the site's refusal is no longer the reason.
+  const message = accessHeld
+    ? `${these} could not be fetched. ${left}`
+    : `${these} could not be read, because the site that serves ${blocked === 1 ? "it" : "them"} does not allow it. ${left}`;
+  return { message, offerAccess: !accessHeld };
+}
+
+/**
+ * Runs the permission request first, then, only when it was granted, `recapture`. `request` must be
+ * called synchronously from the click handler: Chrome needs the user gesture. A decline, or a
+ * request that throws, changes nothing.
+ */
+export async function allowAccessAndRecapture(
+  request: () => Promise<boolean>,
+  recapture: () => void
+): Promise<boolean> {
+  let granted = false;
+  try {
+    granted = await request();
+  } catch {
+    return false;
+  }
+  if (granted) recapture();
+  return granted;
+}

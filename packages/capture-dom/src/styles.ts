@@ -109,7 +109,13 @@ function parseStops(args: string[]): BackgroundImage["stops"] {
   return stops.map((s) => ({ color: s.color, position: s.position ?? 0 }));
 }
 
-export function parseBackgroundImages(cs: CSSStyleDeclaration): BackgroundImage[] {
+/** Matches `MAX_GRADIENT_STOPS` in @repo/capture-schema; kept local so the walker stays type-only. */
+const MAX_STOPS = 256;
+
+export function parseBackgroundImages(
+  cs: CSSStyleDeclaration,
+  onStopsCut?: () => void
+): BackgroundImage[] {
   const value = cs.backgroundImage;
   if (!value || value === "none") return [];
   const sizes = splitTop(cs.backgroundSize);
@@ -151,7 +157,9 @@ export function parseBackgroundImages(cs: CSSStyleDeclaration): BackgroundImage[
       } else if (!parseComputedColor(splitTop(first, " ")[0] ?? "")) {
         colorArgs = args.slice(1); // radial shape and position
       }
-      const stops = parseStops(colorArgs);
+      const parsed = parseStops(colorArgs);
+      const stops = parsed?.slice(0, MAX_STOPS);
+      if (parsed && parsed.length > MAX_STOPS) onStopsCut?.();
       out.push({
         type,
         ...base,
@@ -168,25 +176,62 @@ export function parseBackgroundImages(cs: CSSStyleDeclaration): BackgroundImage[
   return out;
 }
 
-export function parseBoxShadows(value: string): Shadow[] {
+const PLAIN_LENGTH = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:px)?$/i;
+/** Words that mean "the element's colour" or "whatever is inherited", which no stylesheet value pins down. */
+const UNPINNED = /^(?:currentcolor|inherit|initial|unset|revert|revert-layer)$/i;
+
+function shadowLayers(value: string, strict: boolean): Shadow[] | null {
   if (!value || value === "none") return [];
-  return splitTop(value).flatMap((layer) => {
+  const out: Shadow[] = [];
+  for (const layer of splitTop(value)) {
     const tokens = splitTop(layer, " ");
     const inset = tokens.includes("inset");
-    const colorToken = tokens.find((t) => /^[a-z-]+\(/.test(t) || t === "transparent");
-    const nums = tokens.filter((t) => /^-?[\d.]/.test(t)).map(px);
-    if (nums.length < 2) return [];
-    return [
-      {
-        inset,
-        x: nums[0] ?? 0,
-        y: nums[1] ?? 0,
-        blur: nums[2] ?? 0,
-        spread: nums[3] ?? 0,
-        color: colorToken ? colorOf(colorToken) : BLACK,
-      },
-    ];
-  });
+    // Authored values name colours with hex and keywords as well as functions.
+    const colorToken = tokens.find((t) =>
+      strict ? t !== "inset" && !/^[-+.\d]/.test(t) : /^[a-z-]+\(/.test(t) || t === "transparent"
+    );
+    const lengths = tokens.filter((t) => /^[-+.\d]/.test(t));
+    if (strict && lengths.some((t) => !PLAIN_LENGTH.test(t))) return null;
+    if (strict && lengths.length > 4) return null;
+    const nums = lengths.map(px);
+    if (nums.length < 2) {
+      if (strict) return null;
+      continue;
+    }
+    let color = BLACK;
+    if (colorToken) {
+      if (strict) {
+        const parsed = UNPINNED.test(colorToken) ? null : parseComputedColor(colorToken);
+        if (!parsed) return null;
+        color = parsed;
+      } else {
+        color = colorOf(colorToken);
+      }
+    } else if (strict) {
+      return null; // the colour would be currentcolor
+    }
+    out.push({
+      inset,
+      x: nums[0] ?? 0,
+      y: nums[1] ?? 0,
+      blur: nums[2] ?? 0,
+      spread: nums[3] ?? 0,
+      color,
+    });
+  }
+  return out;
+}
+
+export function parseBoxShadows(value: string): Shadow[] {
+  return shadowLayers(value, false) ?? [];
+}
+
+/**
+ * `parseBoxShadows` for a value as authored in a stylesheet: null unless every layer is plain
+ * pixels with a colour that can be read, so nothing is guessed (no `em`, `calc()` or `currentcolor`).
+ */
+export function parseAuthoredBoxShadows(value: string): Shadow[] | null {
+  return shadowLayers(value.trim(), true);
 }
 
 export function parseFilters(value: string): string[] {
@@ -229,12 +274,17 @@ export const readBorders = (cs: CSSStyleDeclaration): Style["borders"] => ({
   left: border(cs, "Left"),
 });
 
-export function readStyle(cs: CSSStyleDeclaration, w: number, h: number): Style {
+export function readStyle(
+  cs: CSSStyleDeclaration,
+  w: number,
+  h: number,
+  onStopsCut?: () => void
+): Style {
   const overflowX = cs.overflowX;
   const overflowY = cs.overflowY;
   const style: Style = {
     backgroundColor: colorOf(cs.backgroundColor),
-    backgroundImages: parseBackgroundImages(cs),
+    backgroundImages: parseBackgroundImages(cs, onStopsCut),
     borders: readBorders(cs),
     borderRadius: readRadii(cs, w, h),
     boxShadows: parseBoxShadows(cs.boxShadow),
@@ -243,6 +293,9 @@ export function readStyle(cs: CSSStyleDeclaration, w: number, h: number): Style 
   };
   const backdrop = cs.getPropertyValue("backdrop-filter");
   if (backdrop && backdrop !== "none") style.backdropFilter = cleanCss(backdrop);
+  const clip =
+    cs.getPropertyValue("background-clip") || cs.getPropertyValue("-webkit-background-clip");
+  if (clip && clip.trim() !== "border-box") style.backgroundClip = clip.trim();
   return style;
 }
 
@@ -318,4 +371,19 @@ export function readTransform(value: string): ElementNode["transform"] {
   const n = (m[1] as string).split(",").map((s) => Number.parseFloat(s));
   if (n.length !== 6 || n.some((v) => !Number.isFinite(v))) return undefined;
   return n as [number, number, number, number, number, number];
+}
+
+/** z-index only counts on a positioned box, or on a flex or grid item. */
+export function readZIndex(s: CSSStyleDeclaration, parentDisplay: string): { zIndex?: number } {
+  if (s.zIndex === "auto") return {};
+  const z = Number.parseInt(s.zIndex, 10);
+  if (!Number.isFinite(z)) return {};
+  return s.position !== "static" || /flex|grid/.test(parentDisplay) ? { zIndex: z } : {};
+}
+
+/** Whether a box paints its background through its text. */
+export function clipsToText(s: CSSStyleDeclaration): boolean {
+  const clip =
+    s.getPropertyValue("background-clip") || s.getPropertyValue("-webkit-background-clip");
+  return clip.split(/[\s,]+/).includes("text");
 }

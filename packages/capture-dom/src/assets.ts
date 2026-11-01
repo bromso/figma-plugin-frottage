@@ -224,9 +224,13 @@ async function collect(capture: Capture, deps: AssetDeps): Promise<AssetResult> 
     else warn("image-failed", id, `Could not decode ${what}: ${cleanText(r.detail)}`);
   };
 
+  // Images the page could not read, counted for both `<img>` and backgrounds. An HTTP error is
+  // left out: a permission would not change it.
+  let unreadable = 0;
   const dropped = new Set<Layer>();
   for (const ref of refs) {
     const r = ref.url ? loaded.get(ref.url) : undefined;
+    if (r && !r.ok && r.code === "image-blocked" && !r.detail.startsWith("HTTP ")) unreadable++;
     if (ref.kind === "image") {
       if (r?.ok) ref.node.assetHash = r.hash;
       else {
@@ -273,6 +277,14 @@ async function collect(capture: Capture, deps: AssetDeps): Promise<AssetResult> 
     capture.warnings.push(
       count > 1 ? { ...first, detail: `${first.detail} (${count} times)` } : first
     );
+  }
+  // One line with the count and no URL, which the extension reads to decide whether to offer
+  // image access.
+  if (unreadable > 0) {
+    capture.warnings.push({
+      code: "images-blocked",
+      detail: `${unreadable} ${unreadable === 1 ? "image" : "images"} could not be read`,
+    });
   }
 
   const assets = new Map<string, Uint8Array>();
@@ -431,7 +443,7 @@ async function encode(
   return new Uint8Array(await out.arrayBuffer());
 }
 
-function fitWithin(w: number, h: number): { w: number; h: number; scaled: boolean } {
+export function fitWithin(w: number, h: number): { w: number; h: number; scaled: boolean } {
   const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(w, h));
   return {
     w: Math.max(1, Math.min(MAX_IMAGE_SIDE, Math.round(w * scale))),
@@ -440,7 +452,30 @@ function fitWithin(w: number, h: number): { w: number; h: number; scaled: boolea
   };
 }
 
-async function rasteriseSvg(blob: Blob, hint?: { w: number; h: number }): Promise<Normalised> {
+/**
+ * Pixel size an SVG is drawn at. With a display size (`hint`) the scale is at least 2 and follows
+ * the device pixel ratio, so it stays sharp on a high-density screen and when scaled up in Figma.
+ * Without one the SVG's natural size is used.
+ */
+export function svgTargetSize(
+  natural: { w: number; h: number },
+  hint: { w: number; h: number } | undefined,
+  devicePixelRatio: number
+): { w: number; h: number } {
+  const density = Math.max(2, Number.isFinite(devicePixelRatio) ? devicePixelRatio : 1);
+  if (hint && natural.w > 0 && natural.h > 0) {
+    const s = density * Math.max(hint.w / natural.w, hint.h / natural.h);
+    return { w: natural.w * s, h: natural.h * s };
+  }
+  if (hint) return { w: hint.w * density, h: hint.h * density };
+  return { w: natural.w || 300, h: natural.h || 150 };
+}
+
+async function rasteriseSvg(
+  blob: Blob,
+  hint: { w: number; h: number } | undefined,
+  devicePixelRatio: number
+): Promise<Normalised> {
   const url = URL.createObjectURL(new Blob([blob], { type: "image/svg+xml" }));
   try {
     const img = new Image();
@@ -449,23 +484,12 @@ async function rasteriseSvg(blob: Blob, hint?: { w: number; h: number }): Promis
       img.onerror = () => reject(new Error("The SVG could not be decoded"));
       img.src = url;
     });
-    const nw = img.naturalWidth;
-    const nh = img.naturalHeight;
-    // Twice the display size, so it stays sharp when scaled up in Figma.
-    let w: number;
-    let h: number;
-    if (hint && nw > 0 && nh > 0) {
-      const s = 2 * Math.max(hint.w / nw, hint.h / nh);
-      w = nw * s;
-      h = nh * s;
-    } else if (hint) {
-      w = hint.w * 2;
-      h = hint.h * 2;
-    } else {
-      w = nw || 300;
-      h = nh || 150;
-    }
-    const size = fitWithin(w, h);
+    const target = svgTargetSize(
+      { w: img.naturalWidth, h: img.naturalHeight },
+      hint,
+      devicePixelRatio
+    );
+    const size = fitWithin(target.w, target.h);
     const bytes = await encode(img, size.w, size.h);
     return { bytes, mime: "image/png", width: size.w, height: size.h };
   } finally {
@@ -476,7 +500,8 @@ async function rasteriseSvg(blob: Blob, hint?: { w: number; h: number }): Promis
 /**
  * PNG, JPEG and GIF keep their bytes (an animated GIF stays animated) unless a side exceeds
  * 4096 or a JPEG carries an EXIF rotation. Anything else the browser can decode (WebP, AVIF, BMP,
- * ...) becomes a PNG at its natural size; SVG becomes a PNG at twice its display size. All are
+ * ...) becomes a PNG at its natural size; SVG becomes a PNG at its display size times the larger
+ * of 2 and the device pixel ratio. All are
  * capped at 4096 per side.
  *
  * The header is read first: above 100 megapixels the image is refused, and for sides over 4096 the
@@ -491,11 +516,12 @@ export async function browserNormalise(
   blob: Blob,
   hint?: { w: number; h: number },
   decode: (blob: Blob, options?: ImageBitmapOptions) => Promise<ImageBitmap> = (b, o) =>
-    createImageBitmap(b, o)
+    createImageBitmap(b, o),
+  devicePixelRatio: number = globalThis.devicePixelRatio ?? 1
 ): Promise<Normalised> {
   const head = new Uint8Array(await blob.slice(0, HEAD_BYTES).arrayBuffer());
   const kind = sniff(head, blob.type);
-  if (kind === "svg") return rasteriseSvg(blob, hint);
+  if (kind === "svg") return rasteriseSvg(blob, hint, devicePixelRatio);
   const header = readHeader(head, kind);
   let natural: { w: number; h: number } | null = null;
   let rotated = false;

@@ -208,15 +208,26 @@ function viaCanvas(value: string): Rgba | null {
   }
 }
 
+/** `#rgb`, `#rgba`, `#rrggbb` and `#rrggbbaa`, as authored in a stylesheet. */
+function fromHex(text: string): Rgba | null {
+  const m = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(text);
+  if (!m) return null;
+  const h = m[1] as string;
+  const full = h.length <= 4 ? [...h].map((c) => c + c).join("") : h;
+  const at = (i: number) => Number.parseInt(full.slice(i, i + 2), 16) / 255;
+  return { r: at(0), g: at(2), b: at(4), a: full.length === 8 ? at(6) : 1 };
+}
+
 /**
  * Parse a computed CSS colour into unit-range sRGB. rgb, hsl, hwb, lab, lch,
- * oklab, oklch and color(srgb | srgb-linear | display-p3) are converted
+ * oklab, oklch, color(srgb | srgb-linear | display-p3) and hex are converted
  * arithmetically; anything else is drawn to a 1x1 canvas when one exists.
  */
 export function parseComputedColor(value: string): Rgba | null {
   const text = value.trim().toLowerCase();
   if (!text) return null;
   if (text === "transparent") return { r: 0, g: 0, b: 0, a: 0 };
+  if (text.startsWith("#")) return fromHex(text);
   const m = /^([a-z-]+)\((.*)\)$/.exec(text);
   if (m) {
     const name = m[1] as string;

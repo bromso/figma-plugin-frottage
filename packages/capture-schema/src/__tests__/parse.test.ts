@@ -56,3 +56,37 @@ test("rejects an unknown node kind", () => {
   c.root.children = [{ ...c.root, id: "x", kind: "nope" }];
   expect(parseCapture(c)).toMatchObject({ ok: false, reason: "invalid" });
 });
+
+const red = { r: 1, g: 0, b: 0, a: 1 };
+const shadow = { inset: false, x: 0, y: 2, blur: 4, spread: 0, color: red };
+function withHover(hover: unknown) {
+  const c = minimalCapture() as any;
+  c.root.hover = hover;
+  return c;
+}
+test("accepts hover differences on an element and keeps them", () => {
+  const hover = {
+    backgroundColor: red,
+    color: red,
+    borderColor: red,
+    opacity: 0.5,
+    boxShadows: [shadow],
+    decoration: "underline",
+  };
+  const result = parseCapture(withHover(hover));
+  expect(result.ok && (result.capture.root as any).hover).toEqual(hover);
+});
+test("rejects a hover with a bad colour, opacity or shadow", () => {
+  expect(parseCapture(withHover({ backgroundColor: { r: 2, g: 0, b: 0, a: 1 } })).ok).toBe(false);
+  expect(parseCapture(withHover({ opacity: 3 })).ok).toBe(false);
+  expect(parseCapture(withHover({ boxShadows: [{ ...shadow, x: "no" }] })).ok).toBe(false);
+  expect(parseCapture(withHover("hover")).ok).toBe(false);
+});
+test("bounds the hover shadow list before reading it", () => {
+  const many = Array.from({ length: 9 }, () => shadow);
+  expect(parseCapture(withHover({ boxShadows: many }))).toMatchObject({
+    ok: false,
+    reason: "invalid",
+  });
+  expect(parseCapture(withHover({ boxShadows: many.slice(0, 8) })).ok).toBe(true);
+});

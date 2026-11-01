@@ -9,6 +9,7 @@ import type {
 import type { Rgba } from "./color";
 import { flatChildren, insideEditable, isEditable, shadowRootOf } from "./flatten";
 import { authoredTracksReader } from "./grid";
+import { type Hover, type HoverDeps, hoverCandidates, readHover } from "./hover";
 import {
   collapse,
   type Inherited,
@@ -20,8 +21,10 @@ import {
   type Which,
 } from "./pseudo";
 import {
+  clipsToText,
   colorOf,
   isTokenValue,
+  parseFilters,
   px,
   readBorders,
   readFlow,
@@ -30,6 +33,7 @@ import {
   readRadii,
   readStyle,
   readTransform,
+  readZIndex,
 } from "./styles";
 import { emptySvgReport, MAX_SVG_BYTES, SvgTooLargeError, serialiseSvg } from "./svg";
 import { cleanUrl, rememberUrl } from "./urls";
@@ -39,6 +43,12 @@ export type CaptureEnv = {
   toolVersion: string;
   /** Reaches closed shadow roots (the extension passes `chrome.dom.openOrClosedShadowRoot`); open ones are read without it. */
   getShadowRoot?: (el: Element) => ShadowRoot | null;
+  /**
+   * Leave out an element that does nothing but hold one child: no paint, spacing, position,
+   * effect, text or meaning of its own. The child keeps its own box, in page coordinates, so the
+   * look is the same with fewer layers. Off by default.
+   */
+  collapseWrappers?: boolean;
 };
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -61,6 +71,34 @@ const MAX_DEPTH = 256;
 const MAX_NODES = 20_000;
 const XHTML = "http://www.w3.org/1999/xhtml";
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** Elements that mean something on their own, so they stay even when they only hold one child. */
+const KEPT_WRAPPER_TAGS = new Set([
+  "a",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "label",
+  "summary",
+  "details",
+  "dialog",
+  "form",
+  "fieldset",
+  "table",
+  "li",
+  "ul",
+  "ol",
+  "p",
+  "pre",
+  "blockquote",
+  "figure",
+  "iframe",
+  "canvas",
+  "video",
+  "svg",
+  "img",
+]);
 
 const IGNORED_TAGS = new Set([
   "script",
@@ -203,14 +241,20 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     cs: (el, pseudo) => win.getComputedStyle(el, pseudo),
     nextId: () => nextId(),
     warn: (code, nodeId, detail) => warn(code, nodeId, detail),
+    warnStops: (nodeId) => warnStops(nodeId),
     pageBox: (el) => pageBox(el.getBoundingClientRect()),
     scroll: { x: scrollX, y: scrollY },
     viewport: { w: root.clientWidth, h: root.clientHeight },
     measure: (text, style) => measure(text, style),
     isSecret: isPrivate,
     text: (value, style, box, tag, up) => {
-      const node = boxedText(value, style, box, tag);
-      const inside = { link: up.link, decoration: decorationInside(style, up.decoration) };
+      const clipped = up.clipped || clipsToText(style);
+      const node = boxedText(value, style, box, tag, false, clipped);
+      const inside = {
+        link: up.link,
+        decoration: decorationInside(style, up.decoration),
+        clipped,
+      };
       if (node) for (const run of node.runs) inherit(run, inside);
       return node;
     },
@@ -294,7 +338,28 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   // ---------- Text
 
-  function runOf(style: CSSStyleDeclaration, start: number, end: number): Run {
+  /**
+   * The colour text is painted in: `-webkit-text-fill-color` wins over `color` and defaults to it.
+   * A clear fill shows only its outline, or the background of a clip, and Figma text has one colour.
+   */
+  function paintedColor(style: CSSStyleDeclaration, clipped: boolean): Rgba {
+    const fill = colorOf(style.getPropertyValue("-webkit-text-fill-color") || style.color);
+    if (fill.a > 0 || clipped) return fill;
+    const stroked = px(style.getPropertyValue("-webkit-text-stroke-width")) > 0;
+    const shown = colorOf(
+      stroked ? style.getPropertyValue("-webkit-text-stroke-color") : style.color
+    );
+    if (shown.a > 0) {
+      warn(
+        "text-fill-transparent",
+        undefined,
+        "Text with a transparent fill was imported filled with its stroke or text colour"
+      );
+    }
+    return shown;
+  }
+
+  function runOf(style: CSSStyleDeclaration, start: number, end: number, clipped: boolean): Run {
     const weight = Number.parseInt(style.fontWeight, 10) || 400;
     const align = style.textAlign;
     return {
@@ -306,7 +371,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       size: px(style.fontSize),
       lineHeight: style.lineHeight === "normal" ? null : px(style.lineHeight),
       letterSpacing: style.letterSpacing === "normal" ? 0 : px(style.letterSpacing),
-      color: colorOf(style.color),
+      color: paintedColor(style, clipped),
       decoration: style.textDecorationLine || "none",
       transform: style.textTransform,
       align: align === "start" ? "left" : align === "end" ? "right" : align,
@@ -383,6 +448,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   const inside = (el: Element, s: CSSStyleDeclaration, up: Inherited): Inherited => ({
     link: linkInside(el, up.link),
     decoration: decorationInside(s, up.decoration),
+    clipped: up.clipped || clipsToText(s),
   });
 
   const inherit = (run: Run, up: Inherited): Run => {
@@ -522,6 +588,65 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return isAtomic(item as Element) || childrenOf(item as Element).some(holdsAtomic);
   }
 
+  /** Whether an item adds to the text of the block it sits in. */
+  function showsText(item: Item): boolean {
+    if (isPseudoItem(item) || item.nodeType === 3) return holdsText(item);
+    if (item.nodeType !== 1 || !isMergeable(item as Element)) return false;
+    return inlineItems(item as Element).some(showsText);
+  }
+
+  /** Whether any text shows inside an item, however deep and whatever kind of box holds it. */
+  function holdsAnyText(item: Item): boolean {
+    if (isPseudoItem(item) || item.nodeType === 3) return holdsText(item);
+    if (item.nodeType !== 1) return false;
+    const e = item as Element;
+    if (IGNORED_TAGS.has(e.localName) || isPrivate(e) || cs(e).display === "none") return false;
+    return inlineItems(e).some(holdsAnyText);
+  }
+
+  /** The element that holds all of `el`'s text, if one does. A box with no text, like an icon, may sit beside it. */
+  function soleTextElement(el: Element): Element | null {
+    const items = inlineItems(el);
+    const inBox = (item: Item) =>
+      !isPseudoItem(item) && item.nodeType === 1 && !isMergeable(item as Element);
+    if (items.some((item) => inBox(item) && holdsAnyText(item))) return null;
+    const shown = items.filter(showsText);
+    const only = shown[0];
+    return only && shown.length === 1 && !isPseudoItem(only) && only.nodeType === 1
+      ? (only as Element)
+      : null;
+  }
+
+  /** A repeated custom element would be a component, so it stays out of the text around it. */
+  const staysElement = (el: Element, parent: Element) =>
+    repeatedTags.has(el.localName) && soleTextElement(parent) === el;
+
+  /**
+   * A merged element has no node to keep a hover on, so one that is all of its parent's text hands
+   * its colour and decoration to the parent, with the colour its own text rests at. What it does to
+   * its own box would land on the parent's, so that is counted. The elements it read go in
+   * `liftedHovers`; any other merged hover is lost, and counted.
+   */
+  function liftedHover(parent: Element): Hover | undefined {
+    if (hovers.size === 0) return undefined;
+    const merged = soleTextElement(parent);
+    if (!merged || staysElement(merged, parent)) return undefined;
+    const lifted: Hover = {};
+    const own = hovers.get(merged);
+    if (own) {
+      liftedHovers.add(merged);
+      const { color, decoration, restingColor: _rest, ...box } = own;
+      if (color) {
+        lifted.color = color;
+        lifted.restingColor = colorOf(cs(merged).color);
+      }
+      if (decoration !== undefined) lifted.decoration = decoration;
+      if (Object.keys(box).length > 0) reportHover("hover-partial", 1);
+    }
+    const all = { ...lifted, ...liftedHover(merged) };
+    return Object.keys(all).length > 0 ? all : undefined;
+  }
+
   /**
    * Gives generated rects a position from the real rects around them: `::before` ends where the
    * next real rect starts, `::after` starts where the previous one ends. With no real rect on the
@@ -650,7 +775,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         rects.push(pageBox(r));
       }
       if (!any) return;
-      append(piece, inherit(runOf(s, 0, 0), up));
+      append(piece, inherit(runOf(s, 0, 0, up.clipped), up));
     };
 
     const addPseudo = (p: Pseudo, up: Inherited) => {
@@ -666,7 +791,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       if (!piece) return;
       const lineH = px(s.lineHeight) || px(s.fontSize) * 1.2;
       rects.push({ x: 0, y: 0, w: measure(piece, s), h: round2(lineH), gen: p.which });
-      append(piece, inherit(runOf(s, 0, 0), up));
+      append(piece, inherit(runOf(s, 0, 0, up.clipped || clipsToText(s)), up));
     };
 
     const addNodes = (nodes: Iterable<Item>, styleEl: Element, up: Inherited) => {
@@ -689,8 +814,9 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
                 break;
               }
             }
-            append("\n", inherit(runOf(cs(e), 0, 0), up));
+            append("\n", inherit(runOf(cs(e), 0, 0, up.clipped), up));
           } else {
+            if (hovers.has(e) && !liftedHovers.has(e)) reportHover("hover-partial", 1);
             addNodes(inlineItems(e), e, inside(e, cs(e), up));
           }
         }
@@ -793,9 +919,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     s: CSSStyleDeclaration,
     inner: Box,
     tag: string,
-    dim = false
+    dim = false,
+    clipped = false
   ): TextNode | null {
-    const run = runOf(s, 0, value.length);
+    const run = runOf(s, 0, value.length, clipped);
     if (dim) run.color = { ...run.color, a: round2(run.color.a * 0.5) } as Rgba;
     const line =
       tag === "textarea" && run.lineHeight !== null ? { ...inner, h: run.lineHeight } : inner;
@@ -903,6 +1030,9 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     else warnings.set(code, { first: { code, ...(nodeId ? { nodeId } : {}), detail }, count: 1 });
   }
 
+  const warnStops = (nodeId: string) =>
+    warn("gradient-stops", nodeId, "A gradient was cut off at the limit on colour stops");
+
   /** `warn`, counted `count` times. */
   function warnEach(count: number, code: string, nodeId: string, detail: string) {
     for (let i = 0; i < count; i++) warn(code, nodeId, detail);
@@ -1007,7 +1137,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       } else if (child.nodeType === 1) {
         const e = child as Element;
         if (IGNORED_TAGS.has(e.localName)) continue;
-        if (isMergeable(e)) {
+        if (isMergeable(e) && !staysElement(e, el)) {
           group.push(e);
         } else {
           flush();
@@ -1018,6 +1148,60 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     generated("after");
     flush();
     return out;
+  }
+
+  /** The one element a collapsible wrapper holds, or null when `el` is not such a wrapper. */
+  function wrappedChild(el: Element, s: CSSStyleDeclaration): Element | null {
+    if (el === root || el === doc.body || el.namespaceURI !== XHTML) return null;
+    if (KEPT_WRAPPER_TAGS.has(el.localName) || isEditable(el) || hovers.has(el)) return null;
+    if (!/^(block|flex|grid|flow-root)$/.test(s.display)) return null;
+    if (s.position !== "static" || s.zIndex !== "auto" || s.visibility !== "visible") return null;
+    if (s.transform !== "none" || s.filter !== "none" || s.mixBlendMode !== "normal") return null;
+    if (s.opacity !== "1" || s.overflowX !== "visible" || s.overflowY !== "visible") return null;
+    const backdrop = s.getPropertyValue("backdrop-filter");
+    if (backdrop && backdrop !== "none") return null;
+    if (s.getPropertyValue("clip-path") !== "none" || s.getPropertyValue("mask-image") !== "none") {
+      return null;
+    }
+    const layout = readLayout(s);
+    if (layout.padding.some((p) => p > 0) || layout.gap?.some((g) => g > 0)) return null;
+    const style = readStyle(s, 0, 0);
+    if (
+      style.backgroundColor.a > 0 ||
+      style.backgroundImages.length > 0 ||
+      style.boxShadows.length > 0 ||
+      style.borders.top.width > 0 ||
+      style.borders.right.width > 0 ||
+      style.borders.bottom.width > 0 ||
+      style.borders.left.width > 0
+    ) {
+      return null;
+    }
+    const semantic = semanticOf(el);
+    if (
+      semantic.role ||
+      semantic.ariaLabel ||
+      semantic.headingLevel ||
+      semantic.landmark ||
+      semantic.href ||
+      semantic.alt
+    ) {
+      return null;
+    }
+    if (readPseudo(el, "before", pseudoCtx) || readPseudo(el, "after", pseudoCtx)) return null;
+    let only: Element | null = null;
+    for (const child of childrenOf(el)) {
+      if (child.nodeType === 3) {
+        if ((child.nodeValue ?? "").trim() !== "") return null;
+      } else if (child.nodeType === 1) {
+        const e = child as Element;
+        if (IGNORED_TAGS.has(e.localName) || cs(e).display === "none") continue;
+        // A second child, or one that is inline and would join a line of text.
+        if (only || isMergeable(e) || cs(e).display === "contents") return null;
+        only = e;
+      }
+    }
+    return only;
   }
 
   function visit(el: Element, depth: number, isRoot: boolean, up: Inherited): CaptureNode[] {
@@ -1032,6 +1216,11 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       return [];
     }
 
+    if (env.collapseWrappers) {
+      const only = depth < MAX_DEPTH ? wrappedChild(el, s) : null;
+      if (only) return visit(only, depth + 1, false, inherited);
+    }
+
     const box = boxOf(el, s);
     const clipped = el !== doc.body && (s.overflowX !== "visible" || s.overflowY !== "visible");
     if (!isRoot && boxArea(box) <= 0 && clipped) return [];
@@ -1043,6 +1232,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       id,
       box,
       paintOrder: n,
+      ...readZIndex(s, el.parentElement ? cs(el.parentElement).display : ""),
       visible: s.visibility !== "hidden",
       opacity: Math.min(1, Math.max(0, Number.parseFloat(s.opacity))) || 0,
       blendMode: s.mixBlendMode,
@@ -1051,6 +1241,16 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
     const leaf = { ...common, ...readFlow(el, s) };
     const tag = el.localName;
+
+    // These nodes carry no style, so a filter on one cannot reach the plan.
+    if ((tag === "img" || tag === "svg" || tag === "video") && s.filter !== "none") {
+      const names = parseFilters(s.filter).map((f) => f.split("(")[0]);
+      warn(
+        "filter-on-leaf",
+        id,
+        `A filter (${names.join(", ")}) on an image, SVG or video was not imported`
+      );
+    }
 
     if (!isRoot && boxArea(box) <= 0 && ["img", "svg", "canvas", "video", "iframe"].includes(tag)) {
       return [];
@@ -1132,12 +1332,17 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const element: ElementNode = {
       ...common,
       kind: "element",
-      style: readStyle(s, box.w, box.h),
+      style: readStyle(s, box.w, box.h, () => warnStops(id)),
       layout: layoutOf(el, s),
       children: [],
     };
     // Overflow on these two propagates to the viewport instead of clipping the element itself.
     if (el === root || el === doc.body) element.style.overflow = "visible";
+    const stored = hovers.get(el);
+    // What text inherits at rest, so the mapper can tell it from text with a colour of its own.
+    const hover = stored?.color ? { ...stored, restingColor: colorOf(s.color) } : stored;
+    const lifted = liftedHover(el);
+    if (hover || lifted) element.hover = { ...hover, ...lifted };
 
     const leafControl = tag === "input" || tag === "textarea" || tag === "select";
     if (isEditable(el)) {
@@ -1165,7 +1370,39 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return [element];
   }
 
-  const [tree] = visit(root, 1, true, { link: undefined, decoration: "none" });
+  // Hover differences are read once, up front, from the stylesheets; the walk only looks them up.
+  let hovers = new Map<Element, Hover>();
+  let repeatedTags = new Set<string>();
+  const liftedHovers = new WeakSet<Element>();
+  const reportHover: HoverDeps["report"] = (code, count) =>
+    warnEach(
+      count,
+      code,
+      "",
+      code === "hover-unreadable"
+        ? "A stylesheet could not be read, so its :hover rules were left out"
+        : code === "hover-stopped"
+          ? "Reading :hover rules stopped at its time or rule limit, so later ones were left out"
+          : "A :hover rule was only partly read, so part of it was left out"
+    );
+  try {
+    const found = hoverCandidates(doc, env);
+    repeatedTags = found.repeatedTags;
+    hovers = readHover(found.roots, found.candidates, {
+      win,
+      computed: cs,
+      now: () => win.performance.now(),
+      report: reportHover,
+    });
+  } catch {
+    warn("hover-unreadable", undefined, "Hover styles could not be read");
+  }
+
+  const [tree] = visit(root, 1, true, {
+    link: undefined,
+    decoration: "none",
+    clipped: false,
+  });
   if (tree?.kind !== "element") throw new Error("The document has no root element");
 
   // ---------- Tokens

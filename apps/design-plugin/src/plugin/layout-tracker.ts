@@ -11,7 +11,7 @@ type FrameOp = Extract<PlanOp, { op: "frame" }>;
 type Sizing = PlanChildLayout["sizingH"];
 
 /** The kinds of node an op makes. */
-export type Built = FrameNode | TextNode | RectangleNode;
+export type Built = FrameNode | ComponentNode | InstanceNode | TextNode | RectangleNode;
 
 /** What wrapped text must fit: the captured width, and the height that means its line count. */
 /** `max` is the widest the text may go, where a clipping parent would cut its line ends off. */
@@ -32,6 +32,8 @@ type LaidFrame = {
   /** Null when the parent is not in auto layout: nothing about this frame affects it then. */
   parent: LaidFrame | null;
   children: Child[];
+  /** Whether to turn the frame once its size is final: a rotated frame that auto layout sizes. */
+  turn: boolean;
   /** FILL text, whose lines can only be judged once this frame's size is final. */
   fillTexts: Child[];
   containsText: boolean;
@@ -45,6 +47,27 @@ const MIN_SIZE = 0.01;
 const MAX_WIDEN_STEPS = 8;
 /** Reads are quick, but a fallback writes, so the applier's time limit is not the only one. */
 const MAX_VERIFIES_PER_SLICE = 200;
+
+/**
+ * Turns a placed node about the centre its op gave it, using the size it has now. Sets the whole
+ * transform, so its x and y become where the unturned corner went.
+ */
+export function turnAbout(
+  node: SceneNode,
+  box: { x: number; y: number; w: number; h: number },
+  degrees: number
+) {
+  const theta = (degrees * Math.PI) / 180;
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  const { width, height } = node;
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  node.relativeTransform = [
+    [cos, -sin, cx - ((width / 2) * cos - (height / 2) * sin)],
+    [sin, cos, cy - ((width / 2) * sin + (height / 2) * cos)],
+  ];
+}
 
 export const clampSize = (n: number) => Math.max(n, MIN_SIZE);
 
@@ -80,6 +103,8 @@ export function createLayoutTracker() {
   let open = new Map<string, LaidFrame>();
   /** Finished frames to verify, children before parents. */
   let ready: LaidFrame[] = [];
+  /** Definitions in auto layout, by key, which say whether an instance of one holds text. */
+  const mains = new Map<string, LaidFrame>();
 
   function noteReason(reason: string) {
     fallbackReasons[reason] = (fallbackReasons[reason] ?? 0) + 1;
@@ -150,6 +175,8 @@ export function createLayoutTracker() {
 
   function placeChild(c: Child) {
     const { node } = c;
+    // Its parent's layout never placed it, and writing x and y would move a turned node's corner.
+    if (c.rotated) return;
     if (c.fit) {
       // Nothing gives it its width now, and it may have been keeping its lines on a wider box.
       if (!widenToLines(node as TextNode, c.fit)) rewrappedTexts++;
@@ -207,16 +234,17 @@ export function createLayoutTracker() {
     let reason: string | undefined;
     try {
       const verdict = verifyFrame(frame.frame, expectation(frame));
-      if (verdict.ok) {
-        autoLayoutFrames++;
-        return;
-      }
-      reason = verdict.reason ?? "unknown";
+      if (verdict.ok) autoLayoutFrames++;
+      else reason = verdict.reason ?? "unknown";
     } catch {
       reason = "error";
     }
-    countFallback(reason);
-    fallBack(frame);
+    if (reason !== undefined) {
+      countFallback(reason);
+      fallBack(frame);
+    }
+    // Last, from the size it ended with: turning it earlier would let a later resize move its centre.
+    if (frame.turn) attempt(() => turnAbout(frame.frame, frame.op, frame.op.rotation as number));
   }
 
   return {
@@ -230,8 +258,15 @@ export function createLayoutTracker() {
       const parent = op.parent === null ? undefined : open.get(op.parent);
       const auto = op.op === "frame" && (node as FrameNode).layoutMode !== "NONE";
       const own = auto && op.layout.mode !== "NONE" && op.layout.mode !== "GRID" ? op.layout : null;
-      const sizing = (axis: "sizingH" | "sizingV"): Sizing =>
-        op.childLayout?.[axis] === "FILL" ? "FILL" : (own?.[axis] ?? "FIXED");
+      const sizing = (axis: "sizingH" | "sizingV"): Sizing => {
+        if (op.childLayout?.[axis] === "FILL") return "FILL";
+        // A leaf, which sizes itself as its main does, or as the applier left it.
+        if (op.op === "instance") {
+          const { layoutSizingHorizontal: h, layoutSizingVertical: v } = node as InstanceNode;
+          return axis === "sizingH" ? h : v;
+        }
+        return own?.[axis] ?? "FIXED";
+      };
       const sizingH = sizing("sizingH");
       const sizingV = sizing("sizingV");
       let child: Child | null = null;
@@ -243,14 +278,15 @@ export function createLayoutTracker() {
           w: op.w,
           h: op.h,
           absolute: op.childLayout?.positioning === "ABSOLUTE",
+          rotated: "rotation" in op && Boolean(op.rotation),
           text: op.op === "text",
-          containsText: false,
+          containsText: op.op === "instance" && mains.get(op.key)?.containsText === true,
           sizingH,
           sizingV,
           align: op.op === "text" ? op.align : "LEFT",
         };
         parent.children.push(child);
-        if (op.op === "text") parent.containsText = true;
+        if (op.op === "text" || child.containsText) parent.containsText = true;
         if (fit) {
           child.fit = fit;
           parent.fillTexts.push(child);
@@ -265,6 +301,8 @@ export function createLayoutTracker() {
           sizingV,
           child,
           parent: parent ?? null,
+          turn:
+            op.parent !== null && Boolean(op.rotation) && op.childLayout?.positioning !== "AUTO",
           children: [],
           fillTexts: [],
           containsText: false,
@@ -272,6 +310,7 @@ export function createLayoutTracker() {
           deferred: [],
         };
         open.set(op.id, frame);
+        if (op.component) mains.set(op.component.key, frame);
         if (op.childCount <= 0) finish(frame);
       } else if (parent && arrived(parent)) {
         finish(parent);

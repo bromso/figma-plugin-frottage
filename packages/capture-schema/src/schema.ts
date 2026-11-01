@@ -26,11 +26,14 @@ const borders = z.object({
 
 const stop = z.object({ color, position: z.number() });
 
+/** Past this a file is refused; the walker cuts a gradient here, so its captures still import. */
+export const MAX_GRADIENT_STOPS = 256;
+
 const backgroundImage = z.object({
   type: z.enum(["linear-gradient", "radial-gradient", "conic-gradient", "image"]),
   css: z.string(),
   assetHash: z.string().optional(),
-  stops: z.array(stop).optional(),
+  stops: z.array(stop).max(MAX_GRADIENT_STOPS).optional(),
   angle: z.number().optional(),
   size: z.string().optional(),
   position: z.string().optional(),
@@ -55,8 +58,26 @@ const style = z.object({
   boxShadows: z.array(boxShadow),
   filters: z.array(z.string()),
   backdropFilter: z.string().optional(),
+  /** `background-clip`, only when it is not `border-box`. */
+  backgroundClip: z.string().optional(),
   overflow: z.string(),
   clip: box.optional(),
+});
+
+const MAX_HOVER_SHADOWS = 8;
+
+/** What `:hover` changes on an element: only these properties, only their parsed values. */
+const hoverBase = z.object({
+  backgroundColor: color.optional(),
+  color: color.optional(),
+  /** The element's computed `color` at rest, set with `color`: text that has it inherits the hover. */
+  restingColor: color.optional(),
+  borderColor: color.optional(),
+  opacity: unit.optional(),
+  decoration: z.string().max(60).optional(),
+});
+const hover = hoverBase.extend({
+  boxShadows: z.array(boxShadow).max(MAX_HOVER_SHADOWS).optional(),
 });
 
 const marginAuto = z.tuple([z.boolean(), z.boolean(), z.boolean(), z.boolean()]);
@@ -107,6 +128,8 @@ const common = {
   id: z.string(),
   box,
   paintOrder: z.number(),
+  /** Computed z-index, only for a positioned box (or a flex or grid item) whose value is not `auto`. */
+  zIndex: z.number().int().optional(),
   visible: z.boolean(),
   opacity: unit,
   blendMode: z.string(),
@@ -184,6 +207,7 @@ const elementBase = z.object({
   kind: z.literal("element"),
   style,
   layout,
+  hover: hover.optional(),
 });
 
 const elementNode = z.object({
@@ -267,6 +291,7 @@ export const parts = {
   box,
   textRun,
   boxShadow,
+  maxHoverShadows: MAX_HOVER_SHADOWS,
   backgroundImage: backgroundImage.omit({ stops: true }),
   stop,
   string: z.string(),
@@ -281,6 +306,7 @@ export const parts = {
   // Node kinds without `children` or any array.
   element: elementBase.extend({
     style: style.omit({ backgroundImages: true, boxShadows: true, filters: true }),
+    hover: hoverBase.optional(),
   }),
   text: textNode.omit({ lines: true, runs: true }),
   image: imageNode,

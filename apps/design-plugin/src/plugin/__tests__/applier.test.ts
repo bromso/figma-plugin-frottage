@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { FontRef, PlanOp, PlanRun } from "@repo/figma-mapper";
 import { createApplier } from "../applier";
-import { fakeFigma } from "./fake-figma";
+import { type FakeNode, fakeFigma } from "./fake-figma";
 
 const inter: FontRef = { family: "Inter", style: "Regular" };
 const bold: FontRef = { family: "Inter", style: "Bold" };
@@ -308,6 +308,53 @@ test("root sits 100px right of existing content", async () => {
   expect(f.node(r.rootId).y).toBe(0);
 });
 
+test("effects Figma refuses leave the frame and its children, and are counted", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const huge = [{ type: "LAYER_BLUR", radius: Number.POSITIVE_INFINITY }];
+  await a.applyBatch([
+    frame("a", null, { childCount: 1 }),
+    frame("blurred", "a", { effects: huge, name: "blurred", childCount: 1 }),
+    frame("inner", "blurred"),
+  ]);
+  const r = await a.end();
+  expect(r).toMatchObject({ failedOps: 0, paintFailures: 1 });
+  const blurred = f.created.find((n) => n.name === "blurred");
+  expect(blurred?.fills).toEqual([{ type: "SOLID", color: { r: 1, g: 0, b: 0 }, opacity: 1 }]);
+  expect(blurred?.effects).toEqual([]);
+  expect(blurred?.children).toHaveLength(1);
+  expect(blurred?.opacity).toBe(1);
+});
+
+test("fills Figma refuses leave the frame and its children, and are counted", async () => {
+  const f = fakeFigma();
+  const create = f.figma.createFrame.bind(f.figma);
+  f.figma.createFrame = () => {
+    const node = create();
+    let held: unknown[] = [];
+    Object.defineProperty(node, "fills", {
+      get: () => held,
+      set(v: { opacity?: number }[]) {
+        if (v.some((p) => p.opacity === 0.25)) throw new Error("refused paint");
+        held = v;
+      },
+    });
+    return node;
+  };
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const refused = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.25 }];
+  await a.applyBatch([
+    frame("a", null, { childCount: 1 }),
+    frame("painted", "a", { fills: refused, name: "painted", childCount: 1 }),
+    frame("inner", "painted"),
+  ]);
+  const r = await a.end();
+  expect(r).toMatchObject({ failedOps: 0, paintFailures: 1 });
+  expect(f.created.find((n) => n.name === "painted")?.children).toHaveLength(1);
+});
+
 test("a second begin removes the partial root", async () => {
   const f = fakeFigma();
   const a = createApplier(f.figma);
@@ -343,6 +390,15 @@ test("an import with no root op returns an empty rootId and counts a failure", a
     fallbackFrames: 0,
     fallbackReasons: {},
     textDriftCount: 0,
+    componentsCreated: 0,
+    instancesCreated: 0,
+    overrideFailures: 0,
+    overrideFailuresInMains: 0,
+    layoutFailures: 0,
+    hoverVariants: 0,
+    hoverFailures: 0,
+    paintFailures: 0,
+    resizedFallbacks: 0,
     stylesCreated: 0,
     stylesReused: 0,
     variablesCreated: 0,
@@ -452,6 +508,26 @@ test("frame effects carry visible and blendMode, sizes clamp, default fill is re
   expect(n.width).toBe(0.01);
   expect(n.fills).toEqual([]);
   expect(n.effects[0]).toMatchObject({ visible: true, blendMode: "NORMAL" });
+});
+
+test("blur effects set blurType NORMAL and carry no shadow fields", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a", null, {
+      effects: [
+        { type: "LAYER_BLUR", radius: 8 },
+        { type: "BACKGROUND_BLUR", radius: 20 },
+      ],
+    }),
+  ]);
+  const r = await a.end();
+  expect(r.failedOps).toBe(0);
+  expect(f.node(r.rootId).effects).toEqual([
+    { type: "LAYER_BLUR", blurType: "NORMAL", radius: 8, visible: true },
+    { type: "BACKGROUND_BLUR", blurType: "NORMAL", radius: 20, visible: true },
+  ]);
 });
 
 test("a bad stroke weight drops the stroke, not the frame", async () => {
@@ -862,4 +938,84 @@ test("a link running past the text is clamped", async () => {
   expect(
     t.ranges.filter((r: any) => r.m === "setRangeHyperlink").map((r: any) => [r.s, r.e])
   ).toEqual([[2, 5]]);
+});
+
+test("gradient fills become gradient paints with their transform and stops", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const transform: [[number, number, number], [number, number, number]] = [
+    [1, 0, 0],
+    [0, 1, 0],
+  ];
+  const stops = [
+    { position: 0, color: { r: 1, g: 0, b: 0, a: 1 } },
+    { position: 1, color: { r: 0, g: 0, b: 1, a: 0.5 } },
+  ];
+  await a.applyBatch([
+    frame("a", null, {
+      fills: [
+        { type: "SOLID", color: { r: 0, g: 1, b: 0 }, opacity: 1 },
+        { type: "GRADIENT_LINEAR", transform, stops },
+      ],
+    }),
+  ]);
+  expect((await a.end()).failedOps).toBe(0);
+  expect(f.lastFrame().fills).toEqual([
+    { type: "SOLID", color: { r: 0, g: 1, b: 0 }, opacity: 1 },
+    { type: "GRADIENT_LINEAR", gradientTransform: transform, gradientStops: stops },
+  ]);
+});
+
+/** Where the middle of a node's box is in its parent, which a turn must not move. */
+function centreOf(n: FakeNode): [number, number] {
+  const [[a, b, tx], [c, d, ty]] = n.relativeTransform as [
+    [number, number, number],
+    [number, number, number],
+  ];
+  return [tx + (a * n.width) / 2 + (b * n.height) / 2, ty + (c * n.width) / 2 + (d * n.height) / 2];
+}
+
+test("a rotated frame turns about the centre the capture had", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), frame("b", "a", { x: 20, y: 30, w: 80, h: 40, rotation: 30 })]);
+  const r = await a.end();
+  const b = f.node(r.rootId).children[0];
+  const [cx, cy] = centreOf(b);
+  expect(cx).toBeCloseTo(20 + 40, 6);
+  expect(cy).toBeCloseTo(30 + 20, 6);
+  // Clockwise on screen: Figma's `rotation` reads back as the negative angle.
+  expect(b.rotation).toBeCloseTo(-30, 6);
+  expect([b.width, b.height]).toEqual([80, 40]);
+});
+
+test("a frame without rotation never has its transform written", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), frame("b", "a")]);
+  await a.end();
+  expect(f.count("relativeTransform")).toBe(0);
+});
+
+test("image, svg and missing-image layers rotate too", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.addImage("abc", png);
+  await a.applyBatch([
+    frame("a"),
+    { ...imageOp("abc"), x: 10, y: 10, w: 40, h: 20, rotation: 90 } as PlanOp,
+    svgOp("<svg/>", { rotation: -15 }),
+    { ...imageOp("gone"), id: "gone", rotation: 45 } as PlanOp,
+  ]);
+  const r = await a.end();
+  const [img, vec, gone] = f.node(r.rootId).children;
+  expect(img.rotation).toBeCloseTo(-90, 6);
+  expect(vec.rotation).toBeCloseTo(15, 6);
+  expect(gone.rotation).toBeCloseTo(-45, 6);
+  const [cx, cy] = centreOf(img);
+  expect([cx, cy].map((n) => Math.round(n * 1e6) / 1e6)).toEqual([30, 20]);
 });

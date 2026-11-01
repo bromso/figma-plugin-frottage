@@ -1,5 +1,5 @@
 import type { CaptureNode, ElementNode, TextNode } from "@repo/capture-schema";
-import { colorOf, px, readLayout, readStyle, readTransform } from "./styles";
+import { colorOf, px, readLayout, readStyle, readTransform, readZIndex } from "./styles";
 import { cleanText } from "./urls";
 
 export type Box = { x: number; y: number; w: number; h: number };
@@ -11,6 +11,8 @@ export type Inherited = {
   link: string | undefined;
   /** The `text-decoration-line` in effect. */
   decoration: string;
+  /** Whether an element around it shows its background through its text. */
+  clipped: boolean;
 };
 
 /** What a pseudo-element needs from the walker; kept narrow so this file does not import it. */
@@ -21,6 +23,8 @@ export type PseudoCtx = {
   /** The next node id, or null once the node budget is spent. */
   nextId: () => number | null;
   warn: (code: string, nodeId: string | undefined, detail: string) => void;
+  /** Reports a gradient cut off at the limit on colour stops. */
+  warnStops: (nodeId: string) => void;
   /** Page-space border box of an element. */
   pageBox: (el: Element) => Box;
   scroll: { x: number; y: number };
@@ -316,12 +320,13 @@ export function pseudoNodes(
     kind: "element",
     box,
     paintOrder: n,
+    ...readZIndex(s, host.display),
     visible: s.visibility !== "hidden",
     opacity: Math.min(1, Math.max(0, Number.parseFloat(s.opacity))) || 0,
     blendMode: s.mixBlendMode,
     ...(transform ? { transform } : {}),
     semantic: { tag },
-    style: readStyle(s, box.w, box.h),
+    style: readStyle(s, box.w, box.h, () => ctx.warnStops(id)),
     layout: readLayout(s),
     children: [],
   };

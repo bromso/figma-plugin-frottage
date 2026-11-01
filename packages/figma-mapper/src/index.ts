@@ -1,3 +1,4 @@
+export { extractComponents } from "./components";
 export { matchFont } from "./fonts";
 export { inferChildLayout, inferLayout } from "./layout";
 export { batchOps, type MissingFont, mapCapture, missingFonts } from "./map";
@@ -10,8 +11,10 @@ export type {
   PlanChildLayout,
   PlanColor,
   PlanEffect,
+  PlanHoverPatch,
   PlanLayout,
   PlanOp,
+  PlanOverride,
   PlanPaint,
   PlanRgb,
   PlanRun,

@@ -12,7 +12,14 @@ export type PlanPaint =
       /** The colour token to bind, when this colour became one. */
       colorKey?: string;
     }
-  | { type: "IMAGE"; hash: string; fit: "FILL" | "FIT" | "CROP" | "TILE" };
+  | { type: "IMAGE"; hash: string; fit: "FILL" | "FIT" | "CROP" | "TILE" }
+  | {
+      type: "GRADIENT_LINEAR" | "GRADIENT_RADIAL" | "GRADIENT_ANGULAR";
+      /** Figma's `gradientTransform`: the node's unit square to gradient space. */
+      transform: [[number, number, number], [number, number, number]];
+      /** Positions run 0 to 1 along the gradient. */
+      stops: { position: number; color: PlanRgb & { a: number } }[];
+    };
 
 /** Per-side weights; one colour (the most common among drawn sides). */
 export type PlanStroke = {
@@ -23,13 +30,15 @@ export type PlanStroke = {
   weights: { top: number; right: number; bottom: number; left: number };
 };
 
-export type PlanEffect = {
-  type: "DROP_SHADOW" | "INNER_SHADOW";
-  color: PlanRgb & { a: number };
-  offset: { x: number; y: number };
-  radius: number;
-  spread: number;
-};
+export type PlanEffect =
+  | {
+      type: "DROP_SHADOW" | "INNER_SHADOW";
+      color: PlanRgb & { a: number };
+      offset: { x: number; y: number };
+      radius: number;
+      spread: number;
+    }
+  | { type: "LAYER_BLUR" | "BACKGROUND_BLUR"; radius: number };
 
 export type PlanRun = {
   start: number;
@@ -56,7 +65,11 @@ export type PlanTrack = { type: "FIXED" | "FLEX" | "HUG"; value: number };
 
 /** Padding is [top, right, bottom, left], and takes in the CSS border, which Figma does not lay out. */
 export type PlanLayout =
-  | { mode: "NONE" }
+  | {
+      mode: "NONE";
+      /** Why a frame that would have had auto layout stays absolute; the applier counts it. */
+      reason?: "transformed-child";
+    }
   | {
       mode: "HORIZONTAL" | "VERTICAL";
       wrap: boolean;
@@ -86,6 +99,29 @@ export type PlanChildLayout = {
   cell?: { row: number; column: number };
 };
 
+/** A difference from the component, on the child at `path`, by index down the expanded tree. */
+export type PlanOverride =
+  | { path: number[]; kind: "text"; text: string; runs: PlanRun[] }
+  | { path: number[]; kind: "image"; hash: string }
+  | { path: number[]; kind: "swap"; key: string };
+
+/**
+ * What `:hover` changes on one layer of a definition, at `path` by index down the expanded tree
+ * (an empty path is the main itself). Only what differs from the resting look is present.
+ */
+export type PlanHoverPatch = {
+  path: number[];
+  fills?: PlanPaint[];
+  strokeColor?: PlanRgb & { a: number };
+  opacity?: number;
+  effects?: PlanEffect[];
+  /** Text layers: the colour of the runs in `ranges`, or of the whole text without them. */
+  textColor?: PlanRgb & { a: number };
+  /** [start, end) character ranges that take `textColor`; the runs with a colour of their own stay. */
+  ranges?: [number, number][];
+  decoration?: PlanRun["decoration"];
+};
+
 export type PlanOp = (
   | {
       op: "frame";
@@ -104,8 +140,12 @@ export type PlanOp = (
       effects: PlanEffect[];
       clips: boolean;
       layout: PlanLayout;
+      /** Clockwise degrees as in CSS, about the box centre; absent when not rotated. */
+      rotation?: number;
       /** Direct child ops that follow, so the applier knows when this frame is complete. */
       childCount: number;
+      /** Set on the root of a definition, whose `parent` is null. */
+      component?: { key: string; name: string; hover?: PlanHoverPatch[] };
     }
   | {
       op: "text";
@@ -142,6 +182,8 @@ export type PlanOp = (
       /** [topLeft, topRight, bottomRight, bottomLeft]. */
       radius: [number, number, number, number];
       strokes: PlanStroke | null;
+      /** Clockwise degrees as in CSS, about the box centre; absent when not rotated. */
+      rotation?: number;
     }
   | {
       op: "svg";
@@ -157,6 +199,8 @@ export type PlanOp = (
       opacity: number;
       /** Whether the frame clips its content, as browsers clip inline SVG. Absent means yes. */
       clips?: boolean;
+      /** Clockwise degrees as in CSS, about the box centre; absent when not rotated. */
+      rotation?: number;
     }
   | {
       op: "placeholder";
@@ -169,6 +213,21 @@ export type PlanOp = (
       h: number;
       opacity: number;
       label: string;
+    }
+  | {
+      op: "instance";
+      id: string;
+      parent: string;
+      name: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      /** The `component.key` of a definition earlier in `ops`. */
+      key: string;
+      /** Whether the instance must be set to its own size: the definition's root will not follow. */
+      resize: boolean;
+      overrides: PlanOverride[];
     }
 ) & {
   /** How the node sits in an auto layout parent; absent under a parent with mode NONE. */
@@ -184,6 +243,9 @@ export type ImportReport = {
   downscaledImages: number;
   substitutedFonts: { from: string; to: string }[];
   warnings: string[];
+  components: number;
+  /** On the canvas, where one inside a definition counts for the main and for each copy of it. */
+  instances: number;
 };
 
 /** A value worth a variable. `key` is the value, so it stays the same across imports. */

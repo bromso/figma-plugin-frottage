@@ -1632,3 +1632,49 @@ describe("minor rulings", () => {
     expect(inferChildLayout(short, inferLayout(parent, shortRow), parent).sizingH).toBe("FIXED");
   });
 });
+
+describe("transformed children", () => {
+  const turn: ElementNode["transform"] = [0.866, 0.5, -0.5, 0.866, 0, 0];
+  const turned = (over: Partial<ElementNode> = {}) => [
+    box("a", 0, 0, 50, 20),
+    box("b", 60, 0, 50, 20, { transform: turn, ...over }),
+  ];
+
+  test("a rotated element in a flex row makes that row NONE, reason transformed-child", () => {
+    expect(inferLayout(row(), turned())).toEqual({ mode: "NONE", reason: "transformed-child" });
+  });
+  test("the same row without the rotation stays auto layout", () => {
+    expect(inferLayout(row(), [box("a", 0, 0, 50, 20), box("b", 60, 0, 50, 20)]).mode).toBe(
+      "HORIZONTAL"
+    );
+  });
+  test("a translated or scaled child does not make the row NONE", () => {
+    const moved: ElementNode["transform"] = [1, 0, 0, 1, 0, 0];
+    expect(inferLayout(row(), turned({ transform: moved })).mode).toBe("HORIZONTAL");
+    expect(inferLayout(row(), turned({ transform: [2, 0, 0, 2, 0, 0] })).mode).toBe("HORIZONTAL");
+  });
+  test("a rotated absolute child leaves the row in auto layout", () => {
+    const kids = [
+      box("a", 0, 0, 50, 20),
+      box("b", 60, 0, 50, 20),
+      item("pin", 150, 5, 20, 20, { position: "absolute" }, { transform: turn }),
+    ];
+    expect(inferLayout(row(), kids).mode).toBe("HORIZONTAL");
+  });
+  test("a rotated child behind a collapsing wrapper still counts", () => {
+    const wrapper = el("w", [60, 0], [box("b", 60, 0, 50, 20, { transform: turn })], {}, [50, 20]);
+    expect(inferLayout(row(), [box("a", 0, 0, 50, 20), wrapper])).toEqual({
+      mode: "NONE",
+      reason: "transformed-child",
+    });
+  });
+  test("a layout that was NONE anyway carries no reason", () => {
+    expect(inferLayout(flex(), [])).toEqual({ mode: "NONE" });
+  });
+  test("the mapped row is NONE with the reason", () => {
+    const root = row();
+    root.children = turned();
+    const op = frameOp(root, "parent");
+    expect(op.layout).toEqual({ mode: "NONE", reason: "transformed-child" });
+  });
+});

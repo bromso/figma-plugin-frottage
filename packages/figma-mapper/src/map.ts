@@ -1,5 +1,8 @@
 import type { Capture, CaptureNode, ElementNode, TextNode } from "@repo/capture-schema";
+import { extractComponents, MAX_HOVER_PATCHES } from "./components";
+import { mapFilters } from "./filters";
 import { matchFont } from "./fonts";
+import { hoverPatches } from "./hover";
 import {
   collapseTarget,
   inferChildLayout,
@@ -26,6 +29,8 @@ import type {
   PlanStroke,
 } from "./plan";
 import { extractTokens } from "./tokens";
+import { readMotion } from "./transform";
+import { unrotateTree } from "./unrotate";
 
 type Fit = "FILL" | "FIT" | "CROP" | "TILE";
 type Color = { r: number; g: number; b: number; a: number };
@@ -57,20 +62,230 @@ function backgroundFit(size: string | undefined, repeat: string | undefined): Fi
   return "FILL";
 }
 
-function mapFills(style: ElementNode["style"], hashes: Set<string>): PlanPaint[] {
+type Background = ElementNode["style"]["backgroundImages"][number];
+type GradientPaint = Extract<PlanPaint, { transform: unknown }>;
+type Transform = GradientPaint["transform"];
+
+const GRADIENT_TYPES = {
+  "linear-gradient": "GRADIENT_LINEAR",
+  "radial-gradient": "GRADIENT_RADIAL",
+  "conic-gradient": "GRADIENT_ANGULAR",
+} as const;
+
+// CSS angles run clockwise from "up"; Figma's gradient space is the unit square, so the line's
+// length is the box's extent along it (`L`), which makes 0% and 100% touch the corners.
+function linearTransform(angle: number, w: number, h: number): Transform {
+  const rad = (angle * Math.PI) / 180;
+  const sin = Math.sin(rad);
+  const cos = Math.cos(rad);
+  const length = Math.abs(w * sin) + Math.abs(h * cos);
+  if (!(length > 0)) {
+    return [
+      [1, 0, 0],
+      [0, 1, 0],
+    ];
+  }
+  const a = (w * sin) / length;
+  const b = (-h * cos) / length;
+  return [
+    [a, b, 0.5 - a / 2 - b / 2],
+    [-b, a, 0.5 + b / 2 - a / 2],
+  ];
+}
+
+const RADIAL_FARTHEST_CORNER: Transform = (() => {
+  const s = 1 / Math.SQRT2;
+  return [
+    [s, 0, 0.5 - s / 2],
+    [0, s, 0.5 - s / 2],
+  ];
+})();
+
+// Only a centred ellipse sized to the farthest corner, which is CSS's default, is exact.
+function isDefaultRadial(css: string): boolean {
+  const head = css.slice(css.indexOf("(") + 1).trimStart();
+  // A colour first means the browser wrote no shape, size or position.
+  if (!/^(ellipse|circle|closest|farthest|at\b|[\d.])/i.test(head)) return true;
+  const spec = head.split(/,(?![^(]*\))/)[0]?.trim() ?? "";
+  return /^(ellipse|farthest-corner|ellipse farthest-corner)(\s+at\s+(center|50%\s+50%))?$/i.test(
+    spec
+  );
+}
+
+// Measured in Figma: an angular gradient starts at 3 o'clock and CSS starts at 12, so the start
+// turns back a quarter. The transform is the inverse of that clockwise turn about the box centre.
+function angularTransform(angle: number): Transform {
+  const rad = ((angle - 90) * Math.PI) / 180;
+  const sin = Math.sin(rad);
+  const cos = Math.cos(rad);
+  return [
+    [cos, sin, 0.5 - 0.5 * cos - 0.5 * sin],
+    [-sin, cos, 0.5 + 0.5 * sin - 0.5 * cos],
+  ];
+}
+
+type Stop = GradientPaint["stops"][number];
+
+/** The most stops a capture may hold, for captures that were not parsed. */
+const MAX_STOPS = 256;
+
+/** Whether a `background-size` makes the layer smaller than the box, so it is a pattern. */
+function isPattern(size: string | undefined, w: number, h: number): boolean {
+  const tokens = (size ?? "").trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0 || tokens[0] === "cover" || tokens[0] === "contain") return false;
+  return tokens.slice(0, 2).some((t, i) => {
+    const n = Number.parseFloat(t);
+    if (Number.isNaN(n)) return false; // auto
+    if (t.endsWith("%")) return n < 100;
+    return n < (i === 0 ? w : h) - 0.5;
+  });
+}
+
+/**
+ * CSS blends premultiplied and Figma straight, so a clear stop would fade through black. A clear
+ * stop takes the colour of its nearest visible neighbour; between two different colours it takes
+ * the previous one and a twin at the same position takes the next.
+ */
+function unpremultiply(stops: Stop[]): Stop[] {
+  const out: Stop[] = [];
+  stops.forEach((stop, i) => {
+    if (stop.color.a > 0) {
+      out.push(stop);
+      return;
+    }
+    const before = stops
+      .slice(0, i)
+      .reverse()
+      .find((o) => o.color.a > 0);
+    const after = stops.slice(i + 1).find((o) => o.color.a > 0);
+    const from = before ?? after;
+    if (!from) {
+      out.push(stop);
+      return;
+    }
+    out.push({ position: stop.position, color: { ...from.color, a: 0 } });
+    const same =
+      after &&
+      after.color.r === from.color.r &&
+      after.color.g === from.color.g &&
+      after.color.b === from.color.b;
+    if (before && after && !same) {
+      out.push({ position: stop.position, color: { ...after.color, a: 0 } });
+    }
+  });
+  return out;
+}
+
+function mapGradient(
+  img: Background,
+  w: number,
+  h: number,
+  warn: (message: string) => void
+): GradientPaint | null {
+  const kind = img.type as keyof typeof GRADIENT_TYPES;
+  if (!img.stops || img.stops.length === 0) {
+    warn(`A ${kind} with no readable colour stops was left out.`);
+    return null;
+  }
+  if (isPattern(img.size, w, h)) {
+    warn(`A ${kind} sized as a repeating pattern (background-size) was left out.`);
+    return null;
+  }
+  if (img.stops.length > MAX_STOPS) {
+    warn(`A ${kind} had more than ${MAX_STOPS} colour stops; the rest were left out.`);
+  }
+  let stops: Stop[] = img.stops
+    .slice(0, MAX_STOPS)
+    .map((s) => ({
+      position: s.position,
+      color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a },
+    }))
+    .sort((p, q) => p.position - q.position);
+  if (/^repeating-/.test(img.css)) {
+    // Positions are 0 to 1 of the gradient line; the first cycle ends at the last stop.
+    const end = stops[stops.length - 1]?.position ?? 0;
+    if (end > 0) stops = stops.map((s) => ({ ...s, position: s.position / end }));
+    warn(`A repeating ${kind} was imported as its first cycle only.`);
+  }
+  if (stops.some((s) => s.position < 0 || s.position > 1)) {
+    warn(`A ${kind} had colour stops outside 0% to 100%; they were moved to the edge.`);
+    stops = stops.map((s) => ({ ...s, position: Math.min(1, Math.max(0, s.position)) }));
+  }
+  stops = unpremultiply(stops);
+  let transform: Transform;
+  if (kind === "linear-gradient") {
+    transform = linearTransform(img.angle ?? 180, w, h);
+  } else if (kind === "radial-gradient") {
+    transform = RADIAL_FARTHEST_CORNER;
+    if (!isDefaultRadial(img.css)) {
+      warn(
+        "A radial-gradient with its own shape, size or position was imported as approximate: centred, farthest corner."
+      );
+    }
+  } else {
+    transform = angularTransform(img.angle ?? 0);
+  }
+  return { type: GRADIENT_TYPES[kind], transform, stops };
+}
+
+/** `background-clip: text` paints the background through the glyphs, not on the box. */
+const clipsToText = (style: ElementNode["style"]): boolean =>
+  (style.backgroundClip ?? "").split(/[\s,]+/).includes("text");
+
+/**
+ * The one colour clipped text takes, which is all Figma text can hold, and what the report says of
+ * it: the first stop that shows, then the background colour, then black for an image.
+ */
+function clippedTextColor(
+  style: ElementNode["style"]
+): { color: PlanRgb; warning: string } | undefined {
+  for (const layer of style.backgroundImages) {
+    const stop = layer.type === "image" ? undefined : layer.stops?.find((s) => s.color.a > 0);
+    if (stop) {
+      return {
+        color: rgb(stop.color),
+        warning: "Text with a background clip was imported with the first colour of its gradient.",
+      };
+    }
+  }
+  if (style.backgroundColor.a > 0) {
+    return {
+      color: rgb(style.backgroundColor),
+      warning: "Text with a background clip was imported with its background colour.",
+    };
+  }
+  if (!style.backgroundImages.some((layer) => layer.type === "image")) return undefined;
+  return {
+    color: { r: 0, g: 0, b: 0 },
+    warning: "Text clipped to a background image was imported black.",
+  };
+}
+
+function mapFills(
+  style: ElementNode["style"],
+  box: { w: number; h: number },
+  hashes: Set<string>,
+  warn: (message: string) => void
+): PlanPaint[] {
   const fills: PlanPaint[] = [];
+  if (clipsToText(style)) return fills;
   const bg = style.backgroundColor;
   if (bg.a > 0) fills.push({ type: "SOLID", color: rgb(bg), opacity: bg.a });
   // CSS lists the top layer first and Figma lists it last.
   for (let i = style.backgroundImages.length - 1; i >= 0; i--) {
     const img = style.backgroundImages[i];
-    if (img?.type === "image" && img.assetHash) {
+    if (!img) continue;
+    if (img.type === "image") {
+      if (!img.assetHash) continue;
       hashes.add(img.assetHash);
       fills.push({
         type: "IMAGE",
         hash: img.assetHash,
         fit: backgroundFit(img.size, img.repeat),
       });
+    } else {
+      const paint = mapGradient(img, box.w, box.h, warn);
+      if (paint) fills.push(paint);
     }
   }
   return fills;
@@ -96,14 +311,20 @@ function mapStroke(borders: ElementNode["style"]["borders"]): PlanStroke | null 
   return { color: rgb(best.color), opacity: best.color.a, weights };
 }
 
-function mapEffects(style: ElementNode["style"]): PlanEffect[] {
-  return style.boxShadows.map((s) => ({
-    type: s.inset ? "INNER_SHADOW" : "DROP_SHADOW",
-    color: { ...rgb(s.color), a: s.color.a },
-    offset: { x: s.x, y: s.y },
-    radius: s.blur,
-    spread: s.spread,
-  }));
+/** Box shadows first, then filter effects. Filters with no Figma equivalent are counted in `ignored`. */
+function mapEffects(style: ElementNode["style"], ignored: Map<string, number>): PlanEffect[] {
+  const shadows = style.boxShadows.map(
+    (s): PlanEffect => ({
+      type: s.inset ? "INNER_SHADOW" : "DROP_SHADOW",
+      color: { ...rgb(s.color), a: s.color.a },
+      offset: { x: s.x, y: s.y },
+      radius: s.blur,
+      spread: s.spread,
+    })
+  );
+  const filtered = mapFilters(style);
+  for (const name of filtered.ignored) ignored.set(name, (ignored.get(name) ?? 0) + 1);
+  return [...shadows, ...filtered.effects];
 }
 
 const ALIGN = {
@@ -165,6 +386,17 @@ function settle(layout: PlanLayout, childLayout: PlanChildLayout | undefined): P
   };
 }
 
+/** Each element's tag by node id; iterative, like the walk, so depth is no limit. */
+function tagsOf(root: CaptureNode): Map<string, string> {
+  const tags = new Map<string, string>();
+  const stack = [root];
+  for (let node = stack.pop(); node; node = stack.pop()) {
+    tags.set(node.id, node.semantic.tag);
+    if (node.kind === "element") stack.push(...node.children);
+  }
+  return tags;
+}
+
 export function mapCapture(
   capture: Capture,
   available: FontRef[],
@@ -185,6 +417,35 @@ export function mapCapture(
     downscaledImages: capture.assets.filter((a) => a.downscaledFrom).length,
     substitutedFonts: [] as { from: string; to: string }[],
     warnings: capture.warnings.map((w) => w.detail),
+    components: 0,
+    instances: 0,
+  };
+
+  const warned = new Set<string>();
+  const warn = (message: string) => {
+    if (warned.has(message)) return;
+    warned.add(message);
+    report.warnings.push(message);
+  };
+
+  const ignoredFilters = new Map<string, number>();
+  // Boxes inside a rotated element are turned back first, so everything below reads local space.
+  const pageRoot = unrotateTree(capture.root, warn);
+  let scaledLayers = 0;
+  let skewedLayers = 0;
+  /** The rotation to apply to a layer, counting the scale and skew of its transform that are left out. */
+  const rotationOf = (
+    node: CaptureNode,
+    keep = true
+  ): { rotation: number } | Record<string, never> => {
+    const motion = readMotion(node.transform);
+    if (motion.scaled) scaledLayers++;
+    if (motion.skewed) skewedLayers++;
+    if (motion.rotation !== undefined && !keep) {
+      warn("A rotation on the page's root layer was left out.");
+      return {};
+    }
+    return motion.rotation === undefined ? {} : { rotation: motion.rotation };
   };
 
   const font = (family: string, weight: number, style: string): FontRef => {
@@ -233,7 +494,8 @@ export function mapCapture(
     parent: string,
     x: number,
     y: number,
-    peers: CaptureNode[]
+    peers: CaptureNode[],
+    clip?: PlanRgb
   ): PlanOp | null => {
     const len = node.text.length;
     if (len === 0) return null;
@@ -250,8 +512,9 @@ export function mapCapture(
         fontSize: r.size,
         lineHeight: r.lineHeight,
         letterSpacing: r.letterSpacing,
-        color: rgb(r.color),
-        opacity: r.color.a,
+        // Text clipped to a background is transparent; it takes the background's one colour.
+        color: clip && r.color.a === 0 ? clip : rgb(r.color),
+        opacity: clip && r.color.a === 0 ? 1 : r.color.a,
         decoration: mapDecoration(r.decoration),
         textCase: mapCase(r.transform),
         ...(href ? { href } : {}),
@@ -268,8 +531,8 @@ export function mapCapture(
       fontSize: seed?.size ?? 16,
       lineHeight: seed?.lineHeight ?? null,
       letterSpacing: seed?.letterSpacing ?? 0,
-      color: seed ? rgb(seed.color) : { r: 0, g: 0, b: 0 },
-      opacity: seed?.color.a ?? 1,
+      color: seed ? (clip && seed.color.a === 0 ? clip : rgb(seed.color)) : { r: 0, g: 0, b: 0 },
+      opacity: seed ? (clip && seed.color.a === 0 ? 1 : seed.color.a) : 1,
       decoration: seed ? mapDecoration(seed.decoration) : "NONE",
       textCase: seed ? mapCase(seed.transform) : "ORIGINAL",
     });
@@ -313,6 +576,9 @@ export function mapCapture(
     peers: CaptureNode[]
   ): PlanOp => {
     report.placeholders++;
+    if (readMotion(node.transform).rotation !== undefined) {
+      warn("A rotation on a placeholder was left out.");
+    }
     return {
       op: "placeholder",
       id: node.id,
@@ -339,11 +605,13 @@ export function mapCapture(
     siblings: Siblings | undefined;
     /** What the parent's children turned into, for numbering repeated items. */
     peers: CaptureNode[];
+    /** The colour for transparent text, from an ancestor with `background-clip: text`. */
+    clip?: PlanRgb;
   };
   const stack: Item[] = [
     {
-      node: capture.root,
-      outer: capture.root,
+      node: pageRoot,
+      outer: pageRoot,
       parent: null,
       parentId: null,
       parentLayout: null,
@@ -352,7 +620,8 @@ export function mapCapture(
     },
   ];
   while (stack.length > 0) {
-    const { node, outer, parent, parentId, parentLayout, siblings, peers } = stack.pop() as Item;
+    const { node, outer, parent, parentId, parentLayout, siblings, peers, clip } =
+      stack.pop() as Item;
     // visibility:hidden on a parent does not hide visible children, so an
     // invisible element with children stays as an unpainted frame.
     const hidden = !node.visible;
@@ -368,6 +637,14 @@ export function mapCapture(
     switch (node.kind) {
       case "element": {
         const s = node.style;
+        let childClip = clip;
+        if (clipsToText(s)) {
+          const clipped = clippedTextColor(s);
+          if (clipped) {
+            childClip = clipped.color;
+            warn(clipped.warning);
+          }
+        }
         const inferred = inferLayout(
           node,
           node.children,
@@ -376,6 +653,8 @@ export function mapCapture(
         const layout: PlanLayout = options.autoLayout
           ? settle(inferred, childLayout)
           : { mode: "NONE" };
+        // The import root is not turned: Figma places the import.
+        const turn = rotationOf(node, parent !== null);
         op = {
           op: "frame",
           id: node.id,
@@ -385,14 +664,15 @@ export function mapCapture(
           y,
           w: node.box.w,
           h: node.box.h,
-          fills: hidden ? [] : mapFills(s, hashes),
+          fills: hidden ? [] : mapFills(s, node.box, hashes, warn),
           strokes: hidden ? null : mapStroke(s.borders),
           // [topLeft, topRight, bottomRight, bottomLeft], as the walker emits.
           radius: [...s.borderRadius] as [number, number, number, number],
           opacity: node.opacity,
-          effects: hidden ? [] : mapEffects(s),
+          effects: hidden ? [] : mapEffects(s, ignoredFilters),
           clips: s.overflow.split(/\s+/).some((o) => o !== "" && o !== "visible"),
           layout,
+          ...turn,
           childCount: 0, // known once the walk has seen what the children turn into
         };
         const children = visualOrder(node, node.children, layout);
@@ -401,23 +681,28 @@ export function mapCapture(
           layout.mode === "HORIZONTAL" || layout.mode === "VERTICAL"
             ? siblingsOf(node.children, layout.mode === "HORIZONTAL")
             : undefined;
-        const targets = children.map((child) => collapseTarget(child, repeated));
+        const targets = new Map(
+          node.children.map((child) => [child, collapseTarget(child, repeated)])
+        );
+        // Numbered in document order, as paint order is no order a reader sees.
+        const numbered = [...targets.values()];
         for (let i = children.length - 1; i >= 0; i--) {
           const child = children[i] as CaptureNode;
           stack.push({
-            node: targets[i] as CaptureNode,
+            node: targets.get(child) as CaptureNode,
             outer: child,
             parent: node,
             parentId: node.id,
             parentLayout: layout,
             siblings: around,
-            peers: targets,
+            peers: numbered,
+            clip: childClip,
           });
         }
         break;
       }
       case "text":
-        op = mapText(node, parentId as string, x, y, peers);
+        op = mapText(node, parentId as string, x, y, peers, clip);
         break;
       case "image":
         if (node.assetHash) {
@@ -437,6 +722,7 @@ export function mapCapture(
             opacity: node.opacity,
             radius: [...node.borderRadius] as [number, number, number, number],
             strokes: mapStroke(node.borders),
+            ...rotationOf(node),
           };
         } else {
           op = placeholder(
@@ -468,6 +754,7 @@ export function mapCapture(
                 clips:
                   node.overflow === undefined ||
                   node.overflow.split(/\s+/).some((o) => o !== "" && o !== "visible"),
+                ...rotationOf(node),
               };
         break;
       case "placeholder":
@@ -495,7 +782,52 @@ export function mapCapture(
   report.nodes = ops.length;
   report.substitutedFonts = [...substituted].map(([from, to]) => ({ from, to }));
   const tokens = extractTokens(capture, ops, options);
-  return { ops, tokens, fonts: [...fonts.values()], assetHashes: [...hashes], report };
+  if (ignoredFilters.size > 0) {
+    const names = [...ignoredFilters].map(([name, n]) => `${name} (${n})`).join(", ");
+    report.warnings.push(`These filters have no Figma equivalent and were left out: ${names}.`);
+  }
+  if (scaledLayers > 0) {
+    warn(
+      `Scale in a CSS transform was left out on ${scaledLayers} layer${scaledLayers === 1 ? "" : "s"}.`
+    );
+  }
+  if (skewedLayers > 0) {
+    warn(
+      `Skew in a CSS transform was left out on ${skewedLayers} layer${skewedLayers === 1 ? "" : "s"}; any rotation was kept.`
+    );
+  }
+  let finished = ops;
+  if (options.components) {
+    let lostHovers = 0;
+    const found = extractComponents(
+      ops,
+      tagsOf(pageRoot),
+      options.hoverComponents
+        ? hoverPatches(pageRoot, ops, () => {
+            lostHovers++;
+          })
+        : undefined
+    );
+    finished = found.ops;
+    report.components = found.components;
+    report.instances = found.instances;
+    if (found.hoverCapped) {
+      warn(
+        `Hover changes on ${found.hoverCapped} component${found.hoverCapped === 1 ? "" : "s"} were cut off at ${MAX_HOVER_PATCHES} layers each.`
+      );
+    }
+    if (lostHovers > 0) {
+      warn(
+        `Hover changes on ${lostHovers} layer${lostHovers === 1 ? "" : "s"} have no place in Figma and were left out.`
+      );
+    }
+    if (found.hoverSwapped) {
+      warn(
+        `Hover changes on ${found.hoverSwapped} layer${found.hoverSwapped === 1 ? "" : "s"} inside a swapped component were left out.`
+      );
+    }
+  }
+  return { ops: finished, tokens, fonts: [...fonts.values()], assetHashes: [...hashes], report };
 }
 
 export function batchOps(ops: PlanOp[], size = 50): PlanOp[][] {

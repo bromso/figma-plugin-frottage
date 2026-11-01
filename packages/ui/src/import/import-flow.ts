@@ -38,6 +38,15 @@ export type ImportState =
       textDriftCount: number;
       autoLayoutFrames: number;
       fallbackFrames: number;
+      componentsCreated: number;
+      instancesCreated: number;
+      overrideFailures: number;
+      overrideFailuresInMains: number;
+      layoutFailures: number;
+      hoverVariants: number;
+      hoverFailures: number;
+      paintFailures: number;
+      resizedFallbacks: number;
       stylesCreated: number;
       stylesReused: number;
       variablesCreated: number;
@@ -62,6 +71,15 @@ export type ImportPort = {
     textDriftCount?: number;
     autoLayoutFrames?: number;
     fallbackFrames?: number;
+    componentsCreated?: number;
+    instancesCreated?: number;
+    overrideFailures?: number;
+    overrideFailuresInMains?: number;
+    layoutFailures?: number;
+    hoverVariants?: number;
+    hoverFailures?: number;
+    paintFailures?: number;
+    resizedFallbacks?: number;
     stylesCreated?: number;
     stylesReused?: number;
     variablesCreated?: number;
@@ -163,9 +181,19 @@ export async function runImport(
   file: File,
   port: ImportPort,
   onState: (s: ImportState) => void,
-  session?: ReviewSession
+  session?: ReviewSession,
+  /** Aborted by the user's Cancel; checked between steps, images and batches. */
+  signal?: AbortSignal
 ): Promise<void> {
   let begun = false;
+  /** Stop here: undo what the sandbox made, then go back to the start. */
+  const stop = async () => {
+    if (begun) {
+      begun = false;
+      await port.cancel();
+    }
+    onState({ step: "idle" });
+  };
   try {
     if (file.size > MAX_FILE_BYTES) throw new FrottageFileError("too-large");
     onState({ step: "working", done: 0, total: 0 });
@@ -173,6 +201,7 @@ export async function runImport(
     const bytes = new Uint8Array(await file.arrayBuffer());
     const { capture, assets } = unpackFrottage(bytes);
     await verifyAssets(assets);
+    if (signal?.aborted) return await stop();
 
     await yieldToPaint();
     const available = await port.listFonts();
@@ -219,9 +248,12 @@ export async function runImport(
     // Set first: a begin that fails halfway may still have created state to cancel.
     begun = true;
     await port.begin({ name: importName(capture.source), fonts: plan.fonts, totalOps: total });
+    // A Cancel pressed while begin ran waits for it to return, then undoes what it made.
+    if (signal?.aborted) return await stop();
     await port.tokens(plan.tokens, options);
 
     for (const hash of plan.assetHashes) {
+      if (signal?.aborted) return await stop();
       const data = assets.get(hash);
       // A failed image is not an error here; the sandbox counts it in `missingImages` at end().
       if (data) await port.image(hash, data);
@@ -229,11 +261,13 @@ export async function runImport(
 
     let done = 0;
     for (const ops of batchOps(plan.ops)) {
+      if (signal?.aborted) return await stop();
       await port.batch(ops);
       done += ops.length;
       onState({ step: "working", done, total });
     }
 
+    if (signal?.aborted) return await stop();
     const result = await port.end();
     if (!result.rootId) throw new Error("Nothing was created");
     begun = false;
@@ -247,6 +281,15 @@ export async function runImport(
       textDriftCount: result.textDriftCount ?? 0,
       autoLayoutFrames: result.autoLayoutFrames ?? 0,
       fallbackFrames: result.fallbackFrames ?? 0,
+      componentsCreated: result.componentsCreated ?? 0,
+      instancesCreated: result.instancesCreated ?? 0,
+      overrideFailures: result.overrideFailures ?? 0,
+      overrideFailuresInMains: result.overrideFailuresInMains ?? 0,
+      layoutFailures: result.layoutFailures ?? 0,
+      hoverVariants: result.hoverVariants ?? 0,
+      hoverFailures: result.hoverFailures ?? 0,
+      paintFailures: result.paintFailures ?? 0,
+      resizedFallbacks: result.resizedFallbacks ?? 0,
       stylesCreated: result.stylesCreated ?? 0,
       stylesReused: result.stylesReused ?? 0,
       variablesCreated: result.variablesCreated ?? 0,

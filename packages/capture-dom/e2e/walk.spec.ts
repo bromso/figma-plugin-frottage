@@ -11,7 +11,7 @@ import {
   type ElementNode,
   parseCapture,
 } from "@repo/capture-schema";
-import { mapCapture } from "@repo/figma-mapper";
+import { DEFAULT_IMPORT_OPTIONS, mapCapture } from "@repo/figma-mapper";
 
 // Bundle the walker once into an IIFE global (`globalThis.__frottageCapture`), so it runs in the
 // page exactly as the extension would inject it. Playwright runs under Node, so the bundle is built
@@ -43,6 +43,7 @@ type Hook = {
         now: () => string;
         toolVersion: string;
         getShadowRoot?: (el: Element) => ShadowRoot | null;
+        collapseWrappers?: boolean;
       }
     ) => Capture;
   };
@@ -51,6 +52,8 @@ type Hook = {
 type CaptureOptions = {
   /** Pass a getShadowRoot that reaches closed roots, through the hook the fixture sets on window. */
   closedShadow?: boolean;
+  /** Leave out one-child wrappers that do nothing. */
+  collapseWrappers?: boolean;
 };
 
 async function capture(page: Page, file: string, options: CaptureOptions = {}): Promise<Capture> {
@@ -64,7 +67,7 @@ async function capture(page: Page, file: string, options: CaptureOptions = {}): 
 // Serialised in the page: a deep tree is too long a reference chain for Playwright to transfer.
 async function runCapture(page: Page, now: string, options: CaptureOptions = {}): Promise<Capture> {
   const json = await page.evaluate(
-    ({ at, closed }) => {
+    ({ at, closed, collapse }) => {
       type Roots = WeakMap<Element, ShadowRoot>;
       const roots = (window as unknown as { __frottageClosedRoots?: Roots }).__frottageClosedRoots;
       return JSON.stringify(
@@ -72,10 +75,11 @@ async function runCapture(page: Page, now: string, options: CaptureOptions = {})
           now: () => at,
           toolVersion: "test",
           ...(closed ? { getShadowRoot: (el: Element) => roots?.get(el) ?? el.shadowRoot } : {}),
+          ...(collapse ? { collapseWrappers: true } : {}),
         })
       );
     },
-    { at: now, closed: options.closedShadow === true }
+    { at: now, closed: options.closedShadow === true, collapse: options.collapseWrappers === true }
   );
   return JSON.parse(json) as Capture;
 }
@@ -357,6 +361,24 @@ test("collapses repeated warnings into one with a count", async ({ page }) => {
   const warned = c.warnings.filter((w) => w.code === "pseudo-approximate");
   expect(warned).toHaveLength(1);
   expect(warned[0]?.detail).toContain("(5 times)");
+});
+
+test("a filter on an image, svg or video is warned about, with names only", async ({ page }) => {
+  await page.setContent("<body></body>");
+  await page.evaluate(() => {
+    for (let i = 0; i < 2; i++) {
+      document.body.insertAdjacentHTML(
+        "beforeend",
+        '<svg width="10" height="10" style="filter: grayscale(1) blur(2px)"></svg>'
+      );
+    }
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const warned = c.warnings.filter((w) => w.code === "filter-on-leaf");
+  expect(warned).toHaveLength(1);
+  expect(warned[0]?.detail).toContain("grayscale, blur");
+  expect(warned[0]?.detail).toContain("(2 times)");
 });
 
 test("keeps the subtree of a zero-area element whose children have area", async ({ page }) => {
@@ -1686,4 +1708,608 @@ test("only colours, var() chains and lengths are kept from :root", async ({ page
     "--brand-named": "rebeccapurple",
     "--gap": "16px",
   });
+});
+
+test("zIndex is stored for a positioned box and left out for auto", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/layout.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      [
+        '<div id="zq-a" style="position:absolute;z-index:3;width:10px;height:10px;background:red"></div>',
+        '<div id="zq-b" style="position:absolute;width:10px;height:10px;background:blue"></div>',
+        '<div id="zq-c" style="z-index:5;width:10px;height:10px;background:green"></div>',
+        '<div style="display:flex"><div id="zq-d" style="z-index:2;width:10px;height:10px;background:pink"></div></div>',
+      ].join("")
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const byId = new Map<string, ElementNode>();
+  each(c, (n) => {
+    if (n.kind === "element" && n.semantic.id?.startsWith("zq-")) byId.set(n.semantic.id, n);
+  });
+  expect(byId.get("zq-a")?.zIndex).toBe(3);
+  expect(byId.get("zq-b")?.zIndex).toBeUndefined();
+  expect(byId.get("zq-c")?.zIndex).toBeUndefined();
+  expect(byId.get("zq-d")?.zIndex).toBe(2);
+  expect(parseCapture(c).ok).toBe(true);
+});
+
+test("a pseudo-element keeps its z-index, so an underlay stays under the text", async ({
+  page,
+}) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/layout.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      [
+        "<style>.zq-pill{position:relative;width:80px}",
+        ".zq-pill::before{content:'';position:absolute;inset:0;background:#000;z-index:-1}",
+        ".zq-row{display:flex}.zq-row::after{content:'';width:5px;height:5px;background:#000;z-index:2}",
+        ".zq-auto::before{content:'';position:absolute;inset:0;background:#000}</style>",
+        '<div class="zq-pill" id="zq-pill"><span style="color:#fff">Label</span></div>',
+        '<div class="zq-row" id="zq-row"><b>One</b></div>',
+        '<div class="zq-auto" id="zq-auto" style="position:relative">Two</div>',
+      ].join("")
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const byId = new Map<string, ElementNode>();
+  each(c, (n) => {
+    if (n.kind === "element" && n.semantic.id?.startsWith("zq-")) byId.set(n.semantic.id, n);
+  });
+  const pseudo = (id: string) => {
+    const parent = byId.get(id);
+    return parent?.children.find((n) => n.semantic.tag.startsWith("::"));
+  };
+  expect(pseudo("zq-pill")?.zIndex).toBe(-1);
+  expect(pseudo("zq-row")?.zIndex).toBe(2);
+  expect(pseudo("zq-auto")?.zIndex).toBeUndefined();
+  expect(parseCapture(c).ok).toBe(true);
+  const { ops } = mapCapture(c, [{ family: "Arial", style: "Regular" }]);
+  const under = ops.filter((o) => o.parent === byId.get("zq-pill")?.id).map((o) => o.id);
+  expect(under[0]).toBe(pseudo("zq-pill")?.id);
+});
+
+test("transparent text fill outside a clip takes the stroke colour, else the text colour", async ({
+  page,
+}) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/layout.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      [
+        '<p style="-webkit-text-fill-color:transparent;-webkit-text-stroke:1px rgb(0,0,255);color:red">Outlined</p>',
+        '<p style="color:transparent;-webkit-text-stroke:2px rgb(0,128,0)">Stroke only</p>',
+        '<p style="-webkit-text-fill-color:transparent;color:rgb(255,0,0)">Filled away</p>',
+        '<p style="color:transparent">Hidden fully</p>',
+        '<p style="background:linear-gradient(90deg,red,blue);background-clip:text;-webkit-text-fill-color:transparent;-webkit-text-stroke:1px rgb(0,0,255)"><span>Clipped span</span></p>',
+      ].join("")
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const color = (text: string) => findText(c, text)?.runs[0]?.color;
+  expect(color("Outlined")).toEqual({ r: 0, g: 0, b: 1, a: 1 });
+  expect(color("Stroke only")).toEqual({ r: 0, g: 128 / 255, b: 0, a: 1 });
+  expect(color("Filled away")).toEqual({ r: 1, g: 0, b: 0, a: 1 });
+  expect(color("Hidden fully")?.a).toBe(0);
+  expect(color("Clipped span")?.a).toBe(0);
+  const warned = c.warnings.filter((w) => w.code === "text-fill-transparent");
+  expect(warned).toHaveLength(1);
+  expect(warned[0]?.detail).toContain("(3 times)");
+});
+
+test("background-clip: text is captured and the text paints with the first gradient colour", async ({
+  page,
+}) => {
+  const c = await capture(page, "gradient-text.html");
+  const heading = (tag: string) => {
+    let hit: ElementNode | undefined;
+    each(c, (n) => {
+      if (n.kind === "element" && n.semantic.tag === tag) hit = n;
+    });
+    if (!hit) throw new Error(`no ${tag}`);
+    return hit;
+  };
+  expect(heading("h1").style.backgroundClip).toBe("text");
+  expect(heading("h2").style.backgroundClip).toBe("text");
+  expect(heading("p").style.backgroundClip).toBeUndefined();
+  const plan = mapCapture(c, [{ family: "Arial", style: "Regular" }]);
+  const fillsOf = (id: string) => {
+    const op = plan.ops.find((o) => o.id === id);
+    return op?.op === "frame" ? op.fills : undefined;
+  };
+  expect(fillsOf(heading("h1").id)).toEqual([]);
+  expect(fillsOf(heading("p").id)).toHaveLength(1);
+  const colours = plan.ops.flatMap((o) =>
+    o.op === "text" ? [o.runs[0]?.color, o.runs[0]?.opacity] : []
+  );
+  // h1: -webkit-text-fill-color transparent over a red-to-blue gradient; h2: color transparent over green.
+  expect(colours.slice(0, 4)).toEqual([{ r: 1, g: 0, b: 0 }, 1, { r: 0, g: 128 / 255, b: 0 }, 1]);
+});
+
+// ---------- Hover
+
+type El = Extract<CaptureNode, { kind: "element" }>;
+function elements(c: Capture, pick: (n: El) => boolean): El[] {
+  const out: El[] = [];
+  each(c, (n) => {
+    if (n.kind === "element" && pick(n)) out.push(n);
+  });
+  return out;
+}
+const withClass = (c: Capture, tag: string, cls: string) =>
+  elements(c, (n) => n.semantic.tag === tag && n.semantic.className === cls);
+const hoverOf = (c: Capture, tag: string, cls: string) => withClass(c, tag, cls)[0]?.hover;
+const rgb = (r: number, g: number, b: number, a = 1) => ({ r, g, b, a });
+const near = (value: number | undefined, to: number) => expect(value).toBeCloseTo(to, 2);
+
+test("a :hover background is stored on a repeated element", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const hover = hoverOf(c, "x-btn", "plain");
+  near(hover?.backgroundColor?.g, 0xaa / 255);
+  expect(hover?.backgroundColor?.a).toBe(1);
+  expect(withClass(c, "x-btn", "plain")).toHaveLength(2);
+});
+
+test("a var() value is resolved, with its fallback", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const hover = hoverOf(c, "x-btn", "vars");
+  near(hover?.color?.r, 0xcc / 255);
+  expect(hover?.backgroundColor).toEqual(rgb(0, 0, 0, 0.5));
+});
+
+test("a colour hover carries the resting colour, and other hovers do not", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  near(hoverOf(c, "x-btn", "vars")?.restingColor?.r, 0x11 / 255);
+  expect(hoverOf(c, "x-btn", "vars")?.restingColor?.a).toBe(1);
+  expect(hoverOf(c, "x-btn", "plain")?.restingColor).toBeUndefined();
+});
+
+test("authored hex, named, rgb and shadow forms are read", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const shadows = hoverOf(c, "x-btn", "shadow")?.boxShadows;
+  expect(shadows).toEqual([
+    { inset: false, x: 0, y: 2, blur: 4, spread: 0, color: rgb(0, 0, 0) },
+    { inset: true, x: 0, y: 0, blur: 0, spread: 1, color: rgb(1, 0, 0, 0.5) },
+  ]);
+  expect(hoverOf(c, "x-btn", "deco")?.decoration).toBe("underline");
+  const fade = hoverOf(c, "x-btn", "fade");
+  expect(fade?.opacity).toBe(0.5);
+  expect(fade?.borderColor).toEqual(rgb(1, 0, 0));
+});
+
+test("the later rule wins for the same property", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(hoverOf(c, "x-btn", "ord")?.color).toEqual(rgb(0, 0, 1));
+});
+
+test("nested rules, matching @media and @supports count; the rest do not", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  near(hoverOf(c, "x-btn", "nest")?.backgroundColor?.b, 0);
+  expect(hoverOf(c, "x-btn", "nest")?.backgroundColor?.r).toBe(1);
+  expect(hoverOf(c, "x-btn", "mq")?.opacity).toBe(0.75);
+  near(hoverOf(c, "x-btn", "sup")?.backgroundColor?.b, 0x56 / 255);
+});
+
+test(".card:hover .title reaches the descendant", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const titles = withClass(c, "h3", "title");
+  expect(titles).toHaveLength(2);
+  for (const t of titles) expect(t.hover?.color).toEqual(rgb(0, 0, 1));
+  expect(withClass(c, "div", "card").every((n) => n.hover === undefined)).toBe(true);
+});
+
+test("rules inside shadow roots and adoptedStyleSheets count", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const buttons = elements(c, (n) => n.semantic.tag === "button");
+  expect(buttons.length).toBe(2);
+  for (const b of buttons) expect(b.hover?.backgroundColor).toEqual(rgb(1, 0, 1));
+  const inner = withClass(c, "p", "inner");
+  expect(inner.length).toBe(2);
+  for (const p of inner) expect(p.hover?.opacity).toBe(0.5);
+});
+
+test(":host(:hover) reaches the host, in open and closed roots", async ({ page }) => {
+  const c = await capture(page, "hover.html", { closedShadow: true });
+  const open = elements(c, (n) => n.semantic.tag === "x-shadow");
+  expect(open).toHaveLength(2);
+  for (const h of open) expect(h.hover?.boxShadows).toHaveLength(1);
+  const closed = elements(c, (n) => n.semantic.tag === "x-closed");
+  expect(closed).toHaveLength(2);
+  for (const h of closed) expect(h.hover?.opacity).toBe(0.4);
+  const spans = elements(c, (n) => n.semantic.tag === "span");
+  expect(spans.some((s) => s.hover?.color?.g === 1 && s.hover.color.b === 1)).toBe(true);
+});
+
+test("a closed root is not read when the environment cannot reach it", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(elements(c, (n) => n.semantic.tag === "x-closed").every((n) => !n.hover)).toBe(true);
+});
+
+test("an element whose tag appears once stores nothing", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(elements(c, (n) => n.semantic.tag === "x-once")[0]?.hover).toBeUndefined();
+});
+
+test("a cross-origin sheet is skipped and counted", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const w = c.warnings.find((x) => x.code === "hover-unreadable");
+  expect(w?.detail).toContain("could not be read");
+  expect(w?.detail).not.toContain("localhost");
+  // its #ff0000 rule is not applied
+  expect(hoverOf(c, "x-btn", "plain")?.backgroundColor?.r).toBe(0);
+});
+
+test("a selector the reader cannot answer is skipped and counted", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(hoverOf(c, "x-btn", "pseudo")).toBeUndefined();
+  expect(hoverOf(c, "x-btn", "has")).toBeUndefined();
+  const partial = c.warnings.find((x) => x.code === "hover-partial");
+  expect(partial?.detail).toMatch(/\(\d+ times\)$/);
+});
+
+test(":not(:hover) is skipped, while the hover branch of its list is read", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(hoverOf(c, "x-btn", "not")).toBeUndefined();
+  expect(hoverOf(c, "x-btn", "notb")?.backgroundColor?.r).toBeCloseTo(0.6, 2);
+});
+
+test("a group with a branch that matches at rest gets no hover", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(hoverOf(c, "x-btn", "isb")).toBeUndefined();
+});
+
+test("a nested parent list keeps its resting branch resting", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const xs = elements(c, (n) => n.semantic.className === "nl-x");
+  expect(xs).toHaveLength(4);
+  const [a1, b1, a2, b2] = xs;
+  expect(a1?.hover).toBeUndefined();
+  expect(a2?.hover).toBeUndefined();
+  expect(b1?.hover?.color?.g).toBeCloseTo(0.667, 2);
+  expect(b2?.hover?.color?.g).toBeCloseTo(0.667, 2);
+});
+
+test("unreadable shapes count once each, and a shared sheet counts once", async ({ page }) => {
+  const c = await capture(page, "hover-limits.html");
+  // @container, a custom-property-only rule, the shared sheet's transform, a bare :host rule
+  const partial = c.warnings.find((x) => x.code === "hover-partial");
+  expect(partial?.detail).toMatch(/\(4 times\)$/);
+  // the shared sheet still matches in each root
+  const ys = elements(c, (n) => n.semantic.className === "y");
+  expect(ys).toHaveLength(2);
+  for (const y of ys) expect(y.hover?.color?.r).toBe(1);
+  expect(hoverOf(c, "x-lim", "good")?.color?.g).toBe(1);
+  expect(hoverOf(c, "x-lim", "custom")).toBeUndefined();
+});
+
+test("past the rule cap reading stops with one warning", async ({ page }) => {
+  const c = await capture(page, "hover-limits.html");
+  const stopped = c.warnings.filter((x) => x.code === "hover-stopped");
+  expect(stopped).toHaveLength(1);
+  expect(stopped[0]?.detail).not.toMatch(/times/);
+});
+
+test("a rule with an unsupported property keeps what it can and is counted", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const pill = hoverOf(c, "x-pill", "a");
+  expect(pill?.color?.g).toBeCloseTo(0.6, 2);
+  expect(JSON.stringify(pill)).not.toContain("transform");
+  // currentcolor can't be pinned down, so the earlier rule's green stays; the colour beside it is read
+  const cur = hoverOf(c, "x-pill", "cur");
+  expect(cur?.color?.g).toBeCloseTo(0.6, 2);
+  near(cur?.backgroundColor?.r, 0xab / 255);
+  expect(c.warnings.some((x) => x.code === "hover-partial")).toBe(true);
+});
+
+test("editable elements store nothing, nor does anything in them", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const edits = elements(c, (n) => n.semantic.tag === "x-edit");
+  expect(edits).toHaveLength(2);
+  expect(edits.every((n) => !n.hover)).toBe(true);
+  expect(elements(c, (n) => n.semantic.tag === "b").every((n) => !n.hover)).toBe(true);
+});
+
+test("the DOM is unchanged after capture", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/hover.html");
+  await page.addScriptTag({ content: bundle });
+  const snapshot = () =>
+    page.evaluate(() => ({
+      html: document.documentElement.outerHTML,
+      sheets: document.styleSheets.length,
+      adopted: document.adoptedStyleSheets.length,
+      shadow: Array.from(document.querySelectorAll("x-shadow")).map(
+        (e) => e.shadowRoot?.innerHTML ?? ""
+      ),
+    }));
+  const before = await snapshot();
+  await runCapture(page, "2026-01-01T00:00:00.000Z");
+  expect(await snapshot()).toEqual(before);
+});
+
+test("a secret in a custom property never reaches hover", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(hoverOf(c, "x-btn", "secret")).toBeUndefined();
+  expect(JSON.stringify(c)).not.toContain("s3cr3t");
+  expect(JSON.stringify(c)).not.toContain("hover-other.css");
+});
+
+test("a capture with hover still parses", async ({ page }) => {
+  const c = await capture(page, "hover.html", { closedShadow: true });
+  const parsed = parseCapture(c);
+  expect(parsed.ok).toBe(true);
+  expect(elements(c, (n) => n.hover !== undefined).length).toBeGreaterThan(5);
+});
+
+const has = (c: Capture, cls: string) =>
+  elements(c, (n) => n.semantic.className === cls).length > 0;
+
+test("collapseWrappers drops an unpainted one-child div and keeps its child's position", async ({
+  page,
+}) => {
+  const off = await capture(page, "wrappers.html");
+  expect(has(off, "w-plain")).toBe(true);
+  const c = await capture(page, "wrappers.html", { collapseWrappers: true });
+  expect(has(c, "w-plain")).toBe(false);
+  expect(has(c, "w-outer")).toBe(false);
+  expect(has(c, "w-inner")).toBe(false);
+  const byClass = (cap: Capture, cls: string) =>
+    elements(cap, (n) => n.semantic.className === cls)[0];
+  const child = byClass(c, "in-plain");
+  expect(child?.box.x).toBe(30);
+  expect(child?.box.h).toBe(20);
+  // The child's position is the same as without collapsing: the page's own coordinates.
+  expect(child?.box).toEqual(byClass(off, "in-plain")?.box);
+  // A collapsed node hands out no id, so ids stay dense and the tree is smaller.
+  expect(countNodes(c.root)).toBeLessThan(countNodes(off.root));
+  const ids = new Set<string>();
+  each(c, (n) => ids.add(n.id));
+  expect(ids.size).toBe(countNodes(c.root));
+  expect(has(c, "in-deep")).toBe(true);
+});
+
+test("collapseWrappers keeps landmarks, links, buttons and anything with semantic text", async ({
+  page,
+}) => {
+  const c = await capture(page, "wrappers.html", { collapseWrappers: true });
+  for (const kept of [
+    "w-nav",
+    "w-link",
+    "w-button",
+    "w-header",
+    "w-heading",
+    "w-role",
+    "w-label",
+    "w-text",
+    "w-two",
+    "w-paint",
+    "w-pad",
+    "w-rel",
+    "w-tf",
+    "w-fade",
+    "w-gap",
+    "w-clip",
+  ]) {
+    expect(has(c, kept), kept).toBe(true);
+  }
+});
+
+test("collapseWrappers counts a shadow host's own children, not its light children", async ({
+  page,
+}) => {
+  const c = await capture(page, "wrappers.html", { collapseWrappers: true });
+  expect(has(c, "w-host-one")).toBe(false);
+  expect(has(c, "in-shadow-one")).toBe(true);
+  expect(has(c, "w-host-two")).toBe(true);
+});
+
+test("collapseWrappers is off by default", async ({ page }) => {
+  const c = await capture(page, "wrappers.html");
+  for (const cls of ["w-plain", "w-outer", "w-inner", "w-host-one"])
+    expect(has(c, cls), cls).toBe(true);
+});
+
+test.describe("hover on what merges into text", () => {
+  const plain = async (page: Page, html: string, setup?: () => void) => {
+    await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+    await page.goto("/layout.html");
+    await page.evaluate((markup) => {
+      document.body.innerHTML = markup;
+    }, html);
+    if (setup) await page.evaluate(setup);
+    await page.addScriptTag({ content: bundle });
+    return runCapture(page, "x");
+  };
+  const elements = (c: Capture, tag: string) => {
+    const found: ElementNode[] = [];
+    each(c, (n) => {
+      if (n.kind === "element" && n.semantic.tag === tag) found.push(n);
+    });
+    return found;
+  };
+  const arial = [{ family: "Arial", style: "Regular" }];
+  const redHover = { r: 1, g: 0, b: 0, a: 1 };
+
+  test("an anchor that is all of its parent's text lifts its hover, with its own colour", async ({
+    page,
+  }) => {
+    const c = await plain(
+      page,
+      `<style>x-btn { display: block; color: rgb(0, 0, 0) }
+       x-btn a { color: rgb(0, 0, 255) } x-btn a:hover { color: red }</style>
+       <x-btn><a href="https://e.test/1">One</a></x-btn>
+       <x-btn><a href="https://e.test/2">Two</a></x-btn>`
+    );
+    const [first] = elements(c, "x-btn");
+    expect(first?.hover?.color).toEqual(redHover);
+    expect(first?.hover?.restingColor).toEqual({ r: 0, g: 0, b: 1, a: 1 });
+    expect(c.warnings.some((w) => w.code === "hover-partial")).toBe(false);
+    expect(parseCapture(c).ok).toBe(true);
+    const options = { ...DEFAULT_IMPORT_OPTIONS, components: true, hoverComponents: true };
+    const main = mapCapture(c, arial, options).ops.find((o) => o.op === "frame" && o.component);
+    const hover = main?.op === "frame" ? main.component?.hover : undefined;
+    expect(hover?.[0]).toMatchObject({ path: [0], textColor: redHover, ranges: [[0, 3]] });
+  });
+
+  test("a nested inline hover reaches the parent too", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-btn { display: block } x-btn b:hover { text-decoration: underline }
+       x-btn a:hover { color: red }</style>
+       <x-btn><a href="https://e.test/1"><b>One</b></a></x-btn><x-btn><a><b>Two</b></a></x-btn>`
+    );
+    const [first] = elements(c, "x-btn");
+    expect(first?.hover).toMatchObject({ color: redHover, decoration: "underline" });
+  });
+
+  test("an anchor in a shadow root lifts its hover to the host", async ({ page }) => {
+    const c = await plain(page, "<x-btn>One</x-btn><x-btn>Two</x-btn>", () => {
+      for (const host of Array.from(document.querySelectorAll("x-btn"))) {
+        const root = host.attachShadow({ mode: "open" });
+        root.innerHTML =
+          '<style>:host { display: block } a:hover { color: red }</style><a href="https://e.test/"><slot></slot></a>';
+      }
+    });
+    const [first] = elements(c, "x-btn");
+    expect(first?.hover?.color).toEqual(redHover);
+    expect(first?.hover?.restingColor).toBeDefined();
+  });
+
+  test("an anchor beside an icon is still all of the text", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-btn { display: block } x-btn a:hover { color: red }
+       i { display: inline-block; width: 8px; height: 8px; background: #000 }</style>
+       <x-btn><i></i><a href="https://e.test/1">One</a></x-btn><x-btn><i></i><a>Two</a></x-btn>`
+    );
+    expect(elements(c, "x-btn")[0]?.hover?.color).toEqual(redHover);
+  });
+
+  test("text in a block beside the anchor keeps the hover off the parent", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-card { display: block } x-card a { color: inherit } x-card a:hover { color: red }</style>
+       <x-card><a href="https://e.test/1">Title</a><p>Description</p></x-card>
+       <x-card><a href="https://e.test/2">Other</a><p>More text</p></x-card>`
+    );
+    expect(elements(c, "x-card")[0]?.hover).toBeUndefined();
+    expect(c.warnings.find((w) => w.code === "hover-partial")?.detail).toContain("(2 times)");
+  });
+
+  test("links in a nested list do not recolour what holds them", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-nav { display: block } x-nav a { color: rgb(51, 51, 51) } x-nav a:hover { color: red }</style>
+       <x-nav><ul><li><a href="https://e.test/1">Top</a><ul><li><a href="https://e.test/2">Sub</a></li></ul></li></ul></x-nav>
+       <x-nav><ul><li><a href="https://e.test/3">Top</a><ul><li><a href="https://e.test/4">Sub</a></li></ul></li></ul></x-nav>`
+    );
+    const held = elements(c, "li").filter((li) => li.hover);
+    // Only the inner item has its link as all it holds.
+    expect(held.map((li) => li.hover?.color)).toEqual([redHover, redHover]);
+    expect(elements(c, "x-nav").every((n) => !n.hover)).toBe(true);
+    expect(elements(c, "ul").every((n) => !n.hover)).toBe(true);
+  });
+
+  test("only colour and decoration lift; box changes are counted", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-btn { display: block; padding: 8px } x-btn a { color: inherit }
+       x-btn a:hover { opacity: .5; background: #ff0; text-decoration: underline; color: red }</style>
+       <x-btn><a href="https://e.test/1">One</a></x-btn><x-btn><a href="https://e.test/2">Two</a></x-btn>`
+    );
+    const hover = elements(c, "x-btn")[0]?.hover;
+    expect(hover).toMatchObject({ color: redHover, decoration: "underline" });
+    expect(hover?.opacity).toBeUndefined();
+    expect(hover?.backgroundColor).toBeUndefined();
+    expect(c.warnings.find((w) => w.code === "hover-partial")?.detail).toContain("(2 times)");
+  });
+
+  test("a hover of box changes alone lifts nothing and is counted once each", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-btn { display: block } x-btn a:hover { opacity: .5 }</style>
+       <x-btn><a href="https://e.test/1">One</a></x-btn><x-btn><a href="https://e.test/2">Two</a></x-btn>`
+    );
+    expect(elements(c, "x-btn")[0]?.hover).toBeUndefined();
+    expect(c.warnings.find((w) => w.code === "hover-partial")?.detail).toContain("(2 times)");
+    expect(parseCapture(c).ok).toBe(true);
+  });
+
+  test("a hover in the middle of a sentence is counted, not lifted", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-btn { display: block } x-btn a:hover { color: red }</style>
+       <x-btn>See <a href="https://e.test/1">this</a> now</x-btn>
+       <x-btn>See <a href="https://e.test/2">that</a> now</x-btn>`
+    );
+    expect(elements(c, "x-btn")[0]?.hover).toBeUndefined();
+    const partial = c.warnings.find((w) => w.code === "hover-partial");
+    expect(partial?.detail).toContain("(2 times)");
+  });
+
+  test("a repeated custom element that is all of its parent's text stays an element", async ({
+    page,
+  }) => {
+    const c = await plain(
+      page,
+      "<p><x-tag>Tag one</x-tag></p><p><x-tag>Tag one</x-tag></p><p>One <x-tag>mid</x-tag> line</p>"
+    );
+    expect(elements(c, "x-tag")).toHaveLength(2);
+    expect(findText(c, "One mid line")).toBeTruthy();
+    expect(mapCapture(c, arial).report.components).toBe(1);
+  });
+
+  test("a custom element that does not repeat merges as before", async ({ page }) => {
+    const c = await plain(page, "<p><x-tag>Only</x-tag></p><p><y-tag>Other</y-tag></p>");
+    expect(elements(c, "x-tag")).toHaveLength(0);
+  });
+});
+
+test("a chain of collapsible wrappers stops at the depth limit", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/layout.html");
+  await page.evaluate(() => {
+    let at: HTMLElement = document.body;
+    for (let i = 0; i < 1000; i++) {
+      const next = document.createElement("div");
+      at.appendChild(next);
+      at = next;
+    }
+    at.textContent = "Bottom";
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x", { collapseWrappers: true });
+  expect(c.warnings.some((w) => w.code === "depth-limit")).toBe(true);
+  expect(parseCapture(c).ok).toBe(true);
+});
+
+test("a gradient past the stop limit is cut there and still imports", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/layout.html");
+  await page.evaluate(() => {
+    const stops = Array.from({ length: 300 }, (_, i) => (i % 2 ? "red" : "blue")).join(",");
+    const box = document.createElement("div");
+    box.id = "zq-stops";
+    box.style.cssText = `width:50px;height:50px;background:linear-gradient(90deg,${stops})`;
+    document.body.appendChild(box);
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  let held = 0;
+  each(c, (n) => {
+    if (n.kind === "element" && n.semantic.id === "zq-stops") {
+      held = n.style.backgroundImages[0]?.stops?.length ?? 0;
+    }
+  });
+  expect(held).toBe(256);
+  expect(parseCapture(c).ok).toBe(true);
+  expect(c.warnings.some((w) => w.code === "gradient-stops")).toBe(true);
 });

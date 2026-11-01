@@ -1,5 +1,6 @@
 import type { CaptureNode, ElementNode, TextNode } from "@repo/capture-schema";
 import type { PlanChildLayout, PlanLayout, PlanTrack } from "./plan";
+import { readMotion } from "./transform";
 
 /**
  * Proposes Figma auto layout from captured layout: CSS says what was meant, measured boxes say what
@@ -173,20 +174,57 @@ function cssOrder(node: ElementNode, flow: CaptureNode[]): CaptureNode[] {
 
 const sameOrder = (a: CaptureNode[], b: CaptureNode[]) => a.every((c, i) => c === b[i]);
 
+const isPositioned = (node: CaptureNode) => (placement(node).position ?? "static") !== "static";
+
+/** Whether CSS paints a node with the positioned layer rather than with the flow. */
+function isLayered(node: CaptureNode): boolean {
+  if (isPositioned(node) || node.zIndex !== undefined) return true;
+  if (node.opacity < 1 || node.transform !== undefined) return true;
+  if (node.kind !== "element") return false;
+  return node.style.filters.length > 0 || node.style.backdropFilter !== undefined;
+}
+
+/** Below the flow, the flow, the z-0 level, above it; then z-index within the outer two. */
+function paintRank(node: CaptureNode): [number, number] {
+  // A wrapper that collapses is no layer: what it holds takes its place among the siblings.
+  const target = collapsed(node);
+  if (!isLayered(node) && !isLayered(target)) return [1, 0];
+  const z = node.zIndex ?? target.zIndex ?? 0;
+  return z < 0 ? [0, z] : z === 0 ? [2, 0] : [3, z];
+}
+
+/** Sorts DOM-ordered siblings into CSS paint order; stable, so a level stays in tree order. */
+function stackOrder(children: CaptureNode[]): CaptureNode[] {
+  const keyed = children.map((c) => ({ c, k: paintRank(c) }));
+  keyed.sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1]);
+  return keyed.map((x) => x.c);
+}
+
 /**
- * Children in the order the applier should add them: visual under auto layout, and DOM otherwise,
- * so that paint order survives. Absolute children go last, as CSS paints them over the flow.
+ * Children in the order the applier should add them, which is the order they paint in. Under auto
+ * layout that order also places them, so the flow stays in CSS order, and each absolute child goes
+ * in just before the first flow item that paints above it.
  */
 export function visualOrder(
   node: ElementNode,
   children: CaptureNode[],
   layout: PlanLayout
 ): CaptureNode[] {
-  if (layout.mode !== "HORIZONTAL" && layout.mode !== "VERTICAL") return children;
-  const flow = children.filter((c) => renders(c) && !isAbsolute(c));
-  const ordered = cssOrder(node, flow);
-  if (sameOrder(flow, ordered)) return children;
-  return [...ordered, ...children.filter((c) => renders(c) && isAbsolute(c))];
+  const stacked = stackOrder(children);
+  if (layout.mode !== "HORIZONTAL" && layout.mode !== "VERTICAL") return stacked;
+  const inFlow = (c: CaptureNode) => renders(c) && !isAbsolute(c);
+  const paintIndex = new Map(stacked.map((c, i) => [c, i]));
+  const rest = stacked.filter((c) => !inFlow(c));
+  const out: CaptureNode[] = [];
+  let next = 0;
+  for (const item of cssOrder(node, children.filter(inFlow))) {
+    const paintsAt = paintIndex.get(item) as number;
+    while (next < rest.length && (paintIndex.get(rest[next] as CaptureNode) as number) < paintsAt) {
+      out.push(rest[next++] as CaptureNode);
+    }
+    out.push(item);
+  }
+  return [...out, ...rest.slice(next)];
 }
 
 /**
@@ -837,10 +875,28 @@ export type LayoutContext = {
   parent?: PlanLayout;
 };
 
+/** Whether the applier will rotate this node, which CSS leaves in its flow slot and Figma would not. */
+function rotates(node: CaptureNode): boolean {
+  const target = collapsed(node);
+  return target.kind !== "text" && readMotion(target.transform).rotation !== undefined;
+}
+
 export function inferLayout(
   node: ElementNode,
   children: CaptureNode[],
   context: LayoutContext = {}
+): PlanLayout {
+  const layout = inferUnrotated(node, children, context);
+  if (layout.mode === "NONE") return layout;
+  // CSS keeps a rotated item's unrotated slot, so the siblings do not move; Figma's would.
+  const flow = children.filter((c) => renders(c) && !isAbsolute(c));
+  return flow.some(rotates) ? { mode: "NONE", reason: "transformed-child" } : layout;
+}
+
+function inferUnrotated(
+  node: ElementNode,
+  children: CaptureNode[],
+  context: LayoutContext
 ): PlanLayout {
   const shown = children.filter(renders);
   const flow = shown.filter((c) => !isAbsolute(c));
@@ -964,6 +1020,8 @@ export function repeatedItems(children: CaptureNode[]): Set<string> {
 function wrappedChild(node: ElementNode): CaptureNode | null {
   // A custom element carries meaning Stage 2 needs, even when it paints nothing.
   if (node.semantic.tag.includes("-")) return null;
+  // A hover needs a layer of its own to land on.
+  if (node.hover) return null;
   if (!node.visible || node.opacity < 1 || node.blendMode !== "normal") return null;
   if (node.transform || isPainted(node)) return null;
   const shown = node.children.filter(renders);

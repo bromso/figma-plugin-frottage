@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { captureFilename, friendlyError, isRestrictedUrl } from "../page";
+import {
+  allowAccessAndRecapture,
+  captureFilename,
+  friendlyError,
+  imageAdvice,
+  isRestrictedUrl,
+  nodeAdvice,
+} from "../page";
 
 describe("isRestrictedUrl", () => {
   test.each([
@@ -70,5 +77,75 @@ describe("friendlyError", () => {
   });
   test("leaves other errors alone", () => {
     expect(friendlyError("disk full")).toBe("disk full");
+  });
+});
+
+describe("nodeAdvice", () => {
+  test("the popup warns at 5,000 nodes", () => {
+    expect(nodeAdvice(4_999, false)).toEqual({ warning: null, offerCollapse: false });
+    const advice = nodeAdvice(5_000, false);
+    expect(advice.warning).toMatch(/5,000 layers/);
+    expect(advice.warning).not.toMatch(/DOM/);
+    expect(advice.offerCollapse).toBe(false);
+  });
+  test("at 20,000 nodes the popup offers a capture without wrappers", () => {
+    expect(nodeAdvice(20_000, true).offerCollapse).toBe(true);
+    expect(nodeAdvice(20_000, true).warning).toMatch(/left out/);
+    // Reaching the count without the limit warning is not a stop.
+    expect(nodeAdvice(20_000, false).offerCollapse).toBe(true);
+  });
+});
+
+describe("imageAdvice", () => {
+  test("says nothing when no image was blocked", () => {
+    expect(imageAdvice(0, false)).toBeNull();
+  });
+
+  test("counts blocked images and offers access when it is not held", () => {
+    const a = imageAdvice(3, false);
+    expect(a?.message).toContain("3 images could not be read");
+    expect(a?.message).toContain("does not allow");
+    expect(a?.offerAccess).toBe(true);
+    expect(imageAdvice(1, false)?.message).toContain("1 image could not be read");
+  });
+
+  test("offers no button once access is held, because the fallback already ran", () => {
+    const a = imageAdvice(2, true);
+    expect(a?.message).toContain("2 images could not be fetched");
+    expect(a?.message).not.toContain("does not allow");
+    expect(a?.offerAccess).toBe(false);
+  });
+});
+
+describe("allowAccessAndRecapture", () => {
+  test("after a grant the capture runs again", async () => {
+    let runs = 0;
+    expect(
+      await allowAccessAndRecapture(
+        async () => true,
+        () => runs++
+      )
+    ).toBe(true);
+    expect(runs).toBe(1);
+  });
+
+  test("a declined request keeps everything as it was", async () => {
+    let runs = 0;
+    expect(
+      await allowAccessAndRecapture(
+        async () => false,
+        () => runs++
+      )
+    ).toBe(false);
+    expect(runs).toBe(0);
+  });
+
+  test("a request that throws changes nothing", async () => {
+    let runs = 0;
+    const request = async () => {
+      throw new Error("no gesture");
+    };
+    expect(await allowAccessAndRecapture(request, () => runs++)).toBe(false);
+    expect(runs).toBe(0);
   });
 });

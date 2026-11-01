@@ -2,7 +2,13 @@ import { describe, expect, it } from "bun:test";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../app";
-import { downscaledFile, fakePort, fontFile, frottageFile } from "../import/__tests__/helpers";
+import {
+  downscaledFile,
+  fakePort,
+  fontFile,
+  frottageFile,
+  repeatedFile,
+} from "../import/__tests__/helpers";
 
 describe("App (import screen)", () => {
   it("has a labelled file input with no accept filter", () => {
@@ -171,7 +177,7 @@ describe("App (options and font table)", () => {
     expect(await screen.findByText("Import complete")).toBeInTheDocument();
   });
 
-  it("opens the options for the next file, grouped, without the Stage 2 options", async () => {
+  it("opens the options for the next file, grouped, with Components and Hover components", async () => {
     const user = userEvent.setup();
     const port = fakePort(fonts);
     render(<App port={port} />);
@@ -185,10 +191,12 @@ describe("App (options and font table)", () => {
       "Create styles and variables",
       "Use existing local styles",
       "Hyperlinks",
+      "Components",
+      "Hover components (slower)",
     ]) {
       expect(screen.getByRole("switch", { name })).toBeInTheDocument();
     }
-    expect(screen.queryByRole("switch", { name: /Components|Hover/ })).toBeNull();
+    expect(screen.getByRole("switch", { name: "Components" })).toBeChecked();
     expect(screen.getByRole("switch", { name: "Auto layout" })).toBeChecked();
     expect(screen.getByRole("switch", { name: "HTML layer names" })).not.toBeChecked();
 
@@ -208,6 +216,42 @@ describe("App (options and font table)", () => {
     expect(local).toBeEnabled();
     await user.click(screen.getByRole("switch", { name: "Create styles and variables" }));
     expect(local).toBeDisabled();
+  });
+
+  it("Hover components (slower) is off by default, and disabled with Components off", async () => {
+    const user = userEvent.setup();
+    render(<App port={fakePort(fonts)} />);
+    await user.click(screen.getByRole("button", { name: "Options" }));
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    const hover = await screen.findByRole("switch", { name: "Hover components (slower)" });
+    expect(hover).not.toBeChecked();
+    expect(hover).toBeEnabled();
+    await user.click(screen.getByRole("switch", { name: "Components" }));
+    expect(hover).toBeDisabled();
+  });
+
+  it("Cancel shows while importing and stops the import", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const batch = port.batch.bind(port);
+    port.batch = async (ops) => {
+      await gate;
+      await batch(ops);
+    };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    const cancel = await screen.findByRole("button", { name: "Cancel" });
+    await user.click(cancel);
+    expect(screen.getByRole("button", { name: "Cancelling…" })).toBeDisabled();
+    release();
+    expect(await screen.findByRole("button", { name: /Choose a file/ })).toBeInTheDocument();
+    expect(port.log).toContain("cancel");
+    expect(port.log).not.toContain("end");
+    expect(screen.queryByText("Import complete")).toBeNull();
   });
 
   it("lists each missing font with a labelled choice and never blocks Import", async () => {
@@ -249,7 +293,9 @@ describe("App (options and font table)", () => {
     const port = fakePort(fonts);
     render(<App port={port} />);
     await user.upload(screen.getByLabelText("Choose a .frottage file"), fontFile("Nimbus Sans"));
-    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+    // The working state has its own Cancel; wait for the review step's.
+    await screen.findByText("Import settings");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(await screen.findByRole("button", { name: /Choose a file/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Import" })).toBeNull();
     expect(port.log).not.toContain("begin");
@@ -291,6 +337,100 @@ describe("App (options and font table)", () => {
     expect(row("Variables created")).toHaveTextContent("5");
     expect(row("Variables reused")).toHaveTextContent("6");
     expect(screen.getByText(/2 styles or variables could not be created/)).toBeInTheDocument();
+  });
+
+  it("reports components, instances on the canvas, and failed overrides", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, componentsCreated: 1, overrideFailures: 2 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(screen.getByText("Components").nextSibling).toHaveTextContent("1");
+    expect(screen.getByText("Instances").nextSibling).toHaveTextContent("3");
+    expect(
+      screen.getByText(
+        "2 instance layers could not be changed and show the component's own content."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("says at least, when a failed override is in a component", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, overrideFailures: 1, overrideFailuresInMains: 1 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(
+      screen.getByText(
+        "At least 1 instance layer could not be changed and shows the component's own content."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("counts the instances that landed when layers failed", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, failedOps: 2, instancesCreated: 1 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(screen.getByText("Instances").nextSibling).toHaveTextContent("1");
+  });
+
+  it("says so when the components could not be arranged", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, layoutFailures: 1 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(screen.getByText(/could not be arranged/)).toBeInTheDocument();
+  });
+
+  it("shows the hover variants made, and says plainly which components got none", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, hoverVariants: 4, hoverFailures: 2 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(screen.getByText("Hover variants").nextSibling).toHaveTextContent("4");
+    expect(screen.getByText(/2 components could not get a Hover variant/)).toBeInTheDocument();
+  });
+
+  it("says how many layers lost a paint Figma refused", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, paintFailures: 3 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(screen.getByText(/refused the fills or effects of 3 layers/)).toBeInTheDocument();
+  });
+
+  it("says how many instances were resized without auto layout", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, resizedFallbacks: 2 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(screen.getByText(/2 instances were resized/)).toBeInTheDocument();
+  });
+
+  it("leaves component rows out when nothing repeats", async () => {
+    const user = userEvent.setup();
+    render(<App port={fakePort(fonts)} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await screen.findByText("Import complete");
+    expect(screen.queryByText("Components")).toBeNull();
+    expect(screen.queryByText("Instances")).toBeNull();
+    expect(screen.queryByText(/could not be changed/)).toBeNull();
+    expect(screen.queryByText(/could not be arranged/)).toBeNull();
+    expect(screen.queryByText("Hover variants")).toBeNull();
+    expect(screen.queryByText(/Hover variant\b/)).toBeNull();
   });
 
   it("leaves token rows out when nothing happened", async () => {

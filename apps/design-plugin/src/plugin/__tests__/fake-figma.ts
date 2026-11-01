@@ -33,9 +33,21 @@ type Options = LayoutOptions &
     lineHeightDrift?: number;
     /** Text measures this much wider than the charWidth rule, as Figma's does than Chrome's. */
     textWiderBy?: number;
+    /** `resize` throws on an instance that has been swapped. */
+    swappedResizeThrows?: boolean;
     /** Setting this layout property throws, as for a value Figma refuses. */
     failLayout?: string;
   };
+
+const AUTO_LAYOUT_FIELDS = [
+  "primaryAxisAlignItems",
+  "counterAxisAlignItems",
+  "itemSpacing",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+];
 
 const fontId = (f: { family: string; style: string }) => `${f.family}|${f.style}`;
 
@@ -92,6 +104,14 @@ export function fakeFigma(opts: Options = {}) {
     page.kids.push({ id: `old${seq++}`, type: "FRAME", children: [], ...b });
   }
 
+  /** Whether `node` is a component or an instance, or sits inside one. */
+  const insideComponent = (node: FakeNode | undefined): boolean => {
+    for (let n = node; n; n = n.parent) {
+      if (n.type === "COMPONENT" || n.type === "INSTANCE") return true;
+    }
+    return false;
+  };
+
   function makeNode(type: string): FakeNode {
     const id = `n${++seq}`;
     let name = "";
@@ -122,9 +142,12 @@ export function fakeFigma(opts: Options = {}) {
       },
       set effects(v: any[]) {
         for (const e of v) {
-          if (typeof e.visible !== "boolean" || typeof e.blendMode !== "string") {
+          const blur = e.type === "LAYER_BLUR" || e.type === "BACKGROUND_BLUR";
+          if (typeof e.visible !== "boolean" || (!blur && typeof e.blendMode !== "string")) {
             throw new Error("effect needs visible and blendMode");
           }
+          if (blur && e.blurType !== "NORMAL") throw new Error("a blur needs blurType NORMAL");
+          if (!Number.isFinite(e.radius)) throw new Error("an effect needs a finite radius");
         }
         effects = v;
       },
@@ -150,12 +173,16 @@ export function fakeFigma(opts: Options = {}) {
       },
       remove() {
         const parent = node.parent;
+        calls.push(`remove:${type}`);
         node.removed = true;
         detach(node);
         if (model.isLaidOut(parent)) model.reflow(parent);
       },
     };
     const join = (child: FakeNode, cell: [number, number] | null) => {
+      if (child.type === "COMPONENT" && insideComponent(node)) {
+        throw new Error("a component cannot go inside a component or an instance");
+      }
       const old = child.parent;
       detach(child);
       if (model.isLaidOut(old)) model.reflow(old);
@@ -165,8 +192,30 @@ export function fakeFigma(opts: Options = {}) {
       model.reflow(node);
     };
     model.installChild(node);
+    // A node's x and y are the translation of its transform, as in Figma, so a turned node's
+    // x and y are where its unturned top-left corner went. `rotation` reads back as -θ.
+    let turn = 0;
+    Object.defineProperties(node, {
+      relativeTransform: {
+        configurable: true,
+        get: () => [
+          [Math.cos(turn), -Math.sin(turn), node.x],
+          [Math.sin(turn), Math.cos(turn), node.y],
+        ],
+        set: (m: number[][]) => {
+          calls.push("relativeTransform");
+          turn = Math.atan2(m[1]?.[0] as number, m[0]?.[0] as number);
+          node.x = m[0]?.[2] as number;
+          node.y = m[1]?.[2] as number;
+        },
+      },
+      rotation: {
+        configurable: true,
+        get: () => (-turn * 180) / Math.PI,
+      },
+    });
     tokens.installNode(node);
-    if (type === "FRAME") {
+    if (type === "FRAME" || type === "COMPONENT" || type === "INSTANCE") {
       model.installFrame(node, () => calls.push("layoutMode"));
       if (opts.failLayout) {
         const { get } = Object.getOwnPropertyDescriptor(
@@ -185,6 +234,122 @@ export function fakeFigma(opts: Options = {}) {
     nodes.set(id, node);
     created.push(node);
     return node;
+  }
+
+  /** An instance's frame part takes its source's layout, sizing and size. */
+  function copyLayout(from: FakeNode, to: FakeNode) {
+    if (from.layoutMode !== "NONE") {
+      to.layoutMode = from.layoutMode;
+      to.layoutSizingHorizontal = "FIXED";
+      to.layoutSizingVertical = "FIXED";
+      for (const key of AUTO_LAYOUT_FIELDS) to[key] = from[key];
+    }
+    to.width = from.width;
+    to.height = from.height;
+    if (from.layoutMode !== "NONE") {
+      to.layoutSizingHorizontal = from.layoutSizingHorizontal;
+      to.layoutSizingVertical = from.layoutSizingVertical;
+    }
+  }
+
+  function copyText(from: FakeNode): FakeNode {
+    const t = figma.createText() as FakeNode;
+    t.fontName = from.fontName;
+    t.textAlignHorizontal = from.textAlignHorizontal;
+    t.characters = from.characters;
+    t.ranges = [...(from.ranges ?? [])];
+    t.decorations = [...from.decorations];
+    t.width = from.width;
+    t.height = from.height;
+    t.textAutoResize = from.textAutoResize;
+    return t;
+  }
+
+  /** What a copy keeps of the paint that is not in the layout. */
+  function copyLook(from: FakeNode, to: FakeNode): FakeNode {
+    for (const key of ["opacity", "strokes"]) if (from[key] !== undefined) to[key] = from[key];
+    if (from.effects?.length > 0) to.effects = from.effects;
+    return to;
+  }
+
+  /** A copy of a main's or an instance's child, as an instance holds it. */
+  function copyChild(from: FakeNode): FakeNode {
+    if (from.type === "TEXT") return copyLook(from, copyText(from));
+    if (from.type === "INSTANCE") return copyLook(from, copyBody(from, instanceShell(from.main)));
+    const n = makeNode(from.type);
+    n.fills = from.fills;
+    copyLook(from, n);
+    return from.type === "FRAME" ? copyBody(from, n) : Object.assign(n, sizeOf(from));
+  }
+
+  /** As in Figma, a clone of a main is a new main beside it. */
+  function cloneMain(from: FakeNode): FakeNode {
+    calls.push("clone");
+    const n = figma.createComponent() as FakeNode;
+    copyBody(from, n);
+    copyLook(from, n);
+    n.name = from.name;
+    n.moveTo("x", from.x);
+    n.moveTo("y", from.y);
+    from.parent.appendChild(n);
+    return n;
+  }
+
+  const sizeOf = ({ width, height }: FakeNode) => ({ width, height });
+
+  function copyBody(from: FakeNode, to: FakeNode): FakeNode {
+    for (const kid of to.children) kid.remove();
+    to.fills = from.fills;
+    to.clipsContent = from.clipsContent;
+    copyLayout(from, to);
+    for (const kid of from.kids as FakeNode[]) {
+      const copy = copyChild(kid);
+      to.kids.push(copy);
+      detachFromPage(copy);
+      copy.parent = to;
+      copy.moveTo("x", kid.x);
+      copy.moveTo("y", kid.y);
+      if (kid.layoutPositioning === "ABSOLUTE") copy.layoutPositioning = "ABSOLUTE";
+      if (kid.layoutSizingHorizontal === "FILL") copy.layoutSizingHorizontal = "FILL";
+      if (kid.layoutSizingVertical === "FILL") copy.layoutSizingVertical = "FILL";
+    }
+    model.reflow(to);
+    return to;
+  }
+
+  const detachFromPage = (n: FakeNode) => {
+    page.kids.splice(page.kids.indexOf(n), 1);
+  };
+
+  function instanceShell(main: FakeNode): FakeNode {
+    const n = makeNode("INSTANCE");
+    n.main = main;
+    let swapped = false;
+    // Reading this under `dynamic-page` throws in Figma.
+    Object.defineProperty(n, "mainComponent", {
+      get() {
+        throw new Error("mainComponent needs getMainComponentAsync");
+      },
+    });
+    const resize = n.resize;
+    n.resize = (w: number, h: number) => {
+      calls.push("instance.resize");
+      if (swapped && opts.swappedResizeThrows) throw new Error("resize refused");
+      resize(w, h);
+    };
+    n.swapComponent = (next: FakeNode) => {
+      calls.push("swapComponent");
+      if (next?.type !== "COMPONENT") throw new Error("swapComponent needs a component");
+      // As in Figma, the instance keeps its old size, even when it hugs or its parent does.
+      const { width, height } = n;
+      swapped = true;
+      n.main = next;
+      copyBody(next, n);
+      n.width = width;
+      n.height = height;
+      if (model.isLaidOut(n.parent)) model.reflow(n.parent);
+    };
+    return n;
   }
 
   const figma = {
@@ -211,6 +376,44 @@ export function fakeFigma(opts: Options = {}) {
       const n = makeNode("FRAME");
       n.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 }, opacity: 1 }];
       n.clipsContent = true;
+      return n;
+    },
+    createComponent() {
+      calls.push("createComponent");
+      // Unlike a frame: no fill, and it does not clip.
+      const n = makeNode("COMPONENT");
+      n.fills = [];
+      n.clipsContent = false;
+      n.createInstance = () => {
+        calls.push("createInstance");
+        return copyBody(n, instanceShell(n));
+      };
+      n.clone = () => cloneMain(n);
+      return n;
+    },
+    combineAsVariants(variants: FakeNode[], parent: FakeNode) {
+      calls.push("combineAsVariants");
+      if (variants.length < 1 || variants.some((v) => v.type !== "COMPONENT")) {
+        throw new Error("combineAsVariants needs components");
+      }
+      // Lays nothing out: the variants stay where they are, and the set wraps them.
+      const set = makeNode("COMPONENT_SET");
+      model.installFrame(set, () => calls.push("layoutMode"));
+      parent.appendChild(set);
+      for (const v of variants) set.appendChild(v);
+      set.width = Math.max(...variants.map((v) => v.x + v.width));
+      set.height = Math.max(...variants.map((v) => v.y + v.height));
+      return set;
+    },
+    createSection() {
+      calls.push("createSection");
+      const n = makeNode("SECTION");
+      delete n.resize;
+      n.resizeWithoutConstraints = (w: number, h: number) => {
+        calls.push("resizeWithoutConstraints");
+        n.width = w;
+        n.height = h;
+      };
       return n;
     },
     createNodeFromSvg(svg: string) {
@@ -328,8 +531,14 @@ export function fakeFigma(opts: Options = {}) {
         set: (v: string) => {
           calls.push("characters");
           if (!loaded.has(fontId(font))) throw new Error(`font not loaded: ${fontId(font)}`);
+          const { width } = t;
           chars = v;
           layout();
+          // As in Figma, an auto-width label stays on its aligned edge or its centre.
+          if (autoResize !== "WIDTH_AND_HEIGHT") return;
+          const grew = t.width - width;
+          if (t.textAlignHorizontal === "CENTER") t.x -= grew / 2;
+          if (t.textAlignHorizontal === "RIGHT") t.x -= grew;
         },
       });
       tokens.installText(t, () => chars, layout);
@@ -363,6 +572,10 @@ export function fakeFigma(opts: Options = {}) {
           if (m === "setRangeLineHeight") layout();
         };
       }
+      Object.defineProperty(t, "hyperlink", {
+        get: () =>
+          [...(t.ranges ?? [])].reverse().find((x: any) => x.m === "setRangeHyperlink")?.v ?? null,
+      });
       return t;
     },
     ...tokens.api,

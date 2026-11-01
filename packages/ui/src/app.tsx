@@ -30,7 +30,12 @@ function Report({
   if (report.downscaledImages > 0) rows.push(["Images downscaled", report.downscaledImages]);
   if (failedOps > 0) rows.push(["Failed layers", failedOps]);
   if (missingImages > 0) rows.push(["Missing images", missingImages]);
-  const { autoLayoutFrames, fallbackFrames, tokenFailures } = state;
+  const { autoLayoutFrames, fallbackFrames, overrideFailures, tokenFailures } = state;
+  if (state.componentsCreated > 0) rows.push(["Components", state.componentsCreated]);
+  // The plan's count is of what should be there, which failed layers make untrue.
+  const instances = failedOps > 0 ? state.instancesCreated : report.instances;
+  if (instances > 0) rows.push(["Instances", instances]);
+  if (state.hoverVariants > 0) rows.push(["Hover variants", state.hoverVariants]);
   if (autoLayoutFrames > 0) rows.push(["Auto layout frames", autoLayoutFrames]);
   if (fallbackFrames > 0) rows.push(["Frames without auto layout", fallbackFrames]);
   if (state.stylesCreated > 0) rows.push(["Styles created", state.stylesCreated]);
@@ -53,6 +58,38 @@ function Report({
           </div>
         ))}
       </dl>
+      {overrideFailures > 0 && (
+        <p className="text-figma-text-danger">
+          {state.overrideFailuresInMains > 0 ? "At least " : ""}
+          {overrideFailures} instance {overrideFailures === 1 ? "layer" : "layers"} could not be
+          changed and {overrideFailures === 1 ? "shows" : "show"} the component's own content.
+        </p>
+      )}
+      {state.layoutFailures > 0 && (
+        <p className="text-figma-text-danger">
+          The components could not be arranged, so some may overlap in their section.
+        </p>
+      )}
+      {state.hoverFailures > 0 && (
+        <p className="text-figma-text-danger">
+          {state.hoverFailures} {state.hoverFailures === 1 ? "component" : "components"} could not
+          get a Hover variant and {state.hoverFailures === 1 ? "stays" : "stay"} as imported.
+        </p>
+      )}
+      {state.paintFailures > 0 && (
+        <p className="text-figma-text-danger">
+          Figma refused the fills or effects of {state.paintFailures}{" "}
+          {state.paintFailures === 1 ? "layer" : "layers"}, which{" "}
+          {state.paintFailures === 1 ? "stays" : "stay"} without them.
+        </p>
+      )}
+      {state.resizedFallbacks > 0 && (
+        <p className="text-figma-text-danger">
+          {state.resizedFallbacks}{" "}
+          {state.resizedFallbacks === 1 ? "instance was" : "instances were"} resized from a
+          component that lost its auto layout, so the content may sit off.
+        </p>
+      )}
       {tokenFailures > 0 && (
         <p className="text-figma-text-danger">
           {tokenFailures} {tokenFailures === 1 ? "style or variable" : "styles or variables"} could
@@ -153,6 +190,8 @@ function App({ port }: { port?: ImportPort }) {
   const errorRef = useRef<HTMLParagraphElement>(null);
   const headingRef = useRef<HTMLParagraphElement>(null);
   const working = state.step === "working";
+  const abort = useRef<AbortController | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   // A drop outside the drop area must not make Figma's iframe navigate to the file.
   useEffect(() => {
@@ -180,14 +219,25 @@ function App({ port }: { port?: ImportPort }) {
       const target = port ?? (await import("./app.network")).channelImportPort;
       const forceReview = optionsOpen;
       setOptionsOpen(false);
-      await runImport(file, target, setState, {
-        forceReview,
-        decide: () =>
-          new Promise<ReviewDecision | null>((resolve) => {
-            decide.current = resolve;
-          }),
-      });
+      const controller = new AbortController();
+      abort.current = controller;
+      setCancelling(false);
+      await runImport(
+        file,
+        target,
+        setState,
+        {
+          forceReview,
+          decide: () =>
+            new Promise<ReviewDecision | null>((resolve) => {
+              decide.current = resolve;
+            }),
+        },
+        controller.signal
+      );
     } finally {
+      abort.current = null;
+      setCancelling(false);
       busy.current = false;
     }
   }
@@ -277,6 +327,16 @@ function App({ port }: { port?: ImportPort }) {
             {total > 0 ? `Importing ${state.done} of ${total} layers` : "Reading the file"}
           </p>
           <Progress value={percent} aria-label="Import progress" />
+          <Button
+            variant="secondary"
+            disabled={cancelling}
+            onClick={() => {
+              setCancelling(true);
+              abort.current?.abort();
+            }}
+          >
+            {cancelling ? "Cancelling…" : "Cancel"}
+          </Button>
         </div>
       )}
 

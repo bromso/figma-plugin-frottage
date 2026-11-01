@@ -1,11 +1,15 @@
-import { type Capture, LIMITS } from "@repo/capture-schema";
+import { type Capture, countNodes, LIMITS } from "@repo/capture-schema";
 import { AssetAssembler, ChunkAssembler, type ChunkMessage } from "./chunks";
 import { captureFilename } from "./page";
 
 export type RunStatus =
   | { state: "idle" }
   | { state: "capturing" | "packing" | "saving" }
-  | { state: "saved"; filename: string }
+  /**
+   * `nodes` is the layer count in the file; `nodeLimit` is set when the page had more than fit;
+   * `blockedImages` counts images the page could not read (the `images-blocked` warning).
+   */
+  | { state: "saved"; filename: string; nodes: number; nodeLimit: boolean; blockedImages: number }
   | { state: "error"; message: string };
 
 export type RunDeps = {
@@ -37,6 +41,13 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 const MAX_ASSET_BYTES = 180 * 1024 * 1024;
 
 const TOO_MUCH_CONTENT = "This page has too much content to capture. Try a smaller section.";
+
+/** Images the page could not read, from the walker's `images-blocked` warning (a count, no URLs). */
+function blockedImages(capture: Capture): number {
+  const w = (capture.warnings ?? []).find((x) => x.code === "images-blocked");
+  const n = Number(/^\d+/.exec(w?.detail ?? "")?.[0]);
+  return Number.isFinite(n) ? n : 0;
+}
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -144,6 +155,11 @@ export class CaptureRun {
     this.arm();
   }
 
+  /** Whether `runId` is the run in progress; the worker asks before it fetches an image. */
+  isLive(runId: string): boolean {
+    return this.mine(runId) && this.status.state === "capturing";
+  }
+
   /** Returns the current status; a finished run's status is handed out once, then cleared. */
   take(): RunStatus {
     const status = this.status;
@@ -213,10 +229,19 @@ export class CaptureRun {
       const bytes = this.deps.pack(capture, listed);
       url = this.deps.makeBlobUrl(bytes);
       const filename = captureFilename(capture.source.url, this.deps.now());
+      const nodes = capture.root ? countNodes(capture.root) : 0;
+      const nodeLimit = (capture.warnings ?? []).some((w) => w.code === "node-limit");
+      const blocked = blockedImages(capture);
       this.set({ state: "saving" });
       const saved = await this.deps.download({ url, filename });
       this.active = false;
-      this.set({ state: "saved", filename: saved ?? filename });
+      this.set({
+        state: "saved",
+        filename: saved ?? filename,
+        nodes,
+        nodeLimit,
+        blockedImages: blocked,
+      });
     } catch (e) {
       this.fail(`Could not save the file: ${message(e)}`);
     } finally {

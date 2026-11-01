@@ -7,6 +7,7 @@ import {
   type ReviewDecision,
   type ReviewSession,
   runImport,
+  sanitizeOptions,
   yieldToPaint,
 } from "../import-flow";
 import {
@@ -106,6 +107,35 @@ describe("runImport", () => {
       variablesReused: 4,
       tokenFailures: 5,
     });
+  });
+
+  test("the done state carries the component counts", async () => {
+    const port = fakePort();
+    port.endResult = {
+      ...port.endResult,
+      componentsCreated: 2,
+      instancesCreated: 4,
+      overrideFailures: 3,
+      overrideFailuresInMains: 1,
+      layoutFailures: 1,
+    };
+    const states: ImportState[] = [];
+    await runImport(frottageFile(1), port, (s) => states.push(s));
+    expect(states.at(-1)).toMatchObject({
+      componentsCreated: 2,
+      instancesCreated: 4,
+      overrideFailures: 3,
+      overrideFailuresInMains: 1,
+      layoutFailures: 1,
+    });
+  });
+
+  test("the done state carries the hover counts", async () => {
+    const port = fakePort();
+    port.endResult = { ...port.endResult, hoverVariants: 3, hoverFailures: 2 };
+    const states: ImportState[] = [];
+    await runImport(frottageFile(1), port, (s) => states.push(s));
+    expect(states.at(-1)).toMatchObject({ hoverVariants: 3, hoverFailures: 2 });
   });
 
   test("sends each image before the first batch", async () => {
@@ -289,7 +319,12 @@ async function runWith(file: File, port: ReturnType<typeof fakePort>, session: R
 
 describe("DEFAULT_IMPORT_OPTIONS", () => {
   test("defaults match the design", () => {
-    expect(DEFAULT_IMPORT_OPTIONS).toMatchObject({ autoLayout: true, htmlNames: false });
+    expect(DEFAULT_IMPORT_OPTIONS).toMatchObject({
+      autoLayout: true,
+      htmlNames: false,
+      components: true,
+      hoverComponents: false,
+    });
   });
 });
 
@@ -470,5 +505,50 @@ describe("the review step", () => {
     expect(await run({ htmlNames: true })).not.toBe(base);
     expect(await run({ autoLayout: false })).not.toBe(base);
     expect(await run({ hyperlinks: false })).not.toBe(base);
+  });
+});
+
+describe("sanitizeOptions", () => {
+  test("a preference stored before Components existed takes the defaults for them", () => {
+    const stored = { autoLayout: false, tokens: true };
+    expect(sanitizeOptions(stored)).toEqual({ ...DEFAULT_IMPORT_OPTIONS, autoLayout: false });
+  });
+
+  test("a stored components: false is respected", () => {
+    expect(sanitizeOptions({ components: false }).components).toBe(false);
+  });
+});
+
+describe("a user Cancel", () => {
+  test("during begin waits for it, then cancels the sandbox and goes idle", async () => {
+    const port = fakePort();
+    const controller = new AbortController();
+    const begin = port.begin.bind(port);
+    port.begin = async (meta) => {
+      controller.abort();
+      await new Promise((r) => setTimeout(r, 5));
+      await begin(meta);
+    };
+    const states: ImportState[] = [];
+    await runImport(frottageFile(1), port, (s) => states.push(s), undefined, controller.signal);
+    expect(port.log.indexOf("begin")).toBeLessThan(port.log.indexOf("cancel"));
+    expect(port.log).not.toContain("batch");
+    expect(port.log).not.toContain("end");
+    expect(states.at(-1)).toEqual({ step: "idle" });
+  });
+
+  test("between batches stops the loop", async () => {
+    const port = fakePort();
+    const controller = new AbortController();
+    const batch = port.batch.bind(port);
+    port.batch = async (ops) => {
+      await batch(ops);
+      controller.abort();
+    };
+    const states: ImportState[] = [];
+    await runImport(frottageFile(120), port, (s) => states.push(s), undefined, controller.signal);
+    expect(port.batchSizes).toHaveLength(1);
+    expect(port.log).toContain("cancel");
+    expect(states.at(-1)).toEqual({ step: "idle" });
   });
 });

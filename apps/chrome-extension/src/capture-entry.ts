@@ -9,18 +9,27 @@ import {
 } from "@repo/capture-dom";
 import pkg from "../package.json";
 import { assetChunks, splitIntoChunks } from "./chunks";
+import { fetchViaWorker, imagePortName, makeFetchBytes } from "./image-fetch";
 import { CAPTURE_PORT, type PageMessage } from "./messages";
 
 /** The offscreen timeout is 60 s; stay well inside it. */
 const HEARTBEAT_MS = 10_000;
 
-type RunWindow = Window & { __frottageRunId?: string };
+type RunWindow = Window & {
+  __frottageRunId?: string;
+  __frottageCollapse?: boolean;
+  __frottageImageAccess?: boolean;
+};
 
 // `void`: the script's completion value is undefined, so executeScript does not wait on the run.
 void (async () => {
   const win = window as RunWindow;
   const runId = win.__frottageRunId;
+  const collapseWrappers = win.__frottageCollapse === true;
+  const imageAccess = win.__frottageImageAccess === true;
+  win.__frottageImageAccess = undefined;
   win.__frottageRunId = undefined;
+  win.__frottageCollapse = undefined;
   if (!runId) return;
 
   const port = chrome.runtime.connect({ name: `${CAPTURE_PORT}${runId}` });
@@ -36,13 +45,22 @@ void (async () => {
     const capture = captureDocument(document, {
       now: () => new Date().toISOString(),
       toolVersion: pkg.version,
+      collapseWrappers,
       getShadowRoot: (el) =>
         el instanceof HTMLElement ? chrome.dom.openOrClosedShadowRoot(el) : null,
     });
-    // Images are fetched in the page, so they obey the page's CORS rules. No host permission
-    // is held, so a blocked image becomes a placeholder.
+    // Images are fetched in the page first, so they obey the page's CORS rules. When the run was
+    // told the optional host permission is held, a failed fetch is retried by the worker, one port
+    // per image; otherwise, or if that fails too, the image becomes a placeholder. The request
+    // comes from this script, not the page's world, so a page script cannot ask for it.
+    const fetchBytes = makeFetchBytes({
+      pageFetch: browserFetchBytes,
+      imageAccess,
+      fetchViaWorker: (url, signal) =>
+        fetchViaWorker(url, signal, () => chrome.runtime.connect({ name: imagePortName(runId) })),
+    });
     const { assets } = await collectAssets(capture, {
-      fetchBytes: browserFetchBytes,
+      fetchBytes,
       normalise: browserNormalise,
       onProgress: beat,
     });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Capture, CaptureNode } from "@repo/capture-schema";
-import { collectAssets } from "../assets";
+import { collectAssets, fitWithin, svgTargetSize } from "../assets";
 import { rememberUrl } from "../urls";
 
 const box = { x: 0, y: 0, w: 10, h: 10 };
@@ -144,7 +144,7 @@ describe("collectAssets", () => {
       sourceUrl: "http://x/a.png",
       box,
     });
-    expect(r.capture.warnings.map((w) => w.code)).toEqual(["image-blocked"]);
+    expect(r.capture.warnings.map((w) => w.code)).toEqual(["image-blocked", "images-blocked"]);
     expect(r.assets.size).toBe(0);
   });
 
@@ -235,7 +235,10 @@ describe("collectAssets", () => {
     });
     expect(bgs(r.capture).length).toBe(1);
     expect(bgs(r.capture)[0]?.assetHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(r.capture.warnings.map((w) => w.code)).toEqual(["background-image-dropped"]);
+    expect(r.capture.warnings.map((w) => w.code)).toEqual([
+      "background-image-dropped",
+      "images-blocked",
+    ]);
     expect(r.capture.assets[0]?.sourceUrl).toBe("http://x/ok.png");
   });
 
@@ -253,5 +256,73 @@ describe("collectAssets", () => {
     expect(fetched).toBe(data);
     expect((kids(r.capture)[0] as { sourceUrl: string }).sourceUrl.length).toBeLessThan(200);
     expect(r.capture.assets[0]?.sourceUrl.length).toBeLessThan(200);
+  });
+});
+
+describe("svgTargetSize", () => {
+  const natural = { w: 100, h: 100 };
+  const hint = { w: 40, h: 40 };
+  test("is twice the display size at a device pixel ratio of 1 or 2", () => {
+    expect(svgTargetSize(natural, hint, 1)).toEqual({ w: 80, h: 80 });
+    expect(svgTargetSize(natural, hint, 2)).toEqual({ w: 80, h: 80 });
+  });
+  test("follows a higher device pixel ratio", () => {
+    const t = svgTargetSize(natural, hint, 3);
+    expect(t.w).toBeCloseTo(120, 6);
+    expect(t.h).toBeCloseTo(120, 6);
+  });
+  test("a large display size on a dense screen is still capped at 4096", () => {
+    const t = svgTargetSize(natural, { w: 3000, h: 3000 }, 3);
+    expect(t.w).toBeGreaterThan(4096);
+    const fit = fitWithin(t.w, t.h);
+    expect(fit).toMatchObject({ w: 4096, h: 4096, scaled: true });
+  });
+  test("keeps the natural size without a display size", () => {
+    expect(svgTargetSize({ w: 30, h: 20 }, undefined, 3)).toEqual({ w: 30, h: 20 });
+  });
+  test("ignores a device pixel ratio that is not a number", () => {
+    expect(svgTargetSize(natural, hint, Number.NaN)).toEqual({ w: 80, h: 80 });
+  });
+});
+
+describe("images-blocked warning", () => {
+  const warningFor = (c: Capture) => c.warnings.find((w) => w.code === "images-blocked");
+
+  test("counts blocked images and blocked backgrounds, with no URL", async () => {
+    const c = make(
+      [img("a", "http://x/a.png?t=secret"), img("b", "http://x/b.png")],
+      ['url("http://x/bg.png")']
+    );
+    const r = await collectAssets(c, {
+      fetchBytes: async () => {
+        throw new Error("Failed to fetch");
+      },
+      normalise: okNormalise,
+    });
+    expect(warningFor(r.capture)?.detail).toBe("3 images could not be read");
+    expect(JSON.stringify(warningFor(r.capture))).not.toContain("secret");
+  });
+
+  test("an HTTP error, a decode failure and a missing URL are not counted", async () => {
+    const c = make([img("a", "http://x/a.png"), img("b", "http://x/b.png")]);
+    let n = 0;
+    const r = await collectAssets(c, {
+      fetchBytes: async () => {
+        if (n++ === 0) throw new Error("HTTP 404");
+        return blobOf(png(1));
+      },
+      normalise: async () => {
+        throw new Error("The SVG could not be decoded");
+      },
+    });
+    expect(warningFor(r.capture)).toBeUndefined();
+  });
+
+  test("none are added when every image loads", async () => {
+    const r = await collectAssets(make([img("a", "http://x/a.png")]), {
+      fetchBytes: async () => blobOf(png(1)),
+      normalise: okNormalise,
+    });
+    expect(warningFor(r.capture)).toBeUndefined();
   });
 });
