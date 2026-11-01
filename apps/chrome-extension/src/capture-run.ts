@@ -5,8 +5,11 @@ import { captureFilename } from "./page";
 export type RunStatus =
   | { state: "idle" }
   | { state: "capturing" | "packing" | "saving" }
-  /** `nodes` is the layer count in the file; `nodeLimit` is set when the page had more than fit. */
-  | { state: "saved"; filename: string; nodes: number; nodeLimit: boolean }
+  /**
+   * `nodes` is the layer count in the file; `nodeLimit` is set when the page had more than fit;
+   * `blockedImages` counts images left as placeholders because they could not be read.
+   */
+  | { state: "saved"; filename: string; nodes: number; nodeLimit: boolean; blockedImages: number }
   | { state: "error"; message: string };
 
 export type RunDeps = {
@@ -38,6 +41,19 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 const MAX_ASSET_BYTES = 180 * 1024 * 1024;
 
 const TOO_MUCH_CONTENT = "This page has too much content to capture. Try a smaller section.";
+
+/** Images that stayed placeholders because they could not be read. */
+function countBlockedImages(root: NonNullable<Capture["root"]>): number {
+  let n = 0;
+  const stack: Array<NonNullable<Capture["root"]>> = [root];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node) break;
+    if (node.kind === "placeholder" && node.placeholderKind === "blocked-image") n++;
+    if (node.kind === "element") stack.push(...node.children);
+  }
+  return n;
+}
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -216,10 +232,11 @@ export class CaptureRun {
       const filename = captureFilename(capture.source.url, this.deps.now());
       const nodes = capture.root ? countNodes(capture.root) : 0;
       const nodeLimit = (capture.warnings ?? []).some((w) => w.code === "node-limit");
+      const blockedImages = capture.root ? countBlockedImages(capture.root) : 0;
       this.set({ state: "saving" });
       const saved = await this.deps.download({ url, filename });
       this.active = false;
-      this.set({ state: "saved", filename: saved ?? filename, nodes, nodeLimit });
+      this.set({ state: "saved", filename: saved ?? filename, nodes, nodeLimit, blockedImages });
     } catch (e) {
       this.fail(`Could not save the file: ${message(e)}`);
     } finally {

@@ -1,7 +1,9 @@
 // Service worker. Holds no run state: Chrome stops it when idle, so the run lives in the
 // offscreen document and the page script. Everything here is a stateless relay.
+import { serveImagePort } from "./image-fetch";
 import {
   CAPTURE_PORT,
+  IMAGE_PORT,
   type OffscreenMessage,
   RELAY_PORT,
   type Reply,
@@ -43,6 +45,9 @@ async function toOffscreen(message: OffscreenMessage): Promise<Reply | undefined
   return chrome.runtime.sendMessage(message);
 }
 
+const hasImageAccess = (): Promise<boolean> =>
+  chrome.permissions.contains({ origins: ["<all_urls>"] }).catch(() => false);
+
 async function startCapture(tabId: number, collapseWrappers: boolean): Promise<Reply> {
   const runId = crypto.randomUUID();
   const started = await toOffscreen({ target: "offscreen", type: "run-start", runId });
@@ -51,12 +56,17 @@ async function startCapture(tabId: number, collapseWrappers: boolean): Promise<R
     await chrome.scripting.executeScript({
       target: { tabId },
       // The run's settings travel with its id; the worker keeps nothing between messages.
-      func: (id: string, collapse: boolean) => {
-        const win = window as unknown as { __frottageRunId?: string; __frottageCollapse?: boolean };
+      func: (id: string, collapse: boolean, imageAccess: boolean) => {
+        const win = window as unknown as {
+          __frottageRunId?: string;
+          __frottageCollapse?: boolean;
+          __frottageImageAccess?: boolean;
+        };
         win.__frottageRunId = id;
         win.__frottageCollapse = collapse;
+        win.__frottageImageAccess = imageAccess;
       },
-      args: [runId, collapseWrappers],
+      args: [runId, collapseWrappers, await hasImageAccess()],
     });
     await chrome.scripting.executeScript({ target: { tabId }, files: ["capture-entry.js"] });
     return { ok: true };
@@ -110,6 +120,16 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
 // The page script's port ends here; every message is passed on to the offscreen document
 // over a second port, so a closed or navigated page shows up there as a disconnect.
 chrome.runtime.onConnect.addListener((port) => {
+  // One image per port, fetched here because the worker is not bound by the page's CORS rules.
+  // Not relayed: serveImagePort answers on the same port, after checking the sender.
+  if (port.name.startsWith(IMAGE_PORT)) {
+    serveImagePort(port, {
+      fetch: (url, init) => fetch(url, init),
+      extensionId: chrome.runtime.id,
+      hasAccess: hasImageAccess,
+    });
+    return;
+  }
   if (!port.name.startsWith(CAPTURE_PORT)) return;
   const runId = port.name.slice(CAPTURE_PORT.length);
   const relay = chrome.runtime.connect({ name: `${RELAY_PORT}${runId}` });

@@ -91,3 +91,36 @@ export function nodeAdvice(
   }
   return { warning: null, offerCollapse: false };
 }
+
+/** What the popup says about images left as placeholders, and whether it offers access. */
+export function imageAdvice(
+  blocked: number,
+  accessHeld: boolean
+): { message: string; offerAccess: boolean } | null {
+  if (blocked <= 0) return null;
+  const these = blocked === 1 ? "1 image" : `${blocked.toLocaleString("en-US")} images`;
+  return {
+    message: `${these} could not be read, because the site that serves ${blocked === 1 ? "it" : "them"} does not allow it. ${blocked === 1 ? "It was" : "They were"} left as placeholders.`,
+    // With access held the worker already tried, so asking again would change nothing.
+    offerAccess: !accessHeld,
+  };
+}
+
+/**
+ * Runs the permission request first, then, only when it was granted, `recapture`. `request` must be
+ * called synchronously from the click handler: Chrome needs the user gesture. A decline, or a
+ * request that throws, changes nothing.
+ */
+export async function allowAccessAndRecapture(
+  request: () => Promise<boolean>,
+  recapture: () => void
+): Promise<boolean> {
+  let granted = false;
+  try {
+    granted = await request();
+  } catch {
+    return false;
+  }
+  if (granted) recapture();
+  return granted;
+}

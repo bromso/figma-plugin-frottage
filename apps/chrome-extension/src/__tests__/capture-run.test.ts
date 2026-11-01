@@ -74,9 +74,23 @@ describe("CaptureRun", () => {
       filename: "example.com-2026-10-31.frottage",
       nodes: 0,
       nodeLimit: false,
+      blockedImages: 0,
     });
     expect(t.revoked).toEqual(["blob:test/1"]);
     expect(t.timers.size).toBe(0);
+  });
+
+  test("the saved status counts images left as blocked-image placeholders", async () => {
+    const blocked = { kind: "placeholder", placeholderKind: "blocked-image" };
+    const other = { kind: "placeholder", placeholderKind: "video" };
+    const tree = {
+      kind: "element",
+      children: [blocked, other, { kind: "element", children: [blocked, { kind: "text" }] }],
+    };
+    sendCapture(t.run, "r1", JSON.stringify({ ...CAPTURE, root: tree }));
+    t.run.onEnd("r1");
+    await tick();
+    expect(last(t.statuses)).toMatchObject({ state: "saved", blockedImages: 2 });
   });
 
   test("the saved status carries the node count and whether the node limit was hit", async () => {

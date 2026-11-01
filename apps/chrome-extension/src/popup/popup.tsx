@@ -4,12 +4,20 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { RunStatus } from "../capture-run";
 import type { PopupMessage, Reply } from "../messages";
-import { friendlyError, isRestrictedUrl, nodeAdvice } from "../page";
+import {
+  allowAccessAndRecapture,
+  friendlyError,
+  imageAdvice,
+  isRestrictedUrl,
+  nodeAdvice,
+} from "../page";
 
 const dark = window.matchMedia("(prefers-color-scheme: dark)");
 const applyTheme = () => document.documentElement.classList.toggle("dark", dark.matches);
 applyTheme();
 dark.addEventListener("change", applyTheme);
+
+const IMAGE_ORIGINS = { origins: ["<all_urls>"] };
 
 const BUSY = new Set(["capturing", "packing", "saving"]);
 const LABEL: Record<string, string> = {
@@ -34,6 +42,14 @@ function Popup() {
   const [status, setStatus] = useState<RunStatus>({ state: "idle" });
   // Set once a capture was made without wrappers, so it is not offered a second time.
   const [collapsed, setCollapsed] = useState(false);
+
+  // Whether the optional image permission is held; read when a capture finishes with blocked images.
+  const [accessHeld, setAccessHeld] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (status.state !== "saved" || status.blockedImages <= 0) return;
+    chrome.permissions.contains(IMAGE_ORIGINS).then(setAccessHeld, () => setAccessHeld(null));
+  }, [status]);
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
@@ -78,8 +94,22 @@ function Popup() {
     }
   }
 
+  // The request is the first thing the click does, so Chrome sees the user gesture.
+  const allowImages = () =>
+    allowAccessAndRecapture(
+      () => chrome.permissions.request(IMAGE_ORIGINS),
+      () => {
+        setAccessHeld(true);
+        void capture(collapsed);
+      }
+    );
+
   const busy = BUSY.has(status.state);
   const advice = status.state === "saved" ? nodeAdvice(status.nodes, status.nodeLimit) : null;
+  const images =
+    status.state === "saved" && accessHeld !== null
+      ? imageAdvice(status.blockedImages, accessHeld)
+      : null;
 
   return (
     <main className="flex w-[320px] flex-col gap-3 bg-background p-4 text-foreground">
@@ -114,6 +144,22 @@ function Popup() {
           </Type>
         )}
       </div>
+      {images && (
+        <div className="flex flex-col gap-2">
+          <Type className="text-muted-foreground">{images.message}</Type>
+          {images.offerAccess && (
+            <>
+              <Button variant="secondary" disabled={busy} onClick={allowImages}>
+                Allow image access
+              </Button>
+              <Type size="xsmall" className="text-muted-foreground">
+                This lets Frottage download images from any site while you capture, only to put them
+                in the file. Nothing is sent anywhere.
+              </Type>
+            </>
+          )}
+        </div>
+      )}
       {advice?.offerCollapse && !collapsed && !busy && (
         <Button variant="secondary" onClick={() => capture(true)}>
           Capture again without wrappers

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Capture, CaptureNode } from "@repo/capture-schema";
-import { collectAssets } from "../assets";
+import { collectAssets, svgTargetSize } from "../assets";
 import { rememberUrl } from "../urls";
 
 const box = { x: 0, y: 0, w: 10, h: 10 };
@@ -253,5 +253,25 @@ describe("collectAssets", () => {
     expect(fetched).toBe(data);
     expect((kids(r.capture)[0] as { sourceUrl: string }).sourceUrl.length).toBeLessThan(200);
     expect(r.capture.assets[0]?.sourceUrl.length).toBeLessThan(200);
+  });
+});
+
+describe("svgTargetSize", () => {
+  const natural = { w: 100, h: 100 };
+  const hint = { w: 40, h: 40 };
+  test("is twice the display size at a device pixel ratio of 1 or 2", () => {
+    expect(svgTargetSize(natural, hint, 1)).toEqual({ w: 80, h: 80 });
+    expect(svgTargetSize(natural, hint, 2)).toEqual({ w: 80, h: 80 });
+  });
+  test("follows a higher device pixel ratio", () => {
+    const t = svgTargetSize(natural, hint, 3);
+    expect(t.w).toBeCloseTo(120, 6);
+    expect(t.h).toBeCloseTo(120, 6);
+  });
+  test("keeps the natural size without a display size", () => {
+    expect(svgTargetSize({ w: 30, h: 20 }, undefined, 3)).toEqual({ w: 30, h: 20 });
+  });
+  test("ignores a device pixel ratio that is not a number", () => {
+    expect(svgTargetSize(natural, hint, Number.NaN)).toEqual({ w: 80, h: 80 });
   });
 });
