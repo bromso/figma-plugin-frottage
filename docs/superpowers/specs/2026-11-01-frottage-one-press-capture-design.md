@@ -1,6 +1,6 @@
 # Frottage one-press capture: design
 
-Status: awaiting the owner's approval of this document. The owner has asked to build this iteration and refine it afterwards. Branch: continue on `feat/frottage-stage-3`.
+Status: approved by the owner on 2026-11-01. This iteration is built first and refined afterwards. Branch: continue on `feat/frottage-stage-3`.
 
 ## Intent
 
