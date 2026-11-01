@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type HoldApi, holdTab, releaseTab } from "../tab-hold";
+import { type HoldApi, holderPage, holdTab, releaseTab } from "../tab-hold";
 
 type FakeTab = {
   id: number;
@@ -9,7 +9,7 @@ type FakeTab = {
   active: boolean;
   url: string;
 };
-type FakeWindow = { id: number; type: "normal" | "popup" };
+type FakeWindow = { id: number; type: "normal" | "popup"; incognito: boolean };
 type Spec = { id: number; pinned?: boolean; groupId?: number };
 
 const RUN_PAGE = "chrome-extension://abc/run.html";
@@ -24,8 +24,8 @@ const PLAIN: Spec[] = [{ id: 10 }, { id: 5 }, { id: 20 }];
  * moved to another window loses its pin and its group, a cross-window move refuses an index
  * between two tabs of one group, and pinning moves a tab to the end of the pinned ones.
  */
-function fakeChrome(spec: Spec[] = PLAIN) {
-  const windows: FakeWindow[] = [{ id: 1, type: "normal" }];
+function fakeChrome(spec: Spec[] = PLAIN, { incognito = false }: { incognito?: boolean } = {}) {
+  const windows: FakeWindow[] = [{ id: 1, type: "normal", incognito }];
   let tabs: FakeTab[] = [];
   let nextTab = 100;
   let nextWindow = 2;
@@ -50,7 +50,7 @@ function fakeChrome(spec: Spec[] = PLAIN) {
     pinned: t.pinned,
     groupId: t.groupId,
     url: t.url,
-    incognito: false,
+    incognito: windows.find((w) => w.id === t.windowId)?.incognito ?? false,
   });
   const find = (id: number) => {
     const t = tabs.find((x) => x.id === id);
@@ -99,10 +99,31 @@ function fakeChrome(spec: Spec[] = PLAIN) {
       get: async (id) => info(find(id)),
       create: async ({ windowId, index, url, active }) => {
         if (!windowExists(windowId)) throw new Error("No window");
-        const t = mk(nextTab++, windowId, { url, active });
-        if (active) for (const o of inWindow(windowId)) o.active = false;
+        let home = windowId;
+        // A spanning extension can't load its page in Incognito: Chrome opens it in a regular window.
+        if (
+          url.startsWith("chrome-extension:") &&
+          windows.find((w) => w.id === windowId)?.incognito
+        ) {
+          const regular = windows.find((w) => !w.incognito) ?? {
+            id: nextWindow++,
+            type: "normal" as const,
+            incognito: false,
+          };
+          if (!windows.includes(regular)) windows.push(regular);
+          home = regular.id;
+        }
+        const t = mk(nextTab++, home, { url, active });
+        if (active) for (const o of inWindow(home)) o.active = false;
         tabs.push(t);
-        place(t, windowId, index);
+        place(t, home, index);
+        // A tab created between two members of a group joins it.
+        const mates = inWindow(home);
+        const at = mates.indexOf(t);
+        const [prev, next] = [mates[at - 1], mates[at + 1]];
+        if (prev && next && prev.groupId !== -1 && prev.groupId === next.groupId) {
+          t.groupId = prev.groupId;
+        }
         return info(t);
       },
       group: async ({ groupId, tabIds }) => {
@@ -112,12 +133,24 @@ function fakeChrome(spec: Spec[] = PLAIN) {
         for (const id of tabIds) {
           const t = find(id);
           if (groupId !== undefined) {
-            // Joins at the end of the group, in the group's window, as Chrome does.
+            // Inside the group's range a tab stays; from the left it joins at the group's start,
+            // from the right or another window at the group's end.
             const members = tabs.filter((o) => o.groupId === groupId && o !== t);
+            const first = members[0];
             const last = members[members.length - 1];
-            if (last) {
+            if (first && last) {
               t.pinned = false;
-              place(t, last.windowId, inWindow(last.windowId).indexOf(last) + 1);
+              const sameWindow = first.windowId === t.windowId;
+              const pos = inWindow(t.windowId).indexOf(t);
+              const firstAt = inWindow(first.windowId).indexOf(first);
+              const lastAt = inWindow(last.windowId).indexOf(last);
+              if (!(sameWindow && pos > firstAt && pos < lastAt)) {
+                if (sameWindow && pos < firstAt) place(t, first.windowId, firstAt - 1);
+                else {
+                  const after = inWindow(last.windowId).indexOf(last) + (sameWindow ? 0 : 1);
+                  place(t, last.windowId, after);
+                }
+              }
             }
           }
           t.groupId = groupId ?? 77;
@@ -141,6 +174,12 @@ function fakeChrome(spec: Spec[] = PLAIN) {
           t.groupId = -1;
         }
         place(t, dest, index);
+        if (t.groupId !== -1) {
+          const row = inWindow(dest);
+          const at = row.indexOf(t);
+          const shares = [row[at - 1], row[at + 1]].some((o) => o && o.groupId === t.groupId);
+          if (!shares) t.groupId = -1;
+        }
       },
       update: async (id, props) => {
         updates.push({ id, props });
@@ -167,7 +206,11 @@ function fakeChrome(spec: Spec[] = PLAIN) {
       create: async (opts) => {
         calls.windowsCreate.push(opts);
         const t = find(opts.tabId);
-        const win: FakeWindow = { id: nextWindow++, type: opts.type ?? "normal" };
+        const win: FakeWindow = {
+          id: nextWindow++,
+          type: opts.type ?? "normal",
+          incognito: opts.incognito ?? false,
+        };
         windows.push(win);
         t.pinned = false;
         t.groupId = -1;
@@ -248,10 +291,59 @@ describe("holdTab", () => {
     expect(c.tab()?.windowId).toBe(held.runWindowId);
   });
 
-  test("the holder sits right after the tab even when the tab has group-mates after it", async () => {
+  test("the holder lands right after the tab even when the tab has group-mates after it", async () => {
     const c = fakeChrome([{ id: 5, groupId: 9 }, { id: 31, groupId: 9 }, { id: 20 }]);
     const held = await holdTab(c.api, 5, RUN_PAGE);
     expect(c.infoOf(held.holderId).index).toBe(held.index);
+    expect(c.infoOf(held.holderId).groupId).toBe(9);
+  });
+
+  test("holderPage is a self-contained page that says what is happening", () => {
+    const url = holderPage();
+    expect(url.startsWith("data:text/html")).toBe(true);
+    const html = decodeURIComponent(url.slice(url.indexOf(",") + 1));
+    expect(html).toContain("<title>Frottage is capturing this page</title>");
+    expect(html).toContain("Leave the small window open. Your tab comes back here when it's done.");
+    expect(html).toContain("To stop, click the Frottage icon.");
+    expect(html).toContain("prefers-color-scheme");
+    expect(html).not.toContain("<script");
+  });
+
+  test("an incognito tab's holder is a data page that stays in its window, and the tab comes back", async () => {
+    const c = fakeChrome([{ id: 10 }, { id: 5 }, { id: 20 }], { incognito: true });
+    const held = await holdTab(c.api, 5, RUN_PAGE);
+    expect(held.incognito).toBe(true);
+    const holder = c.infoOf(held.holderId);
+    expect(holder.windowId).toBe(1);
+    expect(holder.url).toBe(holderPage());
+    expect(c.calls.windowsCreate[0]).toMatchObject({ incognito: true });
+    expect(await releaseTab(c.api, held, { delay: instant })).toBe("back");
+    expect(c.order()).toEqual([10, 5, 20]);
+    expect(c.windows.map((w) => w.id)).toEqual([1]);
+  });
+
+  test("an incognito window's only tab leaves the window open and comes back", async () => {
+    const c = fakeChrome([{ id: 5 }], { incognito: true });
+    const held = await holdTab(c.api, 5, RUN_PAGE);
+    expect(c.windows.map((w) => w.id)).toContain(1);
+    expect(await releaseTab(c.api, held, { delay: instant })).toBe("back");
+    expect(c.order()).toEqual([5]);
+    expect(c.windows.map((w) => w.id)).toEqual([1]);
+  });
+
+  test("a holder that lands in another window refuses the run, with the tab active", async () => {
+    const c = fakeChrome();
+    const create = c.api.tabs.create;
+    c.api.tabs.create = async (info) => {
+      const holder = await create(info);
+      const tab = c.tabs().find((t) => t.id === holder.id);
+      if (tab) tab.windowId = 42;
+      return { ...holder, windowId: 42 };
+    };
+    await expect(holdTab(c.api, 5, RUN_PAGE)).rejects.toThrow();
+    expect(c.tabs().some((t) => t.id >= 100)).toBe(false);
+    expect(c.tab()?.active).toBe(true);
+    expect(c.calls.windowsCreate).toHaveLength(0);
   });
 
   test("a failed move takes the holder away and leaves the tab active", async () => {
@@ -340,6 +432,22 @@ describe("releaseTab", () => {
     const holder = c.tabs().find((t) => t.id === held.holderId);
     expect(holder?.url).toBe("https://example.com/5");
     expect(c.tabs().some((t) => t.id === 5)).toBe(false);
+  });
+
+  test("a new window for an incognito tab is an incognito one", async () => {
+    const c = fakeChrome([{ id: 10 }, { id: 5 }], { incognito: true });
+    const held = await holdTab(c.api, 5, RUN_PAGE);
+    c.closeWindow(1);
+    await releaseTab(c.api, held, { delay: instant });
+    expect(c.calls.windowsCreate[1]).toEqual({ tabId: 5, type: "normal", incognito: true });
+  });
+
+  test("a holder outside the tab's own window is not navigated", async () => {
+    const c = fakeChrome();
+    const held = await holdTab(c.api, 5, RUN_PAGE);
+    c.closeWindow(held.runWindowId);
+    await releaseTab(c.api, { ...held, windowId: 99 }, { delay: instant });
+    expect(c.updates.some((u) => "url" in u.props)).toBe(false);
   });
 
   test("a tab with no known address is not sent to an empty one", async () => {

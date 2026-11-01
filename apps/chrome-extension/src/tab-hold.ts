@@ -11,6 +11,8 @@ export type HeldTab = {
   holderId: number;
   /** The small window the tab moved to. */
   runWindowId: number;
+  /** Whether the tab is in an Incognito window, which a new window for it must be too. */
+  incognito: boolean;
 };
 
 type TabInfo = {
@@ -59,6 +61,15 @@ export type HoldApi = { tabs: TabsApi; windows: HoldWindowsApi };
 const RUN_WINDOW_HEIGHT = 900;
 
 /**
+ * What an Incognito tab's holder shows. A spanning extension can't load its own page in an Incognito
+ * window, so the holder there is this static page: no scripts, light or dark as the browser is.
+ */
+export function holderPage(): string {
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Frottage is capturing this page</title><style>:root{color-scheme:light dark;font:14px system-ui,sans-serif;background:#fff;color:#1a1a1a}@media (prefers-color-scheme:dark){:root{background:#2c2c2c;color:#f5f5f5}}body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center;box-sizing:border-box}h1{font-size:16px;margin:0}p{margin:0;opacity:.75}</style></head><body><h1>Frottage is capturing this page</h1><p>Leave the small window open. Your tab comes back here when it's done.</p><p>To stop, click the Frottage icon.</p></body></html>`;
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+/**
  * Moves the tab to a small popup window and puts a run page where it was, so the window the user
  * works in stays as it is. The holder joins the tab's group first: a group closes when its last
  * tab leaves, and the tab must find it again.
@@ -68,16 +79,16 @@ export async function holdTab(api: HoldApi, tabId: number, runPageUrl: string): 
   const holder = await api.tabs.create({
     windowId: tab.windowId,
     index: tab.index + 1,
-    url: runPageUrl,
+    url: tab.incognito ? holderPage() : runPageUrl,
     active: true,
   });
   const holderId = holder.id;
   if (holderId === undefined) throw new Error("The run page could not be opened");
   try {
+    // A holder in another window, or profile, could not take the tab back: no run starts.
+    if (holder.windowId !== tab.windowId) throw new Error("The run page could not be opened here");
     if (tab.groupId !== -1) {
       await api.tabs.group({ groupId: tab.groupId, tabIds: [holderId] });
-      // Joining a group can move the holder to its end; the holder belongs right after the tab.
-      await api.tabs.move(holderId, { index: tab.index + 1 }).catch(() => {});
     }
     const win = await api.windows.create({
       tabId,
@@ -97,6 +108,7 @@ export async function holdTab(api: HoldApi, tabId: number, runPageUrl: string): 
       url: tab.url ?? "",
       holderId,
       runWindowId: win.id,
+      incognito: tab.incognito === true,
     };
   } catch (error) {
     // The holder took focus; the user's tab gets it back before the holder goes.
@@ -150,7 +162,7 @@ async function moveBack(api: HoldApi, held: HeldTab): Promise<void> {
   if (await attempt(() => api.tabs.move(tabId, { windowId, index }))) return;
   // Refused: a closed window and a refusal are different, and only a closed window needs a new one.
   if (!(await attempt(() => api.windows.get(windowId)))) {
-    await attempt(() => api.windows.create({ tabId, type: "normal" }));
+    await attempt(() => api.windows.create({ tabId, type: "normal", incognito: held.incognito }));
     return;
   }
   await attempt(() => api.tabs.move(tabId, { windowId, index: -1 }));
@@ -175,7 +187,10 @@ export async function releaseTab(
   }
   if (where === "gone") {
     // The small window was closed, and the tab with it: the holder goes to the tab's address.
-    if (held.url !== "") await attempt(() => api.tabs.update(holderId, { url: held.url }));
+    const holder = await api.tabs.get(holderId).catch(() => null);
+    if (held.url !== "" && holder?.windowId === held.windowId) {
+      await attempt(() => api.tabs.update(holderId, { url: held.url }));
+    }
     return "back";
   }
   if (where === "run-window") return "stranded";
