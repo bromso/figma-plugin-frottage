@@ -7,6 +7,7 @@ import {
   type PlanColor,
   type PlanOp,
   type PlanRun,
+  type PlanSpacing,
   type PlanTextStyle,
   type PlanTokens,
 } from "@repo/figma-mapper";
@@ -25,10 +26,12 @@ const ink: PlanColor = {
   name: "color/primary",
   rgba: { ...INK, a: 1 },
   cssVar: "--color-primary",
+  uses: 3,
 };
 const body: PlanTextStyle = {
   key: "body-key",
   name: "body/1",
+  uses: 3,
   fontName: inter,
   fontSize: 16,
   lineHeight: 24,
@@ -347,7 +350,7 @@ describe("repeat imports", () => {
     const first = { ...ink, key: "#111111", name: "color/1", rgba: { ...INK, a: 1 } };
     const { cssVar: _, ...numbered } = first;
     await runImport(f, tokens({ colors: [numbered] }));
-    const blue = { key: "#0000ff", name: "color/1", rgba: { r: 0, g: 0, b: 1, a: 1 } };
+    const blue = { key: "#0000ff", name: "color/1", rgba: { r: 0, g: 0, b: 1, a: 1 }, uses: 3 };
     await runImport(f, tokens({ colors: [blue] }));
     expect(variablesIn(f).map((v) => v.name)).toEqual(["color/1", "color/2"]);
     const big = { ...body, key: "big", name: "body/1", fontSize: 99 };
@@ -620,6 +623,7 @@ describe("a user's own tokens", () => {
     const f = fakeFigma();
     f.tokens.seedTextStyle("body/1", { ...userText, fontSize: 99 });
     const collection = f.tokens.seedCollection("example.com");
+    collection.setSharedPluginData("frottage", "collection", "example.com");
     f.tokens.seedVariable("color/primary", collection, { r: 1, g: 0, b: 0, a: 1 });
     const end = await runImport(f, tokens(), options({ useLocalStyles: false }));
     expect(end.tokenFailures).toBe(0);
@@ -1062,5 +1066,194 @@ describe("from a capture", () => {
     expect(f.tokens.collections.size).toBe(1);
     expect([...f.tokens.collections.values()][0].name).toBe("www.example.com");
     expect((variablesIn(f)[0] as any).codeSyntax.WEB).toBe("var(--color-brand)");
+  });
+});
+
+// ---------- Spacing
+
+const gap: PlanSpacing = { key: "--space-4=10", name: "spacing/4", cssVar: "--space-4", px: 10 };
+type Box = [number, number, number, number];
+const auto = (keys: object, over: object = {}) => ({
+  mode: "HORIZONTAL" as const,
+  wrap: false,
+  itemSpacing: 10,
+  counterSpacing: null,
+  padding: [10, 0, 10, 0] as [number, number, number, number],
+  primaryAlign: "MIN" as const,
+  counterAlign: "MIN" as const,
+  sizingH: "FIXED" as const,
+  sizingV: "FIXED" as const,
+  spacingKeys: keys,
+  ...over,
+});
+const box = (id: string, parent: string, [x, y, w, h]: Box, childLayout: object = flow()): PlanOp =>
+  ({
+    op: "placeholder",
+    id,
+    parent,
+    name: id,
+    x,
+    y,
+    w,
+    h,
+    opacity: 1,
+    label: id,
+    childLayout,
+  }) as PlanOp;
+const flow = (over: object = {}) => ({
+  positioning: "AUTO",
+  sizingH: "FIXED",
+  sizingV: "FIXED",
+  ...over,
+});
+/** A row that verifies: two 50 px boxes 10 px apart, 10 px above and below. */
+const rowOps = (keys: object, over: object = {}): PlanOp[] => [
+  frame("a", null, { layout: auto(keys, over), h: 60, w: 200, childCount: 2 }),
+  box("b1", "a", [0, 10, 50, 40]),
+  box("b2", "a", [60, 10, 50, 40]),
+];
+const bound = (f: Fake, name = "Import") => f.frame(name).boundVariables ?? {};
+const spacingTokens = (spacing: PlanSpacing[] = [gap]) =>
+  tokens({ textStyles: [], colors: [], spacing });
+const idsOf = (b: object) => Object.fromEntries(Object.entries(b).map(([k, v]: any) => [k, v.id]));
+
+describe("spacing variables", () => {
+  test("a gap and a side of padding bind to one Frottage number variable", async () => {
+    const f = fakeFigma();
+    const keys = { itemSpacing: gap.key, padding: [gap.key, undefined, undefined, undefined] };
+    const end = await runImport(f, spacingTokens(), options(), rowOps(keys));
+    const [variable] = variablesIn(f) as [any];
+    expect(variable.name).toBe("spacing/4");
+    expect(variable.resolvedType).toBe("FLOAT");
+    expect(variable.codeSyntax.WEB).toBe("var(--space-4)");
+    expect(variable.getSharedPluginData("frottage", "valueKey")).toBe(gap.key);
+    expect(Object.values(variable.valuesByMode)).toEqual([10]);
+    expect(idsOf(bound(f))).toEqual({ itemSpacing: variable.id, paddingTop: variable.id });
+    // The plain values are set as well.
+    expect(f.frame("Import").itemSpacing).toBe(10);
+    expect(f.frame("Import").paddingTop).toBe(10);
+    expect(end.variablesCreated).toBe(1);
+    expect(end.tokenFailures).toBe(0);
+    expect(end.fallbackFrames).toBe(0);
+  });
+
+  test("gaps and padding bind", async () => {
+    const f = fakeFigma();
+    const wrapKeys = {
+      itemSpacing: gap.key,
+      counterSpacing: gap.key,
+      padding: [undefined, gap.key, gap.key, gap.key],
+    };
+    const wrapped = frame("a", null, {
+      layout: auto(wrapKeys, { wrap: true, counterSpacing: 10, padding: [0, 10, 10, 10] }),
+      w: 130,
+      h: 110,
+      childCount: 3,
+    });
+    await runImport(f, spacingTokens(), options(), [
+      wrapped,
+      box("b1", "a", [10, 0, 50, 40]),
+      box("b2", "a", [70, 0, 50, 40]),
+      box("b3", "a", [10, 50, 50, 40]),
+    ]);
+    const id = (variablesIn(f)[0] as any).id;
+    expect(idsOf(bound(f))).toEqual({
+      itemSpacing: id,
+      counterAxisSpacing: id,
+      paddingRight: id,
+      paddingBottom: id,
+      paddingLeft: id,
+    });
+  });
+
+  test("grid gaps bind", async () => {
+    const f = fakeFigma();
+    const grid = {
+      mode: "GRID" as const,
+      rows: [
+        { type: "FIXED" as const, value: 40 },
+        { type: "FIXED" as const, value: 40 },
+      ],
+      columns: [
+        { type: "FLEX" as const, value: 1 },
+        { type: "HUG" as const, value: 50 },
+      ],
+      rowGap: 10,
+      columnGap: 10,
+      padding: [0, 0, 0, 0] as [number, number, number, number],
+      spacingKeys: { rowGap: gap.key, columnGap: gap.key },
+    };
+    const cell = (row: number, column: number, over: object = {}) =>
+      flow({ cell: { row, column }, ...over });
+    const end = await runImport(f, spacingTokens(), options(), [
+      frame("a", null, { layout: grid, w: 200, h: 90, childCount: 2 }),
+      box("late", "a", [150, 50, 50, 40], cell(1, 1)),
+      box("early", "a", [0, 0, 140, 40], cell(0, 0, { sizingH: "FILL" })),
+    ]);
+    const id = (variablesIn(f)[0] as any).id;
+    expect(end.fallbackFrames).toBe(0);
+    expect(idsOf(bound(f))).toEqual({ gridRowGap: id, gridColumnGap: id });
+  });
+
+  test("a refused binding keeps the plain value and counts once for the frame", async () => {
+    const f = fakeFigma({ failTokens: ["node.setBoundVariable"] });
+    const keys = { itemSpacing: gap.key, padding: [gap.key, gap.key, gap.key, gap.key] };
+    const end = await runImport(f, spacingTokens(), options(), rowOps(keys));
+    expect(f.frame("Import").itemSpacing).toBe(10);
+    expect(f.frame("Import").layoutMode).toBe("HORIZONTAL");
+    expect(bound(f)).toEqual({});
+    expect(end.tokenFailures).toBe(1);
+    expect(end.failedOps).toBe(0);
+  });
+
+  test("a frame that falls back to absolute lets go of its bindings", async () => {
+    const f = fakeFigma();
+    // The second box is not where the layout would put it, so verification fails.
+    const ops = rowOps({ itemSpacing: gap.key });
+    ops[2] = box("b2", "a", [300, 10, 50, 40]);
+    const end = await runImport(f, spacingTokens(), options(), ops);
+    expect(end.fallbackFrames).toBe(1);
+    expect(f.frame("Import").layoutMode).toBe("NONE");
+    expect(bound(f)).toEqual({});
+  });
+
+  test("a variable that cannot be made leaves plain values and counts", async () => {
+    const f = fakeFigma({ failTokens: ["createVariable"] });
+    const end = await runImport(f, spacingTokens(), options(), rowOps({ itemSpacing: gap.key }));
+    expect(f.frame("Import").itemSpacing).toBe(10);
+    expect(end.tokenFailures).toBeGreaterThan(0);
+  });
+
+  test("a second import reuses the variable by its key", async () => {
+    const f = fakeFigma();
+    const ops = rowOps({ itemSpacing: gap.key });
+    await runImport(f, spacingTokens(), options(), ops);
+    const end = await runImport(f, spacingTokens(), options(), ops);
+    expect(variablesIn(f)).toHaveLength(1);
+    expect(end.variablesReused).toBe(1);
+    expect(end.variablesCreated).toBe(0);
+  });
+
+  test("a user's number variable with the same value is neither bound nor written", async () => {
+    const f = fakeFigma();
+    const mine = f.tokens.seedCollection("Mine");
+    const theirs = f.tokens.seedVariable("space", mine, 10, "FLOAT");
+    await runImport(f, spacingTokens(), options(), rowOps({ itemSpacing: gap.key }));
+    expect(variablesIn(f)).toHaveLength(2);
+    expect(bound(f).itemSpacing.id).not.toBe(theirs.id);
+    expect(f.tokens.writes.filter((w) => w.startsWith("space:"))).toEqual([]);
+  });
+
+  test("the options switch for styles and variables turns it off", async () => {
+    const f = fakeFigma();
+    await runImport(
+      f,
+      spacingTokens(),
+      options({ tokens: false }),
+      rowOps({ itemSpacing: gap.key })
+    );
+    expect(variablesIn(f)).toHaveLength(0);
+    expect(bound(f)).toEqual({});
+    expect(f.frame("Import").itemSpacing).toBe(10);
   });
 });

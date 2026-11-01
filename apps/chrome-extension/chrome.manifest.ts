@@ -6,7 +6,7 @@ export default {
   name: "Frottage",
   version: pkg.version,
   description: "Capture the rendered page into a .frottage file for the Frottage Figma plugin.",
-  minimum_chrome_version: "116",
+  minimum_chrome_version: "127",
   // activeTab + scripting inject the capture script only into the tab the user clicked;
   // offscreen builds the Blob URL and downloads saves the file. No required host permissions.
   permissions: ["activeTab", "scripting", "downloads", "offscreen"],

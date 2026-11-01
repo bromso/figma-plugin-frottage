@@ -35,10 +35,13 @@ export const channelImportPort: ImportPort = {
   getPrefs: (key) => UI_CHANNEL.request(PLUGIN, "getPrefs", [key]),
   setPrefs: (key, value) => UI_CHANNEL.request(PLUGIN, "setPrefs", [key, value]),
   listFonts: () => UI_CHANNEL.request(PLUGIN, "listFonts", []),
+  beginSet: () => UI_CHANNEL.request(PLUGIN, "importBeginSet", []),
   begin: (meta) => UI_CHANNEL.request(PLUGIN, "importBegin", [meta]),
   tokens: (tokens, options) => UI_CHANNEL.request(PLUGIN, "importTokens", [tokens, options]),
+  importModes: (tokens, options) => UI_CHANNEL.request(PLUGIN, "importModes", [tokens, options]),
   image: (hash, bytes) => UI_CHANNEL.request(PLUGIN, "importImage", [hash, bytes]),
   batch: (ops) => UI_CHANNEL.request(PLUGIN, "importBatch", [ops]),
   end: () => UI_CHANNEL.request(PLUGIN, "importEnd", []),
+  endSet: () => UI_CHANNEL.request(PLUGIN, "importEndSet", []),
   cancel: () => UI_CHANNEL.request(PLUGIN, "importCancel", []),
 };

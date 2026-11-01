@@ -9,10 +9,34 @@ import {
   type Reply,
   type SwMessage,
 } from "./messages";
+import { pageOrigin } from "./page";
+import { type HoldApi, holdTab, releaseTab } from "./tab-hold";
+import { resizeWindow, type WindowsApi } from "./viewport-run";
 
 const OFFSCREEN_URL = "offscreen.html";
+const RUN_PAGE = "run.html";
 const DOWNLOAD_POLL_MS = 250;
 const DOWNLOAD_MAX_POLLS = 240;
+
+const WINDOWS: WindowsApi = {
+  get: (windowId) => chrome.windows.get(windowId),
+  update: (windowId, info) => chrome.windows.update(windowId, info),
+};
+
+const HOLD: HoldApi = {
+  tabs: {
+    get: (tabId) => chrome.tabs.get(tabId),
+    create: (info) => chrome.tabs.create(info),
+    group: (info) => chrome.tabs.group(info as chrome.tabs.GroupOptions),
+    move: (tabId, info) => chrome.tabs.move(tabId, info),
+    update: (tabId, info) => chrome.tabs.update(tabId, info),
+    remove: (tabId) => chrome.tabs.remove(tabId),
+  },
+  windows: {
+    create: async (info) => (await chrome.windows.create(info)) ?? {},
+    get: (windowId) => chrome.windows.get(windowId),
+  },
+};
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -64,25 +88,35 @@ async function runIsLive(runId: string): Promise<boolean> {
 const hasImageAccess = (): Promise<boolean> =>
   chrome.permissions.contains({ origins: ["<all_urls>"] }).catch(() => false);
 
-async function startCapture(tabId: number, collapseWrappers: boolean): Promise<Reply> {
+async function startCapture(
+  tabId: number,
+  collapseWrappers: boolean,
+  versionLabel: string
+): Promise<Reply> {
   const runId = crypto.randomUUID();
-  const started = await toOffscreen({ target: "offscreen", type: "run-start", runId });
+  const started = await toOffscreen({
+    target: "offscreen",
+    type: "run-start",
+    runId,
+  });
   if (!started?.ok) return started ?? { ok: false, error: "The capture could not start" };
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
       // The run's settings travel with its id; the worker keeps nothing between messages.
-      func: (id: string, collapse: boolean, imageAccess: boolean) => {
+      func: (id: string, collapse: boolean, imageAccess: boolean, label: string) => {
         const win = window as unknown as {
           __frottageRunId?: string;
           __frottageCollapse?: boolean;
           __frottageImageAccess?: boolean;
+          __frottageVersionLabel?: string;
         };
         win.__frottageRunId = id;
         win.__frottageCollapse = collapse;
         win.__frottageImageAccess = imageAccess;
+        win.__frottageVersionLabel = label;
       },
-      args: [runId, collapseWrappers, await hasImageAccess()],
+      args: [runId, collapseWrappers, await hasImageAccess(), versionLabel],
     });
     await chrome.scripting.executeScript({ target: { tabId }, files: ["capture-entry.js"] });
     return { ok: true };
@@ -114,18 +148,90 @@ async function saveFile(url: string, filename: string): Promise<Reply> {
   }
 }
 
+/** Runs one stateless window or tab call, turning a throw (a closed window) into a reply. */
+function answer(call: () => Promise<Reply>, sendResponse: (reply: Reply) => void): true {
+  call().then(sendResponse, (e) => sendResponse({ ok: false, error: errorText(e) }));
+  return true;
+}
+
 // Listeners are registered at the top level so they exist on every worker start.
 chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse) => {
   if (message?.target !== "sw") return;
   if (message.type === "start") {
-    startCapture(message.tabId, message.collapseWrappers === true).then(sendResponse, (e) =>
-      sendResponse({ ok: false, error: errorText(e) })
+    startCapture(message.tabId, message.collapseWrappers === true, message.versionLabel ?? "").then(
+      sendResponse,
+      (e) => sendResponse({ ok: false, error: errorText(e) })
     );
     return true;
   }
   if (message.type === "download") {
     saveFile(message.url, message.filename).then(sendResponse);
     return true;
+  }
+  if (message.type === "viewport-start") {
+    return answer(
+      async () =>
+        (await toOffscreen({ ...message, target: "offscreen" })) ?? {
+          ok: false,
+          error: "The capture could not start",
+        },
+      sendResponse
+    );
+  }
+  if (message.type === "tab-origin") {
+    return answer(async () => {
+      const tab = await chrome.tabs.get(message.tabId);
+      return { ok: true, origin: pageOrigin(tab.url) };
+    }, sendResponse);
+  }
+  if (message.type === "page-width") {
+    return answer(async () => {
+      const [frame] = await chrome.scripting.executeScript({
+        target: { tabId: message.tabId },
+        func: () => window.innerWidth,
+      });
+      return { ok: true, width: frame?.result };
+    }, sendResponse);
+  }
+  if (message.type === "hold-tab") {
+    return answer(
+      async () => ({
+        ok: true,
+        held: await holdTab(HOLD, message.tabId, chrome.runtime.getURL(RUN_PAGE)),
+      }),
+      sendResponse
+    );
+  }
+  if (message.type === "release-tab") {
+    return answer(async () => {
+      return { ok: true, released: await releaseTab(HOLD, message.held) };
+    }, sendResponse);
+  }
+  if (message.type === "window-open") {
+    return answer(
+      () =>
+        chrome.windows.get(message.runWindowId).then(
+          () => ({ ok: true, open: true }),
+          () => ({ ok: true, open: false })
+        ),
+      sendResponse
+    );
+  }
+  if (message.type === "resize-window") {
+    return answer(
+      async () => ({
+        ok: true,
+        width: await resizeWindow(WINDOWS, message.runWindowId, message.width),
+      }),
+      sendResponse
+    );
+  }
+  if (message.type === "run-finished") {
+    chrome.action.setBadgeText({ text: message.failed ? "!" : "✓" }).catch(() => {});
+    chrome.action
+      .openPopup(message.windowId === undefined ? undefined : { windowId: message.windowId })
+      .catch(() => {});
+    return;
   }
   if (message.type === "close-offscreen") {
     chrome.offscreen.closeDocument().catch(() => {});

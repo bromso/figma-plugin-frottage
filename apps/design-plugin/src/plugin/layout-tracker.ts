@@ -10,6 +10,17 @@ import { type ExpectedChild, type ExpectedLayout, TOL, verifyFrame } from "./ver
 type FrameOp = Extract<PlanOp, { op: "frame" }>;
 type Sizing = PlanChildLayout["sizingH"];
 
+const LENGTH_FIELDS = new Set([
+  "itemSpacing",
+  "counterAxisSpacing",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "gridRowGap",
+  "gridColumnGap",
+]);
+
 /** The kinds of node an op makes. */
 export type Built = FrameNode | ComponentNode | InstanceNode | TextNode | RectangleNode;
 
@@ -202,6 +213,12 @@ export function createLayoutTracker() {
     attempt(() => {
       frame.layoutMode = "NONE";
     });
+    // Spacing bound to a layout the frame no longer has would only mislead.
+    for (const field of Object.keys(frame.boundVariables ?? {})) {
+      if (LENGTH_FIELDS.has(field)) {
+        attempt(() => frame.setBoundVariable(field as VariableBindableNodeField, null));
+      }
+    }
     attempt(() => {
       frame.resize(clampSize(op.w), clampSize(op.h));
       if (parent && parent.frame.layoutMode !== "NONE") {

@@ -1,4 +1,4 @@
-// Extension build: popup and offscreen pages, service worker (ESM), capture script (IIFE)
+// Extension build: popup, run and offscreen pages, service worker (ESM), capture script (IIFE)
 // and manifest.
 //   bun build.ts              one production-or-dev build (NODE_ENV decides)
 //   bun build.ts --watch      rebuild on changes under the source dirs
@@ -41,11 +41,15 @@ function failOnErrors(name: string, result: Bun.BuildOutput) {
   if (!result.success) throw new Error(`${name} build failed`);
 }
 
-// Popup and offscreen pages. Not `compile`d: an extension page may load its own script
+// Popup, run and offscreen pages. Not `compile`d: an extension page may load its own script
 // files, and MV3's default CSP forbids inline scripts, so the output keeps them external.
 async function buildPages() {
   const result = await Bun.build({
-    entrypoints: [path.join(src, "popup/popup.html"), path.join(src, "offscreen.html")],
+    entrypoints: [
+      path.join(src, "popup/popup.html"),
+      path.join(src, "run/run.html"),
+      path.join(src, "offscreen.html"),
+    ],
     target: "browser",
     outdir,
     naming: { entry: "[name].[ext]", chunk: "[name]-[hash].[ext]", asset: "[name]-[hash].[ext]" },

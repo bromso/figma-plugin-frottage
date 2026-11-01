@@ -14,7 +14,7 @@ import {
   visualOrder,
 } from "./layout";
 import { layerName } from "./names";
-import { DEFAULT_IMPORT_OPTIONS, type ImportOptions } from "./options";
+import { DEFAULT_IMPORT_OPTIONS, type PlanOptions } from "./options";
 import type {
   FontRef,
   ImportReport,
@@ -400,7 +400,7 @@ function tagsOf(root: CaptureNode): Map<string, string> {
 export function mapCapture(
   capture: Capture,
   available: FontRef[],
-  options: ImportOptions = DEFAULT_IMPORT_OPTIONS,
+  options: PlanOptions = DEFAULT_IMPORT_OPTIONS,
   /** Missing family to the available family the user chose for it. */
   fontOverrides: Readonly<Record<string, string>> = {}
 ): LayerPlan {
@@ -782,6 +782,16 @@ export function mapCapture(
   report.nodes = ops.length;
   report.substitutedFonts = [...substituted].map(([from, to]) => ({ from, to }));
   const tokens = extractTokens(capture, ops, options);
+  if (tokens.spacingOver) {
+    report.warnings.push(
+      `Only 200 spacing values became variables; ${tokens.spacingOver} more stayed ${tokens.spacingOver === 1 ? "a plain value" : "plain values"}.`
+    );
+  }
+  if (tokens.spacingRem) {
+    report.warnings.push(
+      "Spacing variables in rem assume a 16 px root font size; values on another root stay plain."
+    );
+  }
   if (ignoredFilters.size > 0) {
     const names = [...ignoredFilters].map(([name, n]) => `${name} (${n})`).join(", ");
     report.warnings.push(`These filters have no Figma equivalent and were left out: ${names}.`);

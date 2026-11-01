@@ -404,6 +404,9 @@ test("an import with no root op returns an empty rootId and counts a failure", a
     variablesCreated: 0,
     variablesReused: 0,
     tokenFailures: 0,
+    modes: 0,
+    modesDropped: 0,
+    droppedVersions: [],
   });
 });
 

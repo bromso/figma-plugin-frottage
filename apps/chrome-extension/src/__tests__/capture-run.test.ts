@@ -1,23 +1,23 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import type { Capture } from "@repo/capture-schema";
 import { CaptureRun, type RunDeps, type RunStatus } from "../capture-run";
 import { assetChunks, splitIntoChunks } from "../chunks";
 
-const CAPTURE = { source: { url: "https://example.com/p" }, assets: [] };
+const CAPTURE = {
+  source: { url: "https://example.com/p", viewport: { w: 1440, h: 900 } },
+  assets: [],
+};
 
 function setup(over: Partial<RunDeps> = {}) {
   const statuses: RunStatus[] = [];
-  const downloads: Array<{ url: string; filename: string }> = [];
-  const revoked: string[] = [];
+  const kept: Array<{ capture: Capture; assets: Map<string, Uint8Array> }> = [];
   const timers = new Map<number, { fn: () => void; ms: number }>();
   let nextTimer = 1;
   const deps: RunDeps = {
     parse: (text) => JSON.parse(text),
-    pack: () => new Uint8Array([1, 2, 3]),
-    makeBlobUrl: () => "blob:test/1",
-    revokeUrl: (u) => revoked.push(u),
-    download: async (req) => {
-      downloads.push(req);
-      return undefined;
+    keep: (capture, assets) => {
+      kept.push({ capture, assets });
+      return true;
     },
     report: (s) => statuses.push(s),
     setTimer: (fn, ms) => {
@@ -25,7 +25,6 @@ function setup(over: Partial<RunDeps> = {}) {
       return nextTimer++;
     },
     clearTimer: (h) => timers.delete(h as number),
-    now: () => new Date(2026, 9, 31, 12),
     timeoutMs: 60_000,
     ...over,
   };
@@ -35,7 +34,7 @@ function setup(over: Partial<RunDeps> = {}) {
     timers.delete(id);
     t.fn();
   };
-  return { run: new CaptureRun(deps), statuses, downloads, revoked, timers, fire };
+  return { run: new CaptureRun(deps), statuses, kept, timers, fire };
 }
 
 const last = (s: RunStatus[]) => s[s.length - 1];
@@ -62,22 +61,33 @@ describe("CaptureRun", () => {
     t.run.start("r1");
   });
 
-  test("happy path: chunks, end, pack, download with the page's hostname", async () => {
+  test("a finished capture is handed to keep, then reported saved", async () => {
     sendCapture(t.run, "r1");
     t.run.onEnd("r1");
     await tick();
-    expect(t.downloads).toEqual([
-      { url: "blob:test/1", filename: "example.com-2026-10-31.frottage" },
-    ]);
+    expect(t.kept).toHaveLength(1);
+    expect(t.kept[0]?.capture.source.url).toBe("https://example.com/p");
     expect(last(t.statuses)).toEqual({
       state: "saved",
-      filename: "example.com-2026-10-31.frottage",
       nodes: 0,
       nodeLimit: false,
       blockedImages: 0,
+      width: 1440,
     });
-    expect(t.revoked).toEqual(["blob:test/1"]);
     expect(t.timers.size).toBe(0);
+  });
+
+  test("keep returning false fails with: This size doesn't fit in the file.", async () => {
+    const f = setup({ keep: () => false });
+    f.run.start("r1");
+    sendCapture(f.run, "r1");
+    f.run.onEnd("r1");
+    await tick();
+    expect(last(f.statuses)).toEqual({
+      state: "error",
+      message: "This size doesn't fit in the file.",
+    });
+    expect(f.run.busy).toBe(false);
   });
 
   test("the saved status carries the count from the images-blocked warning", async () => {
@@ -195,7 +205,6 @@ describe("CaptureRun", () => {
     await tick();
     expect(t.run.take()).toMatchObject({
       state: "saved",
-      filename: "example.com-2026-10-31.frottage",
     });
     expect(t.run.take()).toEqual({ state: "idle" });
   });
@@ -210,18 +219,6 @@ describe("CaptureRun", () => {
   test("a busy status is never cleared by take", () => {
     expect(t.run.take()).toEqual({ state: "capturing" });
     expect(t.run.take()).toEqual({ state: "capturing" });
-  });
-
-  test("the saved name is the basename Chrome reports", async () => {
-    const f = setup({ download: async () => "example.com-2026-10-31 (1).frottage" });
-    f.run.start("r3");
-    sendCapture(f.run, "r3");
-    f.run.onEnd("r3");
-    await tick();
-    expect(last(f.statuses)).toMatchObject({
-      state: "saved",
-      filename: "example.com-2026-10-31 (1).frottage",
-    });
   });
 
   test("a page error is reported", () => {
@@ -246,31 +243,23 @@ describe("CaptureRun", () => {
     t.run.onEnd("r1");
     await tick();
     expect(last(t.statuses)).toMatchObject({ state: "error" });
-    expect(t.downloads).toEqual([]);
+    expect(t.kept).toEqual([]);
   });
 
   test("capture JSON over the import limit fails with a plain message and packs nothing", async () => {
-    let packed = 0;
-    const big = setup({
-      maxCaptureBytes: 100,
-      pack: () => {
-        packed++;
-        return new Uint8Array();
-      },
-    });
+    const big = setup({ maxCaptureBytes: 100 });
     big.run.start("r");
     sendCapture(big.run, "r", JSON.stringify({ ...CAPTURE, pad: "x".repeat(200) }));
     big.run.onEnd("r");
     await tick();
-    expect(packed).toBe(0);
-    expect(big.downloads).toHaveLength(0);
+    expect(big.kept).toHaveLength(0);
     expect(last(big.statuses)).toEqual({ state: "error", message: TOO_MUCH });
   });
 
   test("the limit counts bytes, not characters", async () => {
     const text = JSON.stringify({ ...CAPTURE, pad: "中".repeat(40) });
-    expect(text.length).toBeLessThan(120);
-    const big = setup({ maxCaptureBytes: 120 });
+    expect(text.length).toBeLessThan(150);
+    const big = setup({ maxCaptureBytes: 150 });
     big.run.start("r");
     sendCapture(big.run, "r", text);
     big.run.onEnd("r");
@@ -294,24 +283,7 @@ describe("CaptureRun", () => {
     big.run.onEnd("r");
     await tick();
     expect(last(big.statuses)).toEqual({ state: "error", message: TOO_MUCH });
-    expect(big.downloads).toHaveLength(0);
-  });
-
-  test("a failed download reports an error and revokes the URL", async () => {
-    const f = setup({
-      download: async () => {
-        throw new Error("disk full");
-      },
-    });
-    f.run.start("r2");
-    sendCapture(f.run, "r2");
-    f.run.onEnd("r2");
-    await tick();
-    expect(last(f.statuses)).toEqual({
-      state: "error",
-      message: expect.stringContaining("disk full"),
-    });
-    expect(f.revoked).toEqual(["blob:test/1"]);
+    expect(big.kept).toHaveLength(0);
   });
 
   test("messages from another run are ignored", () => {
@@ -331,12 +303,12 @@ describe("CaptureRun", () => {
       }
     };
 
-    test("asset bytes are decoded and handed to pack by hash", async () => {
+    test("asset bytes are decoded and handed to keep by hash", async () => {
       const packed: Array<Map<string, Uint8Array>> = [];
       const f = setup({
-        pack: (_c, assets) => {
+        keep: (_c, assets) => {
           packed.push(assets);
-          return new Uint8Array([1]);
+          return true;
         },
       });
       f.run.start("r1");
@@ -350,12 +322,12 @@ describe("CaptureRun", () => {
       expect(packed[0]?.get(H1)).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]));
     });
 
-    test("bytes the capture does not list are not packed", async () => {
+    test("bytes the capture does not list are not kept", async () => {
       const packed: Array<Map<string, Uint8Array>> = [];
       const f = setup({
-        pack: (_c, assets) => {
+        keep: (_c, assets) => {
           packed.push(assets);
-          return new Uint8Array([1]);
+          return true;
         },
       });
       f.run.start("r1");
@@ -455,5 +427,17 @@ describe("CaptureRun", () => {
 
   test("a second start while running is refused", () => {
     expect(() => t.run.start("r2")).toThrow(/already/i);
+  });
+});
+
+describe("a labelled capture", () => {
+  test("the saved status carries the page's width and the file's label", async () => {
+    const t = setup();
+    t.run.start("r1");
+    const labelled = { ...CAPTURE, version: { label: "1440 Dark", kind: "viewport" } };
+    sendCapture(t.run, "r1", JSON.stringify(labelled));
+    t.run.onEnd("r1");
+    await tick();
+    expect(last(t.statuses)).toMatchObject({ state: "saved", width: 1440, label: "1440 Dark" });
   });
 });

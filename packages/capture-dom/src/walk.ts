@@ -1407,25 +1407,41 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   // ---------- Tokens
 
+  // A rule only says that a name exists: which rule wins, and in which theme, is the browser's.
   const cssCustomProperties: Record<string, string> = {};
   try {
-    for (const sheet of Array.from(doc.styleSheets)) {
-      let rules: CSSRuleList;
+    const names = new Set<string>();
+    const appliesToRoot = (selector: string) => {
       try {
-        rules = sheet.cssRules;
+        return root.matches(selector);
       } catch {
-        continue; // cross-origin stylesheet
+        return false; // a selector `matches` can't take
       }
+    };
+    const collect = (rules: CSSRuleList) => {
       for (const rule of Array.from(rules)) {
-        if (!(rule instanceof win.CSSStyleRule)) continue;
-        if (!/(^|,)\s*(:root|html)\s*(,|$)/.test(rule.selectorText)) continue;
-        for (const name of Array.from(rule.style)) {
-          if (!name.startsWith("--")) continue;
-          const value = rule.style.getPropertyValue(name).trim();
-          if (isTokenValue(value, (v) => win.CSS.supports("color", v))) {
-            cssCustomProperties[name] = value;
+        if (rule instanceof win.CSSStyleRule) {
+          const found = Array.from(rule.style).filter((name) => name.startsWith("--"));
+          if (found.length > 0 && appliesToRoot(rule.selectorText)) {
+            for (const name of found) names.add(name);
           }
         }
+        const inner = (rule as { cssRules?: CSSRuleList }).cssRules;
+        if (inner) collect(inner);
+      }
+    };
+    for (const sheet of Array.from(doc.styleSheets)) {
+      try {
+        collect(sheet.cssRules);
+      } catch {
+        // cross-origin stylesheet
+      }
+    }
+    const computed = win.getComputedStyle(root);
+    for (const name of names) {
+      const value = computed.getPropertyValue(name).trim();
+      if (isTokenValue(value, (v) => win.CSS.supports("color", v))) {
+        cssCustomProperties[name] = value;
       }
     }
   } catch {

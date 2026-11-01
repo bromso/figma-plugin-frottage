@@ -1699,15 +1699,69 @@ test("the links fixture still parses, with its pseudo-elements", async ({ page }
 
 // ---------- Custom properties
 
-test("only colours, var() chains and lengths are kept from :root", async ({ page }) => {
+test("only colours and lengths are kept from :root, with var() chains resolved", async ({
+  page,
+}) => {
   const c = await capture(page, "secrets.html");
   expect(c.tokens.cssCustomProperties).toEqual({
     "--brand": "#336699",
-    "--brand-alias": "var(--brand)",
-    "--brand-fallback": "var(--missing, #123456)",
+    "--brand-alias": "#336699",
+    "--brand-fallback": "#123456",
     "--brand-named": "rebeccapurple",
     "--gap": "16px",
   });
+});
+
+test("a custom property takes the value that applies, from whichever rule sets it", async ({
+  page,
+}) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/secrets.html");
+  await page.addStyleTag({
+    content: `
+      @media (prefers-color-scheme: dark) {
+        :root { --brand: #101010; --dark-only: #202020; --dark-secret: SECRET-VAR-DARK; }
+      }
+      @media print { :root { --print-only: #303030; } }
+      @layer theme { :root { --layered: #404040; } }
+      @supports (display: grid) { html { --supported: #505050; } }
+      html.dark { --by-class: #606060; }
+      :root[data-theme="dark"] { --by-attribute: #707070; }
+      .not-the-root { --elsewhere: #808080; }
+    `,
+  });
+  await page.evaluate(() => {
+    document.documentElement.classList.add("dark");
+    document.documentElement.dataset.theme = "dark";
+  });
+  await page.addScriptTag({ content: bundle });
+  const { cssCustomProperties: props } = (await runCapture(page, "2026-01-01T00:00:00.000Z"))
+    .tokens;
+  expect(props).toMatchObject({
+    "--brand": "#101010",
+    "--brand-alias": "#101010",
+    "--dark-only": "#202020",
+    "--layered": "#404040",
+    "--supported": "#505050",
+    "--by-class": "#606060",
+    "--by-attribute": "#707070",
+  });
+  expect(props).not.toHaveProperty("--dark-secret");
+  expect(props).not.toHaveProperty("--print-only");
+  expect(props).not.toHaveProperty("--elsewhere");
+});
+
+test("a media rule that doesn't apply leaves the value that does", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/secrets.html");
+  await page.addStyleTag({
+    content: "@media (prefers-color-scheme: dark) { :root { --brand: #101010; } }",
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "2026-01-01T00:00:00.000Z");
+  expect(c.tokens.cssCustomProperties["--brand"]).toBe("#336699");
 });
 
 test("zIndex is stored for a positioned box and left out for auto", async ({ page }) => {

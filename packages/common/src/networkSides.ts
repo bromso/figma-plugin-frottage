@@ -1,4 +1,10 @@
-import type { FontRef, ImportOptions, PlanOp, PlanTokens } from "@repo/figma-mapper";
+import type {
+  FontRef,
+  ImportOptions,
+  PlanOp,
+  PlanTokens,
+  PlanVersionTokens,
+} from "@repo/figma-mapper";
 import { Networker } from "monorepo-networker";
 
 /** Anything `figma.clientStorage` keeps. Stored values are untrusted when read back. */
@@ -16,8 +22,15 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
   listFonts(): FontRef[];
   getPrefs(key: string): StoredValue;
   setPrefs(key: string, value: StoredValue): void;
-  importBegin(meta: { name: string; fonts: FontRef[]; totalOps: number }): void;
+  importBeginSet(): void;
+  importBegin(meta: {
+    name: string;
+    fonts: FontRef[];
+    totalOps: number;
+    version?: { index: number; label: string };
+  }): void;
   importTokens(tokens: PlanTokens, options: ImportOptions): void;
+  importModes(tokens: PlanVersionTokens, options: ImportOptions): { droppedVersions: number[] };
   importImage(hash: string, bytes: Uint8Array): { ok: boolean; error?: string };
   importBatch(ops: PlanOp[]): void;
   importCancel(): void;
@@ -44,5 +57,20 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     variablesCreated: number;
     variablesReused: number;
     tokenFailures: number;
+    modes: number;
+    modesDropped: number;
+    droppedVersions: number[];
+  };
+  importEndSet(): {
+    rootIds: string[];
+    layoutFailures: number;
+    stylesCreated: number;
+    stylesReused: number;
+    variablesCreated: number;
+    variablesReused: number;
+    tokenFailures: number;
+    modes: number;
+    modesDropped: number;
+    droppedVersions: number[];
   };
 }>();

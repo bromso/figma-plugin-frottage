@@ -246,6 +246,13 @@ export const captureSchema = z.object({
     devicePixelRatio: z.number(),
     colorScheme: z.enum(["light", "dark"]),
   }),
+  /** Which version of the page this file is: a viewport, a theme or a language. Text the user typed. */
+  version: z
+    .object({
+      label: z.string().min(1).max(40),
+      kind: z.enum(["viewport", "theme", "language"]),
+    })
+    .optional(),
   tokens: z.object({ cssCustomProperties: z.record(z.string(), z.string()) }),
   fonts: z.array(
     z.object({

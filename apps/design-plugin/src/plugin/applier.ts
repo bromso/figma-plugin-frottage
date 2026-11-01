@@ -2,6 +2,7 @@ import type {
   FontRef,
   ImportOptions,
   PlanEffect,
+  PlanLayout,
   PlanOp,
   PlanOverride,
   PlanPaint,
@@ -10,6 +11,7 @@ import type {
   PlanStroke,
   PlanTokens,
   PlanTrack,
+  PlanVersionTokens,
 } from "@repo/figma-mapper";
 import { type ComponentSet, childAt, createComponentSet } from "./components";
 import {
@@ -21,14 +23,26 @@ import {
   turnAbout,
   widenToLines,
 } from "./layout-tracker";
-import { createTokenSet, NO_TOKENS, type TokenCounts, type TokenSet } from "./tokens";
+import {
+  createTokenSet,
+  NO_TOKENS,
+  type TokenCounts,
+  type TokenRuntime,
+  type TokenSet,
+} from "./tokens";
 
 /**
  * Turns plan ops into Figma layers. Runs in the plugin sandbox. Only types come
  * from @repo/figma-mapper, so plugin.js never bundles Zod or fflate.
  */
 
-export type ImportMeta = { name: string; fonts: FontRef[]; totalOps: number };
+export type ImportMeta = {
+  name: string;
+  fonts: FontRef[];
+  totalOps: number;
+  /** One version of a set, which gets the name and mode that go with its place in it. */
+  version?: { index: number; label: string };
+};
 export type EndResult = TokenCounts & {
   rootId: string;
   failedOps: number;
@@ -59,6 +73,22 @@ export type EndResult = TokenCounts & {
   resizedFallbacks: number;
 };
 
+/** What a set of versions leaves. Each version's own counts come from its `end`. */
+export type SetResult = TokenCounts & {
+  /** The frames that stayed, in order. Empty when every version failed. */
+  rootIds: string[];
+  /** The sections could not be placed, so some may overlap. */
+  layoutFailures: number;
+};
+
+/** A set of versions under way. Its finished frames and sections are held until `endSet`. */
+type HeldSet = {
+  page: PageNode;
+  /** Where the next frame goes. */
+  x: number;
+  finished: { root: FrameNode; components: ComponentSet }[];
+};
+
 type Corners = [number, number, number, number];
 type FrameOp = Extract<PlanOp, { op: "frame" }>;
 type TextOp = Extract<PlanOp, { op: "text" }>;
@@ -66,6 +96,8 @@ type InstanceOp = Extract<PlanOp, { op: "instance" }>;
 
 const FALLBACK: FontRef = { family: "Inter", style: "Regular" };
 const GAP = 100;
+/** Between the versions of a set, and between its row of frames and its row of sections. */
+const VERSION_GAP = 200;
 /** The largest SVG source handed to Figma. Capture applies the same limit; a file can still hold more. */
 const MAX_SVG_BYTES = 256 * 1024;
 /**
@@ -95,6 +127,8 @@ const CANCELLED: EndResult = {
   resizedFallbacks: 0,
   ...NO_TOKENS,
 };
+
+const NO_SET: SetResult = { rootIds: [], layoutFailures: 0, ...NO_TOKENS };
 
 const fontKey = (f: FontRef) => `${f.family}\u0000${f.style}`;
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -156,8 +190,15 @@ export function createApplier(api: PluginAPI) {
   let layoutFailures = 0;
   let paintFailures = 0;
   let resizedFallbacks = 0;
+  /** The set this import is part of, from `beginSet` until it's kept or taken back. */
+  let held: HeldSet | null = null;
+  /** This version's place in its set. */
+  let versionIndex: number | null = null;
+  /** Figma refused this version's mode, so its values wouldn't be what its frames should read. */
+  let modeRefused = false;
 
-  function reset() {
+  /** Clears the version in hand and removes what it left. The set around it, if any, stays. */
+  function clearVersion() {
     generation++;
     if (root) {
       try {
@@ -166,11 +207,8 @@ export function createApplier(api: PluginAPI) {
         // already gone
       }
     }
-    // Before the tokens: a main would keep what it uses in use.
     components?.discard();
     components = null;
-    if (tokens) cleaning = Promise.all([cleaning, tokens.discard()]);
-    tokens = null;
     root = null;
     rootName = "";
     page = null;
@@ -196,6 +234,24 @@ export function createApplier(api: PluginAPI) {
     layoutFailures = 0;
     paintFailures = 0;
     resizedFallbacks = 0;
+    versionIndex = null;
+    modeRefused = false;
+  }
+
+  function reset() {
+    clearVersion();
+    for (const { root: frame, components: section } of held?.finished ?? []) {
+      try {
+        frame.remove();
+      } catch {
+        // already gone
+      }
+      section.discard();
+    }
+    held = null;
+    // After the mains: one would keep what it uses in use.
+    if (tokens) cleaning = Promise.all([cleaning, tokens.discard()]);
+    tokens = null;
   }
 
   async function loadFont(f: FontRef): Promise<void> {
@@ -207,45 +263,114 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
-  async function begin(meta: ImportMeta): Promise<void> {
-    reset();
-    await cleaning;
-    api.commitUndo();
-    active = true;
-    rootName = meta.name;
-    page = api.currentPage;
-    components = createComponentSet(api, meta.name, {
-      paints: (list) => paints(list, false),
-      effects,
-      solid: (color, opacity) => solidPaint(color, opacity),
-    });
-    await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
-    fallbackOk = loadedFonts.has(fontKey(FALLBACK));
-
+  /** Where a new root goes on `target`: past all that is there. */
+  function clearOf(target: PageNode): number {
     let right = 0;
     let any = false;
-    for (const child of page.children) {
+    for (const child of target.children) {
       const edge = child.x + child.width;
       if (!any || edge > right) right = edge;
       any = true;
     }
-    rootX = any ? right + GAP : 0;
+    return any ? right + GAP : 0;
   }
+
+  /**
+   * Opens a set of versions. Its tokens come next, then `begin` to `end` per version, then
+   * `endSet`. Only `endSet` commits, unless there's an unfinished import to close off here.
+   */
+  async function beginSet(): Promise<void> {
+    const stale = active || held !== null;
+    reset();
+    await cleaning;
+    if (stale) api.commitUndo();
+    const target = api.currentPage;
+    held = { page: target, x: clearOf(target), finished: [] };
+  }
+
+  async function begin(meta: ImportMeta): Promise<void> {
+    const set = meta.version ? held : null;
+    if (set) {
+      // Takes what a failed version left, and only that.
+      clearVersion();
+    } else {
+      reset();
+      await cleaning;
+      api.commitUndo();
+    }
+    active = true;
+    versionIndex = set ? (meta.version?.index ?? null) : null;
+    rootName = meta.version ? `${meta.name} — ${meta.version.label}` : meta.name;
+    page = set?.page ?? api.currentPage;
+    components = createComponentSet(
+      api,
+      rootName,
+      {
+        paints: (list) => paints(list, false),
+        effects,
+        solid: (color, opacity) => solidPaint(color, opacity),
+        mode: setMode,
+      },
+      page
+    );
+    await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
+    fallbackOk = loadedFonts.has(fontKey(FALLBACK));
+    rootX = set ? set.x : clearOf(page);
+  }
+
+  /**
+   * Puts a root or a main on its version's mode. Once one is refused the version has no mode it can
+   * be true to, and what it builds from then on stays plain. A version's mains are built first, so
+   * that catches it before anything binds, or leaves a main already made as it is.
+   */
+  function setMode(node: FrameNode | ComponentNode): void {
+    if (versionIndex === null || modeRefused) return;
+    const mode = tokens?.modeOf(versionIndex);
+    if (!mode) return;
+    try {
+      node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
+    } catch {
+      modeRefused = true;
+      tokens?.failed();
+    }
+  }
+
+  /** The tokens this version may bind to: none once its mode was refused. */
+  const bindable = () => (modeRefused ? undefined : tokens);
 
   /** Settles the plan's tokens against the file. Comes before any batch that uses them. */
   async function importTokens(plan: PlanTokens, options: ImportOptions): Promise<void> {
     if (!active) throw new Error("import not started");
-    const run = generation;
     tokens ??= createTokenSet(api);
+    await tokens.resolve(plan, options, tokenRuntime());
+  }
+
+  /**
+   * As `importTokens`, for a set of two or more versions, before its first `begin`. The versions
+   * it gives must lose their tokens before their batches.
+   */
+  async function importModes(
+    plan: PlanVersionTokens,
+    options: ImportOptions
+  ): Promise<{ droppedVersions: number[] }> {
+    if (!active && !held) throw new Error("import not started");
+    tokens ??= createTokenSet(api);
+    const set = tokens;
+    await set.resolveModes(plan, options, tokenRuntime());
+    return { droppedVersions: set.counts().droppedVersions };
+  }
+
+  function tokenRuntime(): TokenRuntime {
+    const run = generation;
     sliceStart = Date.now();
-    await tokens.resolve(plan, options, {
+    return {
       overBudget,
       breathe: () => breathe(run),
       ensureFont: async (font) => {
         if (!loadedFonts.has(fontKey(font))) await loadFont(font);
         return loadedFonts.has(fontKey(font));
       },
-    });
+    };
   }
 
   async function addImage(
@@ -263,7 +388,7 @@ export function createApplier(api: PluginAPI) {
   /** A plain paint, bound to its variable if it has one. A refused binding stays plain. */
   function solidPaint(color: PlanRgb, opacity: number, colorKey?: string): SolidPaint {
     const paint: SolidPaint = { type: "SOLID", color, opacity };
-    const binding = tokens?.color(colorKey);
+    const binding = bindable()?.color(colorKey);
     if (!binding || !("variable" in binding)) return paint;
     try {
       return api.variables.setBoundVariableForPaint(paint, "color", binding.variable);
@@ -274,7 +399,7 @@ export function createApplier(api: PluginAPI) {
   }
 
   function paintStyleId(colorKey?: string): string | undefined {
-    const binding = tokens?.color(colorKey);
+    const binding = bindable()?.color(colorKey);
     return binding && "paintStyleId" in binding ? binding.paintStyleId : undefined;
   }
 
@@ -384,6 +509,43 @@ export function createApplier(api: PluginAPI) {
    * last. Refused settings leave the frame absolute: losing it would lose its subtree.
    */
   function setLayout(node: FrameNode, op: FrameOp) {
+    applyLayout(node, op);
+    if (node.layoutMode !== "NONE") bindLengths(node, op.layout);
+  }
+
+  /**
+   * Binds the gaps and padding that became spacing variables, once the plain values are set. A
+   * refused binding counts and leaves the plain value, and the layout as it is.
+   */
+  function bindLengths(node: FrameNode, layout: PlanLayout) {
+    if (layout.mode === "NONE") return;
+    const keys = layout.spacingKeys;
+    const set = bindable();
+    if (!keys || !set) return;
+    let refused = false;
+    const bind = (field: VariableBindableNodeField, key: string | null | undefined) => {
+      const variable = set.spacing(key);
+      if (!variable) return;
+      try {
+        node.setBoundVariable(field, variable);
+      } catch {
+        refused = true;
+      }
+    };
+    const sides = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"] as const;
+    for (const [i, field] of sides.entries()) bind(field, keys.padding?.[i]);
+    if (layout.mode === "GRID") {
+      bind("gridRowGap", keys.rowGap);
+      bind("gridColumnGap", keys.columnGap);
+    } else {
+      bind("itemSpacing", keys.itemSpacing);
+      if (layout.wrap) bind("counterAxisSpacing", keys.counterSpacing);
+    }
+    // One failure per frame, as the frame is what lost its binding.
+    if (refused) set.failed();
+  }
+
+  function applyLayout(node: FrameNode, op: FrameOp) {
     const { layout } = op;
     const size = () => node.resize(clampSize(op.w), clampSize(op.h));
     if (layout.mode === "NONE") {
@@ -472,7 +634,7 @@ export function createApplier(api: PluginAPI) {
 
   /** The style goes first, as linking one overrides the range's own type fields. */
   async function runProps(node: TextNode, run: PlanRun, start: number, end: number) {
-    const styleId = tokens?.textStyleId(run.styleKey);
+    const styleId = bindable()?.textStyleId(run.styleKey);
     const styled = styleId !== undefined && (await linkTextStyle(node, styleId, start, end));
     if (!styled) {
       node.setRangeFontName(start, end, usableFont(run.fontName));
@@ -533,6 +695,7 @@ export function createApplier(api: PluginAPI) {
   function buildFrame(op: FrameOp, parent: FrameNode | null) {
     const name = parent || op.component ? op.name : rootName || op.name;
     const node = createFrame(parent, op, name);
+    if (!parent) setMode(node);
     setLayout(node, op);
     node.clipsContent = op.clips;
     // A refused paint costs that paint, not the frame and all that is under it.
@@ -900,7 +1063,8 @@ export function createApplier(api: PluginAPI) {
     if (await tracker.drain(overBudget, () => breathe(run))) await tick();
   }
 
-  const tokenCounts = () => tokens?.counts() ?? NO_TOKENS;
+  /** A set's tokens are the whole set's, so `endSet` gives them and no version does. */
+  const tokenCounts = () => (held ? NO_TOKENS : (tokens?.counts() ?? NO_TOKENS));
   const componentCounts = () => ({
     componentsCreated,
     instancesCreated,
@@ -923,7 +1087,7 @@ export function createApplier(api: PluginAPI) {
         // Before the commit: otherwise one undo brings back a section with no page beside it.
         components?.discard();
         components = null;
-        api.commitUndo();
+        if (!held) api.commitUndo();
         return {
           rootId: "",
           failedOps,
@@ -941,12 +1105,9 @@ export function createApplier(api: PluginAPI) {
       } catch {
         layoutFailures++;
       }
-      api.commitUndo();
-      try {
-        (page ?? api.currentPage).selection = [done];
-        api.viewport.scrollAndZoomIntoView([done]);
-      } catch {
-        // the user may have switched pages; the import itself is done
+      if (!held) {
+        api.commitUndo();
+        select(page ?? api.currentPage, [done]);
       }
       const result = {
         rootId: done.id,
@@ -956,18 +1117,78 @@ export function createApplier(api: PluginAPI) {
         ...componentCounts(),
         ...tokenCounts(),
       };
+      if (held) {
+        // Kept, but only until the set is: `reset` still removes these.
+        held.finished.push({ root: done, components: components as ComponentSet });
+        held.x = done.x + done.width + VERSION_GAP;
+      } else {
+        tokens = null; // keep the tokens the layers use
+      }
       root = null; // keep the layers; reset() would remove them
       components = null; // and the mains
-      tokens = null; // and the tokens they use
       return result;
     } finally {
-      if (run === generation) reset();
+      if (run === generation) {
+        if (held) clearVersion();
+        else reset();
+      }
     }
+  }
+
+  function select(target: PageNode, frames: FrameNode[]) {
+    try {
+      target.selection = frames;
+      api.viewport.scrollAndZoomIntoView(frames);
+    } catch {
+      // the user may have switched pages; the import itself is done
+    }
+  }
+
+  /**
+   * One row of sections under the tallest frame, each at its frame's x, or further right when the
+   * section before it runs on past there: a section can be wider than its frame.
+   */
+  function placeSections(finished: HeldSet["finished"]): number {
+    try {
+      const bottom = Math.max(...finished.map(({ root: r }) => r.y + r.height));
+      let left = Number.NEGATIVE_INFINITY;
+      for (const { root: frame, components: section } of finished) {
+        const right = section.moveTo(Math.max(frame.x, left), bottom + VERSION_GAP);
+        if (right !== null) left = right + VERSION_GAP;
+      }
+      return 0;
+    } catch {
+      return 1;
+    }
+  }
+
+  /** Keeps the versions that finished, as one undo step. With none, nothing stays, tokens neither. */
+  async function endSet(): Promise<SetResult> {
+    if (!held) throw new Error("set not started");
+    clearVersion();
+    const { page: target, finished } = held;
+    if (finished.length === 0) {
+      await cancel();
+      return NO_SET;
+    }
+    const layoutFailures = placeSections(finished);
+    api.commitUndo();
+    const frames = finished.map((f) => f.root);
+    select(target, frames);
+    const result = {
+      ...(tokens?.counts() ?? NO_TOKENS),
+      rootIds: frames.map((f) => f.id),
+      layoutFailures,
+    };
+    held = null; // keep the frames and the sections
+    tokens = null; // and the tokens they use
+    reset();
+    return result;
   }
 
   /** Abandon the import: remove the partial root and mains, and restore the undo point. */
   async function cancel(): Promise<void> {
-    if (!active) return;
+    if (!active && !held) return;
     const hadTokens = tokens !== null;
     reset();
     api.commitUndo();
@@ -976,5 +1197,16 @@ export function createApplier(api: PluginAPI) {
     api.commitUndo();
   }
 
-  return { begin, importTokens, addImage, applyBatch, end, cancel, isActive: () => active };
+  return {
+    beginSet,
+    begin,
+    importTokens,
+    importModes,
+    addImage,
+    applyBatch,
+    end,
+    endSet,
+    cancel,
+    isActive: () => active || held !== null,
+  };
 }

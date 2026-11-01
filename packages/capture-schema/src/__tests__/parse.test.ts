@@ -90,3 +90,31 @@ test("bounds the hover shadow list before reading it", () => {
   });
   expect(parseCapture(withHover({ boxShadows: many.slice(0, 8) })).ok).toBe(true);
 });
+
+test("a capture without version still parses", () => {
+  const result = parseCapture(minimalCapture());
+  expect(result.ok).toBe(true);
+  if (result.ok) expect(result.capture.version).toBeUndefined();
+});
+test("a capture with a version keeps it", () => {
+  const result = parseCapture({ ...minimalCapture(), version: { label: "Dark", kind: "theme" } });
+  expect(result.ok).toBe(true);
+  if (result.ok) expect(result.capture.version).toEqual({ label: "Dark", kind: "theme" });
+});
+test("a label over 40 characters is refused", () => {
+  const ok = { label: "x".repeat(40), kind: "language" };
+  expect(parseCapture({ ...minimalCapture(), version: ok }).ok).toBe(true);
+  const long = { label: "x".repeat(41), kind: "language" };
+  expect(parseCapture({ ...minimalCapture(), version: long })).toMatchObject({
+    ok: false,
+    reason: "invalid",
+  });
+});
+test("an empty label or an unknown kind is refused", () => {
+  expect(parseCapture({ ...minimalCapture(), version: { label: "", kind: "theme" } }).ok).toBe(
+    false
+  );
+  expect(parseCapture({ ...minimalCapture(), version: { label: "A", kind: "mood" } }).ok).toBe(
+    false
+  );
+});

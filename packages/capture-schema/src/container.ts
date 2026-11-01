@@ -40,6 +40,8 @@ export class FrottageFileError extends Error {
 }
 
 const CAPTURE_ENTRY = "capture.json";
+const CAPTURES_DIR = "captures/";
+const NUMBERED_CAPTURE = /^captures\/(0|[1-9]\d*)\.json$/;
 const ASSET_ENTRY = /^assets\/([A-Za-z0-9]+)\.(?:png|jpg|gif)$/;
 const HASH = /^[A-Za-z0-9]+$/;
 
@@ -56,11 +58,28 @@ export function packFrottage(capture: Capture, assets: Map<string, Uint8Array>):
   const files: Record<string, Uint8Array | [Uint8Array, { level: 0 }]> = {
     [CAPTURE_ENTRY]: new TextEncoder().encode(JSON.stringify(capture)),
   };
+  addAssets(files, assets);
+  return zipSync(files);
+}
+
+export function packFrottageSet(captures: Capture[], assets: Map<string, Uint8Array>): Uint8Array {
+  if (captures.length === 0) throw new Error("A frottage set needs at least one capture");
+  const files: Record<string, Uint8Array | [Uint8Array, { level: 0 }]> = {};
+  captures.forEach((capture, i) => {
+    files[`${CAPTURES_DIR}${i}.json`] = new TextEncoder().encode(JSON.stringify(capture));
+  });
+  addAssets(files, assets);
+  return zipSync(files);
+}
+
+function addAssets(
+  files: Record<string, Uint8Array | [Uint8Array, { level: 0 }]>,
+  assets: Map<string, Uint8Array>
+): void {
   for (const [hash, bytes] of assets) {
     if (!HASH.test(hash)) throw new Error(`Invalid asset hash: ${hash}`);
     files[`assets/${hash}.${extensionFor(bytes)}`] = [bytes, { level: 0 }];
   }
-  return zipSync(files);
 }
 
 function concat(chunks: Uint8Array[], length: number): Uint8Array {
@@ -85,9 +104,14 @@ function concat(chunks: Uint8Array[], length: number): Uint8Array {
 function readEntries(
   bytes: Uint8Array,
   limits: typeof LIMITS
-): { capture: Uint8Array | undefined; assets: Map<string, Uint8Array> } {
+): {
+  legacy: Uint8Array | undefined;
+  captures: Map<number, Uint8Array>;
+  assets: Map<string, Uint8Array>;
+} {
   let total = 0;
-  let capture: Uint8Array | undefined;
+  let legacy: Uint8Array | undefined;
+  const captures = new Map<number, Uint8Array>();
   const assets = new Map<string, Uint8Array>();
   const pending: Array<() => boolean> = [];
   const seen = new Set<string>();
@@ -95,10 +119,19 @@ function readEntries(
 
   const unzip = new Unzip((file) => {
     if (failure) return;
-    const isCapture = file.name === CAPTURE_ENTRY;
+    const isLegacy = file.name === CAPTURE_ENTRY;
+    const numbered = NUMBERED_CAPTURE.exec(file.name);
+    if (file.name.startsWith(CAPTURES_DIR) && !numbered) {
+      failure = new FrottageFileError(
+        "not-a-frottage-file",
+        "The file has an entry in captures/ that is not a numbered capture"
+      );
+      return;
+    }
+    const isCapture = isLegacy || numbered !== null;
     const assetMatch = isCapture ? null : ASSET_ENTRY.exec(file.name);
     if (!isCapture && !assetMatch) return;
-    const key = isCapture ? CAPTURE_ENTRY : (assetMatch?.[1] ?? "");
+    const key = isCapture ? file.name : (assetMatch?.[1] ?? "");
     if (seen.has(key)) {
       failure = new FrottageFileError("not-a-frottage-file", "The file repeats an entry");
       return;
@@ -126,7 +159,8 @@ function readEntries(
       if (final) {
         done = true;
         const data = concat(chunks, size);
-        if (isCapture) capture = data;
+        if (isLegacy) legacy = data;
+        else if (numbered?.[1]) captures.set(Number(numbered[1]), data);
         else if (assetMatch?.[1]) assets.set(assetMatch[1], data);
       }
     };
@@ -146,7 +180,7 @@ function readEntries(
   if (failure) throw failure;
   if (!pending.every((isDone) => isDone()))
     throw new FrottageFileError("not-a-frottage-file", "The .frottage file is truncated");
-  return { capture, assets };
+  return { legacy, captures, assets };
 }
 
 function collectAssetHashes(root: CaptureNode, into: Set<string>): void {
@@ -169,15 +203,11 @@ function isStackOverflow(e: unknown): boolean {
   return e instanceof RangeError && /call stack/i.test(e.message);
 }
 
-export function unpackFrottage(
-  bytes: Uint8Array,
-  limits: typeof LIMITS = LIMITS
-): { capture: Capture; assets: Map<string, Uint8Array> } {
-  const { capture: captureBytes, assets } = readEntries(bytes, limits);
-  if (!captureBytes) {
-    throw new FrottageFileError("not-a-frottage-file", "The file has no capture.json");
-  }
-
+function decodeCapture(
+  captureBytes: Uint8Array,
+  assets: Map<string, Uint8Array>,
+  limits: typeof LIMITS
+): Capture {
   let json: unknown;
   try {
     json = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(captureBytes));
@@ -218,6 +248,50 @@ export function unpackFrottage(
   } catch (e) {
     if (isStackOverflow(e)) throw new FrottageFileError("too-deep");
     throw e;
+  }
+  return capture;
+}
+
+export function unpackFrottageSet(
+  bytes: Uint8Array,
+  limits: typeof LIMITS = LIMITS
+): { captures: Capture[]; assets: Map<string, Uint8Array> } {
+  const { legacy, captures: numbered, assets } = readEntries(bytes, limits);
+  if (legacy && numbered.size > 0) {
+    throw new FrottageFileError(
+      "not-a-frottage-file",
+      "The file has both capture.json and captures/"
+    );
+  }
+  const entries: Uint8Array[] = [];
+  if (legacy) {
+    entries.push(legacy);
+  } else {
+    if (numbered.size === 0) {
+      throw new FrottageFileError("not-a-frottage-file", "The file has no capture.json");
+    }
+    for (let i = 0; i < numbered.size; i++) {
+      const entry = numbered.get(i);
+      if (!entry) {
+        throw new FrottageFileError(
+          "not-a-frottage-file",
+          "The captures are not numbered in order"
+        );
+      }
+      entries.push(entry);
+    }
+  }
+  return { captures: entries.map((entry) => decodeCapture(entry, assets, limits)), assets };
+}
+
+export function unpackFrottage(
+  bytes: Uint8Array,
+  limits: typeof LIMITS = LIMITS
+): { capture: Capture; assets: Map<string, Uint8Array> } {
+  const { captures, assets } = unpackFrottageSet(bytes, limits);
+  const [capture] = captures;
+  if (captures.length !== 1 || !capture) {
+    throw new FrottageFileError("not-a-frottage-file", "The file holds more than one capture");
   }
   return { capture, assets };
 }

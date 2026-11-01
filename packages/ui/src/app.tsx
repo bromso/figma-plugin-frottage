@@ -1,24 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import { FontTable } from "./import/font-table";
 import {
+  failuresHeading,
   type ImportPort,
   type ImportState,
   type ReviewDecision,
-  runImport,
+  runImports,
+  type SetReport,
+  type VersionResult,
 } from "./import/import-flow";
 import { OptionsSheet } from "./import/options";
 import { Button, Progress, SectionTitle } from "./index";
 
-const MORE_THAN_ONE = "You dropped more than one file. Frottage imported the first one.";
+type DoneState = Extract<ImportState, { step: "done" }>;
 
+/** The counts of one version. */
 function Report({
   state,
-  notice,
   headingRef,
+  heading = "Import complete",
 }: {
-  state: Extract<ImportState, { step: "done" }>;
-  notice: string;
-  headingRef: React.Ref<HTMLParagraphElement>;
+  state: VersionResult;
+  headingRef?: React.Ref<HTMLParagraphElement>;
+  heading?: string;
 }) {
   const { report, failedOps, missingImages, rewrappedTexts, textDriftCount } = state;
   const rows: [string, number][] = [
@@ -47,9 +51,8 @@ function Report({
   return (
     <div className="flex flex-col gap-2">
       <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">
-        Import complete
+        {heading}
       </SectionTitle>
-      {notice && <p className="text-figma-text-secondary">{notice}</p>}
       <dl className="flex flex-col">
         {rows.map(([label, count]) => (
           <div key={label} className="flex h-6 items-center justify-between">
@@ -123,6 +126,97 @@ function Report({
   );
 }
 
+const plural = (count: number, one: string, many = `${one}s`) =>
+  `${count} ${count === 1 ? one : many}`;
+
+/** What the versions of a set share: its modes, and its tokens, which no one version owns. */
+function SetSummary({ set }: { set: SetReport }) {
+  const rows: [string, number][] = [];
+  if (set.modes > 0) rows.push(["Modes", set.modes]);
+  if (set.stylesCreated > 0) rows.push(["Styles created", set.stylesCreated]);
+  if (set.stylesReused > 0) rows.push(["Styles reused", set.stylesReused]);
+  if (set.variablesCreated > 0) rows.push(["Variables created", set.variablesCreated]);
+  if (set.variablesReused > 0) rows.push(["Variables reused", set.variablesReused]);
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="font-medium">{set.name}</p>
+      {rows.length > 0 && (
+        <dl className="flex flex-col">
+          {rows.map(([label, count]) => (
+            <div key={label} className="flex h-6 items-center justify-between">
+              <dt className="text-figma-text-secondary">{label}</dt>
+              <dd>{count}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {set.modesDropped > 0 && (
+        <p className="text-figma-text-danger">
+          Figma gave {plural(set.modesDropped, "version")} no mode, so{" "}
+          {plural(set.plainFrames, "frame")} kept plain values and{" "}
+          {set.plainFrames === 1 ? "uses" : "use"} no variables.
+        </p>
+      )}
+      {set.tokenFailures > 0 && (
+        <p className="text-figma-text-danger">
+          {plural(set.tokenFailures, "style or variable", "styles or variables")} could not be made
+          or applied and {set.tokenFailures === 1 ? "was" : "were"} left out.
+        </p>
+      )}
+      {set.layoutFailures > 0 && (
+        <p className="text-figma-text-danger">
+          The component sections could not be placed, so some may overlap.
+        </p>
+      )}
+      {set.notes.length > 0 && (
+        <ul className="text-figma-text-secondary">
+          {set.notes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Several versions: a heading, the files that failed, each set, then one report per version. */
+function VersionsReport({
+  state,
+  headingRef,
+}: {
+  state: DoneState;
+  headingRef: React.Ref<HTMLParagraphElement>;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">
+        Import complete
+      </SectionTitle>
+      {state.failures.length > 0 && (
+        <div role="alert">
+          <p className="font-medium text-figma-text-danger">{failuresHeading(state.failures)}</p>
+          <ul className="text-figma-text-secondary">
+            {state.failures.map((f, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: the same file name can fail twice
+              <li key={`${i}:${f.name}`}>
+                {f.name}: {f.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {state.sets.map((set, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: two sets can share a page name
+        <SetSummary key={`${i}:${set.name}`} set={set} />
+      ))}
+      {state.versions.map((v, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: two versions can share a name and label
+        <Report key={`${i}:${v.name}:${v.label}`} state={v} heading={`${v.label} · ${v.name}`} />
+      ))}
+    </div>
+  );
+}
+
 /** Options and missing fonts, before anything is created. Import always works as it stands. */
 function Review({
   state,
@@ -181,7 +275,6 @@ function Review({
 /** The one screen: choose a .frottage file, watch it import, read the report. */
 function App({ port }: { port?: ImportPort }) {
   const [state, setState] = useState<ImportState>({ step: "idle" });
-  const [notice, setNotice] = useState("");
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
@@ -211,19 +304,17 @@ function App({ port }: { port?: ImportPort }) {
   }, [state.step]);
 
   async function start(files: File[]) {
-    const file = files[0];
-    if (!file || busy.current) return;
+    if (files.length === 0 || busy.current) return;
     busy.current = true;
     try {
-      setNotice(files.length > 1 ? MORE_THAN_ONE : "");
       const target = port ?? (await import("./app.network")).channelImportPort;
       const forceReview = optionsOpen;
       setOptionsOpen(false);
       const controller = new AbortController();
       abort.current = controller;
       setCancelling(false);
-      await runImport(
-        file,
+      await runImports(
+        files,
         target,
         setState,
         {
@@ -243,7 +334,6 @@ function App({ port }: { port?: ImportPort }) {
   }
 
   function reset() {
-    setNotice("");
     setState({ step: "idle" });
   }
 
@@ -258,7 +348,8 @@ function App({ port }: { port?: ImportPort }) {
         ref={input}
         type="file"
         hidden
-        aria-label="Choose a .frottage file"
+        aria-label="Choose .frottage files"
+        multiple
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           e.target.value = "";
@@ -287,8 +378,8 @@ function App({ port }: { port?: ImportPort }) {
               : "border-figma-border bg-figma-bg-secondary"
           }`}
         >
-          <p className="text-figma-text-secondary">Drop a .frottage file here, or</p>
-          <Button onClick={() => input.current?.click()}>Choose a file…</Button>
+          <p className="text-figma-text-secondary">Drop one or more .frottage files here, or</p>
+          <Button onClick={() => input.current?.click()}>Choose files…</Button>
           <Button
             variant="secondary"
             aria-pressed={optionsOpen}
@@ -302,16 +393,12 @@ function App({ port }: { port?: ImportPort }) {
         </fieldset>
       )}
 
-      {notice && state.step !== "working" && state.step !== "done" && (
-        <p className="text-figma-text-secondary">{notice}</p>
-      )}
-
       {state.step === "error" && (
         <p
           ref={errorRef}
           role="alert"
           tabIndex={-1}
-          className="text-figma-text-danger outline-none"
+          className="whitespace-pre-line text-figma-text-danger outline-none"
         >
           {state.message}
         </p>
@@ -324,6 +411,9 @@ function App({ port }: { port?: ImportPort }) {
       {working && (
         <div className="flex flex-col gap-2">
           <p aria-hidden="true">
+            {state.file.total > 1
+              ? `${state.file.unit === "size" ? "Size" : "File"} ${state.file.index} of ${state.file.total}: `
+              : ""}
             {total > 0 ? `Importing ${state.done} of ${total} layers` : "Reading the file"}
           </p>
           <Progress value={percent} aria-label="Import progress" />
@@ -352,9 +442,13 @@ function App({ port }: { port?: ImportPort }) {
 
       {state.step === "done" && (
         <>
-          <Report state={state} notice={notice} headingRef={headingRef} />
+          {state.versions.length > 1 || state.failures.length > 0 ? (
+            <VersionsReport state={state} headingRef={headingRef} />
+          ) : (
+            <Report state={state} headingRef={headingRef} />
+          )}
           <Button variant="secondary" onClick={reset}>
-            Import another file
+            Import more files
           </Button>
         </>
       )}

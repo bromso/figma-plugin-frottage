@@ -54,6 +54,24 @@ describe("usage threshold", () => {
     expect(p.tokens.textStyles.map((s) => s.fontSize)).toEqual([20]);
   });
 
+  test("a token says how many times it's used", () => {
+    const p = plan([
+      ...["a", "b", "c", "d"].map((id) => filled(id, "#112233")),
+      ...texts("s", 5, { size: 20 }),
+    ]);
+    expect(p.tokens.colors.find((c) => c.key === "#112233")?.uses).toBe(4);
+    expect(p.tokens.textStyles[0]?.uses).toBe(5);
+  });
+
+  test("a set's floor of 1 proposes a value used once, with its key on the run", () => {
+    const options = { ...DEFAULT_IMPORT_OPTIONS, tokenFloor: 1 };
+    const p = plan([filled("a", "#112233"), ...texts("s", 1, { size: 40 })], {}, options);
+    expect(p.tokens.colors.find((c) => c.key === "#112233")?.uses).toBe(1);
+    expect(p.tokens.textStyles.map((s) => [s.fontSize, s.uses])).toEqual([[40, 1]]);
+    expect(runsOf(p)[0]?.styleKey).toBeDefined();
+    expect(frameFills(p).some((f) => f.type === "SOLID" && f.colorKey === "#112233")).toBe(true);
+  });
+
   test("runs and paints that made a token carry its key, and the others do not", () => {
     const p = plan([
       ...["a", "b", "c"].map((id) => filled(id, "#112233")),
@@ -351,5 +369,260 @@ describe("collection", () => {
   test("the plan survives postMessage", () => {
     const p = plan([...["a", "b", "c"].map((id) => filled(id, "#112233")), ...texts("t", 3)]);
     expect(JSON.parse(JSON.stringify(p.tokens))).toEqual(p.tokens);
+  });
+});
+
+// ---------- Spacing
+
+type FrameOp = Extract<PlanOp, { op: "frame" }>;
+
+/** A flex row with three 100 px boxes `gap` apart, and `pad` of padding on every side. */
+function gapRow(id: string, gap: number, pad = 0): ElementNode {
+  const kid = (n: number) => {
+    const k = filled(`${id}-${n}`, "#ffffff");
+    k.box = { x: pad + n * (100 + gap), y: pad, w: 100, h: 50 };
+    return k;
+  };
+  const row = el(
+    id,
+    [0, 0],
+    [kid(0), kid(1), kid(2)],
+    {
+      layout: {
+        ...el("x", [0, 0]).layout,
+        display: "flex",
+        flexDirection: "row",
+        flexWrap: "nowrap",
+        justifyContent: "normal",
+        alignItems: "flex-start",
+        gap: [0, gap],
+        padding: [pad, pad, pad, pad],
+      },
+    },
+    [300 + 2 * gap + 2 * pad, 50 + 2 * pad]
+  );
+  return row;
+}
+
+const rows = (prefix: string, n: number, gap: number, pad = 0) =>
+  Array.from({ length: n }, (_, i) => gapRow(`${prefix}${i}`, gap, pad));
+const frameOps = (p: LayerPlan) => p.ops.filter((o): o is FrameOp => o.op === "frame");
+const spacingKeysOf = (p: LayerPlan) =>
+  frameOps(p).flatMap((o) => ("spacingKeys" in o.layout && o.layout.spacingKeys) || []);
+
+describe("spacing tokens", () => {
+  test("a px custom property used 3 or more times is a spacing token", () => {
+    const p = plan([...rows("a", 3, 16), ...rows("b", 2, 24)], {
+      "--space-4": "16px",
+      "--space-6": "24px",
+    });
+    expect(p.tokens.spacing).toEqual([
+      { key: "--space-4=16", name: "spacing/4", cssVar: "--space-4", px: 16 },
+    ]);
+    const keys = spacingKeysOf(p);
+    expect(keys).toHaveLength(3);
+    for (const k of keys) expect(k.itemSpacing).toBe("--space-4=16");
+  });
+
+  test("rem resolves with the root font size", () => {
+    const p = plan(rows("a", 3, 16), { "--gap": "1rem" });
+    expect(p.tokens.spacing?.map((s) => [s.cssVar, s.px])).toEqual([["--gap", 16]]);
+  });
+
+  test("a rem value says in the report that it assumes a 16 px root", () => {
+    const p = plan(rows("a", 3, 16), { "--gap": "1rem" });
+    expect(p.report.warnings.some((w) => w.includes("16 px root"))).toBe(true);
+    const q = plan(rows("a", 3, 16), { "--gap": "16px" });
+    expect(q.report.warnings.some((w) => w.includes("16 px root"))).toBe(false);
+  });
+
+  test("a frame counts once for a length it uses on all four sides", () => {
+    const two = plan(rows("a", 2, 0, 8), { "--padding": "8px" });
+    expect(two.tokens.spacing).toEqual([]);
+    const three = plan(rows("a", 3, 0, 8), { "--padding": "8px" });
+    expect(three.tokens.spacing).toHaveLength(1);
+  });
+
+  test("a var() that names another property resolves", () => {
+    const p = plan(rows("a", 3, 16), { "--base": "16px", "--space-4": "var(--base)" });
+    expect(p.tokens.spacing?.map((s) => [s.cssVar, s.px])).toEqual([["--space-4", 16]]);
+  });
+
+  test("a value no custom property names stays plain", () => {
+    const p = plan(rows("a", 4, 12), { "--space-4": "16px" });
+    expect(p.tokens.spacing).toEqual([]);
+    expect(spacingKeysOf(p)).toEqual([]);
+  });
+
+  test("matching is exact to 0.01 px", () => {
+    const near = plan(rows("a", 3, 16.005), { "--space-4": "16px" });
+    expect(near.tokens.spacing).toHaveLength(1);
+    const off = plan(rows("a", 3, 16.5), { "--space-4": "16px" });
+    expect(off.tokens.spacing).toEqual([]);
+  });
+
+  test("the variable name is spacing/<name>", () => {
+    const p = plan(rows("a", 3, 16), { "--spacing-md": "16px" });
+    expect(p.tokens.spacing?.[0]?.name).toBe("spacing/md");
+    const q = plan(rows("a", 3, 16), { "--brand-gutter": "16px" });
+    expect(q.tokens.spacing?.[0]?.name).toBe("spacing/brand-gutter");
+  });
+
+  test("padding on every side binds, each side by its own key", () => {
+    const p = plan(rows("a", 3, 0, 8), { "--padding": "8px" });
+    expect(p.tokens.spacing?.map((s) => s.cssVar)).toEqual(["--padding"]);
+    const [first] = spacingKeysOf(p);
+    expect(first?.padding).toEqual(["--padding=8", "--padding=8", "--padding=8", "--padding=8"]);
+    expect(first?.itemSpacing).toBeUndefined();
+  });
+
+  test("a matching length alone isn't spacing: the name has to say so", () => {
+    const props = {
+      "--font-size-m": "16px",
+      "--radius-m": "16px",
+      "--border-width": "16px",
+      "--shadow-blur": "16px",
+      "--line-height": "16px",
+      "--max-height": "16px",
+      "--width-card": "16px",
+      "--breakpoint-sm": "16px",
+      "--unit": "16px",
+    };
+    const p = plan(rows("a", 3, 16), props);
+    expect(p.tokens.spacing).toEqual([]);
+    expect(spacingKeysOf(p)).toEqual([]);
+  });
+
+  test.each([
+    "--space-m",
+    "--spacing-m",
+    "--gap-m",
+    "--brand-gutter",
+    "--margin-m",
+    "--padding-m",
+    "--inset-m",
+    "--padding-inline",
+  ])("%s says spacing", (name) => {
+    expect(plan(rows("a", 3, 16), { [name]: "16px" }).tokens.spacing).toHaveLength(1);
+  });
+
+  test.each(["--letter-spacing", "--word-spacing", "--h1-letter-spacing", "--workspace-sidebar"])(
+    "%s isn't spacing",
+    (name) => {
+      expect(plan(rows("a", 3, 16), { [name]: "16px" }).tokens.spacing).toEqual([]);
+    }
+  );
+
+  test.each(["--newsletter-gap", "--password-padding", "--space", "--brand-space-m"])(
+    "%s still is",
+    (name) => {
+      expect(plan(rows("a", 3, 16), { [name]: "16px" }).tokens.spacing).toHaveLength(1);
+    }
+  );
+
+  test("a name that says both isn't spacing", () => {
+    const p = plan(rows("a", 3, 16), { "--gap-font-size": "16px", "--padding-line": "16px" });
+    expect(p.tokens.spacing).toEqual([]);
+  });
+
+  test("zero is not a spacing token", () => {
+    const p = plan(rows("a", 4, 0), { "--space-0": "0px" });
+    expect(p.tokens.spacing).toEqual([]);
+  });
+
+  test("two properties with one value: the shortest name, then the alphabetical one", () => {
+    const props = { "--space-large": "16px", "--gap-b": "16px", "--gap-a": "16px" };
+    const a = plan(rows("a", 3, 16), props);
+    expect(a.tokens.spacing?.map((s) => s.cssVar)).toEqual(["--gap-a"]);
+    const reversed = plan(rows("a", 3, 16), Object.fromEntries(Object.entries(props).reverse()));
+    expect(reversed.tokens.spacing).toEqual(a.tokens.spacing);
+  });
+
+  test("two values cannot share a name", () => {
+    const p = plan([...rows("a", 3, 16), ...rows("b", 3, 24)], {
+      "--space-4": "16px",
+      "--spacing-4": "24px",
+    });
+    expect(p.tokens.spacing?.map((s) => s.name)).toEqual(["spacing/4"]);
+    // The value left without a name stays plain.
+    expect(new Set(spacingKeysOf(p).map((k) => k.itemSpacing)).size).toBe(1);
+  });
+
+  test("a property Figma could not hold is not used", () => {
+    const p = plan(rows("a", 3, 16), { "--space.4": "16px", "--a b": "16px" });
+    expect(p.tokens.spacing).toEqual([]);
+  });
+
+  test("the options switch for styles and variables turns it off", () => {
+    const p = plan(
+      rows("a", 3, 16),
+      { "--space-4": "16px" },
+      {
+        ...DEFAULT_IMPORT_OPTIONS,
+        tokens: false,
+      }
+    );
+    expect(p.tokens.spacing ?? []).toEqual([]);
+    expect(spacingKeysOf(p)).toEqual([]);
+  });
+
+  test("auto layout off leaves nothing to bind", () => {
+    const p = plan(
+      rows("a", 3, 16),
+      { "--space-4": "16px" },
+      {
+        ...DEFAULT_IMPORT_OPTIONS,
+        autoLayout: false,
+      }
+    );
+    expect(p.tokens.spacing).toEqual([]);
+  });
+
+  test("grid gaps count", () => {
+    const grids = Array.from({ length: 3 }, (_, i) => {
+      const g = el(
+        `g${i}`,
+        [0, 0],
+        [filled(`g${i}a`, "#ffffff"), filled(`g${i}b`, "#ffffff")],
+        {
+          layout: {
+            ...el("x", [0, 0]).layout,
+            display: "grid",
+            gridTemplateColumns: "100px 100px",
+            gridTemplateRows: "50px",
+            rowGap: 20,
+            columnGap: 20,
+          },
+        },
+        [220, 50]
+      );
+      g.children[0] = { ...(g.children[0] as ElementNode), box: { x: 0, y: 0, w: 100, h: 50 } };
+      g.children[1] = { ...(g.children[1] as ElementNode), box: { x: 120, y: 0, w: 100, h: 50 } };
+      return g;
+    });
+    const p = plan(grids, { "--gap": "20px" });
+    const grid = frameOps(p).find((o) => o.layout.mode === "GRID");
+    if (grid?.layout.mode !== "GRID") throw new Error("no grid");
+    expect(grid.layout.spacingKeys).toMatchObject({ columnGap: "--gap=20" });
+  });
+
+  test("the cap is 200 tokens, and the rest stay plain and are reported", () => {
+    const props: Record<string, string> = {};
+    const frames: ElementNode[] = [];
+    for (let i = 0; i < 201; i++) {
+      props[`--space-${i}`] = `${i + 1}px`;
+      frames.push(...rows(`r${i}-`, 3, i + 1));
+    }
+    const p = plan(frames, props);
+    expect(p.tokens.spacing).toHaveLength(200);
+    expect(p.tokens.spacingOver).toBe(1);
+    expect(p.report.warnings).toContain(
+      "Only 200 spacing values became variables; 1 more stayed a plain value."
+    );
+  });
+
+  test("the plan survives postMessage", () => {
+    const p = plan(rows("a", 3, 16), { "--space-4": "16px" });
+    expect(JSON.parse(JSON.stringify(p.ops))).toEqual(p.ops);
   });
 });

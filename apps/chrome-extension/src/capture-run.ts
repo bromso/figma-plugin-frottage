@@ -1,29 +1,54 @@
 import { type Capture, countNodes, LIMITS } from "@repo/capture-schema";
 import { AssetAssembler, ChunkAssembler, type ChunkMessage } from "./chunks";
-import { captureFilename } from "./page";
 
 export type RunStatus =
   | { state: "idle" }
-  | { state: "capturing" | "packing" | "saving" }
+  | { state: "capturing" | "packing" }
   /**
    * `nodes` is the layer count in the file; `nodeLimit` is set when the page had more than fit;
-   * `blockedImages` counts images the page could not read (the `images-blocked` warning).
+   * `blockedImages` counts images the page could not read (the `images-blocked` warning);
+   * `width` is the page's width in the capture and `label` the label in the file, if it has one.
    */
-  | { state: "saved"; filename: string; nodes: number; nodeLimit: boolean; blockedImages: number }
-  | { state: "error"; message: string };
+  | {
+      state: "saved";
+      nodes: number;
+      nodeLimit: boolean;
+      blockedImages: number;
+      width: number;
+      label?: string;
+    }
+  | { state: "error"; message: string }
+  /** A viewport run, on its `index`th of `total` widths; `label` is the width Chrome gave. */
+  | { state: "viewport"; index: number; total: number; label: string }
+  /**
+   * A viewport run's end. `saved` lists each capture in the one file, whose `filename` is set only
+   * when a file was saved; `mismatched` the widths Chrome gave instead of the one requested and
+   * `skipped` the widths Chrome refused. `stopped` says what ended the run early, and `nodes`,
+   * `nodeLimit` and `blockedImages` are the worst of any capture.
+   */
+  | {
+      state: "viewport-done";
+      saved: { label: string; width: number }[];
+      filename?: string;
+      mismatched: { requested: number; width: number }[];
+      skipped: number[];
+      nodes: number;
+      nodeLimit: boolean;
+      blockedImages: number;
+      stopped?: string;
+      cancelled?: boolean;
+      /** What the run was asked, so a re-run from a fresh popup repeats it. */
+      request: { widths: number[]; collapseWrappers: boolean; versionLabel: string };
+    };
 
 export type RunDeps = {
   /** Parses and validates capture JSON; throws when it is not a valid capture. */
   parse: (text: string) => Capture;
-  pack: (capture: Capture, assets: Map<string, Uint8Array>) => Uint8Array;
-  makeBlobUrl: (bytes: Uint8Array) => string;
-  revokeUrl: (url: string) => void;
-  /** Resolves with the basename Chrome actually saved (it may differ from the requested one). */
-  download: (req: { url: string; filename: string }) => Promise<string | undefined>;
+  /** Keeps a finished capture and the images it lists; false when the run's file has no room. */
+  keep: (capture: Capture, assets: Map<string, Uint8Array>) => boolean;
   report: (status: RunStatus) => void;
   setTimer: (fn: () => void, ms: number) => unknown;
   clearTimer: (handle: unknown) => void;
-  now: () => Date;
   /** No-progress timeout. */
   timeoutMs: number;
   /** Most image bytes accepted from the page. Default 180 MiB, as in the page's budget. */
@@ -39,6 +64,9 @@ const decodedSize = (b64: string) =>
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** 180 MiB of images plus up to 64 MiB of capture.json stays under the 256 MiB import limit. */
 const MAX_ASSET_BYTES = 180 * 1024 * 1024;
+
+/** Why a capture fails when the run's file has no room for it. */
+export const NO_ROOM = "This size doesn't fit in the file.";
 
 const TOO_MUCH_CONTENT = "This page has too much content to capture. Try a smaller section.";
 
@@ -68,6 +96,11 @@ export class CaptureRun {
   status: RunStatus = { state: "idle" };
 
   constructor(private deps: RunDeps) {}
+
+  /** A capture is in progress, so another can't start. */
+  get busy(): boolean {
+    return this.active;
+  }
 
   start(runId: string): void {
     if (this.active) throw new Error("A capture is already running");
@@ -216,36 +249,33 @@ export class CaptureRun {
   }
 
   private async finish(text: string): Promise<void> {
-    let url: string | null = null;
     try {
       const capture = this.deps.parse(text);
-      // Pack exactly the images the capture lists; a missing one would leave a dangling hash.
+      // Keep exactly the images the capture lists; a missing one would leave a dangling hash.
       const listed = new Map<string, Uint8Array>();
       for (const { hash } of capture.assets) {
         const data = this.assets.get(hash);
         if (!data) throw new Error("image data is missing for an asset in the capture");
         listed.set(hash, data);
       }
-      const bytes = this.deps.pack(capture, listed);
-      url = this.deps.makeBlobUrl(bytes);
-      const filename = captureFilename(capture.source.url, this.deps.now());
+      if (!this.deps.keep(capture, listed)) {
+        this.fail(NO_ROOM);
+        return;
+      }
       const nodes = capture.root ? countNodes(capture.root) : 0;
       const nodeLimit = (capture.warnings ?? []).some((w) => w.code === "node-limit");
-      const blocked = blockedImages(capture);
-      this.set({ state: "saving" });
-      const saved = await this.deps.download({ url, filename });
       this.active = false;
       this.set({
         state: "saved",
-        filename: saved ?? filename,
         nodes,
         nodeLimit,
-        blockedImages: blocked,
+        blockedImages: blockedImages(capture),
+        width: capture.source.viewport.w,
+        ...(capture.version ? { label: capture.version.label } : {}),
       });
     } catch (e) {
       this.fail(`Could not save the file: ${message(e)}`);
     } finally {
-      if (url) this.deps.revokeUrl(url);
       this.capture = null;
       this.captureText = null;
       this.resetAssets();

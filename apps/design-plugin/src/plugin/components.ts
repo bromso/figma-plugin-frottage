@@ -17,6 +17,8 @@ export type HoverPaint = {
   paints(list: PlanPaint[]): Paint[];
   effects(list: PlanEffect[]): Effect[];
   solid(color: PlanRgb, opacity: number): SolidPaint;
+  /** Puts a variant on the version's mode, as its main is. */
+  mode(node: ComponentNode): void;
 };
 
 /** Applies one patch to the layer it names, which throws when that layer cannot take it. */
@@ -54,9 +56,13 @@ function patchLayer(node: SceneNode, patch: PlanHoverPatch, paint: HoverPaint) {
   }
 }
 
-export function createComponentSet(api: PluginAPI, rootName: string, paint: HoverPaint) {
-  // The user can change pages during an import, and the section stays with the root.
-  const page = api.currentPage;
+/** `page` is the root's: the user can change pages during an import, and the section stays with it. */
+export function createComponentSet(
+  api: PluginAPI,
+  rootName: string,
+  paint: HoverPaint,
+  page: PageNode
+) {
   const mains = new Map<string, ComponentNode>();
   const hovers = new Map<string, PlanHoverPatch[]>();
   let section: SectionNode | null = null;
@@ -76,6 +82,7 @@ export function createComponentSet(api: PluginAPI, rootName: string, paint: Hove
     let combined = false;
     try {
       hover = main.clone();
+      paint.mode(hover);
       for (const patch of patches) patchLayer(childAt(hover, patch.path), patch, paint);
       main.name = "State=Default";
       hover.name = "State=Hover";
@@ -177,6 +184,14 @@ export function createComponentSet(api: PluginAPI, rootName: string, paint: Hove
       section.y = root.y;
       // The caller counts it once; what could be placed has been.
       if (failed) throw new Error("some components could not be placed");
+    },
+
+    /** Moves the laid out section, for a set of versions. Gives its right edge, if it has one. */
+    moveTo(x: number, y: number): number | null {
+      if (!section) return null;
+      section.x = x;
+      section.y = y;
+      return x + section.width;
     },
 
     /** Takes the section and all in it back. Instances of the mains go with their own trees. */

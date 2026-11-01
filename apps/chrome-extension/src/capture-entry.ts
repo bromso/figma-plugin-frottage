@@ -11,6 +11,7 @@ import pkg from "../package.json";
 import { assetChunks, splitIntoChunks } from "./chunks";
 import { fetchViaWorker, imagePortName, makeFetchBytes } from "./image-fetch";
 import { CAPTURE_PORT, type PageMessage } from "./messages";
+import { pageVersion } from "./page";
 
 /** The offscreen timeout is 60 s; stay well inside it. */
 const HEARTBEAT_MS = 10_000;
@@ -19,6 +20,7 @@ type RunWindow = Window & {
   __frottageRunId?: string;
   __frottageCollapse?: boolean;
   __frottageImageAccess?: boolean;
+  __frottageVersionLabel?: string;
 };
 
 // `void`: the script's completion value is undefined, so executeScript does not wait on the run.
@@ -27,6 +29,9 @@ void (async () => {
   const runId = win.__frottageRunId;
   const collapseWrappers = win.__frottageCollapse === true;
   const imageAccess = win.__frottageImageAccess === true;
+  // Every capture is a viewport, labelled with its width and the typed label, if any.
+  const version = pageVersion(win.__frottageVersionLabel, window.innerWidth);
+  win.__frottageVersionLabel = undefined;
   win.__frottageImageAccess = undefined;
   win.__frottageRunId = undefined;
   win.__frottageCollapse = undefined;
@@ -49,6 +54,7 @@ void (async () => {
       getShadowRoot: (el) =>
         el instanceof HTMLElement ? chrome.dom.openOrClosedShadowRoot(el) : null,
     });
+    if (version) capture.version = version;
     // Images are fetched in the page first, so they obey the page's CORS rules. When the run was
     // told the optional host permission is held, a failed fetch is retried by the worker, one port
     // per image; otherwise, or if that fails too, the image becomes a placeholder. The request

@@ -943,6 +943,9 @@ describe("when to verify", () => {
       variablesCreated: 0,
       variablesReused: 0,
       tokenFailures: 0,
+      modes: 0,
+      modesDropped: 0,
+      droppedVersions: [],
     });
   });
 });

@@ -1,3 +1,7 @@
+import type { Capture } from "@repo/capture-schema";
+import type { StaticIconName } from "@repo/ui";
+import type { RunStatus } from "./capture-run";
+
 const RESTRICTED_SCHEMES = [
   "chrome:",
   "chrome-extension:",
@@ -34,8 +38,66 @@ function sanitiseHostname(hostname: string): string {
     .replace(/^[.-]+|[.-]+$/g, "");
 }
 
-/** `<hostname>-<YYYY-MM-DD>.frottage`; `page` when there is no hostname (file: URLs). */
-export function captureFilename(url: string, date: Date): string {
+export type CaptureVersion = Capture["version"] & {};
+
+/** Longest label the file format accepts. */
+export const LABEL_MAX = 40;
+const VERSION_KINDS = ["viewport", "theme", "language"] as const;
+
+/**
+ * The version a popup's kind and label make, or undefined when the label is blank or the kind
+ * unknown. The label is kept as typed, trimmed and cut to the format's limit.
+ */
+export function normaliseVersion(kind: unknown, label: unknown): CaptureVersion | undefined {
+  if (typeof label !== "string") return undefined;
+  const found = VERSION_KINDS.find((k) => k === kind);
+  // After the cut, which can land inside a surrogate pair. A lone one can't be stored as UTF-8.
+  const trimmed = label.trim().slice(0, LABEL_MAX).trim().toWellFormed();
+  if (!found || !trimmed) return undefined;
+  return { label: trimmed, kind: found };
+}
+
+/**
+ * The version a capture records, in the page: a viewport labelled with the width the page was laid
+ * out at, which only the page knows, followed by the typed label when there is one.
+ */
+export function pageVersion(label: unknown, innerWidth: number): CaptureVersion | undefined {
+  const typed = typeof label === "string" ? label.trim() : "";
+  const width = String(innerWidth);
+  return normaliseVersion("viewport", typed ? `${width} ${typed}` : width);
+}
+
+/**
+ * What says a tab is still on its page: the origin and path, without query or fragment, so that
+ * sites on one origin and `file:` URLs, which all share one, still differ. Null when Chrome gave no
+ * URL, as after leaving an `activeTab`.
+ */
+export function pageOrigin(url: string | undefined): string | null {
+  try {
+    if (!url) return null;
+    const { origin, pathname } = new URL(url);
+    return `${origin}${pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+/** A label as part of a filename: no path separators, invisible characters or leading dots. */
+function sanitiseLabel(label: string): string {
+  return label
+    .replace(/\p{Cf}+/gu, "")
+    .replace(/[\p{Cc}\p{Zl}\p{Zp}/\\:*?"<>|%~]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/\.{2,}/g, ".")
+    .replace(/^[.-]+|[.-]+$/g, "");
+}
+
+/**
+ * `<hostname>-<YYYY-MM-DD>.frottage`, with `-<label>` before the extension for a labelled run;
+ * `page` when there is no hostname (file: URLs).
+ */
+export function captureFilename(url: string, date: Date, label?: string): string {
   let host = "";
   try {
     const u = new URL(url);
@@ -46,7 +108,8 @@ export function captureFilename(url: string, date: Date): string {
   }
   const pad = (n: number) => String(n).padStart(2, "0");
   const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-  return `${host || "page"}-${day}.frottage`;
+  const part = label ? sanitiseLabel(label) : "";
+  return `${host || "page"}-${day}${part ? `-${part}` : ""}.frottage`;
 }
 
 const RESTRICTED_MESSAGE = "This page can't be captured.";
@@ -124,4 +187,158 @@ export async function allowAccessAndRecapture(
   }
   if (granted) recapture();
   return granted;
+}
+
+export type DeviceId =
+  | "tv"
+  | "desktop"
+  | "laptop"
+  | "tablet-landscape"
+  | "tablet-portrait"
+  | "phone-landscape"
+  | "phone-portrait"
+  | "watch";
+
+/** The sizes the popup lists, in order: the icon, the width first shown, and whether it starts ticked. */
+export const DEVICES: readonly {
+  id: DeviceId;
+  name: string;
+  icon: StaticIconName;
+  rotate?: boolean;
+  width: number;
+  on: boolean;
+}[] = [
+  { id: "tv", name: "TV", icon: "lucide:tv", width: 3840, on: false },
+  { id: "desktop", name: "Desktop", icon: "lucide:monitor", width: 1440, on: false },
+  { id: "laptop", name: "Laptop", icon: "lucide:laptop", width: 1512, on: true },
+  {
+    id: "tablet-landscape",
+    name: "Tablet landscape",
+    icon: "lucide:tablet",
+    rotate: true,
+    width: 1194,
+    on: false,
+  },
+  { id: "tablet-portrait", name: "Tablet portrait", icon: "lucide:tablet", width: 834, on: true },
+  {
+    id: "phone-landscape",
+    name: "Phone landscape",
+    icon: "lucide:smartphone",
+    rotate: true,
+    width: 844,
+    on: false,
+  },
+  { id: "phone-portrait", name: "Phone portrait", icon: "lucide:smartphone", width: 390, on: true },
+  { id: "watch", name: "Watch", icon: "lucide:watch", width: 198, on: false },
+];
+
+const WIDTH_MIN = 120;
+const WIDTH_MAX = 3840;
+
+/** One row of the size list: the number as typed, and whether it is ticked. */
+export type WidthChoice = { text: string; on: boolean };
+
+function defaultChoices(): WidthChoice[] {
+  return DEVICES.map((d) => ({ text: String(d.width), on: d.on }));
+}
+
+/**
+ * The widths to capture from what was typed: whole numbers from 120 to 3840, anything else dropped,
+ * a repeat collapsed into its first place.
+ */
+export function parseWidths(text: string[]): number[] {
+  const widths: number[] = [];
+  for (const raw of text) {
+    const trimmed = raw.trim();
+    if (!/^\d{1,5}$/.test(trimmed)) continue;
+    const width = Number(trimmed);
+    if (width < WIDTH_MIN || width > WIDTH_MAX || widths.includes(width)) continue;
+    widths.push(width);
+  }
+  return widths;
+}
+
+/** The label on the Capture button. */
+export function captureLabel(count: number): string {
+  if (count <= 0) return "Capture";
+  return `Capture ${count} ${count === 1 ? "size" : "sizes"}`;
+}
+
+/**
+ * What the popup shows. A run in progress comes first, because Chrome closes the popup when the tab
+ * moves and a reopened one, on any tab, has to show progress and Cancel.
+ */
+export function popupView(
+  status: RunStatus,
+  restricted: boolean | null
+): "run" | "restricted" | "sizes" {
+  if (status.state === "viewport") return "run";
+  return restricted ? "restricted" : "sizes";
+}
+
+/** The saved choices from `localStorage`, or the defaults when they are missing or malformed. */
+export function parseChoices(raw: string | null): WidthChoice[] {
+  try {
+    const value: unknown = raw ? JSON.parse(raw) : null;
+    if (
+      Array.isArray(value) &&
+      value.length === DEVICES.length &&
+      value.every(
+        (c) =>
+          c &&
+          typeof c === "object" &&
+          typeof (c as WidthChoice).text === "string" &&
+          typeof (c as WidthChoice).on === "boolean"
+      )
+    ) {
+      return value.map((c: WidthChoice) => ({ text: c.text.slice(0, 5), on: c.on }));
+    }
+  } catch {
+    // Fall through to the defaults.
+  }
+  return defaultChoices();
+}
+
+function joinList(widths: (string | number)[]): string {
+  if (widths.length <= 1) return widths.join("");
+  return `${widths.slice(0, -1).join(", ")} and ${widths[widths.length - 1]}`;
+}
+
+/** The button text while a viewport run is on one of its widths. */
+export function viewportStatusLabel(status: RunStatus & { state: "viewport" }): string {
+  return `Capturing ${status.label} (${status.index} of ${status.total})…`;
+}
+
+/**
+ * What a re-run of a finished run sends: what the run was asked, with the wrappers setting changed
+ * only when `collapseWrappers` says so.
+ */
+export function rerunRequest(
+  status: RunStatus & { state: "viewport-done" },
+  collapseWrappers: boolean = status.request.collapseWrappers
+): { widths: number[]; collapseWrappers: boolean; versionLabel: string } {
+  return { ...status.request, widths: [...status.request.widths], collapseWrappers };
+}
+
+/** What the popup says about a finished viewport run. */
+export function viewportAdvice(status: RunStatus & { state: "viewport-done" }): {
+  saved: string[];
+  summary: string;
+  mismatches: string[];
+  stopped: string | null;
+  skipped: string[];
+  nodeWarning: string | null;
+  blockedImages: number;
+} {
+  return {
+    saved: status.saved.map((s) => s.label),
+    summary: status.filename
+      ? `Saved ${status.filename} with ${joinList(status.saved.map((s) => s.label))}.`
+      : "No file was saved.",
+    mismatches: status.mismatched.map((m) => `${m.requested} was captured at ${m.width}.`),
+    stopped: status.stopped ?? (status.cancelled ? "You stopped the run." : null),
+    skipped: status.skipped.map((w) => `${w} couldn't be reached, so it was skipped.`),
+    nodeWarning: nodeAdvice(status.nodes, status.nodeLimit).warning,
+    blockedImages: status.blockedImages,
+  };
 }
