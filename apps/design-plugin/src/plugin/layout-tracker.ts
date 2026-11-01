@@ -14,7 +14,8 @@ type Sizing = PlanChildLayout["sizingH"];
 export type Built = FrameNode | TextNode | RectangleNode;
 
 /** What wrapped text must fit: the captured width, and the height that means its line count. */
-export type TextFit = { w: number; limit: number };
+/** `max` is the widest the text may go, where a clipping parent would cut its line ends off. */
+export type TextFit = { w: number; limit: number; max?: number };
 
 /** What a fallback needs beyond what verification reads. `fit` marks wrapped text set to FILL. */
 type Child = ExpectedChild & { node: Built; align: string; fit?: TextFit };
@@ -62,7 +63,9 @@ export function widenToLines(node: TextNode, fit: TextFit): boolean {
   // Keep the current height: a different one switches HEIGHT mode to NONE.
   node.resize(clampSize(fit.w), clampSize(node.height));
   for (let step = 1; node.height > fit.limit && step <= MAX_WIDEN_STEPS; step++) {
-    node.resize(clampSize(fit.w + (fit.w * step) / 100), clampSize(node.height));
+    const w = fit.w + (fit.w * step) / 100;
+    if (fit.max !== undefined && w > fit.max) break;
+    node.resize(clampSize(w), clampSize(node.height));
   }
   return node.height <= fit.limit;
 }

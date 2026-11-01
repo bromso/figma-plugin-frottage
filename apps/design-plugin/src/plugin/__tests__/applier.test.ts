@@ -552,6 +552,16 @@ test("wrapped text that needs 3 lines widens until 2 lines, keeping its centre",
   expect(r.rewrappedTexts).toBe(0);
 });
 
+test("wrapped text stays inside a clipping parent it fitted, and counts the rewrap", async () => {
+  const f = fakeFigma({ charWidth: 10 });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([{ ...frame("a"), w: 207 }, wrapped({ x: 100, align: "LEFT" })]);
+  const r = await a.end();
+  expect(textNodeOf(f).width).toBeLessThanOrEqual(107);
+  expect(r.rewrappedTexts).toBe(1);
+});
+
 test("widening right-aligned wrapped text moves x left by the whole added width", async () => {
   const f = fakeFigma({ charWidth: 10 });
   const a = createApplier(f.figma);

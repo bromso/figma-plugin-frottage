@@ -488,7 +488,9 @@ export function createApplier(api: PluginAPI) {
       pixels.length < op.runs.length || pixels.length === 0 ? oneLine : 0
     );
     // Half a line of slack, so the check counts lines and ignores rounding.
-    const fit = { w: op.w, limit: (Math.max(op.lineCount, 1) + 0.5) * lineHeight };
+    const fit: TextFit = { w: op.w, limit: (Math.max(op.lineCount, 1) + 0.5) * lineHeight };
+    // Text that fitted a clipping parent stays inside it: an extra line is better than cut words.
+    if (parent.clipsContent && op.x + op.w <= parent.width) fit.max = parent.width - op.x;
     node.textAutoResize = "HEIGHT";
     if (inLayout(parent) && op.childLayout?.sizingH === "FILL") {
       node.layoutSizingHorizontal = "FILL";
