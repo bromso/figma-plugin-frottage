@@ -290,6 +290,81 @@ describe("matching colours", () => {
   });
 });
 
+describe("a custom property's value in a later version", () => {
+  const seed = color("#111111", "color/bg", "--bg");
+  const merged = (cssValues: Record<string, string>, colors: PlanColor[] = []) =>
+    mergeVersions([
+      version("Light", planOf({ colors: [seed] })),
+      version("Dark", planOf({ colors }, [frame("f", [paint("#111111")])]), cssValues),
+    ]);
+
+  test("gives the mode its value with no token there, and from stays null", () => {
+    const r = merged({ "--bg": "#222222" });
+    expect(r.tokens.colors[0]).toMatchObject({
+      values: [
+        { mode: 0, value: rgba("#111111") },
+        { mode: 1, value: rgba("#222222") },
+      ],
+      from: ["#111111", null],
+    });
+    expect(r.report).toEqual([]);
+  });
+
+  test("resolves through var()", () => {
+    const r = merged({ "--bg": "var(--ink)", "--ink": "#222222" });
+    expect(r.tokens.colors[0]?.values[1]?.value).toEqual(rgba("#222222"));
+  });
+
+  test("carries alpha for a translucent value", () => {
+    for (const translucent of ["rgba(255, 0, 0, 0.5)", "#ff000080", "rgb(255 0 0 / 50%)"]) {
+      const value = merged({ "--bg": translucent }).tokens.colors[0]?.values[1]?.value;
+      expect(value?.r).toBe(1);
+      expect(value?.g).toBe(0);
+      expect(value?.a).toBeCloseTo(0.5, 2);
+    }
+  });
+
+  test("an alpha of 1 is opaque", () => {
+    const value = merged({ "--bg": "rgba(34, 34, 34, 1)" }).tokens.colors[0]?.values[1]?.value;
+    expect(value).toEqual(rgba("#222222"));
+  });
+
+  test("blocks a value match when it's opaque, and leaves the bare token plain and counted", () => {
+    const r = merged({ "--bg": "#222222" }, [color("#111111", "color/1")]);
+    expect(r.tokens.colors[0]?.from).toEqual(["#111111", null]);
+    expect(r.tokens.colors[0]?.values[1]?.value).toEqual(rgba("#222222"));
+    expect(keysIn(r.plans[1]?.ops ?? []).colors).toEqual([]);
+    expect(r.report).toEqual(["Dark: 1 colour stayed a plain value."]);
+  });
+
+  test("blocks a value match when it's translucent", () => {
+    const r = merged({ "--bg": "rgba(0, 0, 0, 0.5)" }, [color("#111111", "color/1")]);
+    expect(r.tokens.colors[0]?.from).toEqual(["#111111", null]);
+    expect(r.tokens.colors[0]?.values[1]?.value.a).toBeCloseTo(0.5, 2);
+  });
+
+  test("blocks a value match when it can't be parsed, and gives no value", () => {
+    for (const unreadable of ["oklch(0.5 0.1 200)", "rebeccapurple", "16px"]) {
+      const r = merged({ "--bg": unreadable }, [color("#111111", "color/1")]);
+      expect(r.tokens.colors[0]?.from).toEqual(["#111111", null]);
+      expect(r.tokens.colors[0]?.values.map((v) => v.mode)).toEqual([0]);
+      expect(r.report).toEqual(["Dark: 1 colour stayed a plain value."]);
+    }
+  });
+
+  test("a property the later version doesn't have still lets the value match", () => {
+    const r = merged({}, [color("#111111", "color/1")]);
+    expect(r.tokens.colors[0]?.from).toEqual(["#111111", "#111111"]);
+  });
+
+  test("the key changes when the property changes", () => {
+    const keyOf = (value: string) => merged({ "--bg": value }).tokens.colors[0]?.key;
+    expect(keyOf("#222222")).toBe("color/bg|Dark=#222222|Light=#111111");
+    expect(keyOf("#333333")).not.toBe(keyOf("#222222") as string);
+    expect(keyOf("rgba(34, 34, 34, 0.5)")).not.toBe(keyOf("#222222") as string);
+  });
+});
+
 describe("matching text styles", () => {
   test("heading/1 matches heading/1 by role, with size per mode", () => {
     const r = mergeVersions([

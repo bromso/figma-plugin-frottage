@@ -8,7 +8,7 @@ import type {
   PlanTextStyle,
   PlanVersionTokens,
 } from "./plan";
-import { cssColorOf } from "./tokens";
+import { cssColorOf, rgbaOf } from "./tokens";
 
 /**
  * Turns several versions' tokens into one set with a mode per version. The first version seeds
@@ -26,6 +26,9 @@ export type TokenVersion = {
 
 /** Per version, the token standing in for each seed. */
 type Joins<T> = Map<T, T>[];
+
+/** A later version's colours: `cssOnly` is what a seed's property holds where no token does. */
+type ColorJoins = { joins: Map<PlanColor, PlanColor>; cssOnly: Map<PlanColor, string> };
 
 /** Per version, what each single-version key becomes. */
 type Renames = { colors: Map<string, string>; styles: Map<string, string> };
@@ -45,8 +48,9 @@ function joinColors(
   seeds: PlanColor[],
   tokens: PlanColor[],
   cssValues: Record<string, string>
-): Map<PlanColor, PlanColor> {
+): ColorJoins {
   const joins = new Map<PlanColor, PlanColor>();
+  const cssOnly = new Map<PlanColor, string>();
   const free = new Map(tokens.map((t) => [t.key, t]));
   const join = (seed: PlanColor, token: PlanColor | undefined) => {
     if (!token || joins.has(seed) || !free.has(token.key)) return;
@@ -57,12 +61,19 @@ function joinColors(
   const byCssVar = new Map(tokens.map((t) => [t.cssVar, t]));
   for (const seed of seeds) if (seed.cssVar) join(seed, byCssVar.get(seed.cssVar));
   // A token shows one custom property, and the seed's may be another that holds the same value.
+  // Where no token holds it, the property still says what the variable is in this version.
   for (const seed of seeds) {
     const value = seed.cssVar ? cssColorOf(seed.cssVar, cssValues) : null;
-    if (value) join(seed, free.get(value));
+    if (!value || joins.has(seed)) continue;
+    const token = free.get(value);
+    if (token) join(seed, token);
+    else cssOnly.set(seed, value);
   }
-  for (const seed of seeds) join(seed, free.get(seed.key));
-  return joins;
+  // A property this version defines has spoken, even in a value that can't be read.
+  for (const seed of seeds) {
+    if (!seed.cssVar || !Object.hasOwn(cssValues, seed.cssVar)) join(seed, free.get(seed.key));
+  }
+  return { joins, cssOnly };
 }
 
 /** What has to be equal for two text styles to share a role: only size and line height vary. */
@@ -140,11 +151,14 @@ export function mergeVersions(versions: TokenVersion[]): {
 } {
   const seedColors = versions[0]?.plan.tokens.colors ?? [];
   const seedStyles = versions[0]?.plan.tokens.textStyles ?? [];
-  const colorJoins: Joins<PlanColor> = versions.map((v, i) =>
+  const colorSets = versions.map((v, i) =>
     i === 0
-      ? new Map(seedColors.map((seed) => [seed, seed]))
+      ? { joins: new Map(seedColors.map((seed) => [seed, seed])), cssOnly: new Map() }
       : joinColors(seedColors, v.plan.tokens.colors, v.cssValues)
   );
+  const colorJoins = colorSets.map((set) => set.joins);
+  const colorKeyAt = (seed: PlanColor, mode: number) =>
+    colorJoins[mode]?.get(seed)?.key ?? colorSets[mode]?.cssOnly.get(seed);
   const styleJoins: Joins<PlanTextStyle> = versions.map((v, i) =>
     i === 0
       ? new Map(seedStyles.map((seed) => [seed, seed]))
@@ -154,10 +168,13 @@ export function mergeVersions(versions: TokenVersion[]): {
   const modes = uniqueLabels(versions.map((v) => v.label));
   const colors = seedColors.map(
     (seed): PlanModeColor => ({
-      key: mergedKey(seed.name, modes, (mode) => colorJoins[mode]?.get(seed)?.key),
+      key: mergedKey(seed.name, modes, (mode) => colorKeyAt(seed, mode)),
       name: seed.name,
       ...(seed.cssVar ? { cssVar: seed.cssVar } : {}),
-      values: perMode(seed, colorJoins, (t) => t.rgba),
+      values: modes.flatMap((_, mode) => {
+        const key = colorKeyAt(seed, mode);
+        return key === undefined ? [] : [{ mode, value: rgbaOf(key) }];
+      }),
       from: fromKeys(seed, colorJoins),
     })
   );

@@ -31,10 +31,13 @@ const hexOf = (r: number, g: number, b: number) => `#${hexByte(r)}${hexByte(g)}$
 /** Wide-gamut pages give fractional channels; the key is their nearest 8-bit colour. */
 const colorKeyOf = ({ r, g, b }: PlanRgb) => hexOf(r * 255, g * 255, b * 255);
 
-/** A token's value comes from its key, so it doesn't depend on which use came first. */
-function rgbaOf(key: string): PlanColor["rgba"] {
+/**
+ * A colour key's value, so a token's doesn't depend on which use came first. Only a value read from
+ * a custom property can have alpha, as `#rrggbbaa`.
+ */
+export function rgbaOf(key: string): PlanColor["rgba"] {
   const channel = (at: number) => Number.parseInt(key.slice(at, at + 2), 16) / 255;
-  return { r: channel(1), g: channel(3), b: channel(5), a: 1 };
+  return { r: channel(1), g: channel(3), b: channel(5), a: key.length > 7 ? channel(7) : 1 };
 }
 
 function colorUses(op: PlanOp): Coloured[] {
@@ -82,27 +85,33 @@ function hslToHex(h: number, s: number, l: number): string {
 const percentOr = (token: string, scale: number) =>
   token.endsWith("%") ? (Number.parseFloat(token) / 100) * scale : Number.parseFloat(token);
 
-/** An opaque CSS colour as a hex key, or null for anything else. */
-function opaqueColor(value: string): string | null {
+/** `#rrggbb`, with alpha added only when it isn't fully opaque. */
+const withAlpha = (hex: string, a: number) => {
+  const alpha = hexByte(a * 255);
+  return alpha === "ff" ? hex : `${hex}${alpha}`;
+};
+
+/** A CSS colour in hex, rgb or hsl, or white or black, as a hex key. Null for anything else. */
+function colorKeyOfCss(value: string): string | null {
   const text = value.trim().toLowerCase();
   if (text === "white") return "#ffffff";
   if (text === "black") return "#000000";
   const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(text)?.[1];
   if (hex) {
     const full = hex.length <= 4 ? hex.replace(/./g, "$&$&") : hex;
-    if (full.length === 8 && !full.endsWith("ff")) return null;
-    return `#${full.slice(0, 6)}`;
+    return full.endsWith("ff") && full.length === 8 ? `#${full.slice(0, 6)}` : `#${full}`;
   }
   const fn = /^(rgb|hsl)a?\(([^()]*)\)$/.exec(text);
   if (!fn) return null;
   const parts = (fn[2] as string).split(/[\s,/]+/).filter(Boolean);
   if (parts.length !== 3 && parts.length !== 4) return null;
-  if (parts[3] !== undefined && percentOr(parts[3], 1) !== 1) return null;
-  const [a = "", b = "", c = ""] = parts;
-  if (![a, b, c].every((p) => /^[\d.]+(%|deg)?$/.test(p))) return null;
-  return fn[1] === "rgb"
-    ? hexOf(percentOr(a, 255), percentOr(b, 255), percentOr(c, 255))
-    : hslToHex(Number.parseFloat(a), percentOr(b, 1), percentOr(c, 1));
+  const [a = "", b = "", c = "", alpha = "1"] = parts;
+  if (![a, b, c, alpha].every((p) => /^[\d.]+(%|deg)?$/.test(p))) return null;
+  const key =
+    fn[1] === "rgb"
+      ? hexOf(percentOr(a, 255), percentOr(b, 255), percentOr(c, 255))
+      : hslToHex(Number.parseFloat(a), percentOr(b, 1), percentOr(c, 1));
+  return withAlpha(key, percentOr(alpha, 1));
 }
 
 /** `--color-primary-dark` becomes `color/primary/dark`, as one level of grouping. Null if empty. */
@@ -115,12 +124,12 @@ function tokenName(prop: string): string | null {
   return `color/${bare.replace("-", "/")}`;
 }
 
-/** The opaque colour a custom property resolves to, as a colour token's key, or null. */
+/** The colour a custom property resolves to as a colour key, or null. Opaque ones are token keys. */
 export function cssColorOf(prop: string, props: Record<string, string>): string | null {
   const raw = Object.hasOwn(props, prop) ? props[prop] : undefined;
   if (raw === undefined || raw.length > MAX_VALUE_LENGTH) return null;
   const value = resolveVars(raw, props);
-  return value ? opaqueColor(value) : null;
+  return value ? colorKeyOfCss(value) : null;
 }
 
 type CssName = { name: string; cssVar: string };
