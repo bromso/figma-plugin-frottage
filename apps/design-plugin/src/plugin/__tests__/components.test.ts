@@ -1020,6 +1020,29 @@ test("a failure in a definition is flagged, as it shows in every copy", async ()
   expect(r.overrideFailuresInMains).toBe(1);
 });
 
+test("an instance resized from a main with no auto layout left is counted", async () => {
+  const held = (w: number) => [
+    main("x-card", { childCount: 1, layout: { mode: "NONE" } }),
+    text("x-card/t", "x-card/n"),
+    frame("root", null, { childCount: 2 }),
+    instance("a", "root", "x-card"),
+    instance("b", "root", "x-card", { w, resize: true }),
+  ];
+  const { r } = await imported(held(160) as PlanOp[]);
+  expect(r.resizedFallbacks).toBe(1);
+  const same = await imported(held(100) as PlanOp[]);
+  expect(same.r.resizedFallbacks).toBe(0);
+});
+
+test("a childless main resized on purpose is no fallback", async () => {
+  const { r } = await imported([
+    main("x-card", { childCount: 0, layout: { mode: "NONE" } }),
+    frame("root", null, { childCount: 1 }),
+    instance("a", "root", "x-card", { w: 160, resize: true }),
+  ]);
+  expect(r.resizedFallbacks).toBe(0);
+});
+
 test("a section that cannot be laid out is counted, and the import is kept", async () => {
   const f = fakeFigma();
   const a = createApplier(f.figma);

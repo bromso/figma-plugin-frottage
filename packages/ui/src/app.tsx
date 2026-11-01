@@ -83,6 +83,13 @@ function Report({
           {state.paintFailures === 1 ? "stays" : "stay"} without them.
         </p>
       )}
+      {state.resizedFallbacks > 0 && (
+        <p className="text-figma-text-danger">
+          {state.resizedFallbacks}{" "}
+          {state.resizedFallbacks === 1 ? "instance was" : "instances were"} resized from a
+          component that lost its auto layout, so the content may sit off.
+        </p>
+      )}
       {tokenFailures > 0 && (
         <p className="text-figma-text-danger">
           {tokenFailures} {tokenFailures === 1 ? "style or variable" : "styles or variables"} could

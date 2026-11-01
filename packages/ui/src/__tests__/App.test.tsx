@@ -410,6 +410,16 @@ describe("App (options and font table)", () => {
     expect(screen.getByText(/refused the fills or effects of 3 layers/)).toBeInTheDocument();
   });
 
+  it("says how many instances were resized without auto layout", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, resizedFallbacks: 2 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(screen.getByText(/2 instances were resized/)).toBeInTheDocument();
+  });
+
   it("leaves component rows out when nothing repeats", async () => {
     const user = userEvent.setup();
     render(<App port={fakePort(fonts)} />);

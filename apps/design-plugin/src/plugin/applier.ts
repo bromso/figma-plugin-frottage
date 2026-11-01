@@ -55,6 +55,8 @@ export type EndResult = TokenCounts & {
   hoverFailures: number;
   /** Frames that lost their fills or effects to a paint Figma refused; the layers stay. */
   paintFailures: number;
+  /** Instances resized from a main that lost its auto layout, whose content did not move with them. */
+  resizedFallbacks: number;
 };
 
 type Corners = [number, number, number, number];
@@ -90,6 +92,7 @@ const CANCELLED: EndResult = {
   hoverVariants: 0,
   hoverFailures: 0,
   paintFailures: 0,
+  resizedFallbacks: 0,
   ...NO_TOKENS,
 };
 
@@ -152,6 +155,7 @@ export function createApplier(api: PluginAPI) {
   let overrideFailuresInMains = 0;
   let layoutFailures = 0;
   let paintFailures = 0;
+  let resizedFallbacks = 0;
 
   function reset() {
     generation++;
@@ -191,6 +195,7 @@ export function createApplier(api: PluginAPI) {
     overrideFailuresInMains = 0;
     layoutFailures = 0;
     paintFailures = 0;
+    resizedFallbacks = 0;
   }
 
   async function loadFont(f: FontRef): Promise<void> {
@@ -714,6 +719,7 @@ export function createApplier(api: PluginAPI) {
    */
   function sizeInstance(node: InstanceNode, main: ComponentNode, op: InstanceOp) {
     const lostHug = main.layoutMode === "NONE" && (main.width !== op.w || main.height !== op.h);
+    if (lostHug && main.children.length > 0) resizedFallbacks++;
     if (op.resize || lostHug) sizeLike(node, main, op.w, op.h);
   }
 
@@ -902,6 +908,7 @@ export function createApplier(api: PluginAPI) {
     overrideFailuresInMains,
     layoutFailures,
     paintFailures,
+    resizedFallbacks,
     ...(components?.hoverCounts() ?? { hoverVariants: 0, hoverFailures: 0 }),
   });
 
