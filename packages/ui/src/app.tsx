@@ -35,6 +35,7 @@ function Report({
   // The plan's count is of what should be there, which failed layers make untrue.
   const instances = failedOps > 0 ? state.instancesCreated : report.instances;
   if (instances > 0) rows.push(["Instances", instances]);
+  if (state.hoverVariants > 0) rows.push(["Hover variants", state.hoverVariants]);
   if (autoLayoutFrames > 0) rows.push(["Auto layout frames", autoLayoutFrames]);
   if (fallbackFrames > 0) rows.push(["Frames without auto layout", fallbackFrames]);
   if (state.stylesCreated > 0) rows.push(["Styles created", state.stylesCreated]);
@@ -67,6 +68,12 @@ function Report({
       {state.layoutFailures > 0 && (
         <p className="text-figma-text-danger">
           The components could not be arranged, so some may overlap in their section.
+        </p>
+      )}
+      {state.hoverFailures > 0 && (
+        <p className="text-figma-text-danger">
+          {state.hoverFailures} {state.hoverFailures === 1 ? "component" : "components"} could not
+          get a Hover variant and {state.hoverFailures === 1 ? "stays" : "stay"} as imported.
         </p>
       )}
       {tokenFailures > 0 && (

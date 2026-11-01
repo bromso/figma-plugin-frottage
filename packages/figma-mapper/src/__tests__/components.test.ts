@@ -866,3 +866,154 @@ describe("options", () => {
     expect(DEFAULT_IMPORT_OPTIONS.hoverComponents).toBe(false);
   });
 });
+
+describe("hover patches", () => {
+  const hovering = <T extends ElementNode>(
+    node: T,
+    hover: NonNullable<ElementNode["hover"]>
+  ): T => ({
+    ...node,
+    hover,
+  });
+  const hoverOn = { ...on, hoverComponents: true };
+  const hoverOf = (p: LayerPlan) => definitions(p)[0]?.component?.hover;
+  const button = (id: string, hover?: ElementNode["hover"], over: Partial<ElementNode> = {}) => {
+    const node = tagged("x-btn", id, [label(`t${id}`, "Buy")], over);
+    return hover ? hovering(painted(node, red), hover) : painted(node, red);
+  };
+
+  test("hoverComponents off emits no patch", () => {
+    const p = plan([button("a", { backgroundColor: blue }), button("b")], on);
+    expect(definitions(p)).toHaveLength(1);
+    expect(hoverOf(p)).toBeUndefined();
+  });
+
+  test("a background hover patches the root fills", () => {
+    const p = plan([button("a", { backgroundColor: blue }), button("b")], hoverOn);
+    expect(hoverOf(p)).toEqual([
+      { path: [], fills: [{ type: "SOLID", color: { r: 0, g: 0, b: 1 }, opacity: 1 }] },
+    ]);
+  });
+
+  test("a hover that clears the background drops the solid fill and keeps the rest", () => {
+    const p = plan(
+      [button("a", { backgroundColor: { r: 0, g: 0, b: 0, a: 0 } }), button("b")],
+      hoverOn
+    );
+    expect(hoverOf(p)).toEqual([{ path: [], fills: [] }]);
+  });
+
+  test("a color hover reaches text under that element", () => {
+    const p = plan([button("a", { color: blue }), button("b")], hoverOn);
+    expect(hoverOf(p)).toEqual([{ path: [0], textColor: blue }]);
+  });
+
+  test("a deeper element's own colour hover wins", () => {
+    const inner = hovering(tagged("span", "in", [label("tin", "Deep")]), { color: red });
+    const outer = hovering(painted(tagged("x-btn", "a", [label("t1", "Top"), inner]), red), {
+      color: blue,
+    });
+    const twin = painted(
+      tagged("x-btn", "b", [label("t2", "Top"), tagged("span", "in2", [label("t3", "Deep")])]),
+      red
+    );
+    const p = plan([outer, twin], hoverOn);
+    expect(hoverOf(p)).toEqual([
+      { path: [0], textColor: blue },
+      { path: [1, 0], textColor: red },
+    ]);
+  });
+
+  test("a hover equal to the resting look emits nothing", () => {
+    const p = plan(
+      [
+        button("a", {
+          backgroundColor: red,
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          decoration: "none",
+          opacity: 1,
+        }),
+        button("b"),
+      ],
+      hoverOn
+    );
+    expect(definitions(p)).toHaveLength(1);
+    expect(hoverOf(p)).toBeUndefined();
+  });
+
+  test("an underline hover reaches text, and none on text already at none does not", () => {
+    const under = plan(
+      [button("a", { decoration: "underline solid rgb(0, 0, 0)" }), button("b")],
+      hoverOn
+    );
+    expect(hoverOf(under)).toEqual([{ path: [0], decoration: "UNDERLINE" }]);
+    const none = plan([button("a", { decoration: "none" }), button("b")], hoverOn);
+    expect(hoverOf(none)).toBeUndefined();
+  });
+
+  test("border, opacity and shadow hovers become patches only where they differ", () => {
+    const edge = { width: 1, color: red, style: "solid" };
+    const bordered = (id: string, hover?: ElementNode["hover"]) => {
+      const node = button(id, hover, {});
+      return {
+        ...node,
+        style: { ...node.style, borders: { top: edge, right: edge, bottom: edge, left: edge } },
+      };
+    };
+    const shadow = {
+      inset: false,
+      x: 0,
+      y: 2,
+      blur: 4,
+      spread: 0,
+      color: { r: 0, g: 0, b: 0, a: 0.5 },
+    };
+    const p = plan(
+      [bordered("a", { borderColor: blue, opacity: 0.5, boxShadows: [shadow] }), bordered("b")],
+      hoverOn
+    );
+    expect(hoverOf(p)).toEqual([
+      {
+        path: [],
+        strokeColor: blue,
+        opacity: 0.5,
+        effects: [
+          {
+            type: "DROP_SHADOW",
+            color: { r: 0, g: 0, b: 0, a: 0.5 },
+            offset: { x: 0, y: 2 },
+            radius: 4,
+            spread: 0,
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("hover comes from the first occurrence only", () => {
+    const p = plan([button("a"), button("b", { backgroundColor: blue })], hoverOn);
+    expect(hoverOf(p)).toBeUndefined();
+  });
+
+  test("a hover on an element that is not repeated adds no patch", () => {
+    const p = plan(
+      [button("a"), button("b"), hovering(el("solo", [0, 0], []), { backgroundColor: blue })],
+      hoverOn
+    );
+    expect(hoverOf(p)).toBeUndefined();
+  });
+
+  test("a hover inside a nested instance is reached through it", () => {
+    const icon = (id: string, hover?: ElementNode["hover"]) => {
+      const node = painted(tagged("x-icon", id, [label(`i${id}`, "i")]), blue);
+      return hover ? hovering(node, hover) : node;
+    };
+    const card = (id: string, ic: ElementNode) => painted(tagged("x-card", id, [ic]), red);
+    const p = plan(
+      [card("c1", icon("i1", { color: red })), card("c2", icon("i2")), icon("i3")],
+      hoverOn
+    );
+    const card1 = definitions(p).find((d) => d.component?.name.startsWith("x-card"));
+    expect(card1?.component?.hover).toEqual([{ path: [0, 0], textColor: red }]);
+  });
+});

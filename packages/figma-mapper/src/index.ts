@@ -11,6 +11,7 @@ export type {
   PlanChildLayout,
   PlanColor,
   PlanEffect,
+  PlanHoverPatch,
   PlanLayout,
   PlanOp,
   PlanOverride,

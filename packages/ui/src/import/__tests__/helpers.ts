@@ -133,6 +133,8 @@ export type FakePort = ImportPort & {
     overrideFailures?: number;
     overrideFailuresInMains?: number;
     layoutFailures?: number;
+    hoverVariants?: number;
+    hoverFailures?: number;
     stylesCreated?: number;
     stylesReused?: number;
     variablesCreated?: number;

@@ -1,4 +1,5 @@
-import type { PlanLayout, PlanOp, PlanOverride, PlanRun } from "./plan";
+import type { HoverPatch } from "./hover";
+import type { PlanHoverPatch, PlanLayout, PlanOp, PlanOverride, PlanRun } from "./plan";
 
 type Component = { key: string; name: string; tag: string; occurrences: Tree[] };
 
@@ -248,11 +249,28 @@ function flatten(top: Tree, rename: (id: string) => string): PlanOp[] {
   return out;
 }
 
-function definition(component: Component): PlanOp[] {
+/** The hover patches of the first occurrence, by index down the expanded tree, parents first. */
+function hoverOf(first: Tree, hovers: Map<string, HoverPatch>): PlanHoverPatch[] {
+  const out: PlanHoverPatch[] = [];
+  const stack = [{ node: first, path: [] as number[] }];
+  for (let at = stack.pop(); at; at = stack.pop()) {
+    const patch = hovers.get(at.node.op.id);
+    if (patch) out.push({ path: at.path, ...patch });
+    for (let i = at.node.children.length - 1; i >= 0; i--) {
+      stack.push({ node: childAt(at.node.children, i), path: [...at.path, i] });
+    }
+  }
+  return out;
+}
+
+function definition(component: Component, hovers: Map<string, HoverPatch>): PlanOp[] {
   const { key, name } = component;
-  const [root, ...rest] = flatten(component.occurrences[0] as Tree, (id) => `${key}/${id}`);
+  const first = component.occurrences[0] as Tree;
+  const [root, ...rest] = flatten(first, (id) => `${key}/${id}`);
   const { childLayout: _placedByInstances, ...own } = root as Extract<PlanOp, { op: "frame" }>;
-  return [{ ...own, parent: null, name, x: 0, y: 0, component: { key, name } }, ...rest];
+  const hover = hovers.size > 0 ? hoverOf(first, hovers) : [];
+  const info = { key, name, ...(hover.length > 0 ? { hover } : {}) };
+  return [{ ...own, parent: null, name, x: 0, y: 0, component: info }, ...rest];
 }
 
 /**
@@ -282,17 +300,19 @@ function canvasInstances(found: Component[], definitions: PlanOp[][], page: Plan
  * Hoists repeated custom elements to definitions at the front of `ops`, inner-first, and turns each
  * occurrence, the first too, into an `instance` op. A component is one tag and one signature used
  * at least twice. `tags` maps a node id to its tag. `instances` counts them on the canvas, so it
- * can exceed the `instance` ops.
+ * can exceed the `instance` ops. `hovers` maps a node id to what `:hover` changes there; a
+ * definition carries those of its first occurrence.
  */
 export function extractComponents(
   ops: PlanOp[],
-  tags: Map<string, string>
+  tags: Map<string, string>,
+  hovers: Map<string, HoverPatch> = new Map()
 ): { ops: PlanOp[]; components: number; instances: number } {
   const nodes = buildForest(ops);
   const found = findComponents(nodes, tags);
   if (found.length === 0) return { ops, components: 0, instances: 0 };
   const roots = nodes.filter((n) => n.parent === null);
-  const definitions = found.map(definition);
+  const definitions = found.map((c) => definition(c, hovers));
   const page = roots.flatMap((r) => flatten(r, (id) => id));
   return {
     ops: [...definitions.flat(), ...page],

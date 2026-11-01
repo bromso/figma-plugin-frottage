@@ -264,13 +264,34 @@ export function fakeFigma(opts: Options = {}) {
     return t;
   }
 
+  /** What a copy keeps of the paint that is not in the layout. */
+  function copyLook(from: FakeNode, to: FakeNode): FakeNode {
+    for (const key of ["opacity", "strokes"]) if (from[key] !== undefined) to[key] = from[key];
+    if (from.effects?.length > 0) to.effects = from.effects;
+    return to;
+  }
+
   /** A copy of a main's or an instance's child, as an instance holds it. */
   function copyChild(from: FakeNode): FakeNode {
-    if (from.type === "TEXT") return copyText(from);
-    if (from.type === "INSTANCE") return copyBody(from, instanceShell(from.main));
+    if (from.type === "TEXT") return copyLook(from, copyText(from));
+    if (from.type === "INSTANCE") return copyLook(from, copyBody(from, instanceShell(from.main)));
     const n = makeNode(from.type);
     n.fills = from.fills;
+    copyLook(from, n);
     return from.type === "FRAME" ? copyBody(from, n) : Object.assign(n, sizeOf(from));
+  }
+
+  /** As in Figma, a clone of a main is a new main beside it. */
+  function cloneMain(from: FakeNode): FakeNode {
+    calls.push("clone");
+    const n = figma.createComponent() as FakeNode;
+    copyBody(from, n);
+    copyLook(from, n);
+    n.name = from.name;
+    n.moveTo("x", from.x);
+    n.moveTo("y", from.y);
+    from.parent.appendChild(n);
+    return n;
   }
 
   const sizeOf = ({ width, height }: FakeNode) => ({ width, height });
@@ -366,7 +387,22 @@ export function fakeFigma(opts: Options = {}) {
         calls.push("createInstance");
         return copyBody(n, instanceShell(n));
       };
+      n.clone = () => cloneMain(n);
       return n;
+    },
+    combineAsVariants(variants: FakeNode[], parent: FakeNode) {
+      calls.push("combineAsVariants");
+      if (variants.length < 1 || variants.some((v) => v.type !== "COMPONENT")) {
+        throw new Error("combineAsVariants needs components");
+      }
+      // Lays nothing out: the variants stay where they are, and the set wraps them.
+      const set = makeNode("COMPONENT_SET");
+      model.installFrame(set, () => calls.push("layoutMode"));
+      parent.appendChild(set);
+      for (const v of variants) set.appendChild(v);
+      set.width = Math.max(...variants.map((v) => v.x + v.width));
+      set.height = Math.max(...variants.map((v) => v.y + v.height));
+      return set;
     },
     createSection() {
       calls.push("createSection");

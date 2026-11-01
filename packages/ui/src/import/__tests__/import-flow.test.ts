@@ -129,6 +129,14 @@ describe("runImport", () => {
     });
   });
 
+  test("the done state carries the hover counts", async () => {
+    const port = fakePort();
+    port.endResult = { ...port.endResult, hoverVariants: 3, hoverFailures: 2 };
+    const states: ImportState[] = [];
+    await runImport(frottageFile(1), port, (s) => states.push(s));
+    expect(states.at(-1)).toMatchObject({ hoverVariants: 3, hoverFailures: 2 });
+  });
+
   test("sends each image before the first batch", async () => {
     const { port } = await run(await imageFile(true));
     expect(port.log.indexOf("image")).toBeGreaterThan(-1);

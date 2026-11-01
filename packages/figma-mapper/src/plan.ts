@@ -105,6 +105,21 @@ export type PlanOverride =
   | { path: number[]; kind: "image"; hash: string }
   | { path: number[]; kind: "swap"; key: string };
 
+/**
+ * What `:hover` changes on one layer of a definition, at `path` by index down the expanded tree
+ * (an empty path is the main itself). Only what differs from the resting look is present.
+ */
+export type PlanHoverPatch = {
+  path: number[];
+  fills?: PlanPaint[];
+  strokeColor?: PlanRgb & { a: number };
+  opacity?: number;
+  effects?: PlanEffect[];
+  /** Text layers: the colour of every run. */
+  textColor?: PlanRgb & { a: number };
+  decoration?: PlanRun["decoration"];
+};
+
 export type PlanOp = (
   | {
       op: "frame";
@@ -128,7 +143,7 @@ export type PlanOp = (
       /** Direct child ops that follow, so the applier knows when this frame is complete. */
       childCount: number;
       /** Set on the root of a definition, whose `parent` is null. */
-      component?: { key: string; name: string };
+      component?: { key: string; name: string; hover?: PlanHoverPatch[] };
     }
   | {
       op: "text";

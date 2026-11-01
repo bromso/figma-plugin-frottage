@@ -348,6 +348,8 @@ test("an import with no root op returns an empty rootId and counts a failure", a
     overrideFailures: 0,
     overrideFailuresInMains: 0,
     layoutFailures: 0,
+    hoverVariants: 0,
+    hoverFailures: 0,
     stylesCreated: 0,
     stylesReused: 0,
     variablesCreated: 0,

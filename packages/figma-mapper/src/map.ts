@@ -2,6 +2,7 @@ import type { Capture, CaptureNode, ElementNode, TextNode } from "@repo/capture-
 import { extractComponents } from "./components";
 import { mapFilters } from "./filters";
 import { matchFont } from "./fonts";
+import { hoverPatches } from "./hover";
 import {
   collapseTarget,
   inferChildLayout,
@@ -760,7 +761,11 @@ export function mapCapture(
   }
   let finished = ops;
   if (options.components) {
-    const found = extractComponents(ops, tagsOf(pageRoot));
+    const found = extractComponents(
+      ops,
+      tagsOf(pageRoot),
+      options.hoverComponents ? hoverPatches(pageRoot, ops) : undefined
+    );
     finished = found.ops;
     report.components = found.components;
     report.instances = found.instances;

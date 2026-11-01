@@ -349,6 +349,17 @@ describe("App (options and font table)", () => {
     expect(screen.getByText(/could not be arranged/)).toBeInTheDocument();
   });
 
+  it("shows the hover variants made, and says plainly which components got none", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, hoverVariants: 4, hoverFailures: 2 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(screen.getByText("Hover variants").nextSibling).toHaveTextContent("4");
+    expect(screen.getByText(/2 components could not get a Hover variant/)).toBeInTheDocument();
+  });
+
   it("leaves component rows out when nothing repeats", async () => {
     const user = userEvent.setup();
     render(<App port={fakePort(fonts)} />);
@@ -358,6 +369,8 @@ describe("App (options and font table)", () => {
     expect(screen.queryByText("Instances")).toBeNull();
     expect(screen.queryByText(/could not be changed/)).toBeNull();
     expect(screen.queryByText(/could not be arranged/)).toBeNull();
+    expect(screen.queryByText("Hover variants")).toBeNull();
+    expect(screen.queryByText(/Hover variant\b/)).toBeNull();
   });
 
   it("leaves token rows out when nothing happened", async () => {

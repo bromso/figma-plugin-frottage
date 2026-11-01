@@ -35,6 +35,8 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     overrideFailures: number;
     overrideFailuresInMains: number;
     layoutFailures: number;
+    hoverVariants: number;
+    hoverFailures: number;
     stylesCreated: number;
     stylesReused: number;
     variablesCreated: number;

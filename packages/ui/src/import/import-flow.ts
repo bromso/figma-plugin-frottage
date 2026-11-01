@@ -43,6 +43,8 @@ export type ImportState =
       overrideFailures: number;
       overrideFailuresInMains: number;
       layoutFailures: number;
+      hoverVariants: number;
+      hoverFailures: number;
       stylesCreated: number;
       stylesReused: number;
       variablesCreated: number;
@@ -72,6 +74,8 @@ export type ImportPort = {
     overrideFailures?: number;
     overrideFailuresInMains?: number;
     layoutFailures?: number;
+    hoverVariants?: number;
+    hoverFailures?: number;
     stylesCreated?: number;
     stylesReused?: number;
     variablesCreated?: number;
@@ -262,6 +266,8 @@ export async function runImport(
       overrideFailures: result.overrideFailures ?? 0,
       overrideFailuresInMains: result.overrideFailuresInMains ?? 0,
       layoutFailures: result.layoutFailures ?? 0,
+      hoverVariants: result.hoverVariants ?? 0,
+      hoverFailures: result.hoverFailures ?? 0,
       stylesCreated: result.stylesCreated ?? 0,
       stylesReused: result.stylesReused ?? 0,
       variablesCreated: result.variablesCreated ?? 0,

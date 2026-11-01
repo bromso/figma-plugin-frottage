@@ -49,6 +49,10 @@ export type EndResult = TokenCounts & {
   overrideFailuresInMains: number;
   /** The section could not be arranged, so its mains may sit on top of each other. */
   layoutFailures: number;
+  /** Components given a Hover variant. */
+  hoverVariants: number;
+  /** Components whose Hover variant could not be made, which stay as they were. */
+  hoverFailures: number;
 };
 
 type Corners = [number, number, number, number];
@@ -81,6 +85,8 @@ const CANCELLED: EndResult = {
   overrideFailures: 0,
   overrideFailuresInMains: 0,
   layoutFailures: 0,
+  hoverVariants: 0,
+  hoverFailures: 0,
   ...NO_TOKENS,
 };
 
@@ -198,7 +204,11 @@ export function createApplier(api: PluginAPI) {
     active = true;
     rootName = meta.name;
     page = api.currentPage;
-    components = createComponentSet(api, meta.name);
+    components = createComponentSet(api, meta.name, {
+      paints: (list) => paints(list, false),
+      effects,
+      solid: (color, opacity) => solidPaint(color, opacity),
+    });
     await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
     fallbackOk = loadedFonts.has(fontKey(FALLBACK));
 
@@ -258,7 +268,8 @@ export function createApplier(api: PluginAPI) {
     return binding && "paintStyleId" in binding ? binding.paintStyleId : undefined;
   }
 
-  function paints(list: PlanPaint[]): Paint[] {
+  /** `count` is false for a copy of paint already counted, such as a hover variant's. */
+  function paints(list: PlanPaint[], count = true): Paint[] {
     const out: Paint[] = [];
     for (const p of list) {
       if (p.type === "SOLID") {
@@ -266,7 +277,7 @@ export function createApplier(api: PluginAPI) {
       } else if (p.type === "IMAGE") {
         const imageHash = images.get(p.hash);
         if (!imageHash) {
-          missingImages++;
+          if (count) missingImages++;
           continue;
         }
         out.push({ type: "IMAGE", imageHash, scaleMode: p.fit === "CROP" ? "FILL" : p.fit });
@@ -715,7 +726,7 @@ export function createApplier(api: PluginAPI) {
   function buildMain(op: FrameOp, key: string): Built {
     definition = key;
     const node = buildFrame(op, null);
-    (components as ComponentSet).adopt(key, node as unknown as ComponentNode);
+    (components as ComponentSet).adopt(key, node as unknown as ComponentNode, op.component?.hover);
     componentsCreated++;
     return node;
   }
@@ -875,6 +886,7 @@ export function createApplier(api: PluginAPI) {
     overrideFailures,
     overrideFailuresInMains,
     layoutFailures,
+    ...(components?.hoverCounts() ?? { hoverVariants: 0, hoverFailures: 0 }),
   });
 
   async function end(): Promise<EndResult> {

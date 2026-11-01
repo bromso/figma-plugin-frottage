@@ -3,6 +3,7 @@ import {
   DEFAULT_IMPORT_OPTIONS,
   extractComponents,
   type FontRef,
+  type PlanHoverPatch,
   type PlanOp,
   type PlanOverride,
   type PlanRun,
@@ -1039,4 +1040,197 @@ test("a section that cannot be laid out is counted, and the import is kept", asy
 test("a section laid out as planned counts no failure", async () => {
   const { r } = await imported(page(instance("a", "root", "x-card")));
   expect(r.layoutFailures).toBe(0);
+});
+
+const BLUE = { r: 0, g: 0, b: 1 };
+const blueFill = [{ type: "SOLID" as const, color: BLUE, opacity: 1 }];
+
+/** `x-card` with one label, a hover on its background and label colour, and `n` instances. */
+const hovered = (n = 1, hover: PlanHoverPatch[] | undefined = undefined): PlanOp[] => [
+  main("x-card", {
+    childCount: 1,
+    component: {
+      key: "x-card",
+      name: "x-card",
+      hover: hover ?? [
+        { path: [], fills: blueFill },
+        { path: [0], textColor: { ...BLUE, a: 1 } },
+      ],
+    },
+  }),
+  text("x-card/t", "x-card/n"),
+  frame("root", null, { childCount: n }),
+  ...Array.from({ length: n }, (_, i) => instance(`i${i}`, "root", "x-card")),
+];
+
+const setsOf = (f: ReturnType<typeof fakeFigma>) => ofType(f, "COMPONENT_SET");
+
+test("the applier makes a State set with Default and Hover", async () => {
+  const { f, r } = await imported(hovered());
+  const [set] = setsOf(f) as [FakeNode];
+  expect(set.name).toBe("x-card");
+  expect(set.children.map((v: FakeNode) => v.name)).toEqual(["State=Default", "State=Hover"]);
+  const [dflt, hover] = set.children as [FakeNode, FakeNode];
+  expect(dflt.fills).toEqual([{ type: "SOLID", color: RED, opacity: 1 }]);
+  expect(hover.fills).toEqual(blueFill);
+  expect(r).toMatchObject({ hoverVariants: 1, hoverFailures: 0, layoutFailures: 0 });
+});
+
+test("a text colour patch reaches the hover variant's label only", async () => {
+  const { f } = await imported(hovered());
+  const [dflt, hover] = (setsOf(f)[0] as FakeNode).children as [FakeNode, FakeNode];
+  const fills = (n: FakeNode) =>
+    (n.children[0].ranges ?? []).filter((x: { m: string }) => x.m === "setRangeFills");
+  expect(fills(hover).at(-1).v[0].color).toEqual(BLUE);
+  expect(fills(dflt).at(-1).v[0].color).toEqual({ r: 0, g: 0, b: 0 });
+});
+
+test("a decoration patch sets the label's decoration on the hover variant", async () => {
+  const { f } = await imported(hovered(1, [{ path: [0], decoration: "UNDERLINE" }]));
+  const [dflt, hover] = (setsOf(f)[0] as FakeNode).children as [FakeNode, FakeNode];
+  expect(hover.children[0].decorations.at(-1).v).toBe("UNDERLINE");
+  expect(dflt.children[0].decorations.at(-1).v).toBe("NONE");
+});
+
+test("stroke, opacity and effect patches land on the hover variant only", async () => {
+  const effect = {
+    type: "DROP_SHADOW" as const,
+    color: { r: 0, g: 0, b: 0, a: 0.5 },
+    offset: { x: 0, y: 2 },
+    radius: 4,
+    spread: 0,
+  };
+  const { f } = await imported(
+    hovered(1, [
+      {
+        path: [],
+        strokeColor: { ...BLUE, a: 0.5 },
+        opacity: 0.5,
+        effects: [effect],
+      },
+    ])
+  );
+  const [dflt, hover] = (setsOf(f)[0] as FakeNode).children as [FakeNode, FakeNode];
+  expect(hover.strokes).toEqual([{ type: "SOLID", color: BLUE, opacity: 0.5 }]);
+  expect(hover.opacity).toBe(0.5);
+  expect(hover.effects).toHaveLength(1);
+  expect(dflt.opacity).not.toBe(0.5);
+  expect(dflt.effects).toHaveLength(0);
+});
+
+test("the variants sit side by side and the set fits them", async () => {
+  const { f } = await imported(hovered());
+  const set = setsOf(f)[0] as FakeNode;
+  const [dflt, hover] = set.children as [FakeNode, FakeNode];
+  expect([dflt.x, dflt.y]).toEqual([0, 0]);
+  expect([hover.x, hover.y]).toEqual([124, 0]);
+  expect([set.width, set.height]).toEqual([224, 50]);
+});
+
+test("the section places the set, not the main, and fits it", async () => {
+  const { f } = await imported([
+    ...hovered(1),
+    main("x-pill", { w: 30, h: 20, childCount: 0 }),
+    instance("p", "root", "x-pill"),
+  ]);
+  // The root of `hovered` only counts its first child, so the second instance is a stray.
+  const [section] = ofType(f, "SECTION") as [FakeNode];
+  const set = setsOf(f)[0] as FakeNode;
+  const pill = ofType(f, "COMPONENT").find((c) => c.name === "x-pill") as FakeNode;
+  expect([set.x, set.y]).toEqual([40, 40]);
+  expect(pill.x).toBe(set.x + set.width + 40);
+  expect(section.width).toBeGreaterThanOrEqual(pill.x + pill.width);
+});
+
+test("the set is named after the component and sits in the section", async () => {
+  const { f } = await imported(hovered());
+  const [section] = ofType(f, "SECTION") as [FakeNode];
+  const set = setsOf(f)[0] as FakeNode;
+  expect(set.parent).toBe(section);
+  expect(section.children.map((c: FakeNode) => c.type)).toEqual(["COMPONENT_SET"]);
+});
+
+test("instances keep their overrides and now point into the set", async () => {
+  const { f, r, root } = await imported([
+    ...hovered(0),
+    instance("a", "root", "x-card", { overrides: [textOver([0], "Buy now")] }),
+  ]);
+  expect(r.overrideFailures).toBe(0);
+  const [node] = root.children as [FakeNode];
+  expect(node.children[0].characters).toBe("Buy now");
+  expect(node.main.name).toBe("State=Default");
+  expect(node.main.parent.type).toBe("COMPONENT_SET");
+});
+
+test("a nested instance in another definition keeps working after its main joins a set", async () => {
+  const { f, r } = await imported([
+    ...hovered(0).slice(0, 2),
+    main("x-wrap", { childCount: 1 }),
+    instance("x-wrap/i", "x-wrap/n", "x-card"),
+    frame("root", null, { childCount: 1 }),
+    instance("a", "root", "x-wrap"),
+  ]);
+  expect(r).toMatchObject({ hoverVariants: 1, hoverFailures: 0, failedOps: 0 });
+  const wrap = ofType(f, "COMPONENT").find((c) => c.name === "x-wrap") as FakeNode;
+  expect(wrap.children[0].main.parent.type).toBe("COMPONENT_SET");
+});
+
+test("a clone is made per component, not per instance", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch(hovered(12));
+  await a.end();
+  expect(f.count("clone")).toBe(1);
+});
+
+test("a component whose hover patches are all empty makes no variant", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch(hovered(1, []));
+  const r = await a.end();
+  expect(f.count("clone")).toBe(0);
+  expect(r.hoverVariants).toBe(0);
+  expect(ofType(f, "COMPONENT_SET")).toHaveLength(0);
+});
+
+test("a failed variant leaves the main in place and is counted", async () => {
+  const { f, r } = await imported(hovered(1, [{ path: [4], textColor: { ...BLUE, a: 1 } }]));
+  expect(r).toMatchObject({ hoverVariants: 0, hoverFailures: 1, layoutFailures: 0 });
+  expect(setsOf(f)).toHaveLength(0);
+  const mains = ofType(f, "COMPONENT");
+  expect(mains.map((m) => m.name)).toEqual(["x-card"]);
+  expect(mains[0].parent.type).toBe("SECTION");
+  expect(mains[0].fills).toEqual([{ type: "SOLID", color: RED, opacity: 1 }]);
+});
+
+test("a set that cannot be combined is counted, and the main keeps its name", async () => {
+  const f = fakeFigma();
+  (f.figma as unknown as Record<string, unknown>).combineAsVariants = () => {
+    throw new Error("refused");
+  };
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch(hovered());
+  const r = await a.end();
+  expect(r).toMatchObject({ hoverVariants: 0, hoverFailures: 1 });
+  const mains = ofType(f, "COMPONENT");
+  expect(mains.map((m) => m.name)).toEqual(["x-card"]);
+});
+
+test("one failed variant does not stop the next component's", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    main("x-bad", {
+      childCount: 0,
+      component: { key: "x-bad", name: "x-bad", hover: [{ path: [3], opacity: 0.5 }] },
+    }),
+    ...hovered(1),
+  ]);
+  const r = await a.end();
+  expect(r).toMatchObject({ hoverVariants: 1, hoverFailures: 1 });
+  expect(ofType(f, "COMPONENT_SET")).toHaveLength(1);
 });
