@@ -243,3 +243,19 @@ export function namedFile(title: string, url: string): File {
   capture.source.url = url;
   return new File([packFrottage(capture, new Map()) as BlobPart], "page.frottage");
 }
+
+/** A File of one page version: its URL, client width, and label and kind when it has them. */
+export function versionFile(opts: {
+  name: string;
+  url?: string;
+  width?: number;
+  label?: string;
+  kind?: "viewport" | "theme" | "language";
+  family?: string;
+}): File {
+  const capture = captureWithTexts(1, 1, opts.family);
+  capture.source.url = opts.url ?? "https://example.com/";
+  capture.source.viewport = { w: opts.width ?? 1280, h: 800 };
+  if (opts.label) capture.version = { label: opts.label, kind: opts.kind ?? "viewport" };
+  return new File([packFrottage(capture, new Map()) as BlobPart], opts.name);
+}

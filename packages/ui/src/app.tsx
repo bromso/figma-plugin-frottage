@@ -4,21 +4,23 @@ import {
   type ImportPort,
   type ImportState,
   type ReviewDecision,
-  runImport,
+  runImports,
+  type VersionResult,
 } from "./import/import-flow";
 import { OptionsSheet } from "./import/options";
 import { Button, Progress, SectionTitle } from "./index";
 
-const MORE_THAN_ONE = "You dropped more than one file. Frottage imported the first one.";
+type DoneState = Extract<ImportState, { step: "done" }>;
 
+/** The counts of one version. */
 function Report({
   state,
-  notice,
   headingRef,
+  heading = "Import complete",
 }: {
-  state: Extract<ImportState, { step: "done" }>;
-  notice: string;
-  headingRef: React.Ref<HTMLParagraphElement>;
+  state: VersionResult;
+  headingRef?: React.Ref<HTMLParagraphElement>;
+  heading?: string;
 }) {
   const { report, failedOps, missingImages, rewrappedTexts, textDriftCount } = state;
   const rows: [string, number][] = [
@@ -47,9 +49,8 @@ function Report({
   return (
     <div className="flex flex-col gap-2">
       <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">
-        Import complete
+        {heading}
       </SectionTitle>
-      {notice && <p className="text-figma-text-secondary">{notice}</p>}
       <dl className="flex flex-col">
         {rows.map(([label, count]) => (
           <div key={label} className="flex h-6 items-center justify-between">
@@ -123,6 +124,41 @@ function Report({
   );
 }
 
+/** Several versions: a heading, the files that failed, then one report per version. */
+function VersionsReport({
+  state,
+  headingRef,
+}: {
+  state: DoneState;
+  headingRef: React.Ref<HTMLParagraphElement>;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">
+        Import complete
+      </SectionTitle>
+      {state.failures.length > 0 && (
+        <div role="alert">
+          <p className="font-medium text-figma-text-danger">
+            {state.failures.length === 1 ? "1 file" : `${state.failures.length} files`} could not be
+            imported
+          </p>
+          <ul className="text-figma-text-secondary">
+            {state.failures.map((f) => (
+              <li key={`${f.name}:${f.message}`}>
+                {f.name}: {f.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {state.versions.map((v) => (
+        <Report key={`${v.name}:${v.label}`} state={v} heading={`${v.label} · ${v.name}`} />
+      ))}
+    </div>
+  );
+}
+
 /** Options and missing fonts, before anything is created. Import always works as it stands. */
 function Review({
   state,
@@ -181,7 +217,6 @@ function Review({
 /** The one screen: choose a .frottage file, watch it import, read the report. */
 function App({ port }: { port?: ImportPort }) {
   const [state, setState] = useState<ImportState>({ step: "idle" });
-  const [notice, setNotice] = useState("");
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
@@ -211,19 +246,17 @@ function App({ port }: { port?: ImportPort }) {
   }, [state.step]);
 
   async function start(files: File[]) {
-    const file = files[0];
-    if (!file || busy.current) return;
+    if (files.length === 0 || busy.current) return;
     busy.current = true;
     try {
-      setNotice(files.length > 1 ? MORE_THAN_ONE : "");
       const target = port ?? (await import("./app.network")).channelImportPort;
       const forceReview = optionsOpen;
       setOptionsOpen(false);
       const controller = new AbortController();
       abort.current = controller;
       setCancelling(false);
-      await runImport(
-        file,
+      await runImports(
+        files,
         target,
         setState,
         {
@@ -243,7 +276,6 @@ function App({ port }: { port?: ImportPort }) {
   }
 
   function reset() {
-    setNotice("");
     setState({ step: "idle" });
   }
 
@@ -259,6 +291,7 @@ function App({ port }: { port?: ImportPort }) {
         type="file"
         hidden
         aria-label="Choose a .frottage file"
+        multiple
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           e.target.value = "";
@@ -287,7 +320,7 @@ function App({ port }: { port?: ImportPort }) {
               : "border-figma-border bg-figma-bg-secondary"
           }`}
         >
-          <p className="text-figma-text-secondary">Drop a .frottage file here, or</p>
+          <p className="text-figma-text-secondary">Drop one or more .frottage files here, or</p>
           <Button onClick={() => input.current?.click()}>Choose a file…</Button>
           <Button
             variant="secondary"
@@ -300,10 +333,6 @@ function App({ port }: { port?: ImportPort }) {
             <p className="text-figma-text-secondary">The options open when you choose a file.</p>
           )}
         </fieldset>
-      )}
-
-      {notice && state.step !== "working" && state.step !== "done" && (
-        <p className="text-figma-text-secondary">{notice}</p>
       )}
 
       {state.step === "error" && (
@@ -324,6 +353,7 @@ function App({ port }: { port?: ImportPort }) {
       {working && (
         <div className="flex flex-col gap-2">
           <p aria-hidden="true">
+            {state.file.total > 1 ? `File ${state.file.index} of ${state.file.total}: ` : ""}
             {total > 0 ? `Importing ${state.done} of ${total} layers` : "Reading the file"}
           </p>
           <Progress value={percent} aria-label="Import progress" />
@@ -352,7 +382,11 @@ function App({ port }: { port?: ImportPort }) {
 
       {state.step === "done" && (
         <>
-          <Report state={state} notice={notice} headingRef={headingRef} />
+          {state.versions.length > 1 || state.failures.length > 0 ? (
+            <VersionsReport state={state} headingRef={headingRef} />
+          ) : (
+            <Report state={state} headingRef={headingRef} />
+          )}
           <Button variant="secondary" onClick={reset}>
             Import another file
           </Button>

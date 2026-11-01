@@ -6,7 +6,7 @@ import {
   messageForError,
   type ReviewDecision,
   type ReviewSession,
-  runImport,
+  runImports,
   sanitizeOptions,
   yieldToPaint,
 } from "../import-flow";
@@ -17,11 +17,12 @@ import {
   frottageFile,
   imageFile,
   namedFile,
+  versionFile,
 } from "./helpers";
 
 async function run(file: File, port = fakePort()) {
   const states: ImportState[] = [];
-  await runImport(file, port, (s) => states.push(s));
+  await runImports([file], port, (s) => states.push(s));
   return { port, states };
 }
 
@@ -59,7 +60,7 @@ describe("yieldToPaint", () => {
   });
 });
 
-describe("runImport", () => {
+describe("runImports", () => {
   test.each([
     ["Pricing | Acme", "https://acme.example/pricing", "Pricing | Acme"],
     ["  Spaced  ", "https://acme.example/", "Spaced"],
@@ -74,7 +75,7 @@ describe("runImport", () => {
 
   test("sends images before ops, and ops in batches of 50", async () => {
     const port = fakePort();
-    await runImport(frottageFile(119), port, () => {});
+    await runImports([frottageFile(119)], port, () => {});
     expect(port.log[0]).toBe("listFonts");
     expect(port.batchSizes).toEqual([50, 50, 20]);
     expect(port.log.indexOf("begin")).toBeLessThan(port.log.indexOf("batch"));
@@ -98,7 +99,7 @@ describe("runImport", () => {
       tokenFailures: 5,
     };
     const states: ImportState[] = [];
-    await runImport(frottageFile(1), port, (s) => states.push(s));
+    await runImports([frottageFile(1)], port, (s) => states.push(s));
     expect(states.at(-1)).toMatchObject({
       step: "done",
       stylesCreated: 1,
@@ -120,7 +121,7 @@ describe("runImport", () => {
       layoutFailures: 1,
     };
     const states: ImportState[] = [];
-    await runImport(frottageFile(1), port, (s) => states.push(s));
+    await runImports([frottageFile(1)], port, (s) => states.push(s));
     expect(states.at(-1)).toMatchObject({
       componentsCreated: 2,
       instancesCreated: 4,
@@ -134,7 +135,7 @@ describe("runImport", () => {
     const port = fakePort();
     port.endResult = { ...port.endResult, hoverVariants: 3, hoverFailures: 2 };
     const states: ImportState[] = [];
-    await runImport(frottageFile(1), port, (s) => states.push(s));
+    await runImports([frottageFile(1)], port, (s) => states.push(s));
     expect(states.at(-1)).toMatchObject({ hoverVariants: 3, hoverFailures: 2 });
   });
 
@@ -179,7 +180,7 @@ describe("runImport", () => {
   test("progress counts ops and finishes at the total", async () => {
     const { states } = await run(frottageFile(119));
     const working = states.filter((s) => s.step === "working");
-    expect(working.at(-1)).toEqual({ step: "working", done: 120, total: 120 });
+    expect(working.at(-1)).toMatchObject({ step: "working", done: 120, total: 120 });
     expect(working.map((s) => s.done)).toContain(50);
   });
 
@@ -313,7 +314,7 @@ function confirm(decision: ReviewDecision | null, forceReview = false) {
 
 async function runWith(file: File, port: ReturnType<typeof fakePort>, session: ReviewSession) {
   const states: ImportState[] = [];
-  await runImport(file, port, (s) => states.push(s), session);
+  await runImports([file], port, (s) => states.push(s), session);
   return states;
 }
 
@@ -530,7 +531,7 @@ describe("a user Cancel", () => {
       await begin(meta);
     };
     const states: ImportState[] = [];
-    await runImport(frottageFile(1), port, (s) => states.push(s), undefined, controller.signal);
+    await runImports([frottageFile(1)], port, (s) => states.push(s), undefined, controller.signal);
     expect(port.log.indexOf("begin")).toBeLessThan(port.log.indexOf("cancel"));
     expect(port.log).not.toContain("batch");
     expect(port.log).not.toContain("end");
@@ -546,8 +547,149 @@ describe("a user Cancel", () => {
       controller.abort();
     };
     const states: ImportState[] = [];
-    await runImport(frottageFile(120), port, (s) => states.push(s), undefined, controller.signal);
+    await runImports(
+      [frottageFile(120)],
+      port,
+      (s) => states.push(s),
+      undefined,
+      controller.signal
+    );
     expect(port.batchSizes).toHaveLength(1);
+    expect(port.log).toContain("cancel");
+    expect(states.at(-1)).toEqual({ step: "idle" });
+  });
+});
+
+describe("runImports with several files", () => {
+  async function runMany(files: File[], port = fakePort(), session?: ReviewSession) {
+    const states: ImportState[] = [];
+    await runImports(files, port, (s) => states.push(s), session);
+    return { port, states };
+  }
+
+  test("files from one page import one after another, widest first", async () => {
+    const { port, states } = await runMany([
+      versionFile({ name: "narrow", width: 834, label: "834" }),
+      versionFile({ name: "wide", width: 1512, label: "1512" }),
+    ]);
+    expect(port.log.filter((l) => l === "begin")).toHaveLength(2);
+    const done = states.at(-1);
+    if (done?.step !== "done") throw new Error("not done");
+    expect(done.versions.map((v) => v.name)).toEqual(["wide", "narrow"]);
+    expect(done.versions.map((v) => v.label)).toEqual(["1512", "834"]);
+    const files = states.flatMap((s) => (s.step === "working" ? [s.file.index] : []));
+    expect(files).toContain(2);
+  });
+
+  test("files from two pages import as two sets", async () => {
+    const { port, states } = await runMany([
+      versionFile({ name: "a", url: "https://one.example/" }),
+      versionFile({ name: "b", url: "https://two.example/" }),
+    ]);
+    expect(port.log.filter((l) => l === "end")).toHaveLength(2);
+    expect(states.at(-1)).toMatchObject({ step: "done" });
+  });
+
+  test("a bad file is reported by name and the rest import", async () => {
+    const { port, states } = await runMany([
+      new File([new Uint8Array([1, 2, 3])], "junk.txt"),
+      versionFile({ name: "good", label: "1280" }),
+    ]);
+    expect(port.log.filter((l) => l === "begin")).toHaveLength(1);
+    const done = states.at(-1);
+    if (done?.step !== "done") throw new Error("not done");
+    expect(done.failures.map((f) => f.name)).toEqual(["junk.txt"]);
+    expect(done.versions).toHaveLength(1);
+  });
+
+  test("a set with no good file reports only the failures", async () => {
+    const { port, states } = await runMany([
+      new File([new Uint8Array([1])], "a.txt"),
+      new File([new Uint8Array([2])], "b.txt"),
+    ]);
+    expect(port.log).toEqual([]);
+    const last = states.at(-1);
+    expect(last?.step).toBe("error");
+    expect((last as { message: string }).message).toContain("a.txt");
+    expect((last as { message: string }).message).toContain("b.txt");
+  });
+
+  test("the review step shows once, with missing fonts across all files", async () => {
+    let decided = 0;
+    const session: ReviewSession = {
+      forceReview: false,
+      decide: async () => {
+        decided += 1;
+        return { options: DEFAULT_IMPORT_OPTIONS, fonts: new Map() };
+      },
+    };
+    const { states } = await runMany(
+      [
+        versionFile({ name: "a", width: 1512, label: "1512", family: "Brand Sans" }),
+        versionFile({ name: "b", width: 834, label: "834", family: "Brand Serif" }),
+        versionFile({ name: "c", width: 600, label: "600", family: "Brand Sans" }),
+      ],
+      fakePort(),
+      session
+    );
+    const reviews = states.filter((s) => s.step === "review");
+    expect(reviews).toHaveLength(1);
+    expect(decided).toBe(1);
+    const review = reviews[0];
+    if (review?.step !== "review") throw new Error("no review");
+    expect(review.missing.map((m) => m.family).sort()).toEqual(["Brand Sans", "Brand Serif"]);
+  });
+
+  test("the report lists each version", async () => {
+    const { states } = await runMany([
+      versionFile({ name: "a", width: 1512, label: "1512" }),
+      versionFile({ name: "b", width: 834, label: "834" }),
+    ]);
+    const done = states.at(-1);
+    if (done?.step !== "done") throw new Error("not done");
+    expect(done.versions).toHaveLength(2);
+    expect(done.versions[0]?.report.texts).toBe(1);
+  });
+
+  test("more than 8 files are refused before reading", async () => {
+    const read = () => Promise.reject(new Error("read"));
+    const many = Array.from(
+      { length: 9 },
+      () => ({ size: 1, arrayBuffer: read }) as unknown as File
+    );
+    const { port, states } = await runMany(many);
+    expect(port.log).toEqual([]);
+    expect(states.at(-1)).toMatchObject({ step: "error" });
+  });
+
+  test("total bytes over the limit are refused before reading", async () => {
+    const read = () => Promise.reject(new Error("read"));
+    const big = (n: number) => ({ size: n, arrayBuffer: read }) as unknown as File;
+    const { port, states } = await runMany([big(300 * 1024 * 1024), big(300 * 1024 * 1024 + 1)]);
+    expect(port.log).toEqual([]);
+    expect((states.at(-1) as { message: string }).message).toContain("600 MB");
+  });
+
+  test("Cancel stops the run and undoes the version in hand", async () => {
+    const port = fakePort();
+    const controller = new AbortController();
+    const batch = port.batch.bind(port);
+    port.batch = async (ops) => {
+      await batch(ops);
+      controller.abort();
+    };
+    const states: ImportState[] = [];
+    await runImports(
+      [
+        versionFile({ name: "a", width: 1512, label: "1512" }),
+        versionFile({ name: "b", label: "834", width: 834 }),
+      ],
+      port,
+      (s) => states.push(s),
+      undefined,
+      controller.signal
+    );
+    expect(port.log.filter((l) => l === "begin")).toHaveLength(1);
     expect(port.log).toContain("cancel");
     expect(states.at(-1)).toEqual({ step: "idle" });
   });

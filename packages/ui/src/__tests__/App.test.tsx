@@ -50,14 +50,17 @@ describe("App (import screen)", () => {
     expect(screen.queryByText("Text blocks that changed size")).toBeNull();
   });
 
-  it("shows the multi-file notice inside the done report", async () => {
+  it("imports several files and reports each version", async () => {
     render(<App port={fakePort()} />);
     const input = screen.getByLabelText("Choose a .frottage file");
+    expect(input).toHaveAttribute("multiple");
     fireEvent.change(input, {
       target: { files: [frottageFile(1), frottageFile(1, 1, "second.frottage")] },
     });
     expect(await screen.findByText("Import complete")).toBeInTheDocument();
-    expect(screen.getByText(/more than one file/)).toBeInTheDocument();
+    expect(screen.getByText(/page\.frottage/)).toBeInTheDocument();
+    expect(screen.getByText(/second\.frottage/)).toBeInTheDocument();
+    expect(screen.queryByText(/more than one file/)).toBeNull();
   });
 
   it("shows the downscaled image count only when there is one", async () => {
@@ -119,23 +122,6 @@ describe("App (import screen)", () => {
     expect(await screen.findByText("Import complete")).toHaveFocus();
   });
 
-  it("clears the multiple-files notice on reset and on the next start", async () => {
-    const user = userEvent.setup();
-    render(<App port={fakePort()} />);
-    const area = screen.getByRole("group", { name: "Drop area" });
-    await act(async () => {
-      area.dispatchEvent(
-        Object.assign(new Event("drop", { bubbles: true, cancelable: true }), {
-          dataTransfer: { files: [frottageFile(1), frottageFile(1)] },
-        })
-      );
-    });
-    await screen.findByText("Import complete");
-    expect(screen.getByText(/more than one file/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Import another file" }));
-    expect(screen.queryByText(/more than one file/)).toBeNull();
-  });
-
   it("two quick picks start one import", async () => {
     const port = fakePort();
     render(<App port={port} />);
@@ -148,19 +134,20 @@ describe("App (import screen)", () => {
     expect(port.log.filter((l) => l === "begin")).toHaveLength(1);
   });
 
-  it("uses the first dropped file and says so when the import fails", async () => {
+  it("names a bad dropped file and imports the other", async () => {
     render(<App port={fakePort()} />);
     const area = screen.getByRole("group", { name: "Drop area" });
-    const junk = () => new File([new Uint8Array([1, 2, 3])], "x.txt");
     await act(async () => {
       area.dispatchEvent(
         Object.assign(new Event("drop", { bubbles: true, cancelable: true }), {
-          dataTransfer: { files: [junk(), junk()] },
+          dataTransfer: {
+            files: [new File([new Uint8Array([1, 2, 3])], "x.txt"), frottageFile(1)],
+          },
         })
       );
     });
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText(/more than one file/)).toBeInTheDocument();
+    expect(await screen.findByText("Import complete")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("x.txt");
   });
 });
 
