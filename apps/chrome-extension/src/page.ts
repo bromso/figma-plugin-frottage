@@ -57,28 +57,14 @@ export function normaliseVersion(kind: unknown, label: unknown): CaptureVersion 
   return { label: trimmed, kind: found };
 }
 
-/** A window can't be resized below this, so a narrower width is captured through DevTools. */
-const NARROW_UNDER = 500;
-
 /**
- * The version a capture records, in the page. A viewport's label is the width the page was laid out
- * at, which only the page knows, followed by the typed label when there is one; anything else keeps
- * the label it was given. A plain capture of a page laid out under 500 is DevTools' device mode, so
- * it is labelled with that width.
+ * The version a capture records, in the page: a viewport labelled with the width the page was laid
+ * out at, which only the page knows, followed by the typed label when there is one.
  */
-export function pageVersion(
-  kind: unknown,
-  label: unknown,
-  innerWidth: number
-): CaptureVersion | undefined {
+export function pageVersion(label: unknown, innerWidth: number): CaptureVersion | undefined {
   const typed = typeof label === "string" ? label.trim() : "";
   const width = String(innerWidth);
-  const given = normaliseVersion(
-    kind,
-    kind === "viewport" ? (typed ? `${width} ${typed}` : width) : label
-  );
-  if (given) return given;
-  return innerWidth < NARROW_UNDER ? normaliseVersion("viewport", width) : undefined;
+  return normaliseVersion("viewport", typed ? `${width} ${typed}` : width);
 }
 
 /**

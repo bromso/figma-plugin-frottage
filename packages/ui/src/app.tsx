@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FontTable } from "./import/font-table";
 import {
-  failureHeading,
+  failuresHeading,
   type ImportPort,
   type ImportState,
   type ReviewDecision,
@@ -194,9 +194,7 @@ function VersionsReport({
       </SectionTitle>
       {state.failures.length > 0 && (
         <div role="alert">
-          <p className="font-medium text-figma-text-danger">
-            {failureHeading(state.failures.length)}
-          </p>
+          <p className="font-medium text-figma-text-danger">{failuresHeading(state.failures)}</p>
           <ul className="text-figma-text-secondary">
             {state.failures.map((f, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: the same file name can fail twice
@@ -413,7 +411,9 @@ function App({ port }: { port?: ImportPort }) {
       {working && (
         <div className="flex flex-col gap-2">
           <p aria-hidden="true">
-            {state.file.total > 1 ? `File ${state.file.index} of ${state.file.total}: ` : ""}
+            {state.file.total > 1
+              ? `${state.file.unit === "size" ? "Size" : "File"} ${state.file.index} of ${state.file.total}: `
+              : ""}
             {total > 0 ? `Importing ${state.done} of ${total} layers` : "Reading the file"}
           </p>
           <Progress value={percent} aria-label="Import progress" />

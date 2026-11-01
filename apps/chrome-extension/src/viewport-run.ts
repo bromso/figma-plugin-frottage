@@ -198,7 +198,9 @@ export class ViewportRun {
         // The status is already held for the popup's next open.
       }
       try {
-        this.deps.announce(done.saved.length < asked.length || done.stopped === STRANDED);
+        this.deps.announce(
+          done.saved.length < asked.length || done.stopped?.startsWith(STRANDED) === true
+        );
       } catch {
         // The status is the record; a missed announcement loses nothing.
       }
@@ -232,6 +234,7 @@ export class ViewportRun {
         stranded = true;
       }
     }
+    let saveFailure: string | undefined;
     if (done.saved.length > 0) {
       try {
         done.filename = await this.deps.save();
@@ -242,10 +245,11 @@ export class ViewportRun {
         done.nodes = 0;
         done.nodeLimit = false;
         done.blockedImages = 0;
-        done.stopped = notSaved(messageOf(error));
+        saveFailure = notSaved(messageOf(error));
+        done.stopped = saveFailure;
       }
     }
-    if (stranded) done.stopped = STRANDED;
+    if (stranded) done.stopped = saveFailure ? `${STRANDED} ${saveFailure}` : STRANDED;
   }
 
   /** The width Chrome gave; "closed" when the window is gone, "refused" when it won't take it. */

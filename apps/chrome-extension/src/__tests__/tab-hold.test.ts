@@ -434,6 +434,22 @@ describe("releaseTab", () => {
     expect(c.tabs().some((t) => t.id === 5)).toBe(false);
   });
 
+  test("a pinned tab whose small window closed comes back as a pinned holder at its place", async () => {
+    const c = fakeChrome([
+      { id: 11, pinned: true },
+      { id: 5, pinned: true },
+      { id: 12, pinned: true },
+      { id: 20 },
+    ]);
+    const held = await holdTab(c.api, 5, RUN_PAGE);
+    c.closeWindow(held.runWindowId);
+    expect(await releaseTab(c.api, held, { delay: instant })).toBe("back");
+    const holder = c.infoOf(held.holderId);
+    expect(holder.pinned).toBe(true);
+    expect(holder.index).toBe(held.index);
+    expect(c.order()).toEqual([11, held.holderId, 12, 20]);
+  });
+
   test("a new window for an incognito tab is an incognito one", async () => {
     const c = fakeChrome([{ id: 10 }, { id: 5 }], { incognito: true });
     const held = await holdTab(c.api, 5, RUN_PAGE);

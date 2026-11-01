@@ -30,7 +30,7 @@ void (async () => {
   const collapseWrappers = win.__frottageCollapse === true;
   const imageAccess = win.__frottageImageAccess === true;
   // Every capture is a viewport, labelled with its width and the typed label, if any.
-  const version = pageVersion("viewport", win.__frottageVersionLabel, window.innerWidth);
+  const version = pageVersion(win.__frottageVersionLabel, window.innerWidth);
   win.__frottageVersionLabel = undefined;
   win.__frottageImageAccess = undefined;
   win.__frottageRunId = undefined;

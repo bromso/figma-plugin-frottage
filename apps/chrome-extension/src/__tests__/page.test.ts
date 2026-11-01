@@ -222,16 +222,16 @@ describe("normaliseVersion", () => {
 
 describe("pageVersion", () => {
   test("a viewport capture is labelled with what the page was laid out at", () => {
-    expect(pageVersion("viewport", "", 1440)).toEqual({ label: "1440", kind: "viewport" });
+    expect(pageVersion("", 1440)).toEqual({ label: "1440", kind: "viewport" });
   });
 
   test("a width label carries the typed label", () => {
-    expect(pageVersion("viewport", "Dark", 1512)).toEqual({ label: "1512 Dark", kind: "viewport" });
-    expect(pageVersion("viewport", "  ", 1512)).toEqual({ label: "1512", kind: "viewport" });
+    expect(pageVersion("Dark", 1512)).toEqual({ label: "1512 Dark", kind: "viewport" });
+    expect(pageVersion("  ", 1512)).toEqual({ label: "1512", kind: "viewport" });
   });
 
   test("a long typed label is cut to fit", () => {
-    const label = pageVersion("viewport", "x".repeat(40), 1512)?.label ?? "";
+    const label = pageVersion("x".repeat(40), 1512)?.label ?? "";
     expect(label.length).toBeLessThanOrEqual(LABEL_MAX);
     expect(label.startsWith("1512 ")).toBe(true);
   });
@@ -246,9 +246,9 @@ describe("pageVersion", () => {
     );
   });
 
-  test("a theme or language keeps the label it was given", () => {
-    expect(pageVersion("theme", "Dark", 1440)).toEqual({ label: "Dark", kind: "theme" });
-    expect(pageVersion(undefined, undefined, 1440)).toBeUndefined();
+  test("a missing label is the width alone, at any width", () => {
+    expect(pageVersion(undefined, 393)).toEqual({ label: "393", kind: "viewport" });
+    expect(pageVersion(undefined, 1440)).toEqual({ label: "1440", kind: "viewport" });
   });
 });
 
@@ -458,17 +458,6 @@ describe("viewportStatusLabel", () => {
     expect(viewportStatusLabel({ state: "viewport", index: 2, total: 3, label: "1440" })).toBe(
       "Capturing 1440 (2 of 3)…"
     );
-  });
-});
-
-describe("pageVersion under 500", () => {
-  test("a plain capture under 500 is labelled with its width", () => {
-    expect(pageVersion(undefined, undefined, 393)).toEqual({ label: "393", kind: "viewport" });
-    expect(pageVersion("theme", "  ", 390)).toEqual({ label: "390", kind: "viewport" });
-  });
-  test("500 and over stay plain, and a given label wins", () => {
-    expect(pageVersion(undefined, undefined, 500)).toBeUndefined();
-    expect(pageVersion("theme", "Dark", 393)).toEqual({ label: "Dark", kind: "theme" });
   });
 });
 

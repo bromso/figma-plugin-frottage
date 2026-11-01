@@ -1,7 +1,13 @@
 import type { Capture } from "@repo/capture-schema";
 
 /** One unpacked file. `assets` may be empty when only the capture is needed. */
-export type LoadedFile = { name: string; capture: Capture; assets: Map<string, Uint8Array> };
+export type LoadedFile = {
+  name: string;
+  capture: Capture;
+  assets: Map<string, Uint8Array>;
+  /** One of several captures in its file, so a version of that file rather than a file. */
+  several?: boolean;
+};
 
 /** The files of one page, in the order they import: by `compareVersions`. */
 export type VersionSet = { url: string; versions: LoadedFile[] };

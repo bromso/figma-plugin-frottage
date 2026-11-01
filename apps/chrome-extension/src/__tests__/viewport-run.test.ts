@@ -259,6 +259,19 @@ describe("ViewportRun", () => {
     expect(t.announced).toEqual([true]);
   });
 
+  test("a stranded tab and a failed save both show, the stranded tab first", async () => {
+    const t = setup({
+      release: "stranded",
+      save: () => Promise.reject(new Error("Disk full")),
+    });
+    await t.run.start([1512, 1440]);
+    const stopped = t.final().stopped ?? "";
+    expect(stopped).toContain("Your tab couldn't be moved back. It's in the small window.");
+    expect(stopped).toContain("The file couldn't be saved: Disk full");
+    expect(stopped.indexOf("Your tab")).toBeLessThan(stopped.indexOf("The file couldn't"));
+    expect(t.announced).toEqual([true]);
+  });
+
   test("a stranded tab is a failure even when every size was saved", async () => {
     const t = setup({ release: "stranded" });
     await t.run.start([1512, 1440]);

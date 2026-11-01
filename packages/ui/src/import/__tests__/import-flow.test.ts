@@ -1,8 +1,10 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import * as schema from "@repo/capture-schema";
 import { FrottageFileError, packFrottage } from "@repo/capture-schema";
 import { DEFAULT_IMPORT_OPTIONS } from "@repo/figma-mapper";
 import {
   failureHeading,
+  failuresHeading,
   type ImportState,
   mergeMissing,
   messageForError,
@@ -731,7 +733,7 @@ describe("runImports with several files", () => {
     );
     const done = states.at(-1);
     if (done?.step !== "done") throw new Error("not done");
-    expect(done.failures.map((f) => f.name)).toEqual(["wide"]);
+    expect(done.failures.map((f) => f.name)).toEqual(["1512 · wide"]);
     expect(done.versions.map((v) => v.name)).toEqual(["narrow"]);
     expect(port.log).not.toContain("cancel");
   });
@@ -758,7 +760,7 @@ describe("runImports with several files", () => {
     const { states } = await runMany([changing, versionFile({ name: "ok", width: 100 })]);
     const done = states.at(-1);
     if (done?.step !== "done") throw new Error("not done");
-    expect(done.failures.map((f) => f.name)).toEqual(["img.frottage"]);
+    expect(done.failures.map((f) => f.name)).toEqual(["1280 · img.frottage"]);
     expect(done.versions.map((v) => v.name)).toEqual(["ok"]);
   });
 
@@ -1132,7 +1134,7 @@ describe("a set of versions", () => {
     port.failVersion = 1;
     const { last } = await runSet([wide(), mid(), narrow()], port);
     const done = doneOf(last);
-    expect(done.failures.map((f) => f.name)).toEqual(["mid"]);
+    expect(done.failures.map((f) => f.name)).toEqual(["1000 · mid"]);
     expect(done.versions.map((v) => v.name)).toEqual(["wide", "narrow"]);
     expect(port.log).not.toContain("cancel");
     expect(port.log.at(-1)).toBe("endSet");
@@ -1148,7 +1150,7 @@ describe("a set of versions", () => {
     };
     const { last } = await runSet([wide(), file, narrow()]);
     const done = doneOf(last);
-    expect(done.failures.map((f) => f.name)).toEqual(["mid"]);
+    expect(done.failures.map((f) => f.name)).toEqual(["1000 · mid"]);
     expect(done.versions).toHaveLength(2);
   });
 
@@ -1185,7 +1187,7 @@ describe("a set of versions", () => {
       port
     );
     const done = doneOf(last);
-    expect(done.failures.map((f) => f.name)).toEqual(["wide", "narrow"]);
+    expect(done.failures.map((f) => f.name)).toEqual(["1512 · wide", "834 · narrow"]);
     expect(done.versions.map((v) => v.name)).toEqual(["w2", "n2"]);
     expect(port.log.filter((l) => l === "cancel")).toHaveLength(1);
   });
@@ -1204,7 +1206,11 @@ describe("a set of versions", () => {
     port.failVersion = 1;
     const { last } = await runSet([wide(), mid(), narrow()], port);
     const lines = (last as { message: string }).message.split("\n");
-    expect(lines.slice(1).map((l) => l.split(":")[0])).toEqual(["mid", "wide", "narrow"]);
+    expect(lines.slice(1).map((l) => l.split(":")[0])).toEqual([
+      "1000 · mid",
+      "1512 · wide",
+      "834 · narrow",
+    ]);
   });
 
   test("two sets run one after another, each opened and closed", async () => {
@@ -1294,7 +1300,7 @@ describe("a file holding several captures", () => {
     const { last } = await runAll([changing]);
     expect(last.step).toBe("error");
     const message = (last as { message: string }).message;
-    expect(message.split("\n")[0]).toBe(failureHeading(2));
+    expect(message.split("\n")[0]).toBe("2 sizes could not be imported");
     expect(message).toContain("Home | Volvo Group");
   });
 
@@ -1349,5 +1355,96 @@ describe("a file holding several captures", () => {
     expect(last.step).toBe("error");
     expect(port.log).not.toContain("image");
     expect(port.log).not.toContain("batch");
+  });
+});
+
+describe("a failed size", () => {
+  async function runAll(files: File[], port = fakePort()) {
+    const states: ImportState[] = [];
+    await runImports(files, port, (s) => states.push(s));
+    return { port, states, last: states.at(-1) as ImportState };
+  }
+
+  test("one failed size of a one-file set is named by its size, and worded as a size", async () => {
+    const port = fakePort();
+    port.failVersion = 1;
+    const { last } = await runAll([setFile({ widths: [1512, 834, 390] })], port);
+    if (last.step !== "done") throw new Error("not done");
+    expect(last.failures.map((f) => f.name)).toEqual(["834 · Home | Volvo Group"]);
+    expect(failuresHeading(last.failures)).toBe("1 size could not be imported");
+  });
+
+  test("a whole set that fails lists each size under a size heading", async () => {
+    const port = fakePort();
+    port.failOn = "beginSet";
+    const { last } = await runAll([setFile({ widths: [1512, 834] })], port);
+    expect(last.step).toBe("error");
+    const lines = (last as { message: string }).message.split("\n");
+    expect(lines[0]).toBe("2 sizes could not be imported");
+    expect(lines[1]).toStartWith("1512 · ");
+    expect(lines[2]).toStartWith("834 · ");
+  });
+
+  test("file failures keep the word file", async () => {
+    const { last } = await runAll([
+      new File([new Uint8Array([1])], "a.txt"),
+      versionFile({ name: "ok", width: 100 }),
+    ]);
+    if (last.step !== "done") throw new Error("not done");
+    expect(failuresHeading(last.failures)).toBe("1 file could not be imported");
+    expect(failureHeading(3)).toBe("3 files could not be imported");
+  });
+});
+
+describe("the progress count's unit", () => {
+  async function units(files: File[]) {
+    const states: ImportState[] = [];
+    await runImports(files, fakePort(), (s) => states.push(s));
+    return states.flatMap((s) => (s.step === "working" ? [s.file.unit] : []));
+  }
+
+  test("one dropped file counts sizes", async () => {
+    const got = await units([setFile({ widths: [1512, 834, 390] })]);
+    expect(got.length).toBeGreaterThan(0);
+    expect(new Set(got)).toEqual(new Set(["size"]));
+  });
+
+  test("several dropped files count files", async () => {
+    const got = await units([
+      versionFile({ name: "a", width: 1512, label: "1512" }),
+      versionFile({ name: "b", width: 834, label: "834" }),
+    ]);
+    expect(new Set(got)).toEqual(new Set(["file"]));
+  });
+});
+
+describe("images between files", () => {
+  test("a two-file drop lets each file's images go before the next file is read", async () => {
+    const first = setFileWithImage([1512, 834], true, "first.frottage");
+    const second = setFile({
+      name: "second.frottage",
+      widths: [400],
+      url: "https://other.example/",
+    });
+    const maps: Map<string, Uint8Array>[] = [];
+    const unpack = schema.unpackFrottageSet;
+    const spy = spyOn(schema, "unpackFrottageSet").mockImplementation(((bytes: Uint8Array) => {
+      const result = unpack(bytes);
+      maps.push(result.assets);
+      return result;
+    }) as typeof schema.unpackFrottageSet);
+    let heldWhenSecondRead = -1;
+    const read = second.arrayBuffer.bind(second);
+    second.arrayBuffer = () => {
+      heldWhenSecondRead = maps[0]?.size ?? -1;
+      return read();
+    };
+    try {
+      await runImports([first, second], fakePort(), () => {});
+    } finally {
+      spy.mockRestore();
+    }
+    expect(maps.length).toBeGreaterThan(0);
+    expect(heldWhenSecondRead).toBe(0);
   });
 });

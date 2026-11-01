@@ -329,8 +329,8 @@ function Popup() {
           </div>
         </fieldset>
         <Type size="xsmall" className="text-muted-foreground">
-          Widths from 120 to 3840. The window is resized for each size and put back after. Leave the
-          window alone while it runs.
+          Widths from 120 to 3840. Your tab moves to a small window for each size, then comes back.
+          Leave the window alone while it runs.
         </Type>
         {badTick && (
           <Type size="xsmall" className="text-destructive">

@@ -68,7 +68,12 @@ export type SetReport = {
   notes: string[];
 };
 
-export type FileFailure = { name: string; message: string };
+export type FileFailure = {
+  name: string;
+  message: string;
+  /** A size (one capture of a file) that failed, not a whole file. */
+  size?: boolean;
+};
 
 export type ImportState =
   | { step: "idle" }
@@ -85,7 +90,7 @@ export type ImportState =
       done: number;
       total: number;
       /** Which file of the drop is in hand; `index` counts from 1. */
-      file: { index: number; total: number; name: string };
+      file: { index: number; total: number; name: string; unit: "file" | "size" };
     }
   | ({ step: "done" } & VersionResult & {
         /** One report per imported version, in import order. */
@@ -252,8 +257,16 @@ export const MAX_CAPTURES = 16;
 export const MAX_TOTAL_BYTES = 600 * 1024 * 1024;
 
 /** Shared by the screen's partial and all-failed reports. */
-export function failureHeading(count: number): string {
-  return count === 1 ? "1 file could not be imported" : `${count} files could not be imported`;
+export function failureHeading(count: number, noun: "file" | "size" = "file"): string {
+  return count === 1
+    ? `1 ${noun} could not be imported`
+    : `${count} ${noun}s could not be imported`;
+}
+
+/** The heading for a list of failures: sizes when every one is a size of a file, else files. */
+export function failuresHeading(failures: FileFailure[]): string {
+  const sizes = failures.length > 0 && failures.every((f) => f.size);
+  return failureHeading(failures.length, sizes ? "size" : "file");
 }
 
 const TOO_MANY_FILES = `Frottage imports up to ${MAX_FILES} files at a time. Choose fewer files and try again.`;
@@ -275,10 +288,11 @@ export async function loadFile(file: File, verify = true): Promise<LoadedFile[]>
     name: several ? importName(capture.source) : file.name,
     capture,
     assets,
+    several,
   }));
 }
 
-type FileInfo = { index: number; total: number; name: string };
+type FileInfo = { index: number; total: number; name: string; unit: "file" | "size" };
 
 type Plan = ReturnType<typeof mapCapture>;
 
@@ -421,7 +435,9 @@ type SetContext = Pick<VersionContext, "port" | "onState" | "signal" | "options"
   totalFiles: number;
   /** A version's images, read again. */
   assetsOf(version: LoadedFile): Promise<Map<string, Uint8Array>>;
-  fail(name: string, error: unknown): void;
+  fail(name: string, error: unknown, size?: boolean): void;
+  /** What the progress counts: the dropped files, or the sizes of one file. */
+  unit: FileInfo["unit"];
 };
 
 type SetOutcome = { versions: VersionReport[]; report: SetReport | null; cancelled: boolean };
@@ -432,7 +448,12 @@ type SetOutcome = { versions: VersionReport[]; report: SetReport | null; cancell
  * Cancel takes back the whole set.
  */
 async function importSet(set: VersionSet, ctx: SetContext): Promise<SetOutcome> {
-  const { port, onState, signal, options, plans, fail } = ctx;
+  const { port, onState, signal, options, plans, fail, unit } = ctx;
+  /** A version named by its size first, since the page title is the same for all of a file. */
+  const nameOf = (v: LoadedFile) => {
+    const label = v.capture.version?.label;
+    return label ? `${label} · ${v.name}` : v.name;
+  };
   const kept: VersionReport[] = [];
   const failed = new Set<LoadedFile>();
   let open = false;
@@ -467,7 +488,7 @@ async function importSet(set: VersionSet, ctx: SetContext): Promise<SetOutcome> 
     for (const [i, version] of set.versions.entries()) {
       if (signal?.aborted) return await stop();
       const index = ctx.firstFile + i;
-      const file: FileInfo = { index, total: ctx.totalFiles, name: version.name };
+      const file: FileInfo = { index, total: ctx.totalFiles, name: version.name, unit };
       onState({ step: "working", done, total, file });
       const merging = merged.plans[i] as Plan;
       const plan = dropped.has(i) ? stripTokens(merging) : merging;
@@ -491,7 +512,7 @@ async function importSet(set: VersionSet, ctx: SetContext): Promise<SetOutcome> 
         if (dropped.has(i)) plainFrames += 1;
       } catch (error) {
         failed.add(version);
-        fail(version.name, error);
+        fail(nameOf(version), error, version.several);
       }
       done += plan.ops.length;
       // Let this version's plan go before the next is made.
@@ -528,7 +549,8 @@ async function importSet(set: VersionSet, ctx: SetContext): Promise<SetOutcome> 
         // The failures below are what matter.
       }
     }
-    for (const version of set.versions) if (!failed.has(version)) fail(version.name, error);
+    for (const version of set.versions)
+      if (!failed.has(version)) fail(nameOf(version), error, version.several);
     return { versions: [], report: null, cancelled: false };
   }
 }
@@ -550,15 +572,14 @@ export async function runImports(
   signal?: AbortSignal
 ): Promise<void> {
   const failures: FileFailure[] = [];
-  const fail = (name: string, error: unknown) =>
-    failures.push({ name, message: messageForError(error) });
+  const fail = (name: string, error: unknown, size = false) =>
+    failures.push({ name, message: messageForError(error), ...(size ? { size } : {}) });
+  const unit = files.length === 1 ? "size" : "file";
   const finishWithError = () => {
     const message =
       failures.length === 1
         ? (failures[0]?.message ?? "")
-        : [failureHeading(failures.length), ...failures.map((f) => `${f.name}: ${f.message}`)].join(
-            "\n"
-          );
+        : [failuresHeading(failures), ...failures.map((f) => `${f.name}: ${f.message}`)].join("\n");
     onState({ step: "error", message });
   };
   /** Counts the files until they are read, then the versions in them. */
@@ -568,7 +589,7 @@ export async function runImports(
     step: "working",
     done,
     total,
-    file: { index, total: counted, name },
+    file: { index, total: counted, name, unit },
   });
 
   try {
@@ -590,6 +611,13 @@ export async function runImports(
           sources.set(one.capture.source, { file, index });
           assetKeys.set(one.capture.source, new Set(one.assets.keys()));
           light.push(one);
+        }
+        // Only a drop of one capture keeps its images; they are read again for any other.
+        if (!(files.length === 1 && loaded.length === 1)) {
+          for (const one of loaded) {
+            one.assets.clear();
+            one.assets = new Map();
+          }
         }
       } catch (error) {
         fail(file.name, error);
@@ -699,6 +727,7 @@ export async function runImports(
           totalFiles: counted,
           assetsOf,
           fail,
+          unit,
         });
         if (outcome.cancelled) return cancelled();
         versions.push(...outcome.versions);
@@ -721,7 +750,7 @@ export async function runImports(
             onState,
             signal,
             options,
-            file: { index: firstFile, total: counted, name: version.name },
+            file: { index: firstFile, total: counted, name: version.name, unit },
           }
         );
         if (!report) return cancelled();

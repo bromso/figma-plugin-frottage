@@ -194,7 +194,9 @@ export async function releaseTab(
     // The small window was closed, and the tab with it: the holder goes to the tab's address.
     const holder = await api.tabs.get(holderId).catch(() => null);
     if (held.url !== "" && holder?.windowId === held.windowId) {
-      await attempt(() => api.tabs.update(holderId, { url: held.url }));
+      // A pinned tab's holder is pinned too, so it stands among the pinned tabs, then at the tab's index.
+      await attempt(() => api.tabs.update(holderId, { url: held.url, pinned: held.pinned }));
+      await attempt(() => api.tabs.move(holderId, { index: held.index }));
     }
     return "back";
   }
