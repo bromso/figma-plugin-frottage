@@ -8,6 +8,15 @@ export type ImportOptions = {
   hoverComponents: boolean;
 };
 
+/** What a plan is made with: the user's options, and what the import works out for itself. */
+export type PlanOptions = ImportOptions & {
+  /**
+   * Fewest uses in this capture that make a token proposal. A set asks for 1, as `mergeVersions`
+   * then counts uses across its versions.
+   */
+  tokenFloor?: number;
+};
+
 /**
  * Everything on, except layer names stay readable rather than `tag.class`, and hover variants stay
  * off.

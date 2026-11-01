@@ -26,10 +26,12 @@ const ink: PlanColor = {
   name: "color/primary",
   rgba: { ...INK, a: 1 },
   cssVar: "--color-primary",
+  uses: 3,
 };
 const body: PlanTextStyle = {
   key: "body-key",
   name: "body/1",
+  uses: 3,
   fontName: inter,
   fontSize: 16,
   lineHeight: 24,
@@ -348,7 +350,7 @@ describe("repeat imports", () => {
     const first = { ...ink, key: "#111111", name: "color/1", rgba: { ...INK, a: 1 } };
     const { cssVar: _, ...numbered } = first;
     await runImport(f, tokens({ colors: [numbered] }));
-    const blue = { key: "#0000ff", name: "color/1", rgba: { r: 0, g: 0, b: 1, a: 1 } };
+    const blue = { key: "#0000ff", name: "color/1", rgba: { r: 0, g: 0, b: 1, a: 1 }, uses: 3 };
     await runImport(f, tokens({ colors: [blue] }));
     expect(variablesIn(f).map((v) => v.name)).toEqual(["color/1", "color/2"]);
     const big = { ...body, key: "big", name: "body/1", fontSize: 99 };

@@ -14,7 +14,7 @@ import {
   visualOrder,
 } from "./layout";
 import { layerName } from "./names";
-import { DEFAULT_IMPORT_OPTIONS, type ImportOptions } from "./options";
+import { DEFAULT_IMPORT_OPTIONS, type PlanOptions } from "./options";
 import type {
   FontRef,
   ImportReport,
@@ -400,7 +400,7 @@ function tagsOf(root: CaptureNode): Map<string, string> {
 export function mapCapture(
   capture: Capture,
   available: FontRef[],
-  options: ImportOptions = DEFAULT_IMPORT_OPTIONS,
+  options: PlanOptions = DEFAULT_IMPORT_OPTIONS,
   /** Missing family to the available family the user chose for it. */
   fontOverrides: Readonly<Record<string, string>> = {}
 ): LayerPlan {

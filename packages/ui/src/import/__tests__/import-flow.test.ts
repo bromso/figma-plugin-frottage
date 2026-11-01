@@ -908,6 +908,30 @@ describe("a set of versions", () => {
     return controller;
   }
 
+  test("uses count across the set: one text in each of three versions is a text style", async () => {
+    const { port } = await runSet([wide(), mid(), narrow()]);
+    expect(port.modesSent?.textStyles).toHaveLength(1);
+  });
+
+  test("two uses across the set stay plain", async () => {
+    const { port } = await runSet([wide(), narrow()]);
+    expect(port.modesSent?.textStyles).toEqual([]);
+  });
+
+  test("a single file keeps the floor of 3 for each token", async () => {
+    const { port } = await runSet([frottageFile(2)]);
+    expect(port.tokensSent?.textStyles).toEqual([]);
+  });
+
+  test("the set's floor isn't remembered with the options", async () => {
+    const port = fakePort();
+    const session = { forceReview: true, decide: async () => ({ options: {}, fonts: new Map() }) };
+    await runImports([wide(), narrow()], port, () => {}, session as never);
+    const stored = port.prefs.get("options:example.com");
+    expect(stored).toBeDefined();
+    expect(stored).not.toHaveProperty("tokenFloor");
+  });
+
   test("runs merge, begin set, modes, each version, end set, in that order", async () => {
     const { port } = await runSet([narrow(), wide()]);
     expect(port.log.filter((l) => !l.startsWith("getPrefs") && l !== "listFonts")).toEqual([

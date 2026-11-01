@@ -12,14 +12,16 @@ import type {
   PlanVersionTokens,
   SpacingKeys,
 } from "./plan";
-import { cssColorOf, cssSpacingOf, rgbaOf } from "./tokens";
+import { cssColorOf, cssSpacingOf, MIN_USES, rgbaOf } from "./tokens";
 
 /**
  * Turns several versions' tokens into one set with a mode per version. The first version seeds
  * the set, and a later version's token joins a seed or stays a plain value in its own frame. A
  * colour joins by the same custom property, then the same value. A text style joins by shared
  * text, then the same role, and only with the same look apart from what varies by mode. A spacing
- * token joins by its custom property alone: a length no property names stays plain.
+ * token joins by its custom property alone: a length no property names stays plain. A colour or
+ * text style stays a token when its uses across the versions it joined reach `MIN_USES`, so that a
+ * heading set once at each width still varies, and each plan's own floor may be lower for that.
  */
 
 export type TokenVersion = {
@@ -296,6 +298,16 @@ export function stripTokens(plan: LayerPlan): LayerPlan {
   return withRenames(plan, none);
 }
 
+/** Uses of a seed across the versions it joined. */
+const usesAcross = <T extends { uses: number }>(seed: T, joins: Joins<T>) =>
+  joins.reduce((sum, version) => sum + (version.get(seed)?.uses ?? 0), 0);
+
+/** A version's tokens at the floor that joined no kept seed: they stay plain, and it's said. */
+function strandedIn<T extends { uses: number }>(tokens: T[], joined: Map<T, T> | undefined) {
+  const held = new Set(joined?.values());
+  return tokens.filter((t) => t.uses >= MIN_USES && !held.has(t)).length;
+}
+
 const counted = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
 function plainReport(mode: string, colors: number, styles: number, spacing: number): string[] {
@@ -314,24 +326,26 @@ export function mergeVersions(versions: TokenVersion[]): {
   plans: LayerPlan[];
   report: string[];
 } {
-  const seedColors = versions[0]?.plan.tokens.colors ?? [];
-  const seedStyles = versions[0]?.plan.tokens.textStyles ?? [];
+  const firstColors = versions[0]?.plan.tokens.colors ?? [];
+  const firstStyles = versions[0]?.plan.tokens.textStyles ?? [];
   const seedSpacing = versions[0]?.plan.tokens.spacing ?? [];
   const colorSets = versions.map((v, i) =>
     i === 0
-      ? { joins: new Map(seedColors.map((seed) => [seed, seed])), cssOnly: new Map() }
-      : joinColors(seedColors, v.plan.tokens.colors, v.cssValues)
+      ? { joins: new Map(firstColors.map((seed) => [seed, seed])), cssOnly: new Map() }
+      : joinColors(firstColors, v.plan.tokens.colors, v.cssValues)
   );
   const colorJoins = colorSets.map((set) => set.joins);
+  const seedColors = firstColors.filter((seed) => usesAcross(seed, colorJoins) >= MIN_USES);
   const colorKeyAt = (seed: PlanColor, mode: number) =>
     colorJoins[mode]?.get(seed)?.key ?? colorSets[mode]?.cssOnly.get(seed);
   const seedTexts = textsOf(versions[0]?.plan.ops ?? []);
   const styleSets: StyleJoins[] = versions.map((v, i) =>
     i === 0
-      ? { joins: new Map(seedStyles.map((seed) => [seed, seed])), shared: new Map() }
-      : joinStyles(seedStyles, v.plan.tokens.textStyles, seedTexts, textsOf(v.plan.ops))
+      ? { joins: new Map(firstStyles.map((seed) => [seed, seed])), shared: new Map() }
+      : joinStyles(firstStyles, v.plan.tokens.textStyles, seedTexts, textsOf(v.plan.ops))
   );
   const styleJoins = styleSets.map((set) => set.joins);
+  const seedStyles = firstStyles.filter((seed) => usesAcross(seed, styleJoins) >= MIN_USES);
   const styleAt = (seed: PlanTextStyle, mode: number) =>
     styleJoins[mode]?.get(seed) ?? styleSets[mode]?.shared.get(seed);
 
@@ -398,8 +412,8 @@ export function mergeVersions(versions: TokenVersion[]): {
   const report = versions.flatMap((v, i) =>
     plainReport(
       modes[i] ?? v.label,
-      v.plan.tokens.colors.length - (colorJoins[i]?.size ?? 0),
-      v.plan.tokens.textStyles.length - (styleJoins[i]?.size ?? 0),
+      strandedIn(v.plan.tokens.colors, colorJoins[i]),
+      strandedIn(v.plan.tokens.textStyles, styleJoins[i]),
       (v.plan.tokens.spacing?.length ?? 0) - (spacingSets[i]?.joins.size ?? 0)
     )
   );

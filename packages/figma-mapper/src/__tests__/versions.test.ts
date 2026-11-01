@@ -23,10 +23,11 @@ const rgb = (hex: string) => ({
 });
 const rgba = (hex: string) => ({ ...rgb(hex), a: 1 });
 
-const color = (key: string, name: string, cssVar?: string): PlanColor => ({
+const color = (key: string, name: string, cssVar?: string, uses = 3): PlanColor => ({
   key,
   name,
   rgba: rgba(key),
+  uses,
   ...(cssVar ? { cssVar } : {}),
 });
 
@@ -41,7 +42,7 @@ const style = (name: string, over: Partial<PlanTextStyle> = {}): PlanTextStyle =
     ...over,
   };
   const key = JSON.stringify([t.fontName.family, t.fontName.style, t.fontSize, t.lineHeight]);
-  return { key: over.key ?? key, name, ...t };
+  return { key: over.key ?? key, name, uses: 3, ...t };
 };
 
 const paint = (colorKey?: string): PlanPaint => ({
@@ -1335,5 +1336,83 @@ describe("spacing across versions", () => {
       }
     }
     expect(checked).toBe(2 * 3 * 5);
+  });
+});
+
+describe("uses across a set", () => {
+  const ink = (hex: string, uses: number) => color(hex, "color/ink", "--ink", uses);
+  const heading = (size: number, uses: number) =>
+    style("heading/1", { fontSize: size, lineHeight: size * 1.2, uses });
+  const headline = (styleKey: string) => text("h", [textRun(styleKey)], "Pricing for every team");
+  const sizes = [40, 32, 24];
+
+  test("a heading used once per version is kept when the three reach 3", () => {
+    const styles = sizes.map((size) => heading(size, 1));
+    const r = mergeVersions(
+      styles.map((s, i) => version(String(i), planOf({ styles: [s] }, [headline(s.key)])))
+    );
+    expect(r.tokens.textStyles.map((s) => s.fontSize.map((v) => v.value))).toEqual([sizes]);
+    expect(keysIn(r.plans[2]?.ops ?? []).styles).toEqual([r.tokens.textStyles[0]?.key]);
+  });
+
+  test("a colour used once per version is kept when the three reach 3", () => {
+    const hexes = ["#111111", "#222222", "#333333"];
+    const r = mergeVersions(
+      hexes.map((hex, i) =>
+        version(String(i), planOf({ colors: [ink(hex, 1)] }, [frame("f", [paint(hex)])]))
+      )
+    );
+    expect(r.tokens.colors).toHaveLength(1);
+    expect(keysIn(r.plans[1]?.ops ?? []).colors).toEqual([r.tokens.colors[0]?.key]);
+  });
+
+  test("two uses across the set stay plain, and lose their keys", () => {
+    const [a, b] = [heading(40, 1), heading(32, 1)];
+    const r = mergeVersions([
+      version("a", planOf({ styles: [a], colors: [ink("#111111", 1)] }, [headline(a.key)])),
+      version("b", planOf({ styles: [b], colors: [ink("#222222", 1)] }, [headline(b.key)])),
+    ]);
+    expect(r.tokens.textStyles).toEqual([]);
+    expect(r.tokens.colors).toEqual([]);
+    expect(r.plans.map((p) => keysIn(p.ops))).toEqual([
+      { colors: [], styles: [] },
+      { colors: [], styles: [] },
+    ]);
+  });
+
+  test("a token at 3 or more in one version stays, joined or not", () => {
+    const seed = heading(40, 3);
+    const r = mergeVersions([
+      version("a", planOf({ styles: [seed] }, [headline(seed.key)])),
+      version("b", planOf({})),
+    ]);
+    expect(r.tokens.textStyles).toHaveLength(1);
+  });
+
+  test("a low-use token that joined nothing isn't reported as a plain value", () => {
+    const lone = style("body/9", { fontSize: 11, lineHeight: 13, uses: 1 });
+    const r = mergeVersions([
+      version("a", planOf({ styles: [heading(40, 3)] })),
+      version("b", planOf({ styles: [lone] })),
+    ]);
+    expect(r.report).toEqual([]);
+  });
+
+  test("a token at 3 or more that joined nothing is reported, as it was", () => {
+    const stray = style("body/9", { fontSize: 11, lineHeight: 13, uses: 3 });
+    const r = mergeVersions([
+      version("a", planOf({ styles: [heading(40, 3)] })),
+      version("b", planOf({ styles: [stray] })),
+    ]);
+    expect(r.report).toEqual(["b: 1 text style stayed a plain value."]);
+  });
+
+  test("the seed that didn't join a later token doesn't count that token's uses", () => {
+    const [a, b] = [ink("#111111", 2), color("#222222", "color/other", "--other", 5)];
+    const r = mergeVersions([
+      version("a", planOf({ colors: [a] }, [frame("f", [paint("#111111")])])),
+      version("b", planOf({ colors: [b] })),
+    ]);
+    expect(r.tokens.colors).toEqual([]);
   });
 });

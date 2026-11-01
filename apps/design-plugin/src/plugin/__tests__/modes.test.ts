@@ -537,7 +537,7 @@ describe("whose collection", () => {
     const f = fakeFigma();
     const a = createApplier(f.figma);
     await a.begin(meta);
-    const ink = { key: "#404040", name: "color/ink", rgba: INK };
+    const ink = { key: "#404040", name: "color/ink", rgba: INK, uses: 3 };
     await a.importTokens({ textStyles: [], colors: [ink], collection: "example.com" }, options());
     await a.end();
     expect(collectionsIn(f)[0].getSharedPluginData("frottage", "collection")).not.toBe("");
@@ -931,7 +931,7 @@ describe("every mode holds a value", () => {
     const f = fakeFigma();
     await settle(f);
     const [collection] = collectionsIn(f);
-    await importFile(f, { key: "#4080bf", name: "color/sky", rgba: SKY });
+    await importFile(f, { key: "#4080bf", name: "color/sky", rgba: SKY, uses: 3 });
     const variable = variableNamed(f, "color/sky");
     expect(channel(variable.valuesByMode[modeId(collection, "Dark")])).toBe(SKY.g);
   });
@@ -1036,7 +1036,7 @@ describe("a later version on the only mode left", () => {
 });
 
 describe("a single file and the user's collection", () => {
-  const sky = { key: "#4080bf", name: "color/sky", rgba: SKY };
+  const sky = { key: "#4080bf", name: "color/sky", rgba: SKY, uses: 3 };
 
   test("a user's collection of the same name is left alone", async () => {
     const f = fakeFigma();
@@ -1048,7 +1048,7 @@ describe("a single file and the user's collection", () => {
     expect(f.tokens.collections.get(variable.variableCollectionId)?.name).toBe(
       "example.com (Frottage)"
     );
-    await importFile(f, { key: "#bfbfbf", name: "color/paper", rgba: PAPER });
+    await importFile(f, { key: "#bfbfbf", name: "color/paper", rgba: PAPER, uses: 3 });
     expect(collectionsIn(f)).toHaveLength(2);
   });
 

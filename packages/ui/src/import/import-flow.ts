@@ -656,8 +656,10 @@ export async function runImports(
       const firstFile = index + 1;
       index += set.versions.length;
       if (signal?.aborted) return onState({ step: "idle" });
+      // A set counts uses across its versions, in `mergeVersions`, so each plan proposes them all.
+      const planOptions = set.versions.length > 1 ? { ...options, tokenFloor: 1 } : options;
       const plans = set.versions.map(
-        (v) => firstPlan ?? mapCapture(v.capture, available, options, overrides)
+        (v) => firstPlan ?? mapCapture(v.capture, available, planOptions, overrides)
       );
 
       if (set.versions.length > 1) {

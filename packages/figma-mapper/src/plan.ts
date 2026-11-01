@@ -270,6 +270,8 @@ export type PlanColor = {
   rgba: PlanRgb & { a: number };
   /** The custom property behind it, as `--color-primary`. */
   cssVar?: string;
+  /** How many paints use it in this capture. */
+  uses: number;
 };
 
 /** A type treatment worth a text style. `key` is the value, so it stays the same across imports. */
@@ -283,6 +285,8 @@ export type PlanTextStyle = {
   letterSpacing: number;
   decoration: PlanRun["decoration"];
   textCase: PlanRun["textCase"];
+  /** How many runs use it in this capture. */
+  uses: number;
 };
 
 /**

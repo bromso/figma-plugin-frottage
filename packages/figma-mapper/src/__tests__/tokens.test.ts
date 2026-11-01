@@ -54,6 +54,24 @@ describe("usage threshold", () => {
     expect(p.tokens.textStyles.map((s) => s.fontSize)).toEqual([20]);
   });
 
+  test("a token says how many times it's used", () => {
+    const p = plan([
+      ...["a", "b", "c", "d"].map((id) => filled(id, "#112233")),
+      ...texts("s", 5, { size: 20 }),
+    ]);
+    expect(p.tokens.colors.find((c) => c.key === "#112233")?.uses).toBe(4);
+    expect(p.tokens.textStyles[0]?.uses).toBe(5);
+  });
+
+  test("a set's floor of 1 proposes a value used once, with its key on the run", () => {
+    const options = { ...DEFAULT_IMPORT_OPTIONS, tokenFloor: 1 };
+    const p = plan([filled("a", "#112233"), ...texts("s", 1, { size: 40 })], {}, options);
+    expect(p.tokens.colors.find((c) => c.key === "#112233")?.uses).toBe(1);
+    expect(p.tokens.textStyles.map((s) => [s.fontSize, s.uses])).toEqual([[40, 1]]);
+    expect(runsOf(p)[0]?.styleKey).toBeDefined();
+    expect(frameFills(p).some((f) => f.type === "SOLID" && f.colorKey === "#112233")).toBe(true);
+  });
+
   test("runs and paints that made a token carry its key, and the others do not", () => {
     const p = plan([
       ...["a", "b", "c"].map((id) => filled(id, "#112233")),

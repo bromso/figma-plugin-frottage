@@ -1,5 +1,5 @@
 import type { Capture, CaptureNode } from "@repo/capture-schema";
-import type { ImportOptions } from "./options";
+import type { PlanOptions } from "./options";
 import type {
   PlanColor,
   PlanLayout,
@@ -18,7 +18,7 @@ import type {
  */
 
 /** Fewer uses than this stay plain values, so that a one-off doesn't clutter the file. */
-const MIN_USES = 3;
+export const MIN_USES = 3;
 /** Text this much larger than the page's body size is a heading even without a heading tag. */
 const HEADING_RATIO = 1.25;
 const MAX_VAR_DEPTH = 16;
@@ -318,7 +318,7 @@ function spacingTokens(
 
 // ---------- Colours
 
-function colorTokens(ops: PlanOp[], props: Record<string, string>): PlanColor[] {
+function colorTokens(ops: PlanOp[], props: Record<string, string>, floor: number): PlanColor[] {
   const uses = new Map<string, Coloured[]>();
   for (const op of ops) {
     for (const use of colorUses(op)) {
@@ -331,7 +331,7 @@ function colorTokens(ops: PlanOp[], props: Record<string, string>): PlanColor[] 
     }
   }
   const repeated = [...uses]
-    .filter(([, list]) => list.length >= MIN_USES)
+    .filter(([, list]) => list.length >= floor)
     .sort(([a, x], [b, y]) => y.length - x.length || (a < b ? -1 : 1));
 
   const cssNames = cssNamesByColor(props);
@@ -359,6 +359,7 @@ function colorTokens(ops: PlanOp[], props: Record<string, string>): PlanColor[] 
       name: named.get(key)?.name ?? numbered(),
       rgba: rgbaOf(key),
       ...(css ? { cssVar: css.cssVar } : {}),
+      uses: list.length,
     };
   });
 }
@@ -406,7 +407,7 @@ function bodySize(chars: Map<number, number>): number {
   return best;
 }
 
-function textStyleTokens(ops: PlanOp[], root: CaptureNode): PlanTextStyle[] {
+function textStyleTokens(ops: PlanOp[], root: CaptureNode, floor: number): PlanTextStyle[] {
   const headed = headedTexts(root);
   const clusters = new Map<string, Cluster>();
   const bodyChars = new Map<number, number>();
@@ -430,7 +431,7 @@ function textStyleTokens(ops: PlanOp[], root: CaptureNode): PlanTextStyle[] {
   const isHeading = (c: Cluster) =>
     c.headed * 2 > c.runs.length || c.sample.fontSize >= body * HEADING_RATIO;
   const repeated = [...clusters.values()]
-    .filter((c) => c.runs.length >= MIN_USES)
+    .filter((c) => c.runs.length >= floor)
     .sort(
       (a, b) =>
         b.sample.fontSize - a.sample.fontSize ||
@@ -452,6 +453,7 @@ function textStyleTokens(ops: PlanOp[], root: CaptureNode): PlanTextStyle[] {
       letterSpacing,
       decoration,
       textCase,
+      uses: cluster.runs.length,
     };
   });
 }
@@ -467,13 +469,14 @@ function collectionName(url: string): string {
 }
 
 /** Proposes the page's tokens, and marks the runs and paints in `ops` that use them. */
-export function extractTokens(capture: Capture, ops: PlanOp[], options: ImportOptions): PlanTokens {
+export function extractTokens(capture: Capture, ops: PlanOp[], options: PlanOptions): PlanTokens {
   const collection = collectionName(capture.source.url);
   if (!options.tokens) return { textStyles: [], colors: [], spacing: [], collection };
+  const floor = options.tokenFloor ?? MIN_USES;
   const spacing = spacingTokens(ops, capture.tokens.cssCustomProperties);
   return {
-    textStyles: textStyleTokens(ops, capture.root),
-    colors: colorTokens(ops, capture.tokens.cssCustomProperties),
+    textStyles: textStyleTokens(ops, capture.root, floor),
+    colors: colorTokens(ops, capture.tokens.cssCustomProperties, floor),
     spacing: spacing.tokens,
     ...(spacing.over > 0 ? { spacingOver: spacing.over } : {}),
     ...(spacing.rem ? { spacingRem: true } : {}),

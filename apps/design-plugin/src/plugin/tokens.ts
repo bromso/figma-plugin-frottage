@@ -74,6 +74,9 @@ export type TokenRuntime = {
 
 type ColorBinding = { variable: Variable } | { paintStyleId: string };
 
+/** What a text style holds: a token with no count of its uses, which the sandbox has no use for. */
+type TextLook = Omit<PlanTextStyle, "uses">;
+
 /** How to compare what a variable holds with a value it should hold. */
 type Kind<T> = {
   type: "COLOR" | "FLOAT";
@@ -191,7 +194,7 @@ function hasNeutralParagraph(style: TextStyle): boolean {
   );
 }
 
-function sameTextStyle(style: TextStyle, token: PlanTextStyle): boolean {
+function sameTextStyle(style: TextStyle, token: TextLook): boolean {
   return (
     style.fontName.family === token.fontName.family &&
     style.fontName.style === token.fontName.style &&
@@ -290,7 +293,7 @@ function styleLook(
   fontSize: number,
   lineHeight: number | null,
   letterSpacing: number
-): PlanTextStyle {
+): TextLook {
   const { key, name, fontName, decoration, textCase } = role;
   return { key, name, fontName, fontSize, lineHeight, letterSpacing, decoration, textCase };
 }
@@ -364,7 +367,7 @@ export function createTokenSet(api: PluginAPI) {
     counts.tokenFailures += n;
   }
 
-  function createStyle(token: PlanTextStyle, taken: Set<string>): TextStyle {
+  function createStyle(token: TextLook, taken: Set<string>): TextStyle {
     const style = api.createTextStyle();
     try {
       // First: every other type field needs the style's font loaded.
@@ -881,7 +884,7 @@ export function createTokenSet(api: PluginAPI) {
       return stale ? { variable, stale } : null;
     };
 
-    const settleFlatRole = (role: PlanModeType, look: PlanTextStyle) => {
+    const settleFlatRole = (role: PlanModeType, look: TextLook) => {
       // A style of Frottage's bound to modes reads differently in them, whatever it says here.
       const fits = (s: TextStyle) =>
         sameTextStyle(s, look) && !(s.getSharedPluginData(NAMESPACE, VALUE_KEY) && boundFields(s));
@@ -902,7 +905,7 @@ export function createTokenSet(api: PluginAPI) {
 
     const settleVaryingRole = async (
       role: PlanModeType,
-      look: PlanTextStyle,
+      look: TextLook,
       fields: { field: TypeField; varying: boolean }[]
     ): Promise<void> => {
       const target = await homeOf();

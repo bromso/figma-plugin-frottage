@@ -290,6 +290,7 @@ test("a text override sets characters and runs, keeping the style link", async (
       {
         key: "body",
         name: "body/1",
+        uses: 3,
         fontName: inter,
         fontSize: 16,
         lineHeight: 24,
@@ -714,7 +715,7 @@ test("cancel leaves an earlier import's components alone", async () => {
 test("cancel lets go of a variable that only a main used", async () => {
   const f = fakeFigma();
   const a = createApplier(f.figma);
-  const ink = { key: "#ff0000", name: "color/red", rgba: { ...RED, a: 1 } };
+  const ink = { key: "#ff0000", name: "color/red", rgba: { ...RED, a: 1 }, uses: 3 };
   await a.begin(meta);
   await a.importTokens(
     { textStyles: [], colors: [ink], collection: "example.com" },
