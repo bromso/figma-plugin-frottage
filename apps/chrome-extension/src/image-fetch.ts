@@ -85,10 +85,12 @@ function isPrivateUrl(url: URL): boolean {
   return isPrivateHost(url.hostname);
 }
 
-/** A page on a private origin may fetch private addresses; an unknown origin may not. */
+/** A web page on a private origin may fetch private addresses; anything else may not. */
 function isPrivateOrigin(origin: string | undefined): boolean {
   try {
-    return origin ? isPrivateHost(new URL(origin).hostname) : false;
+    if (!origin) return false;
+    const url = new URL(origin);
+    return isWebUrl(url) && isPrivateUrl(url);
   } catch {
     return false;
   }

@@ -319,6 +319,23 @@ describe("private addresses", () => {
     expect(f.calls).toHaveLength(0);
   });
 
+  test("a page that is not on the web is treated as public", async () => {
+    for (const origin of ["file://", "chrome-extension://abcdefgh", "null"]) {
+      const f = fakeFetch(new Uint8Array([1]));
+      const p = pair({ id: ID, tab: { id: 1 }, origin });
+      serveImagePort(p.workerPort, {
+        fetch: f.impl,
+        extensionId: ID,
+        hasAccess: async () => true,
+        runIsLive: async () => true,
+      });
+      await expect(
+        fetchViaWorker("http://192.168.1.20/a.png", undefined, () => p.pagePort)
+      ).rejects.toThrow();
+      expect(f.calls).toHaveLength(0);
+    }
+  });
+
   test("a port with no readable origin is treated as public", async () => {
     const f = fakeFetch(new Uint8Array([1]));
     const p = pair({ id: ID, tab: { id: 1 } });
