@@ -129,7 +129,10 @@ export type FakePort = ImportPort & {
     autoLayoutFrames?: number;
     fallbackFrames?: number;
     componentsCreated?: number;
+    instancesCreated?: number;
     overrideFailures?: number;
+    overrideFailuresInMains?: number;
+    layoutFailures?: number;
     stylesCreated?: number;
     stylesReused?: number;
     variablesCreated?: number;

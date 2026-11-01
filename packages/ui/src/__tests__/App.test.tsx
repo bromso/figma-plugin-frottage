@@ -315,6 +315,40 @@ describe("App (options and font table)", () => {
     ).toBeInTheDocument();
   });
 
+  it("says at least, when a failed override is in a component", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, overrideFailures: 1, overrideFailuresInMains: 1 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(
+      screen.getByText(
+        "At least 1 instance layer could not be changed and shows the component's own content."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("counts the instances that landed when layers failed", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, failedOps: 2, instancesCreated: 1 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(screen.getByText("Instances").nextSibling).toHaveTextContent("1");
+  });
+
+  it("says so when the components could not be arranged", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, layoutFailures: 1 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(screen.getByText(/could not be arranged/)).toBeInTheDocument();
+  });
+
   it("leaves component rows out when nothing repeats", async () => {
     const user = userEvent.setup();
     render(<App port={fakePort(fonts)} />);
@@ -323,6 +357,7 @@ describe("App (options and font table)", () => {
     expect(screen.queryByText("Components")).toBeNull();
     expect(screen.queryByText("Instances")).toBeNull();
     expect(screen.queryByText(/could not be changed/)).toBeNull();
+    expect(screen.queryByText(/could not be arranged/)).toBeNull();
   });
 
   it("leaves token rows out when nothing happened", async () => {

@@ -932,6 +932,8 @@ describe("when to verify", () => {
       componentsCreated: 0,
       instancesCreated: 0,
       overrideFailures: 0,
+      overrideFailuresInMains: 0,
+      layoutFailures: 0,
       stylesCreated: 0,
       stylesReused: 0,
       variablesCreated: 0,

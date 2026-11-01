@@ -170,6 +170,7 @@ export function fakeFigma(opts: Options = {}) {
       },
       remove() {
         const parent = node.parent;
+        calls.push(`remove:${type}`);
         node.removed = true;
         detach(node);
         if (model.isLaidOut(parent)) model.reflow(parent);
@@ -251,6 +252,7 @@ export function fakeFigma(opts: Options = {}) {
   function copyText(from: FakeNode): FakeNode {
     const t = figma.createText() as FakeNode;
     t.fontName = from.fontName;
+    t.textAlignHorizontal = from.textAlignHorizontal;
     t.characters = from.characters;
     t.ranges = [...(from.ranges ?? [])];
     t.decorations = [...from.decorations];
@@ -310,8 +312,12 @@ export function fakeFigma(opts: Options = {}) {
     n.swapComponent = (next: FakeNode) => {
       calls.push("swapComponent");
       if (next?.type !== "COMPONENT") throw new Error("swapComponent needs a component");
+      // As in Figma, the instance keeps its old size, even when it hugs or its parent does.
+      const { width, height } = n;
       n.main = next;
       copyBody(next, n);
+      n.width = width;
+      n.height = height;
       if (model.isLaidOut(n.parent)) model.reflow(n.parent);
     };
     return n;
@@ -358,7 +364,6 @@ export function fakeFigma(opts: Options = {}) {
     createSection() {
       calls.push("createSection");
       const n = makeNode("SECTION");
-      // A section has only this: `resize` is not on it.
       delete n.resize;
       n.resizeWithoutConstraints = (w: number, h: number) => {
         calls.push("resizeWithoutConstraints");
@@ -482,8 +487,14 @@ export function fakeFigma(opts: Options = {}) {
         set: (v: string) => {
           calls.push("characters");
           if (!loaded.has(fontId(font))) throw new Error(`font not loaded: ${fontId(font)}`);
+          const { width } = t;
           chars = v;
           layout();
+          // As in Figma, an auto-width label stays on its aligned edge or its centre.
+          if (autoResize !== "WIDTH_AND_HEIGHT") return;
+          const grew = t.width - width;
+          if (t.textAlignHorizontal === "CENTER") t.x -= grew / 2;
+          if (t.textAlignHorizontal === "RIGHT") t.x -= grew;
         },
       });
       tokens.installText(t, () => chars, layout);

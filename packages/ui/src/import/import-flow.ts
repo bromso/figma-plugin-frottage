@@ -39,7 +39,10 @@ export type ImportState =
       autoLayoutFrames: number;
       fallbackFrames: number;
       componentsCreated: number;
+      instancesCreated: number;
       overrideFailures: number;
+      overrideFailuresInMains: number;
+      layoutFailures: number;
       stylesCreated: number;
       stylesReused: number;
       variablesCreated: number;
@@ -67,6 +70,8 @@ export type ImportPort = {
     componentsCreated?: number;
     instancesCreated?: number;
     overrideFailures?: number;
+    overrideFailuresInMains?: number;
+    layoutFailures?: number;
     stylesCreated?: number;
     stylesReused?: number;
     variablesCreated?: number;
@@ -253,7 +258,10 @@ export async function runImport(
       autoLayoutFrames: result.autoLayoutFrames ?? 0,
       fallbackFrames: result.fallbackFrames ?? 0,
       componentsCreated: result.componentsCreated ?? 0,
+      instancesCreated: result.instancesCreated ?? 0,
       overrideFailures: result.overrideFailures ?? 0,
+      overrideFailuresInMains: result.overrideFailuresInMains ?? 0,
+      layoutFailures: result.layoutFailures ?? 0,
       stylesCreated: result.stylesCreated ?? 0,
       stylesReused: result.stylesReused ?? 0,
       variablesCreated: result.variablesCreated ?? 0,

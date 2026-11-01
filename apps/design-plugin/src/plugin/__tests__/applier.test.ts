@@ -346,6 +346,8 @@ test("an import with no root op returns an empty rootId and counts a failure", a
     componentsCreated: 0,
     instancesCreated: 0,
     overrideFailures: 0,
+    overrideFailuresInMains: 0,
+    layoutFailures: 0,
     stylesCreated: 0,
     stylesReused: 0,
     variablesCreated: 0,

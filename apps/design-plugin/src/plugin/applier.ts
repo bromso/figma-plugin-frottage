@@ -45,6 +45,10 @@ export type EndResult = TokenCounts & {
   instancesCreated: number;
   /** Overrides that did not apply, so those layers show the component's own content. */
   overrideFailures: number;
+  /** Of those, the ones in a definition, which show in every copy, so the count is a lower bound. */
+  overrideFailuresInMains: number;
+  /** The section could not be arranged, so its mains may sit on top of each other. */
+  layoutFailures: number;
 };
 
 type Corners = [number, number, number, number];
@@ -75,6 +79,8 @@ const CANCELLED: EndResult = {
   componentsCreated: 0,
   instancesCreated: 0,
   overrideFailures: 0,
+  overrideFailuresInMains: 0,
+  layoutFailures: 0,
   ...NO_TOKENS,
 };
 
@@ -134,6 +140,8 @@ export function createApplier(api: PluginAPI) {
   let componentsCreated = 0;
   let instancesCreated = 0;
   let overrideFailures = 0;
+  let overrideFailuresInMains = 0;
+  let layoutFailures = 0;
 
   function reset() {
     generation++;
@@ -170,6 +178,8 @@ export function createApplier(api: PluginAPI) {
     componentsCreated = 0;
     instancesCreated = 0;
     overrideFailures = 0;
+    overrideFailuresInMains = 0;
+    layoutFailures = 0;
   }
 
   async function loadFont(f: FontRef): Promise<void> {
@@ -586,6 +596,16 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
+  /**
+   * Counts wrapped text that came out at least a line taller than its main's, without resizing it.
+   * An override has no captured line count, so the main's is what it is held to.
+   */
+  function noteGainedLine(node: TextNode, before: number, runs: PlanRun[]) {
+    if (node.textAutoResize !== "HEIGHT") return;
+    const line = Math.max(...runs.map((r) => r.lineHeight ?? r.fontSize));
+    if (node.height > before + line / 2) tracker.noteRewrapped();
+  }
+
   /** Changes the image alone: its fit and the rest are the main's, and a look never differs there. */
   function setImage(node: SceneNode, hash: string) {
     if (node.type !== "RECTANGLE" && node.type !== "FRAME") throw new Error("not an image");
@@ -600,6 +620,18 @@ export function createApplier(api: PluginAPI) {
     ];
   }
 
+  function noteOverrideFailures(count: number) {
+    overrideFailures += count;
+    if (definition) overrideFailuresInMains += count;
+  }
+
+  /** `resize` fixes both axes, so an axis the main hugs goes back to hugging. */
+  function sizeLike(node: InstanceNode, main: ComponentNode, w: number, h: number) {
+    node.resize(clampSize(w), clampSize(h));
+    if (main.layoutSizingHorizontal === "HUG") node.layoutSizingHorizontal = "HUG";
+    if (main.layoutSizingVertical === "HUG") node.layoutSizingVertical = "HUG";
+  }
+
   async function applyOverride(instance: InstanceNode, override: PlanOverride) {
     const node = childAt(instance, override.path);
     if (override.kind === "image") {
@@ -608,9 +640,13 @@ export function createApplier(api: PluginAPI) {
       const main = components?.main(override.key);
       if (!main || node.type !== "INSTANCE") throw new Error("nothing to swap");
       node.swapComponent(main);
+      // A swap keeps the instance's old size.
+      sizeLike(node, main, main.width, main.height);
     } else {
       if (node.type !== "TEXT") throw new Error("not text");
+      const before = node.height;
       await setText(node, override, usableFont(override.runs[0]?.fontName ?? FALLBACK));
+      noteGainedLine(node, before, override.runs);
     }
   }
 
@@ -629,8 +665,11 @@ export function createApplier(api: PluginAPI) {
         if (run !== generation) throw new Error("import ended");
       } catch (e) {
         if (run !== generation) throw e;
-        overrideFailures++;
-        if (override.kind === "swap") lost.push(override.path);
+        noteOverrideFailures(1);
+        if (override.kind !== "swap") continue;
+        lost.push(override.path);
+        // Paths from outside walk through this instance into a component it never became.
+        if (definition) broken.add(definition);
       }
     }
   }
@@ -641,10 +680,7 @@ export function createApplier(api: PluginAPI) {
    */
   function sizeInstance(node: InstanceNode, main: ComponentNode, op: InstanceOp) {
     const lostHug = main.layoutMode === "NONE" && (main.width !== op.w || main.height !== op.h);
-    if (!op.resize && !lostHug) return;
-    node.resize(clampSize(op.w), clampSize(op.h));
-    if (main.layoutSizingHorizontal === "HUG") node.layoutSizingHorizontal = "HUG";
-    if (main.layoutSizingVertical === "HUG") node.layoutSizingVertical = "HUG";
+    if (op.resize || lostHug) sizeLike(node, main, op.w, op.h);
   }
 
   async function buildInstance(op: InstanceOp, parent: FrameNode): Promise<InstanceNode> {
@@ -656,7 +692,7 @@ export function createApplier(api: PluginAPI) {
     node.name = op.name;
     const swapsBroken = op.overrides.some((o) => o.kind === "swap" && broken.has(o.key));
     if (broken.has(op.key) || swapsBroken) {
-      overrideFailures += op.overrides.length;
+      noteOverrideFailures(op.overrides.length);
       if (definition) broken.add(definition);
     } else {
       await applyOverrides(node, op.overrides);
@@ -825,7 +861,13 @@ export function createApplier(api: PluginAPI) {
   }
 
   const tokenCounts = () => tokens?.counts() ?? NO_TOKENS;
-  const componentCounts = () => ({ componentsCreated, instancesCreated, overrideFailures });
+  const componentCounts = () => ({
+    componentsCreated,
+    instancesCreated,
+    overrideFailures,
+    overrideFailuresInMains,
+    layoutFailures,
+  });
 
   async function end(): Promise<EndResult> {
     if (!active) throw new Error("import not started");
@@ -835,6 +877,9 @@ export function createApplier(api: PluginAPI) {
       if (!done) {
         // The root op failed (already counted) or never arrived (count it now).
         if (!rootAttempted) failedOps++;
+        // Before the commit: otherwise one undo brings back a section with no page beside it.
+        components?.discard();
+        components = null;
         api.commitUndo();
         return {
           rootId: "",
@@ -851,7 +896,7 @@ export function createApplier(api: PluginAPI) {
       try {
         components?.layOut(done);
       } catch {
-        // a user removed a main meanwhile; only the tidying is lost
+        layoutFailures++;
       }
       api.commitUndo();
       try {

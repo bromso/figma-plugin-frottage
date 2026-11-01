@@ -110,10 +110,23 @@ describe("runImport", () => {
 
   test("the done state carries the component counts", async () => {
     const port = fakePort();
-    port.endResult = { ...port.endResult, componentsCreated: 2, overrideFailures: 3 };
+    port.endResult = {
+      ...port.endResult,
+      componentsCreated: 2,
+      instancesCreated: 4,
+      overrideFailures: 3,
+      overrideFailuresInMains: 1,
+      layoutFailures: 1,
+    };
     const states: ImportState[] = [];
     await runImport(frottageFile(1), port, (s) => states.push(s));
-    expect(states.at(-1)).toMatchObject({ componentsCreated: 2, overrideFailures: 3 });
+    expect(states.at(-1)).toMatchObject({
+      componentsCreated: 2,
+      instancesCreated: 4,
+      overrideFailures: 3,
+      overrideFailuresInMains: 1,
+      layoutFailures: 1,
+    });
   });
 
   test("sends each image before the first batch", async () => {

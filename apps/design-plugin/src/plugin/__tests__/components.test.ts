@@ -141,6 +141,7 @@ async function imported(ops: PlanOp[], opts: Parameters<typeof fakeFigma>[0] = {
 const ofType = (f: ReturnType<typeof fakeFigma>, type: string) =>
   f.page.findAll((n: FakeNode) => n.type === type) as FakeNode[];
 
+const hop = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 const ids = (nodes: FakeNode[]) => nodes.map((n) => n.id);
 
 afterEach(() => {
@@ -369,7 +370,7 @@ test("an image override with no image counts as missing and as failed", async ()
 });
 
 /** `x-box` holds a nested `x-a`; `x-b` is what it can be swapped for. */
-const nested = (...instances: PlanOp[]): PlanOp[] => [
+const nested = (top: PlanOp, { extra = [] as PlanOp[] } = {}): PlanOp[] => [
   main("x-a", { childCount: 1 }),
   text("x-a/t", "x-a/n", "from a"),
   main("x-b", { childCount: 2 }),
@@ -377,8 +378,9 @@ const nested = (...instances: PlanOp[]): PlanOp[] => [
   text("x-b/t", "x-b/n", "from b"),
   main("x-box", { childCount: 1 }),
   instance("x-box/i", "x-box/n", "x-a"),
-  frame("root", null, { childCount: instances.length }),
-  ...instances,
+  ...extra,
+  frame("root", null, { childCount: 1 }),
+  top,
 ];
 
 test("a swap override uses swapComponent", async () => {
@@ -484,6 +486,63 @@ test("a failed swap fails what was to go below it", async () => {
   expect(root.children[0].children[0].children[0].characters).toBe("from a");
 });
 
+test("a swap takes the size of its new main, which Figma leaves as it was", async () => {
+  const small = { w: 16, h: 16 };
+  const { root } = await imported([
+    main("x-small", small),
+    main("x-large", { w: 24, h: 24 }),
+    main("x-box", { w: 16, h: 16, layout: hStack(), childCount: 1 }),
+    instance("x-box/i", "x-box/n", "x-small", {
+      x: 0,
+      y: 0,
+      ...small,
+      childLayout: { positioning: "AUTO", sizingH: "FIXED", sizingV: "FIXED" },
+    }),
+    frame("root", null, { childCount: 1 }),
+    instance("a", "root", "x-box", {
+      w: 24,
+      h: 24,
+      overrides: [{ path: [0], kind: "swap", key: "x-large" }],
+    }),
+  ]);
+  const [box] = root.children as [FakeNode];
+  expect([box.children[0].width, box.children[0].height]).toEqual([24, 24]);
+  expect([box.width, box.height]).toEqual([24, 24]);
+});
+
+test("a swapped instance goes on hugging where its new main hugs", async () => {
+  const { root } = await imported(
+    nested(
+      instance("a", "root", "x-box", { overrides: [{ path: [0], kind: "swap", key: "x-tag" }] }),
+      {
+        extra: [
+          main("x-tag", { w: 25, h: 12, layout: hStack(), childCount: 1 }),
+          text("x-tag/t", "x-tag/n", "hello", { x: 0, y: 0 }),
+        ],
+      }
+    )
+  );
+  const swapped = root.children[0].children[0] as FakeNode;
+  expect(swapped.layoutSizingHorizontal).toBe("HUG");
+  expect(swapped.width).toBe(25);
+});
+
+test("a swap refused inside a definition stops overrides from outside walking through it", async () => {
+  const { r, root } = await imported(
+    nested(instance("a", "root", "x-outer", { overrides: [textOver([0, 0, 0], "wrong place")] }), {
+      extra: [
+        main("x-outer", { childCount: 1 }),
+        instance("x-outer/i", "x-outer/n", "x-box", {
+          overrides: [{ path: [0], kind: "swap", key: "x-gone" }],
+        }),
+      ],
+    })
+  );
+  expect(r.overrideFailures).toBe(2);
+  expect(r.overrideFailuresInMains).toBe(1);
+  expect(root.children[0].children[0].children[0].children[0].characters).toBe("from a");
+});
+
 test("a failed definition makes its instances failed ops, not a crash", async () => {
   const { f, r, root } = await imported(
     [
@@ -548,6 +607,8 @@ test("a missing root takes the section with it", async () => {
   expect(r.rootId).toBe("");
   expect(r.failedOps).toBe(1);
   expect(f.page.children).toHaveLength(0);
+  expect(f.calls.lastIndexOf("remove:SECTION")).toBeGreaterThan(-1);
+  expect(f.calls.lastIndexOf("remove:SECTION")).toBeLessThan(f.calls.lastIndexOf("commitUndo"));
 });
 
 test("cancel removes the section and the root, and leaves other components", async () => {
@@ -607,6 +668,12 @@ test("cancel in the middle of an instance's overrides stops them, uncounted", as
   const f = fakeFigma();
   const a = createApplier(f.figma);
   await a.begin(meta);
+  // Over budget from here on, so the instance waits in `breathe` before each override.
+  let now = 0;
+  spyOn(Date, "now").mockImplementation(() => {
+    now += 2000;
+    return now;
+  });
   const applying = a.applyBatch(
     page(
       instance("a", "root", "x-card", {
@@ -614,14 +681,18 @@ test("cancel in the middle of an instance's overrides stops them, uncounted", as
       })
     )
   );
+  for (let i = 0; i < 1000 && f.count("createInstance") === 0; i++) await hop();
+  expect(f.count("createInstance")).toBe(1);
   await a.cancel();
-  await applying;
-  expect(f.page.children).toHaveLength(0);
+  // The next import is under way when the cancelled one wakes: nothing may land on it.
   await a.begin(meta);
+  await applying;
   await a.applyBatch(page());
   const r = await a.end();
   expect(r.overrideFailures).toBe(0);
   expect(r.failedOps).toBe(0);
+  expect(ofType(f, "INSTANCE")).toHaveLength(0);
+  expect(f.page.children).toHaveLength(2);
 });
 
 test("two imports make two sections", async () => {
@@ -833,4 +904,76 @@ test("a page's repeated elements come through the mapper's own ops", async () =>
     "helloworld",
   ]);
   expect(root.children.map((n: FakeNode) => n.width)).toEqual([25, 50]);
+});
+
+test("a centred or right-aligned label stays on its anchor when an override changes it", async () => {
+  const label = (align: string) => [
+    main("x-card", { childCount: 1 }),
+    text("x-card/t", "x-card/n", "hello", { x: 10, y: 0, align }),
+    frame("root", null, { childCount: 1 }),
+    instance("a", "root", "x-card", { overrides: [textOver([0], "helloworld")] }),
+  ];
+  const centred = await imported(label("CENTER"));
+  const c = centred.root.children[0].children[0] as FakeNode;
+  expect(c.x + c.width / 2).toBe(22.5);
+  const right = await imported(label("RIGHT"));
+  const e = right.root.children[0].children[0] as FakeNode;
+  expect(e.x + e.width).toBe(35);
+});
+
+test("wrapped text that gains a line in an instance counts as rewrapped and is not resized", async () => {
+  const wrapped = (chars: string) => [
+    main("x-card", { childCount: 1 }),
+    text("x-card/t", "x-card/n", "hello", { w: 30, wrap: true }),
+    frame("root", null, { childCount: 1 }),
+    instance("a", "root", "x-card", { overrides: [textOver([0], chars)] }),
+  ];
+  const gained = await imported(wrapped("hello world"));
+  const label = gained.root.children[0].children[0] as FakeNode;
+  expect(gained.r.rewrappedTexts).toBe(1);
+  expect(label.width).toBe(30);
+  expect(label.height).toBe(24);
+  expect((await imported(wrapped("howdy"))).r.rewrappedTexts).toBe(0);
+});
+
+test("single-line text in an instance never counts as rewrapped", async () => {
+  const { r } = await imported(
+    page(instance("a", "root", "x-card", { overrides: [textOver([0], "hello world")] }))
+  );
+  expect(r.rewrappedTexts).toBe(0);
+});
+
+test("a failure in a definition is flagged, as it shows in every copy", async () => {
+  const { r } = await imported(
+    nested(instance("a", "root", "x-box", { overrides: [textOver([7], "page level")] }), {
+      extra: [
+        main("x-held", { childCount: 1 }),
+        instance("x-held/i", "x-held/n", "x-a", { overrides: [textOver([5], "in a main")] }),
+      ],
+    })
+  );
+  expect(r.overrideFailures).toBe(2);
+  expect(r.overrideFailuresInMains).toBe(1);
+});
+
+test("a section that cannot be laid out is counted, and the import is kept", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch(page(instance("a", "root", "x-card")));
+  const [component] = ofType(f, "COMPONENT") as [FakeNode];
+  Object.defineProperty(component, "width", {
+    get() {
+      throw new Error("node removed");
+    },
+  });
+  const r = await a.end();
+  expect(r.layoutFailures).toBe(1);
+  expect(r.rootId).not.toBe("");
+  expect(ofType(f, "SECTION")).toHaveLength(1);
+});
+
+test("a section laid out as planned counts no failure", async () => {
+  const { r } = await imported(page(instance("a", "root", "x-card")));
+  expect(r.layoutFailures).toBe(0);
 });

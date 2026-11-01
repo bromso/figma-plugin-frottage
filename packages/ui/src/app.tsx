@@ -32,7 +32,9 @@ function Report({
   if (missingImages > 0) rows.push(["Missing images", missingImages]);
   const { autoLayoutFrames, fallbackFrames, overrideFailures, tokenFailures } = state;
   if (state.componentsCreated > 0) rows.push(["Components", state.componentsCreated]);
-  if (report.instances > 0) rows.push(["Instances", report.instances]);
+  // The plan's count is of what should be there, which failed layers make untrue.
+  const instances = failedOps > 0 ? state.instancesCreated : report.instances;
+  if (instances > 0) rows.push(["Instances", instances]);
   if (autoLayoutFrames > 0) rows.push(["Auto layout frames", autoLayoutFrames]);
   if (fallbackFrames > 0) rows.push(["Frames without auto layout", fallbackFrames]);
   if (state.stylesCreated > 0) rows.push(["Styles created", state.stylesCreated]);
@@ -57,8 +59,14 @@ function Report({
       </dl>
       {overrideFailures > 0 && (
         <p className="text-figma-text-danger">
+          {state.overrideFailuresInMains > 0 ? "At least " : ""}
           {overrideFailures} instance {overrideFailures === 1 ? "layer" : "layers"} could not be
           changed and {overrideFailures === 1 ? "shows" : "show"} the component's own content.
+        </p>
+      )}
+      {state.layoutFailures > 0 && (
+        <p className="text-figma-text-danger">
+          The components could not be arranged, so some may overlap in their section.
         </p>
       )}
       {tokenFailures > 0 && (
