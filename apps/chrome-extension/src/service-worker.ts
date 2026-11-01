@@ -32,7 +32,10 @@ const HOLD: HoldApi = {
     update: (tabId, info) => chrome.tabs.update(tabId, info),
     remove: (tabId) => chrome.tabs.remove(tabId),
   },
-  windows: { create: async (info) => (await chrome.windows.create(info)) ?? {} },
+  windows: {
+    create: async (info) => (await chrome.windows.create(info)) ?? {},
+    get: (windowId) => chrome.windows.get(windowId),
+  },
 };
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -209,8 +212,7 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
   }
   if (message.type === "release-tab") {
     return answer(async () => {
-      await releaseTab(HOLD, message.held);
-      return { ok: true };
+      return { ok: true, released: await releaseTab(HOLD, message.held) };
     }, sendResponse);
   }
   if (message.type === "window-open") {

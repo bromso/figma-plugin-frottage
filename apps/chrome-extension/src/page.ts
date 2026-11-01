@@ -278,7 +278,7 @@ export function devtoolsSteps(widths: number[]): string[] | null {
 
 /** The button text while a viewport run is on one of its widths. */
 export function viewportStatusLabel(status: RunStatus & { state: "viewport" }): string {
-  return `Capturing at ${status.label} (${status.index} of ${status.total})…`;
+  return `Capturing ${status.label} (${status.index} of ${status.total})…`;
 }
 
 /** What the popup says about a finished viewport run. */

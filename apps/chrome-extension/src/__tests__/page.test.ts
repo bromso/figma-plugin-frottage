@@ -360,7 +360,7 @@ describe("viewportAdvice", () => {
 describe("viewportStatusLabel", () => {
   test("names the width and place in the run", () => {
     expect(viewportStatusLabel({ state: "viewport", index: 2, total: 3, label: "1440" })).toBe(
-      "Capturing at 1440 (2 of 3)…"
+      "Capturing 1440 (2 of 3)…"
     );
   });
 });

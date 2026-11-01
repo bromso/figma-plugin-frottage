@@ -1,6 +1,6 @@
 import type { RunStatus } from "./capture-run";
 import type { ChunkMessage } from "./chunks";
-import type { HeldTab } from "./tab-hold";
+import type { HeldTab, ReleaseOutcome } from "./tab-hold";
 
 /** Prefix of the port the page script opens to the service worker. */
 export const CAPTURE_PORT = "frottage-capture:";
@@ -63,8 +63,8 @@ export type OffscreenMessage =
 export type PopupMessage = { target: "popup"; type: "status"; status: RunStatus };
 
 /**
- * `filename` is the saved basename, set by the worker for downloads. `origin`, `held`, `open` and
- * `width` answer `tab-origin`, `hold-tab`, `window-open`, and `resize-window` or `page-width`.
+ * `filename` is the saved basename, set by the worker for downloads. `origin`, `held`, `released`, `open`
+ * and `width` answer `tab-origin`, `hold-tab`, `release-tab`, `window-open`, and `resize-window` or `page-width`.
  */
 export type Reply =
   | {
@@ -72,6 +72,7 @@ export type Reply =
       filename?: string;
       origin?: string | null;
       held?: HeldTab;
+      released?: ReleaseOutcome;
       open?: boolean;
       width?: number;
     }
