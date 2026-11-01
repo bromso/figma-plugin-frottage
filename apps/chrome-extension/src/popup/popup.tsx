@@ -40,11 +40,10 @@ dark.addEventListener("change", applyTheme);
 const VIEWPORT_ROWS = ["a", "b", "c", "d", "e"];
 const IMAGE_ORIGINS = { origins: ["<all_urls>"] };
 
-const BUSY = new Set(["capturing", "packing", "saving", "viewport"]);
+const BUSY = new Set(["capturing", "packing", "viewport"]);
 const LABEL: Record<string, string> = {
   capturing: "Capturing the page…",
   packing: "Packing the file…",
-  saving: "Saving the file…",
 };
 
 const CHOICES_KEY = "frottage-widths";
@@ -131,7 +130,7 @@ function Popup() {
         type: "start",
         tabId,
         ...(collapseWrappers ? { collapseWrappers: true } : {}),
-        ...(version ? { versionKind: version.kind, versionLabel: version.label } : {}),
+        ...(version ? { versionLabel: version.label } : {}),
       });
       if (reply && !reply.ok) setStatus({ state: "error", message: reply.error });
     } catch (error) {
@@ -348,7 +347,7 @@ function Popup() {
         </>
       )}
       <div aria-live="polite" ref={results}>
-        {status.state === "saved" && <Type>Saved {status.filename} to your Downloads.</Type>}
+        {status.state === "saved" && <Type>Captured the page.</Type>}
         {run && (
           <div className="flex flex-col gap-1">
             <Type>
@@ -362,20 +361,6 @@ function Popup() {
                 {m}
               </Type>
             ))}
-            {run.steps && (
-              <div className="flex flex-col gap-1">
-                <Type size="xsmall">{run.steps[0]}</Type>
-                <ol className="list-decimal pl-4">
-                  {run.steps.slice(1).map((step) => (
-                    <li key={step}>
-                      <Type size="xsmall" as="span">
-                        {step}
-                      </Type>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
             {run.nodeWarning && <Type className="text-muted-foreground">{run.nodeWarning}</Type>}
           </div>
         )}

@@ -3,7 +3,7 @@ import { AssetAssembler, ChunkAssembler, type ChunkMessage } from "./chunks";
 
 export type RunStatus =
   | { state: "idle" }
-  | { state: "capturing" | "packing" | "saving" }
+  | { state: "capturing" | "packing" }
   /**
    * `nodes` is the layer count in the file; `nodeLimit` is set when the page had more than fit;
    * `blockedImages` counts images the page could not read (the `images-blocked` warning);
@@ -11,7 +11,6 @@ export type RunStatus =
    */
   | {
       state: "saved";
-      filename: string;
       nodes: number;
       nodeLimit: boolean;
       blockedImages: number;
@@ -22,15 +21,14 @@ export type RunStatus =
   /** A viewport run, on its `index`th of `total` widths; `label` is the width Chrome gave. */
   | { state: "viewport"; index: number; total: number; label: string }
   /**
-   * A viewport run's end. `saved` lists each file, which stay however the run ended; `narrow` the
-   * widths under 500 that need DevTools; `mismatched` the widths Chrome gave instead of the one
-   * requested. `stopped` says what ended the run early, and `nodeLimit` and `blockedImages` are the
+   * A viewport run's end. `saved` lists each capture in the one file, whose `filename` is set only
+   * when a file was saved; `mismatched` the widths Chrome gave instead of the one requested. `stopped` says what ended the run early, and `nodeLimit` and `blockedImages` are the
    * worst of any file.
    */
   | {
       state: "viewport-done";
       saved: { label: string; width: number }[];
-      narrow: number[];
+      filename?: string;
       mismatched: { requested: number; width: number }[];
       nodeLimit: boolean;
       blockedImages: number;
@@ -46,7 +44,6 @@ export type RunDeps = {
   report: (status: RunStatus) => void;
   setTimer: (fn: () => void, ms: number) => unknown;
   clearTimer: (handle: unknown) => void;
-  now: () => Date;
   /** No-progress timeout. */
   timeoutMs: number;
   /** Most image bytes accepted from the page. Default 180 MiB, as in the page's budget. */
@@ -62,6 +59,9 @@ const decodedSize = (b64: string) =>
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** 180 MiB of images plus up to 64 MiB of capture.json stays under the 256 MiB import limit. */
 const MAX_ASSET_BYTES = 180 * 1024 * 1024;
+
+/** Why a capture fails when the run's file has no room for it. */
+export const NO_ROOM = "This size doesn't fit in the file.";
 
 const TOO_MUCH_CONTENT = "This page has too much content to capture. Try a smaller section.";
 
@@ -254,7 +254,7 @@ export class CaptureRun {
         listed.set(hash, data);
       }
       if (!this.deps.keep(capture, listed)) {
-        this.fail("This size doesn't fit in the file.");
+        this.fail(NO_ROOM);
         return;
       }
       const nodes = capture.root ? countNodes(capture.root) : 0;
@@ -262,7 +262,6 @@ export class CaptureRun {
       this.active = false;
       this.set({
         state: "saved",
-        filename: "",
         nodes,
         nodeLimit,
         blockedImages: blockedImages(capture),

@@ -1,7 +1,8 @@
-// Offscreen document. It owns the run state and the 60 s no-progress timeout, packs the
-// .frottage file (Zod and fflate live here, not in the page script) and makes the Blob URL.
-import { packFrottage, parseCapture } from "@repo/capture-schema";
+// Offscreen document. It owns the run state, the 60 s no-progress timeout and the run's capture set,
+// and packs the one file (Zod and fflate live here, not in the page script) and makes the Blob URL.
+import { parseCapture } from "@repo/capture-schema";
 import { CaptureRun, type RunStatus } from "./capture-run";
+import { CaptureSet } from "./capture-set";
 import {
   type OffscreenMessage,
   type PageMessage,
@@ -10,7 +11,9 @@ import {
   type Reply,
   type SwMessage,
 } from "./messages";
-import { CaptureGate, startRefusal, ViewportRun, type WindowState } from "./viewport-run";
+import { captureFilename } from "./page";
+import type { HeldTab } from "./tab-hold";
+import { CaptureGate, startRefusal, ViewportRun } from "./viewport-run";
 
 /** Pages re-lay out on resize. */
 const SETTLE_MS = 800;
@@ -45,26 +48,16 @@ async function askWorker(message: SwMessage): Promise<Reply & { ok: true }> {
 
 const gate = new CaptureGate();
 
+// The captures of the run in progress, packed into one file when it ends.
+let captured = new CaptureSet();
+
 const run: CaptureRun = new CaptureRun({
   parse: (text) => {
     const parsed = parseCapture(JSON.parse(text));
     if (!parsed.ok) throw new Error(parsed.detail ?? parsed.reason);
     return parsed.capture;
   },
-  pack: packFrottage,
-  makeBlobUrl: (bytes) =>
-    URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/octet-stream" })),
-  revokeUrl: (url) => URL.revokeObjectURL(url),
-  download: async ({ url, filename }) => {
-    const reply: Reply | undefined = await chrome.runtime.sendMessage({
-      target: "sw",
-      type: "download",
-      url,
-      filename,
-    });
-    if (!reply?.ok) throw new Error(reply ? reply.error : "The download did not start");
-    return reply.filename;
-  },
+  keep: (capture, assets) => captured.add(capture, assets),
   report: (status: RunStatus) => {
     if (gate.offer(status)) {
       // The viewport run has it, and a capture's finish must not reach the popup or close this
@@ -76,17 +69,18 @@ const run: CaptureRun = new CaptureRun({
   },
   setTimer: (fn, ms) => setTimeout(fn, ms),
   clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-  now: () => new Date(),
   timeoutMs: 60_000,
 });
 
-// The tab and window of the run in progress. The worker keeps nothing between messages.
+// The run in progress. The worker keeps nothing between messages.
 let viewportTab = 0;
-let home: WindowState | null = null;
+let collapseWrappers = false;
+let typedLabel = "";
+let heldTab: HeldTab | null = null;
 
-function savedWindow(): WindowState {
-  if (!home) throw new Error("The window's state was not read");
-  return home;
+function held(): HeldTab {
+  if (!heldTab) throw new Error("The tab was not moved");
+  return heldTab;
 }
 
 const viewport: ViewportRun = new ViewportRun({
@@ -94,32 +88,56 @@ const viewport: ViewportRun = new ViewportRun({
     const reply = await askWorker({ target: "sw", type: "tab-origin", tabId: viewportTab });
     return reply.origin ?? null;
   },
-  remember: async () => {
-    const reply = await askWorker({ target: "sw", type: "window-state", tabId: viewportTab });
-    home = reply.window ?? null;
+  hold: async () => {
+    const reply = await askWorker({ target: "sw", type: "hold-tab", tabId: viewportTab });
+    if (!reply.held) throw new Error("The tab was not moved");
+    heldTab = reply.held;
   },
-  resize: async (width, left) => {
-    const { windowId } = savedWindow();
-    const reply = await askWorker({ target: "sw", type: "resize-window", windowId, width, left });
+  resize: async (width) => {
+    const { runWindowId } = held();
+    const reply = await askWorker({ target: "sw", type: "resize-window", runWindowId, width });
     return reply.width ?? width;
   },
   windowOpen: async () => {
-    const { windowId } = savedWindow();
-    const reply = await askWorker({ target: "sw", type: "window-open", windowId });
+    const { runWindowId } = held();
+    const reply = await askWorker({ target: "sw", type: "window-open", runWindowId });
     return reply.open === true;
   },
-  screenWidth: () => screen.availWidth,
-  restore: async () => {
-    await askWorker({ target: "sw", type: "restore-window", window: savedWindow() });
+  release: async () => {
+    const reply = await askWorker({ target: "sw", type: "release-tab", held: held() });
+    return reply.released ?? "stranded";
   },
-  capture: (label) =>
+  save: async () => {
+    const bytes = captured.pack();
+    const url = URL.createObjectURL(
+      new Blob([bytes as BlobPart], { type: "application/octet-stream" })
+    );
+    try {
+      const filename = captureFilename(held().url, new Date(), typedLabel);
+      const reply = await askWorker({ target: "sw", type: "download", url, filename });
+      return reply.filename ?? filename;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  },
+  announce: (failed) => {
+    chrome.runtime
+      .sendMessage({
+        target: "sw",
+        type: "run-finished",
+        failed,
+        ...(heldTab ? { windowId: heldTab.windowId } : {}),
+      } satisfies SwMessage)
+      .catch(() => {});
+  },
+  capture: () =>
     gate.run(() =>
       chrome.runtime.sendMessage({
         target: "sw",
         type: "start",
         tabId: viewportTab,
-        versionKind: "viewport",
-        versionLabel: label,
+        ...(collapseWrappers ? { collapseWrappers: true } : {}),
+        ...(typedLabel ? { versionLabel: typedLabel } : {}),
         viewport: true,
       } satisfies SwMessage)
     ),
@@ -155,6 +173,10 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
       try {
         refuseIfBusy("viewport");
         viewportTab = message.tabId;
+        collapseWrappers = message.collapseWrappers === true;
+        typedLabel = message.versionLabel ?? "";
+        heldTab = null;
+        captured = new CaptureSet();
         void viewport.start(message.widths);
         sendResponse({ ok: true } satisfies Reply);
       } catch (error) {

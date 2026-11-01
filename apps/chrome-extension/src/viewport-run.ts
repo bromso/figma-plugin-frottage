@@ -1,29 +1,17 @@
-import type { RunStatus } from "./capture-run";
+import { NO_ROOM, type RunStatus } from "./capture-run";
 import type { Reply } from "./messages";
 import { friendlyError } from "./page";
-
-/** Chrome keeps a window at this width on macOS, silently, whatever narrower width it is sent. */
-export const MIN_WINDOW_WIDTH = 500;
-
-/** What a window was before the run, to give it back. */
-export type WindowState = {
-  windowId: number;
-  state?: string;
-  width?: number;
-  height?: number;
-  left?: number;
-  top?: number;
-};
+import type { ReleaseOutcome } from "./tab-hold";
 
 /** The part of `chrome.windows` the worker uses, so resizing can be tested. */
 export type WindowsApi = {
-  get: (windowId: number) => Promise<Partial<Omit<WindowState, "windowId">>>;
+  get: (windowId: number) => Promise<{ width?: number }>;
   update: (windowId: number, info: Record<string, unknown>) => Promise<unknown>;
 };
 
 /**
- * Sets a window's width, leaving any other state for normal, and returns the width Chrome gave.
- * `left` moves it too, for a width Chrome would refuse where the window stands.
+ * Sets a window's width and returns the width Chrome gave. `left` moves it too, for a width Chrome
+ * would refuse where the window stands.
  */
 export async function resizeWindow(
   api: WindowsApi,
@@ -31,25 +19,8 @@ export async function resizeWindow(
   width: number,
   left?: number
 ): Promise<number> {
-  await api.update(windowId, { state: "normal", width, ...(left === undefined ? {} : { left }) });
+  await api.update(windowId, { width, ...(left === undefined ? {} : { left }) });
   return (await api.get(windowId)).width ?? width;
-}
-
-/** The `left` that keeps a window of `width` on a screen `screenWidth` wide. */
-export function fittedLeft(width: number, screenWidth: number): number {
-  return Math.max(0, screenWidth - width);
-}
-
-/**
- * Bounds first: Chrome refuses them on a window that is maximised, minimised or full screen. For a
- * maximised window these are the maximised bounds, the only ones Chrome exposes, so the size it had
- * before it was maximised can't be given back; un-maximising it later keeps the maximised size.
- */
-export async function restoreWindow(api: WindowsApi, saved: WindowState): Promise<void> {
-  const { windowId, state, ...bounds } = saved;
-  const known = Object.entries(bounds).filter(([, value]) => value !== undefined);
-  await api.update(windowId, { state: "normal", ...Object.fromEntries(known) });
-  if (state && state !== "normal") await api.update(windowId, { state });
 }
 
 export type CaptureResult =
@@ -117,16 +88,19 @@ export function startRefusal(
 export type ViewportDeps = {
   /** The tab's page, from `pageOrigin`; null when the tab is gone or its URL can't be read. */
   origin: () => Promise<string | null>;
-  /** Stores the window's state for `restore`. */
-  remember: () => Promise<void>;
-  /** Sets the width, and `left` if given; returns the width Chrome gave. Throws when refused. */
-  resize: (width: number, left?: number) => Promise<number>;
+  /** Moves the tab to the small window and holds its place. Throws when Chrome refuses. */
+  hold: () => Promise<void>;
+  /** Sets the small window's width; returns the width Chrome gave. Throws when refused. */
+  resize: (width: number) => Promise<number>;
   /** Tells a closed window from a refused call. */
   windowOpen: () => Promise<boolean>;
-  /** The screen's available width. */
-  screenWidth: () => number;
-  restore: () => Promise<void>;
-  /** One capture, start to saved file. `label` is what the window says; the page has the last word. */
+  /** Gives the tab back; "stranded" means it is still in the small window. */
+  release: () => Promise<ReleaseOutcome>;
+  /** Packs the captures into one file and saves it; returns the filename. Called only if any exist. */
+  save: () => Promise<string>;
+  /** Tells the user the run is over. `failed` is true when it saved less than was asked. */
+  announce: (failed: boolean) => void;
+  /** One capture. `label` is what the window says; the page has the last word. */
   capture: (label: string) => Promise<CaptureResult>;
   /** The width the page is laid out at; null when it can't be read. */
   pageWidth: () => Promise<number | null>;
@@ -140,10 +114,16 @@ type Final = RunStatus & { state: "viewport-done" };
 const WINDOW_CLOSED = "The window was closed, so the run stopped.";
 const LEFT_PAGE = "The page changed address, so the run stopped.";
 const NOT_RESIZED = "The window couldn't be resized, so the run stopped.";
-const NOT_RESTORED = "The window could not be put back as it was.";
+const NOT_MOVED = "The tab couldn't be moved, so the run stopped.";
+const STRANDED = "Your tab couldn't be moved back. It's in the small window.";
+const NOT_SAVED = "The file couldn't be saved.";
 const WENT_WRONG = "Something went wrong, so the run stopped.";
 const held = (width: number) =>
   `The page stayed at ${width} when the window was resized, so the run stopped. Turn off the device toolbar in Developer Tools and capture again.`;
+const noRoom = (width: number) => `${width} didn't fit in the file, so the run stopped there.`;
+
+/** The narrowest width a window is asked for. */
+const MIN_WIDTH = 120;
 
 /** How far the window moves to see whether the page follows it. */
 const PROBE_PX = 40;
@@ -193,17 +173,16 @@ export class ViewportRun {
   }
 
   private async drive(widths: number[]): Promise<void> {
+    const asked = [...widths].sort((a, b) => b - a);
     const done: Final = {
       state: "viewport-done",
       saved: [],
-      narrow: widths.filter((width) => width < MIN_WINDOW_WIDTH),
       mismatched: [],
       nodeLimit: false,
       blockedImages: 0,
     };
-    const reachable = widths.filter((width) => width >= MIN_WINDOW_WIDTH);
     try {
-      if (reachable.length > 0) await this.withWindow(reachable, done);
+      await this.withTab(asked, done);
     } finally {
       this.running = false;
       try {
@@ -211,47 +190,58 @@ export class ViewportRun {
       } catch {
         // The status is already held for the popup's next open.
       }
+      try {
+        this.deps.announce(done.saved.length < asked.length);
+      } catch {
+        // The status is the record; a missed announcement loses nothing.
+      }
     }
   }
 
-  /** Every way out of the sweep passes through here, so the window always goes back. */
-  private async withWindow(widths: number[], done: Final): Promise<void> {
+  /** Every way out of the sweep passes through here, so the tab always goes back, then the file is saved. */
+  private async withTab(widths: number[], done: Final): Promise<void> {
     const home = await this.origin();
     if (home === null) {
       done.stopped = LEFT_PAGE;
       return;
     }
     try {
-      await this.deps.remember();
+      await this.deps.hold();
     } catch {
-      done.stopped = WINDOW_CLOSED;
+      done.stopped = NOT_MOVED;
       return;
     }
+    let stranded = false;
     try {
+      this.set({ state: "viewport", index: 1, total: widths.length, label: String(widths[0]) });
       const stopped = await this.sweep(widths, home, done);
       if (stopped) done.stopped = stopped;
     } catch {
       done.stopped = WENT_WRONG;
     } finally {
       try {
-        await this.deps.restore();
+        stranded = (await this.deps.release()) === "stranded";
       } catch {
-        done.stopped ??= NOT_RESTORED;
+        stranded = true;
       }
     }
+    if (done.saved.length > 0) {
+      try {
+        done.filename = await this.deps.save();
+      } catch {
+        done.saved = [];
+        done.stopped = NOT_SAVED;
+      }
+    }
+    if (stranded) done.stopped = STRANDED;
   }
 
-  /** The width Chrome gave, or why it gave none. A refused width gets one more try, moved to fit. */
+  /** The width Chrome gave, or why it gave none. */
   private async resized(width: number): Promise<number | { stopped: string }> {
     try {
       return await this.deps.resize(width);
     } catch {
-      if (!(await this.windowOpen())) return { stopped: WINDOW_CLOSED };
-    }
-    try {
-      return await this.deps.resize(width, fittedLeft(width, this.deps.screenWidth()));
-    } catch {
-      return { stopped: NOT_RESIZED };
+      return { stopped: (await this.windowOpen()) ? NOT_RESIZED : WINDOW_CLOSED };
     }
   }
 
@@ -283,11 +273,12 @@ export class ViewportRun {
         .capture(String(given))
         .catch((error): CaptureResult => ({ ok: false, message: messageOf(error) }));
       if (!result.ok) {
-        return (await this.origin()) === home ? friendlyError(result.message) : this.whyGone();
+        if ((await this.origin()) !== home) return this.whyGone();
+        return result.message === NO_ROOM ? noRoom(given) : friendlyError(result.message);
       }
       const label = result.label ?? String(result.width);
       // The label is the laid-out width, scrollbar included, so a scrollbar is not a mismatch.
-      const real = Number(label);
+      const real = Number.parseInt(label, 10);
       seen.set(given, real);
       if (real !== requested) done.mismatched.push({ requested, width: real });
       done.saved.push({ label, width: result.width });
@@ -306,7 +297,7 @@ export class ViewportRun {
     const width = await this.pageWidth();
     if (width === null || width === windowWidth) return null;
     const probe =
-      windowWidth - PROBE_PX >= MIN_WINDOW_WIDTH ? windowWidth - PROBE_PX : windowWidth + PROBE_PX;
+      windowWidth - PROBE_PX >= MIN_WIDTH ? windowWidth - PROBE_PX : windowWidth + PROBE_PX;
     await this.deps.resize(probe);
     await this.deps.settle();
     const moved = await this.pageWidth();

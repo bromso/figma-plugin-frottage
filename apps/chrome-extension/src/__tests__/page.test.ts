@@ -320,7 +320,6 @@ describe("viewportAdvice", () => {
       { label: "1440", width: 1440 },
       { label: "834", width: 834 },
     ],
-    narrow: [],
     mismatched: [],
     nodeLimit: false,
     blockedImages: 0,
@@ -345,9 +344,8 @@ describe("viewportAdvice", () => {
     expect(viewportAdvice({ ...base, cancelled: true }).stopped).toBe("You stopped the run.");
   });
 
-  test("carries the narrow steps and the size and image flags", () => {
-    const a = viewportAdvice({ ...base, narrow: [390], nodeLimit: true, blockedImages: 3 });
-    expect(a.steps).not.toBeNull();
+  test("carries the size and image flags", () => {
+    const a = viewportAdvice({ ...base, nodeLimit: true, blockedImages: 3 });
     expect(a.nodeWarning).toContain("20,000");
     expect(a.blockedImages).toBe(3);
   });

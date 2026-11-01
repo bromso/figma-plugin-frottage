@@ -1,50 +1,35 @@
 import { describe, expect, test } from "bun:test";
-import type { RunStatus } from "../capture-run";
+import { NO_ROOM, type RunStatus } from "../capture-run";
 import { pageOrigin } from "../page";
+import type { ReleaseOutcome } from "../tab-hold";
 import {
   CaptureGate,
   type CaptureResult,
-  fittedLeft,
-  MIN_WINDOW_WIDTH,
   resizeWindow,
-  restoreWindow,
   startRefusal,
   ViewportRun,
-  type WindowState,
   type WindowsApi,
 } from "../viewport-run";
 
 const ORIGIN = "https://example.com";
 
-/** A stand-in for `chrome.windows`, narrowing at 500 px as Chrome does on macOS. */
-function fakeWindows(
-  start: Omit<WindowState, "windowId"> & { maxWidth?: number; screen?: number }
-) {
-  const win = { ...start };
-  const updates: Record<string, unknown>[] = [];
+/** A stand-in for `chrome.windows`: Chrome keeps a window at 120 or wider, and at most `maxWidth`. */
+function fakeWindows(start: { width: number; maxWidth?: number }) {
+  const win = { width: start.width };
   const state = {
     closed: false,
-    /** Refuses every resize while the window stays open, whatever its bounds. */
+    /** Refuses every resize while the window stays open. */
     refuseAll: false,
-    updates,
     win,
     api: {
       get: async () => {
         if (state.closed) throw new Error("No window with id: 1.");
-        return { ...win, windowId: 1 };
+        return { width: win.width };
       },
       update: async (_id, info) => {
         if (state.closed) throw new Error("No window with id: 1.");
-        const left = (info.left as number | undefined) ?? win.left ?? 0;
-        const width = (info.width as number | undefined) ?? win.width ?? 0;
-        const onScreen = (start.screen ?? 9999) - left;
-        const restoring = info.height !== undefined;
-        if ((state.refuseAll && !restoring) || onScreen < width / 2) {
-          throw new Error("Invalid value for bounds. Bounds must be at least 50% within screen.");
-        }
-        updates.push(info);
-        Object.assign(win, info);
-        win.width = Math.min(Math.max(win.width ?? 0, 500), start.maxWidth ?? 9999);
+        if (state.refuseAll) throw new Error("Invalid value for bounds.");
+        win.width = Math.min(Math.max(info.width as number, 120), start.maxWidth ?? 9999);
       },
     } satisfies WindowsApi,
   };
@@ -52,11 +37,7 @@ function fakeWindows(
 }
 
 type Over = {
-  state?: string;
   maxWidth?: number;
-  /** The screen's available width, with the window's own left and width in it. */
-  screen?: number;
-  left?: number;
   width?: number;
   settle?: () => Promise<void>;
   origin?: () => string | null;
@@ -66,36 +47,40 @@ type Over = {
   /** The page's width for a window width; by default the page fills the window. */
   pageWidth?: (windowWidth: number) => number | null;
   onStatus?: (status: RunStatus) => void;
+  hold?: () => Promise<void>;
+  release?: ReleaseOutcome | (() => Promise<ReleaseOutcome>);
+  save?: () => Promise<string>;
 };
 
 function setup(over: Over = {}) {
-  const fake = fakeWindows({
-    state: over.state ?? "normal",
-    width: over.width ?? 1728,
-    height: 1000,
-    left: over.left ?? 10,
-    top: 25,
-    maxWidth: over.maxWidth,
-    screen: over.screen,
-  });
+  const fake = fakeWindows({ width: over.width ?? 1728, maxWidth: over.maxWidth });
   const statuses: RunStatus[] = [];
   const captures: string[] = [];
-  let saved: WindowState | null = null;
   const events: string[] = [];
+  const announced: boolean[] = [];
   const run: ViewportRun = new ViewportRun({
     origin: async () => (over.origin ? over.origin() : ORIGIN),
-    remember: async () => {
-      saved = await fake.api.get();
+    hold: async () => {
+      events.push("hold");
+      await over.hold?.();
     },
-    resize: async (width, left) => {
+    resize: async (width) => {
       events.push(`resize ${width}`);
-      return resizeWindow(fake.api, 1, width, left);
+      return resizeWindow(fake.api, 1, width);
     },
     windowOpen: () => fake.api.get().then(() => true),
-    screenWidth: () => over.screen ?? 1728,
-    restore: async () => {
-      events.push("restore");
-      if (saved) await restoreWindow(fake.api, saved);
+    release: async () => {
+      events.push("release");
+      if (typeof over.release === "function") return over.release();
+      return over.release ?? "back";
+    },
+    save: async () => {
+      events.push("save");
+      return over.save ? over.save() : "example.com.frottage";
+    },
+    announce: (failed) => {
+      events.push("announce");
+      announced.push(failed);
     },
     capture: async (label) => {
       captures.push(label);
@@ -110,7 +95,7 @@ function setup(over: Over = {}) {
       };
     },
     pageWidth: async () => {
-      const width = fake.win.width ?? 0;
+      const width = fake.win.width;
       return over.pageWidth ? over.pageWidth(width) : width;
     },
     settle: async () => {
@@ -127,59 +112,152 @@ function setup(over: Over = {}) {
     if (status?.state !== "viewport-done") throw new Error("the run did not finish");
     return status;
   };
-  return { run, fake, statuses, captures, events, final };
+  return { run, fake, statuses, captures, events, announced, final };
 }
 
 const put = (label: string) => ({ label, width: Number(label) });
 
 describe("ViewportRun", () => {
-  test("captures each width in order and saves one file each", async () => {
+  test("widths run widest first, whatever order they were ticked in", async () => {
     const t = setup();
-    await t.run.start([1512, 1440, 834]);
+    await t.run.start([834, 1512, 1440]);
     expect(t.captures).toEqual(["1512", "1440", "834"]);
     expect(t.final().saved).toEqual([put("1512"), put("1440"), put("834")]);
-    expect(t.statuses.slice(0, 3)).toEqual([
+    expect(t.final().stopped).toBeUndefined();
+    expect(t.final().mismatched).toEqual([]);
+  });
+
+  test("a first status shows progress once the tab is held, then each width", async () => {
+    const t = setup();
+    await t.run.start([1512, 1440, 834]);
+    expect(t.statuses.slice(0, 4)).toEqual([
+      { state: "viewport", index: 1, total: 3, label: "1512" },
       { state: "viewport", index: 1, total: 3, label: "1512" },
       { state: "viewport", index: 2, total: 3, label: "1440" },
       { state: "viewport", index: 3, total: 3, label: "834" },
     ]);
-    expect(t.final().stopped).toBeUndefined();
+  });
+
+  test("widths from 120 run, and none is skipped as narrow", async () => {
+    const t = setup();
+    await t.run.start([1440, 393, 120]);
+    expect(t.captures).toEqual(["1440", "393", "120"]);
+    expect(t.final().saved).toEqual([put("1440"), put("393"), put("120")]);
+    expect(t.final()).not.toHaveProperty("narrow");
+  });
+
+  test("one file is saved once, after the tab is back", async () => {
+    const t = setup();
+    await t.run.start([1512, 1440]);
+    expect(t.events.slice(-3)).toEqual(["release", "save", "announce"]);
+    expect(t.events.filter((e) => e === "save")).toHaveLength(1);
+    expect(t.final().filename).toBe("example.com.frottage");
+    expect(t.announced).toEqual([false]);
+  });
+
+  test("a stopped run saves what it captured and says why", async () => {
+    const t = setup({
+      capture: (_label, _run, count) =>
+        count === 2 ? Promise.resolve({ ok: false, message: "The page broke" }) : null,
+    });
+    await t.run.start([1512, 1440, 834]);
+    expect(t.events.filter((e) => e === "save")).toHaveLength(1);
+    expect(t.final().saved).toEqual([put("1512")]);
+    expect(t.final().stopped).toBe("The page broke");
+    expect(t.announced).toEqual([true]);
+  });
+
+  test("Cancel saves what it captured", async () => {
+    const t = setup({
+      capture: (_label, run, count) => {
+        if (count === 1) run.cancel();
+        return null;
+      },
+    });
+    await t.run.start([1512, 1440]);
+    expect(t.events.filter((e) => e === "save")).toHaveLength(1);
+    expect(t.final().saved).toEqual([put("1512")]);
+    expect(t.final().cancelled).toBe(true);
+    expect(t.final().filename).toBe("example.com.frottage");
+  });
+
+  test("nothing captured saves nothing", async () => {
+    const t = setup({ capture: () => Promise.resolve({ ok: false, message: "The page broke" }) });
+    await t.run.start([1512]);
+    expect(t.events).not.toContain("save");
+    expect(t.final().filename).toBeUndefined();
+    expect(t.final().saved).toEqual([]);
+  });
+
+  test("a size that doesn't fit stops the run and names it", async () => {
+    const t = setup({
+      capture: (_label, _run, count) =>
+        count === 2 ? Promise.resolve({ ok: false, message: NO_ROOM }) : null,
+    });
+    await t.run.start([1512, 834, 390]);
+    expect(t.captures).toEqual(["1512", "834"]);
+    expect(t.final().saved).toEqual([put("1512")]);
+    expect(t.final().stopped).toBe("834 didn't fit in the file, so the run stopped there.");
+  });
+
+  test("a failed save is reported and the tab is still back", async () => {
+    const t = setup({ save: () => Promise.reject(new Error("disk full")) });
+    await t.run.start([1512]);
+    expect(t.events.slice(-3)).toEqual(["release", "save", "announce"]);
+    expect(t.final().stopped).toBe("The file couldn't be saved.");
+    expect(t.final().filename).toBeUndefined();
+    expect(t.final().saved).toEqual([]);
+    expect(t.announced).toEqual([true]);
+  });
+
+  test("a refused hold stops the run and saves nothing", async () => {
+    const t = setup({ hold: () => Promise.reject(new Error("Tabs can't be edited right now.")) });
+    await t.run.start([1512, 1440]);
+    expect(t.captures).toEqual([]);
+    expect(t.events).toEqual(["hold", "announce"]);
+    expect(t.final().stopped).toBe("The tab couldn't be moved, so the run stopped.");
+    expect(t.final().saved).toEqual([]);
+    expect(t.announced).toEqual([true]);
+  });
+
+  test("a stranded tab says so above any other reason, and announce reports a failure", async () => {
+    const t = setup({
+      release: "stranded",
+      capture: (_label, _run, count) =>
+        count === 1 ? Promise.resolve({ ok: false, message: "The page broke" }) : null,
+    });
+    await t.run.start([1512, 1440]);
+    expect(t.final().stopped).toBe("Your tab couldn't be moved back. It's in the small window.");
+    expect(t.announced).toEqual([true]);
+  });
+
+  test("a typed label's width is read from the label", async () => {
+    const t = setup({
+      capture: (label) =>
+        Promise.resolve({
+          ok: true,
+          label: `${label} Dark`,
+          width: 1512,
+          nodeLimit: false,
+          blockedImages: 0,
+        }),
+    });
+    await t.run.start([1512]);
     expect(t.final().mismatched).toEqual([]);
+    expect(t.final().saved).toEqual([{ label: "1512 Dark", width: 1512 }]);
+  });
+
+  test("announce reports a failure when the run saved less than was asked", async () => {
+    const t = setup({ maxWidth: 1400 });
+    await t.run.start([1512, 1440]);
+    expect(t.final().saved).toHaveLength(1);
+    expect(t.announced).toEqual([true]);
   });
 
   test("the page settles after a resize and before its capture", async () => {
     const t = setup();
     await t.run.start([1440]);
-    expect(t.events).toEqual(["resize 1440", "settle", "restore"]);
-  });
-
-  test("the window gets its whole state back, whatever the widths did", async () => {
-    const t = setup();
-    await t.run.start([1440, 834]);
-    expect(t.fake.win).toMatchObject({
-      state: "normal",
-      width: 1728,
-      height: 1000,
-      left: 10,
-      top: 25,
-    });
-  });
-
-  test("a maximised window goes to normal, and comes back afterwards", async () => {
-    const t = setup({ state: "maximized" });
-    await t.run.start([1440]);
-    expect(t.fake.updates[0]).toEqual({ state: "normal", width: 1440 });
-    const last = t.fake.updates.at(-1);
-    // The size goes back first; a maximised window would refuse it, and lose it for good.
-    expect(t.fake.updates.at(-2)).toEqual({
-      state: "normal",
-      width: 1728,
-      height: 1000,
-      left: 10,
-      top: 25,
-    });
-    expect(last).toEqual({ state: "maximized" });
-    expect(t.fake.win.state).toBe("maximized");
+    expect(t.events).toEqual(["hold", "resize 1440", "settle", "release", "save", "announce"]);
   });
 
   test("the file is labelled with the real width, and a mismatch is listed", async () => {
@@ -214,7 +292,6 @@ describe("ViewportRun", () => {
     expect(t.final().stopped).toBe(
       "The page stayed at 390 when the window was resized, so the run stopped. Turn off the device toolbar in Developer Tools and capture again."
     );
-    expect(t.fake.win).toMatchObject({ state: "normal", width: 1728, left: 10 });
   });
 
   test("a held page is found when the window is already at the first width", async () => {
@@ -248,7 +325,7 @@ describe("ViewportRun", () => {
   test("a page that fills its window takes no extra resize", async () => {
     const t = setup();
     await t.run.start([1440]);
-    expect(t.events).toEqual(["resize 1440", "settle", "restore"]);
+    expect(t.events).toEqual(["hold", "resize 1440", "settle", "release", "save", "announce"]);
   });
 
   test("a page width that can't be read does not stop the run", async () => {
@@ -265,24 +342,6 @@ describe("ViewportRun", () => {
     expect(t.final().mismatched).toEqual([]);
   });
 
-  test("a width under 500 is not requested and is reported as needing DevTools", async () => {
-    const t = setup();
-    await t.run.start([1440, 393, 390]);
-    expect(MIN_WINDOW_WIDTH).toBe(500);
-    expect(t.fake.updates.some((u) => u.width === 393 || u.width === 390)).toBe(false);
-    expect(t.captures).toEqual(["1440"]);
-    expect(t.final().narrow).toEqual([393, 390]);
-    expect(t.statuses[0]).toEqual({ state: "viewport", index: 1, total: 1, label: "1440" });
-  });
-
-  test("only narrow widths leave the window alone", async () => {
-    const t = setup();
-    await t.run.start([393]);
-    expect(t.fake.updates).toEqual([]);
-    expect(t.final()).toMatchObject({ saved: [], narrow: [393] });
-    expect(t.run.running).toBe(false);
-  });
-
   test("two widths that land on the same real width capture once", async () => {
     const t = setup({ maxWidth: 1512 });
     await t.run.start([1512, 1600, 834]);
@@ -291,15 +350,14 @@ describe("ViewportRun", () => {
     expect(t.final().mismatched).toEqual([{ requested: 1600, width: 1512 }]);
   });
 
-  test("the window is restored after a failed capture", async () => {
+  test("the window is back after a failed capture", async () => {
     const t = setup({
       capture: (_label, _run, count) =>
         count === 2 ? Promise.resolve({ ok: false, message: "The page broke" }) : null,
     });
     await t.run.start([1512, 1440, 834]);
     expect(t.captures).toEqual(["1512", "1440"]);
-    expect(t.events.at(-1)).toBe("restore");
-    expect(t.fake.win.width).toBe(1728);
+    expect(t.events).toContain("release");
     expect(t.final().saved).toEqual([put("1512")]);
     expect(t.final().stopped).toBe("The page broke");
   });
@@ -307,7 +365,7 @@ describe("ViewportRun", () => {
   test("a capture that throws stops the run the same way", async () => {
     const t = setup({ capture: () => Promise.reject(new Error("No reply")) });
     await t.run.start([1512]);
-    expect(t.events.at(-1)).toBe("restore");
+    expect(t.events).toContain("release");
     expect(t.final().stopped).toBe("No reply");
   });
 
@@ -324,14 +382,6 @@ describe("ViewportRun", () => {
     expect(t.run.running).toBe(false);
   });
 
-  test("a window closed before the run starts ends it plainly", async () => {
-    const t = setup();
-    t.fake.closed = true;
-    await t.run.start([1512]);
-    expect(t.final().stopped).toBe("The window was closed, so the run stopped.");
-    expect(t.final().saved).toEqual([]);
-  });
-
   test("a navigated tab stops the run the same way", async () => {
     let origin = ORIGIN;
     const t = setup({
@@ -345,7 +395,6 @@ describe("ViewportRun", () => {
     expect(t.captures).toEqual(["1512"]);
     expect(t.final().saved).toEqual([put("1512")]);
     expect(t.final().stopped).toBe("The page changed address, so the run stopped.");
-    expect(t.fake.win.width).toBe(1728);
   });
 
   test("moving to another page of the same site stops the run", async () => {
@@ -390,16 +439,7 @@ describe("ViewportRun", () => {
     expect(t.final().stopped).toBe("The window was closed, so the run stopped.");
   });
 
-  test("a resize refused for its bounds moves the window to fit, then puts it back", async () => {
-    const t = setup({ screen: 1728, left: 1000, width: 800 });
-    await t.run.start([1512]);
-    expect(t.fake.updates[0]).toEqual({ state: "normal", width: 1512, left: 216 });
-    expect(t.captures).toEqual(["1512"]);
-    expect(t.final().stopped).toBeUndefined();
-    expect(t.fake.win).toMatchObject({ left: 1000, width: 800 });
-  });
-
-  test("a resize refused twice stops plainly, and the window goes back", async () => {
+  test("a refused resize stops plainly, with no second try, and the tab goes back", async () => {
     const t = setup({
       capture: () => {
         t.fake.refuseAll = true;
@@ -409,8 +449,8 @@ describe("ViewportRun", () => {
     await t.run.start([1512, 1440]);
     expect(t.final().saved).toEqual([put("1512")]);
     expect(t.final().stopped).toBe("The window couldn't be resized, so the run stopped.");
-    expect(t.events.filter((e) => e === "resize 1440")).toHaveLength(2);
-    expect(t.fake.win.width).toBe(1728);
+    expect(t.events.filter((e) => e === "resize 1440")).toHaveLength(1);
+    expect(t.events).toContain("release");
   });
 
   test("a resize failing because the window closed is not retried", async () => {
@@ -425,24 +465,22 @@ describe("ViewportRun", () => {
     expect(t.final().stopped).toBe("The window was closed, so the run stopped.");
   });
 
-  test("a settle that rejects still restores, ends the run and reports", async () => {
+  test("a settle that rejects still gives the tab back, ends the run and reports", async () => {
     const t = setup({ settle: () => Promise.reject(new Error("timer gone")) });
     await t.run.start([1512, 1440]);
-    expect(t.events.at(-1)).toBe("restore");
-    expect(t.fake.win.width).toBe(1728);
+    expect(t.events).toContain("release");
     expect(t.run.running).toBe(false);
     expect(t.final().stopped).toBe("Something went wrong, so the run stopped.");
   });
 
-  test("an onStatus that throws still restores, ends the run and holds the status", async () => {
+  test("an onStatus that throws still gives the tab back, ends the run and holds the status", async () => {
     const t = setup({
       onStatus: () => {
         throw new Error("no popup");
       },
     });
     await t.run.start([1512]);
-    expect(t.events.at(-1)).toBe("restore");
-    expect(t.fake.win.width).toBe(1728);
+    expect(t.events).toContain("release");
     expect(t.run.running).toBe(false);
     expect(t.run.take()).toMatchObject({
       state: "viewport-done",
@@ -488,7 +526,7 @@ describe("ViewportRun", () => {
     expect(t.final().stopped).toBe("This page can't be captured.");
   });
 
-  test("Cancel between widths restores the window", async () => {
+  test("Cancel between widths gives the tab back the window", async () => {
     const t = setup({
       capture: (_label, run, count) => {
         if (count === 1) run.cancel();
@@ -500,7 +538,6 @@ describe("ViewportRun", () => {
     expect(t.final().saved).toEqual([put("1512")]);
     expect(t.final().cancelled).toBe(true);
     expect(t.final().stopped).toBeUndefined();
-    expect(t.fake.win.width).toBe(1728);
   });
 
   test("Cancel while the page settles captures nothing more", async () => {
@@ -512,19 +549,6 @@ describe("ViewportRun", () => {
     await t.run.start([1512]);
     expect(t.captures).toEqual([]);
     expect(t.final().cancelled).toBe(true);
-    expect(t.fake.win.width).toBe(1728);
-  });
-
-  test("a window that can't be put back is reported", async () => {
-    const t = setup({
-      capture: () => {
-        t.fake.closed = true;
-        return null;
-      },
-    });
-    await t.run.start([1512]);
-    expect(t.final().saved).toEqual([put("1512")]);
-    expect(t.final().stopped).toBe("The window could not be put back as it was.");
   });
 
   test("size warnings from any file reach the final status", async () => {
@@ -608,34 +632,16 @@ describe("startRefusal", () => {
   });
 });
 
-describe("fittedLeft", () => {
-  test("puts the window's right edge at the screen's", () => {
-    expect(fittedLeft(1512, 1728)).toBe(216);
-  });
-  test("a window wider than the screen starts at its left edge", () => {
-    expect(fittedLeft(2000, 1728)).toBe(0);
-  });
-});
-
 describe("resizeWindow", () => {
   test("returns the width Chrome gave, not the one asked for", async () => {
-    const fake = fakeWindows({ state: "normal", width: 1728, height: 900, left: 0, top: 0 });
-    expect(await resizeWindow(fake.api, 1, 300)).toBe(500);
-  });
-});
-
-describe("restoreWindow", () => {
-  test("a normal window takes one call, and absent bounds are left out", async () => {
-    const fake = fakeWindows({ state: "normal", width: 800, height: 900, left: 0, top: 0 });
-    await restoreWindow(fake.api, { windowId: 1, state: "normal", width: 1000 });
-    expect(fake.updates).toEqual([{ state: "normal", width: 1000 }]);
+    const fake = fakeWindows({ width: 1728 });
+    expect(await resizeWindow(fake.api, 1, 100)).toBe(120);
   });
 });
 
 describe("CaptureGate", () => {
   const saved: RunStatus = {
     state: "saved",
-    filename: "a.frottage",
     nodes: 3,
     nodeLimit: true,
     blockedImages: 1,

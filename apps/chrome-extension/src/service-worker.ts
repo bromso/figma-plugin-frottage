@@ -91,7 +91,6 @@ const hasImageAccess = (): Promise<boolean> =>
 async function startCapture(
   tabId: number,
   collapseWrappers: boolean,
-  versionKind: string,
   versionLabel: string,
   viewport: boolean
 ): Promise<Reply> {
@@ -107,21 +106,19 @@ async function startCapture(
     await chrome.scripting.executeScript({
       target: { tabId },
       // The run's settings travel with its id; the worker keeps nothing between messages.
-      func: (id: string, collapse: boolean, imageAccess: boolean, kind: string, label: string) => {
+      func: (id: string, collapse: boolean, imageAccess: boolean, label: string) => {
         const win = window as unknown as {
           __frottageRunId?: string;
           __frottageCollapse?: boolean;
           __frottageImageAccess?: boolean;
-          __frottageVersionKind?: string;
           __frottageVersionLabel?: string;
         };
         win.__frottageRunId = id;
         win.__frottageCollapse = collapse;
         win.__frottageImageAccess = imageAccess;
-        win.__frottageVersionKind = kind;
         win.__frottageVersionLabel = label;
       },
-      args: [runId, collapseWrappers, await hasImageAccess(), versionKind, versionLabel],
+      args: [runId, collapseWrappers, await hasImageAccess(), versionLabel],
     });
     await chrome.scripting.executeScript({ target: { tabId }, files: ["capture-entry.js"] });
     return { ok: true };
@@ -166,7 +163,6 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
     startCapture(
       message.tabId,
       message.collapseWrappers === true,
-      message.versionKind ?? "",
       message.versionLabel ?? "",
       message.viewport === true
     ).then(sendResponse, (e) => sendResponse({ ok: false, error: errorText(e) }));
@@ -233,6 +229,13 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
       }),
       sendResponse
     );
+  }
+  if (message.type === "run-finished") {
+    chrome.action.setBadgeText({ text: message.failed ? "!" : "✓" }).catch(() => {});
+    chrome.action
+      .openPopup(message.windowId === undefined ? undefined : { windowId: message.windowId })
+      .catch(() => {});
+    return;
   }
   if (message.type === "close-offscreen") {
     chrome.offscreen.closeDocument().catch(() => {});

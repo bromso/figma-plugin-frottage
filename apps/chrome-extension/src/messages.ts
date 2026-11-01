@@ -32,12 +32,18 @@ export type SwMessage =
       type: "start";
       tabId: number;
       collapseWrappers?: boolean;
-      versionKind?: string;
       versionLabel?: string;
       /** This capture is one of a viewport run's. A plain capture can be labelled viewport too. */
       viewport?: boolean;
     }
-  | { target: "sw"; type: "viewport-start"; tabId: number; widths: number[] }
+  | {
+      target: "sw";
+      type: "viewport-start";
+      tabId: number;
+      widths: number[];
+      collapseWrappers?: boolean;
+      versionLabel?: string;
+    }
   | { target: "sw"; type: "download"; url: string; filename: string }
   | { target: "sw"; type: "tab-origin"; tabId: number }
   | { target: "sw"; type: "page-width"; tabId: number }
@@ -47,13 +53,22 @@ export type SwMessage =
   | { target: "sw"; type: "release-tab"; held: HeldTab }
   | { target: "sw"; type: "window-open"; runWindowId: number }
   | { target: "sw"; type: "resize-window"; runWindowId: number; width: number; left?: number }
+  /** The run is over: the worker badges the icon and opens the popup in the user's window. */
+  | { target: "sw"; type: "run-finished"; failed: boolean; windowId?: number }
   | { target: "sw"; type: "close-offscreen" };
 
 /** Worker and popup messages to the offscreen document. */
 export type OffscreenMessage =
   /** `viewport` marks a capture that belongs to the viewport run. */
   | { target: "offscreen"; type: "run-start"; runId: string; viewport?: boolean }
-  | { target: "offscreen"; type: "viewport-start"; tabId: number; widths: number[] }
+  | {
+      target: "offscreen";
+      type: "viewport-start";
+      tabId: number;
+      widths: number[];
+      collapseWrappers?: boolean;
+      versionLabel?: string;
+    }
   | { target: "offscreen"; type: "viewport-cancel" }
   | { target: "offscreen"; type: "inject-failed"; runId: string; detail: string }
   | { target: "offscreen"; type: "run-live"; runId: string }

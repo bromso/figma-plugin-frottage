@@ -25,7 +25,6 @@ function setup(over: Partial<RunDeps> = {}) {
       return nextTimer++;
     },
     clearTimer: (h) => timers.delete(h as number),
-    now: () => new Date(2026, 9, 31, 12),
     timeoutMs: 60_000,
     ...over,
   };
@@ -70,7 +69,6 @@ describe("CaptureRun", () => {
     expect(t.kept[0]?.capture.source.url).toBe("https://example.com/p");
     expect(last(t.statuses)).toEqual({
       state: "saved",
-      filename: "",
       nodes: 0,
       nodeLimit: false,
       blockedImages: 0,
