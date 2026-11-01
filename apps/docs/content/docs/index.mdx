@@ -9,13 +9,17 @@ Frottage imports rendered web pages into editable Figma designs. A Chrome extens
 
 ## What's included
 
-- **A Chrome extension** that captures a page's layout, text and images
-- **A Figma plugin** that opens a `.frottage` file and reports what it imported
+- **A Chrome extension** that captures a page's layout, text, images, inline SVG, pseudo-elements and shadow DOM
+- **A Figma plugin** that opens a `.frottage` file, builds auto layout, vectors, links and readable layer names, and reports what it imported
 - **49 UI components** that look native in Figma, themed live from Figma's colors
 - **Storybook** for browsing all components interactively
 - **Automated testing**, including end-to-end tests of the capture in a real browser
 - **CI/CD pipeline** that validates every change
 - **Changesets** for version management
+
+## Good to know
+
+Closing the plugin during an import can leave its styles and variables in the file; the next import reuses them.
 
 ## Quick links
 

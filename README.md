@@ -12,10 +12,14 @@
 
 Frottage imports rendered web pages into editable Figma designs. A Chrome extension captures the page; the Figma plugin turns the capture into native layers. Built with React, Bun, TypeScript and a Turborepo monorepo.
 
-> Phase 1 is in progress: capture a page with the Chrome extension, then open the `.frottage` file in the plugin.
+Capture a page with the Chrome extension, then open the `.frottage` file in the plugin. Passwords, typed text and URL queries stay out of the file, and the plugin makes no network requests.
 
 ## Features
 
+- **Page capture** — layout, text, images, inline SVG, pseudo-elements, video posters and open or closed shadow DOM, with anything left out listed in the import report
+- **Native Figma layers** — auto layout with a per-frame fallback, real vectors, hyperlinks and readable layer names
+- **Styles and variables** — repeated values become text styles and colour variables, reused on later imports
+- **Import options** — remembered per site, with a replacement picked for each missing font
 - **Turborepo monorepo** with Bun package manager — fast installs, cached builds
 - **React + TypeScript + Bun** build pipeline — one build script (`build.ts`) for the plugin; Vite is used only by Storybook
 - **Single-file HTML output** — required by the Figma plugin API (all assets inlined)
