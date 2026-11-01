@@ -458,6 +458,12 @@ describe("a user's own tokens", () => {
     ["decoration", { textDecoration: "UNDERLINE" }],
     ["case", { textCase: "UPPER" }],
     ["font", { fontName: { family: "Inter", style: "Bold" } }],
+    ["paragraph spacing", { paragraphSpacing: 8 }],
+    ["paragraph indent", { paragraphIndent: 16 }],
+    ["leading trim", { leadingTrim: "CAP_HEIGHT" }],
+    ["list spacing", { listSpacing: 4 }],
+    ["hanging punctuation", { hangingPunctuation: true }],
+    ["hanging list", { hangingList: true }],
   ])("a style with a different %s doesn't match", async (_, change) => {
     const f = fakeFigma();
     f.tokens.seedTextStyle("Brand/Body", { ...userText, ...change });
@@ -574,6 +580,15 @@ describe("a user's own tokens", () => {
     const f = fakeFigma();
     f.tokens.seedPaintStyle("Ink", paints);
     expect((await runImport(f)).variablesCreated).toBe(1);
+  });
+
+  test("each paint style is read once, however many colours there are", async () => {
+    const f = fakeFigma();
+    f.tokens.seedPaintStyle("Ink", [{ type: "SOLID", color: INK }]);
+    const blue = { ...ink, key: "#0000ff", name: "color/b", rgba: { r: 0, g: 0, b: 1, a: 1 } };
+    const green = { ...ink, key: "#00ff00", name: "color/g", rgba: { r: 0, g: 1, b: 0, a: 1 } };
+    await runImport(f, tokens({ colors: [blue, green, ink] }));
+    expect(f.tokens.count("paints")).toBe(1);
   });
 
   test("Frottage's own token comes before a user's of the same value", async () => {

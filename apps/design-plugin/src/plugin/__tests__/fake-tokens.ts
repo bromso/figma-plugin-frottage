@@ -70,6 +70,12 @@ export function tokenModel(
       letterSpacing: { unit: "PERCENT", value: 0 },
       textDecoration: "NONE",
       textCase: "ORIGINAL",
+      paragraphSpacing: 0,
+      paragraphIndent: 0,
+      leadingTrim: "NONE",
+      listSpacing: 0,
+      hangingPunctuation: false,
+      hangingList: false,
       name: "",
     };
     const style: Fake = {
@@ -125,6 +131,7 @@ export function tokenModel(
         name = v;
       },
       get paints() {
+        log.push("paints");
         return paints;
       },
       set paints(v: any[]) {

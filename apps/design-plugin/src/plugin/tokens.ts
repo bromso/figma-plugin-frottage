@@ -71,6 +71,21 @@ function sameLetterSpacing(style: TextStyle, px: number): boolean {
   return near(unit === "PIXELS" ? value : (value * style.fontSize) / 100, px);
 }
 
+/**
+ * Imported text sets none of these, so a style that does would change the text once linked.
+ * `textWrapStyle` stays out: imported text doesn't set it either way.
+ */
+function hasNeutralParagraph(style: TextStyle): boolean {
+  return (
+    style.paragraphSpacing === 0 &&
+    style.paragraphIndent === 0 &&
+    style.leadingTrim === "NONE" &&
+    style.listSpacing === 0 &&
+    !style.hangingPunctuation &&
+    !style.hangingList
+  );
+}
+
 function sameTextStyle(style: TextStyle, token: PlanTextStyle): boolean {
   return (
     style.fontName.family === token.fontName.family &&
@@ -79,21 +94,21 @@ function sameTextStyle(style: TextStyle, token: PlanTextStyle): boolean {
     sameLineHeight(style, token.lineHeight) &&
     sameLetterSpacing(style, token.letterSpacing) &&
     style.textDecoration === token.decoration &&
-    style.textCase === token.textCase
+    style.textCase === token.textCase &&
+    hasNeutralParagraph(style)
   );
 }
 
-/** A paint style counts only if it paints the same as a plain opaque colour would. */
-function samePaintStyle(style: PaintStyle, rgba: PlanColor["rgba"]): boolean {
+/** The colour of a paint style that paints the same as a plain opaque colour would, else null. */
+function solidColorOf(style: PaintStyle): RGB | null {
   const [paint, ...rest] = style.paints;
-  return (
+  const plain =
     paint?.type === "SOLID" &&
     rest.length === 0 &&
     paint.visible !== false &&
     (paint.opacity ?? 1) === 1 &&
-    (paint.blendMode ?? "NORMAL") === "NORMAL" &&
-    sameColor(paint.color, rgba)
-  );
+    (paint.blendMode ?? "NORMAL") === "NORMAL";
+  return plain ? paint.color : null;
 }
 
 /** The default mode's colour, or null for an alias: what it points at is matched on its own. */
@@ -259,6 +274,10 @@ export function createTokenSet(api: PluginAPI) {
       const value = values.get(v.id);
       return value != null && sameColor(value, token.rgba);
     };
+    const solids = paintStyles.flatMap((s) => {
+      const color = solidColorOf(s);
+      return color ? [{ id: s.id, color }] : [];
+    });
     const own = byOwnKey(variables);
     const local = useLocal ? variables : [];
 
@@ -291,7 +310,7 @@ export function createTokenSet(api: PluginAPI) {
           counts.variablesReused++;
           continue;
         }
-        const style = paintStyles.find((s) => samePaintStyle(s, token.rgba));
+        const style = solids.find((s) => sameColor(s.color, token.rgba));
         if (style) {
           colors.set(token.key, { paintStyleId: style.id });
           counts.stylesReused++;
