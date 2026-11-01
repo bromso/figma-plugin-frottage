@@ -1020,6 +1020,16 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return out;
   }
 
+  /** z-index only counts on a positioned box, or on a flex or grid item. */
+  function readZIndex(el: Element, s: CSSStyleDeclaration): { zIndex?: number } {
+    if (s.zIndex === "auto") return {};
+    const z = Number.parseInt(s.zIndex, 10);
+    if (!Number.isFinite(z)) return {};
+    const parent = el.parentElement ? cs(el.parentElement).display : "";
+    const item = /flex|grid/.test(parent);
+    return s.position !== "static" || item ? { zIndex: z } : {};
+  }
+
   function visit(el: Element, depth: number, isRoot: boolean, up: Inherited): CaptureNode[] {
     if (IGNORED_TAGS.has(el.localName)) return [];
     if (el instanceof win.HTMLInputElement && el.type === "hidden") return [];
@@ -1043,6 +1053,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       id,
       box,
       paintOrder: n,
+      ...readZIndex(el, s),
       visible: s.visibility !== "hidden",
       opacity: Math.min(1, Math.max(0, Number.parseFloat(s.opacity))) || 0,
       blendMode: s.mixBlendMode,

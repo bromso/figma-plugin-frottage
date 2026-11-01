@@ -1687,3 +1687,30 @@ test("only colours, var() chains and lengths are kept from :root", async ({ page
     "--gap": "16px",
   });
 });
+
+test("zIndex is stored for a positioned box and left out for auto", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/layout.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      [
+        '<div id="zq-a" style="position:absolute;z-index:3;width:10px;height:10px;background:red"></div>',
+        '<div id="zq-b" style="position:absolute;width:10px;height:10px;background:blue"></div>',
+        '<div id="zq-c" style="z-index:5;width:10px;height:10px;background:green"></div>',
+        '<div style="display:flex"><div id="zq-d" style="z-index:2;width:10px;height:10px;background:pink"></div></div>',
+      ].join("")
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const byId = new Map<string, ElementNode>();
+  each(c, (n) => {
+    if (n.kind === "element" && n.semantic.id?.startsWith("zq-")) byId.set(n.semantic.id, n);
+  });
+  expect(byId.get("zq-a")?.zIndex).toBe(3);
+  expect(byId.get("zq-b")?.zIndex).toBeUndefined();
+  expect(byId.get("zq-c")?.zIndex).toBeUndefined();
+  expect(byId.get("zq-d")?.zIndex).toBe(2);
+  expect(parseCapture(c).ok).toBe(true);
+});

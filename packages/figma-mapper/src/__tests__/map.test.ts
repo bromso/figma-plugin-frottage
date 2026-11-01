@@ -714,3 +714,47 @@ describe("hyperlinks", () => {
     expect(JSON.stringify(mapCapture(c, inter))).not.toContain("e.test");
   });
 });
+
+describe("stacking order", () => {
+  const abs = (z?: number) => ({
+    layout: { ...el("x", [0, 0]).layout, position: "absolute" },
+    ...(z === undefined ? {} : { zIndex: z }),
+  });
+  const kids = (children: ReturnType<typeof el>[], parent: Partial<ReturnType<typeof el>> = {}) =>
+    mapCapture(cap(el("root", [0, 0], [el("p", [0, 0], children, parent, [200, 200])])), inter)
+      .ops.filter((o) => o.parent === "p")
+      .map((o) => o.id);
+
+  test("a positioned sibling with z-index paints above a later one", () => {
+    const order = kids([
+      el("hi", [0, 0], [], abs(2), [50, 50]),
+      el("lo", [10, 10], [], abs(1), [50, 50]),
+    ]);
+    expect(order).toEqual(["lo", "hi"]);
+  });
+  test("negative z-index goes under flow content", () => {
+    const order = kids([
+      el("flow", [0, 0], [], {}, [50, 50]),
+      el("under", [0, 0], [], abs(-1), [50, 50]),
+      el("over", [0, 0], [], abs(), [50, 50]),
+      el("top", [0, 0], [], abs(5), [50, 50]),
+    ]);
+    expect(order).toEqual(["under", "flow", "over", "top"]);
+  });
+  test("flow children keep their relative order in an auto layout parent", () => {
+    const row = {
+      layout: { ...el("x", [0, 0]).layout, display: "flex", flexDirection: "row" },
+    };
+    const rel = { layout: { ...el("x", [0, 0]).layout, position: "relative" }, zIndex: 3 };
+    const order = kids(
+      [
+        el("a", [0, 0], [], rel, [40, 40]),
+        el("badge", [0, 0], [], abs(-1), [10, 10]),
+        el("b", [40, 0], [], { paintOrder: 1 }, [40, 40]),
+      ],
+      row
+    );
+    expect(order.filter((id) => id !== "badge")).toEqual(["a", "b"]);
+    expect(order[0]).toBe("badge");
+  });
+});

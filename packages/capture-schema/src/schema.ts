@@ -107,6 +107,8 @@ const common = {
   id: z.string(),
   box,
   paintOrder: z.number(),
+  /** Computed z-index, only for a positioned box (or a flex or grid item) whose value is not `auto`. */
+  zIndex: z.number().int().optional(),
   visible: z.boolean(),
   opacity: unit,
   blendMode: z.string(),

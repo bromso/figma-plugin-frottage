@@ -182,6 +182,35 @@ export function visualOrder(
   children: CaptureNode[],
   layout: PlanLayout
 ): CaptureNode[] {
+  return stackOrder(cssVisualOrder(node, children, layout), layout);
+}
+
+const isPositioned = (node: CaptureNode) => (placement(node).position ?? "static") !== "static";
+
+/**
+ * Sorts siblings into CSS paint order: positioned with a negative z-index, then flow, then
+ * positioned with z-index auto or 0, then positive. Under auto layout only absolute children
+ * move, as a flow item moved would change the layout. Stable within a group.
+ */
+function stackOrder(children: CaptureNode[], layout: PlanLayout): CaptureNode[] {
+  const auto = layout.mode === "HORIZONTAL" || layout.mode === "VERTICAL";
+  const rank = (c: CaptureNode): [number, number] => {
+    if (!(auto ? isAbsolute(c) : isPositioned(c) || c.zIndex !== undefined)) return [1, 0];
+    const z = c.zIndex ?? 0;
+    return z < 0 ? [0, z] : z === 0 ? [2, 0] : [3, z];
+  };
+  if (!children.some((c) => rank(c)[0] !== 1)) return children;
+  const keyed = children.map((c) => ({ c, k: rank(c) }));
+  keyed.sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1]);
+  const sorted = keyed.map((x) => x.c);
+  return sameOrder(children, sorted) ? children : sorted;
+}
+
+function cssVisualOrder(
+  node: ElementNode,
+  children: CaptureNode[],
+  layout: PlanLayout
+): CaptureNode[] {
   if (layout.mode !== "HORIZONTAL" && layout.mode !== "VERTICAL") return children;
   const flow = children.filter((c) => renders(c) && !isAbsolute(c));
   const ordered = cssOrder(node, flow);
