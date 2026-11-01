@@ -17,7 +17,7 @@
 - `collection.renameMode(collection.defaultModeId, label)` works.
 - `frame.setExplicitVariableModeForCollection(collection, modeId)` needs the collection node: an id throws under `dynamic-page`.
 - `TextStyle.setBoundVariable("fontSize" | "lineHeight", floatVariable)` works. `setBoundVariable("itemSpacing" | "paddingLeft", floatVariable)` works on a frame.
-- A variable with no value set for a mode reads the default mode's value.
+- A new variable with no value set for a mode reads a default, white for a colour, not the default mode's value. Every variable needs a value for every mode in its collection.
 
 ## Global Constraints
 
