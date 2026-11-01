@@ -20,7 +20,7 @@ function Report({
   notice: string;
   headingRef: React.Ref<HTMLParagraphElement>;
 }) {
-  const { report, failedOps, missingImages, rewrappedTexts } = state;
+  const { report, failedOps, missingImages, rewrappedTexts, textDriftCount } = state;
   const rows: [string, number][] = [
     ["Layers", report.nodes],
     ["Text", report.texts],
@@ -38,6 +38,7 @@ function Report({
   if (state.variablesCreated > 0) rows.push(["Variables created", state.variablesCreated]);
   if (state.variablesReused > 0) rows.push(["Variables reused", state.variablesReused]);
   if (rewrappedTexts > 0) rows.push(["Text blocks that wrap differently", rewrappedTexts]);
+  if (textDriftCount > 0) rows.push(["Text blocks that changed size", textDriftCount]);
   return (
     <div className="flex flex-col gap-2">
       <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">

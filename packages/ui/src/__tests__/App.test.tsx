@@ -29,6 +29,21 @@ describe("App (import screen)", () => {
     expect(screen.getByRole("button", { name: /Choose a file/ })).toBeInTheDocument();
   });
 
+  it("shows text that came out a different size only when there is some", async () => {
+    const user = userEvent.setup();
+    const port = fakePort();
+    port.endResult = { rootId: "1:2", failedOps: 0, missingImages: 0, textDriftCount: 4 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(3));
+    expect(await screen.findByText("Import complete")).toBeInTheDocument();
+    expect(screen.getByText("Text blocks that changed size").nextSibling).toHaveTextContent("4");
+    await user.click(screen.getByRole("button", { name: "Import another file" }));
+    port.endResult = { rootId: "1:2", failedOps: 0, missingImages: 0 };
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(3));
+    expect(await screen.findByText("Import complete")).toBeInTheDocument();
+    expect(screen.queryByText("Text blocks that changed size")).toBeNull();
+  });
+
   it("shows the multi-file notice inside the done report", async () => {
     render(<App port={fakePort()} />);
     const input = screen.getByLabelText("Choose a .frottage file");
