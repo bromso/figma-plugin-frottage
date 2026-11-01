@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { RunStatus } from "../capture-run";
 import type { PopupMessage, Reply } from "../messages";
-import { friendlyError, isRestrictedUrl } from "../page";
+import { friendlyError, isRestrictedUrl, nodeAdvice } from "../page";
 
 const dark = window.matchMedia("(prefers-color-scheme: dark)");
 const applyTheme = () => document.documentElement.classList.toggle("dark", dark.matches);
@@ -32,6 +32,8 @@ function Popup() {
   const [tabId, setTabId] = useState<number | null>(null);
   const [restricted, setRestricted] = useState<boolean | null>(null);
   const [status, setStatus] = useState<RunStatus>({ state: "idle" });
+  // Set once a capture was made without wrappers, so it is not offered a second time.
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
@@ -56,14 +58,16 @@ function Popup() {
     return () => chrome.runtime.onMessage.removeListener(onMessage);
   }, []);
 
-  async function capture() {
+  async function capture(collapseWrappers = false) {
     if (tabId === null) return;
+    setCollapsed(collapseWrappers);
     setStatus({ state: "capturing" });
     try {
       const reply: Reply | undefined = await chrome.runtime.sendMessage({
         target: "sw",
         type: "start",
         tabId,
+        ...(collapseWrappers ? { collapseWrappers: true } : {}),
       });
       if (reply && !reply.ok) setStatus({ state: "error", message: reply.error });
     } catch (error) {
@@ -75,6 +79,7 @@ function Popup() {
   }
 
   const busy = BUSY.has(status.state);
+  const advice = status.state === "saved" ? nodeAdvice(status.nodes, status.nodeLimit) : null;
 
   return (
     <main className="flex w-[320px] flex-col gap-3 bg-background p-4 text-foreground">
@@ -92,19 +97,28 @@ function Popup() {
             This file contains the page's content, including anything visible in a logged-in
             session.
           </Type>
-          <Button onClick={capture} disabled={busy || restricted === null || tabId === null}>
+          <Button
+            onClick={() => capture()}
+            disabled={busy || restricted === null || tabId === null}
+          >
             {busy ? (LABEL[status.state] ?? "Working…") : "Capture this page"}
           </Button>
         </>
       )}
       <div aria-live="polite">
         {status.state === "saved" && <Type>Saved {status.filename} to your Downloads.</Type>}
+        {advice?.warning && <Type className="text-muted-foreground">{advice.warning}</Type>}
         {status.state === "error" && (
           <Type role="alert" className="text-destructive">
             {friendlyError(status.message)}
           </Type>
         )}
       </div>
+      {advice?.offerCollapse && !collapsed && !busy && (
+        <Button variant="secondary" onClick={() => capture(true)}>
+          Capture again without wrappers
+        </Button>
+      )}
     </main>
   );
 }

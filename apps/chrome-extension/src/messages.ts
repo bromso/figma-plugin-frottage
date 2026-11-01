@@ -15,7 +15,7 @@ export type PageMessage =
 
 /** Popup to worker. */
 export type SwMessage =
-  | { target: "sw"; type: "start"; tabId: number }
+  | { target: "sw"; type: "start"; tabId: number; collapseWrappers?: boolean }
   | { target: "sw"; type: "download"; url: string; filename: string }
   | { target: "sw"; type: "close-offscreen" };
 

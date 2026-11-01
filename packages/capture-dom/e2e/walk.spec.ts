@@ -43,6 +43,7 @@ type Hook = {
         now: () => string;
         toolVersion: string;
         getShadowRoot?: (el: Element) => ShadowRoot | null;
+        collapseWrappers?: boolean;
       }
     ) => Capture;
   };
@@ -51,6 +52,8 @@ type Hook = {
 type CaptureOptions = {
   /** Pass a getShadowRoot that reaches closed roots, through the hook the fixture sets on window. */
   closedShadow?: boolean;
+  /** Leave out one-child wrappers that do nothing. */
+  collapseWrappers?: boolean;
 };
 
 async function capture(page: Page, file: string, options: CaptureOptions = {}): Promise<Capture> {
@@ -64,7 +67,7 @@ async function capture(page: Page, file: string, options: CaptureOptions = {}): 
 // Serialised in the page: a deep tree is too long a reference chain for Playwright to transfer.
 async function runCapture(page: Page, now: string, options: CaptureOptions = {}): Promise<Capture> {
   const json = await page.evaluate(
-    ({ at, closed }) => {
+    ({ at, closed, collapse }) => {
       type Roots = WeakMap<Element, ShadowRoot>;
       const roots = (window as unknown as { __frottageClosedRoots?: Roots }).__frottageClosedRoots;
       return JSON.stringify(
@@ -72,10 +75,11 @@ async function runCapture(page: Page, now: string, options: CaptureOptions = {})
           now: () => at,
           toolVersion: "test",
           ...(closed ? { getShadowRoot: (el: Element) => roots?.get(el) ?? el.shadowRoot } : {}),
+          ...(collapse ? { collapseWrappers: true } : {}),
         })
       );
     },
-    { at: now, closed: options.closedShadow === true }
+    { at: now, closed: options.closedShadow === true, collapse: options.collapseWrappers === true }
   );
   return JSON.parse(json) as Capture;
 }
@@ -1968,4 +1972,72 @@ test("a capture with hover still parses", async ({ page }) => {
   const parsed = parseCapture(c);
   expect(parsed.ok).toBe(true);
   expect(elements(c, (n) => n.hover !== undefined).length).toBeGreaterThan(5);
+});
+
+const has = (c: Capture, cls: string) =>
+  elements(c, (n) => n.semantic.className === cls).length > 0;
+
+test("collapseWrappers drops an unpainted one-child div and keeps its child's position", async ({
+  page,
+}) => {
+  const off = await capture(page, "wrappers.html");
+  expect(has(off, "w-plain")).toBe(true);
+  const c = await capture(page, "wrappers.html", { collapseWrappers: true });
+  expect(has(c, "w-plain")).toBe(false);
+  expect(has(c, "w-outer")).toBe(false);
+  expect(has(c, "w-inner")).toBe(false);
+  const byClass = (cap: Capture, cls: string) =>
+    elements(cap, (n) => n.semantic.className === cls)[0];
+  const child = byClass(c, "in-plain");
+  expect(child?.box.x).toBe(30);
+  expect(child?.box.h).toBe(20);
+  // The child's position is the same as without collapsing: the page's own coordinates.
+  expect(child?.box).toEqual(byClass(off, "in-plain")?.box);
+  // A collapsed node hands out no id, so ids stay dense and the tree is smaller.
+  expect(countNodes(c.root)).toBeLessThan(countNodes(off.root));
+  const ids = new Set<string>();
+  each(c, (n) => ids.add(n.id));
+  expect(ids.size).toBe(countNodes(c.root));
+  expect(has(c, "in-deep")).toBe(true);
+});
+
+test("collapseWrappers keeps landmarks, links, buttons and anything with semantic text", async ({
+  page,
+}) => {
+  const c = await capture(page, "wrappers.html", { collapseWrappers: true });
+  for (const kept of [
+    "w-nav",
+    "w-link",
+    "w-button",
+    "w-header",
+    "w-heading",
+    "w-role",
+    "w-label",
+    "w-text",
+    "w-two",
+    "w-paint",
+    "w-pad",
+    "w-rel",
+    "w-tf",
+    "w-fade",
+    "w-gap",
+    "w-clip",
+  ]) {
+    expect(has(c, kept), kept).toBe(true);
+  }
+});
+
+test("collapseWrappers counts a shadow host's own children, not its light children", async ({
+  page,
+}) => {
+  const c = await capture(page, "wrappers.html", { collapseWrappers: true });
+  expect(has(c, "w-host-one")).toBe(false);
+  expect(has(c, "in-shadow-one")).toBe(true);
+  expect(has(c, "w-host-two")).toBe(true);
+});
+
+test("collapseWrappers is off by default", async ({ page }) => {
+  const c = await capture(page, "wrappers.html");
+  for (const cls of ["w-plain", "w-outer", "w-inner", "w-host-one"])
+    expect(has(c, cls), cls).toBe(true);
 });

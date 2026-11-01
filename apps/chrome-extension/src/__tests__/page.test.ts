@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { captureFilename, friendlyError, isRestrictedUrl } from "../page";
+import { captureFilename, friendlyError, isRestrictedUrl, nodeAdvice } from "../page";
 
 describe("isRestrictedUrl", () => {
   test.each([
@@ -70,5 +70,21 @@ describe("friendlyError", () => {
   });
   test("leaves other errors alone", () => {
     expect(friendlyError("disk full")).toBe("disk full");
+  });
+});
+
+describe("nodeAdvice", () => {
+  test("the popup warns at 5,000 nodes", () => {
+    expect(nodeAdvice(4_999, false)).toEqual({ warning: null, offerCollapse: false });
+    const advice = nodeAdvice(5_000, false);
+    expect(advice.warning).toMatch(/5,000 layers/);
+    expect(advice.warning).not.toMatch(/DOM/);
+    expect(advice.offerCollapse).toBe(false);
+  });
+  test("at 20,000 nodes the popup offers a capture without wrappers", () => {
+    expect(nodeAdvice(20_000, true).offerCollapse).toBe(true);
+    expect(nodeAdvice(20_000, true).warning).toMatch(/left out/);
+    // Reaching the count without the limit warning is not a stop.
+    expect(nodeAdvice(20_000, false).offerCollapse).toBe(true);
   });
 });

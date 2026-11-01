@@ -72,9 +72,25 @@ describe("CaptureRun", () => {
     expect(last(t.statuses)).toEqual({
       state: "saved",
       filename: "example.com-2026-10-31.frottage",
+      nodes: 0,
+      nodeLimit: false,
     });
     expect(t.revoked).toEqual(["blob:test/1"]);
     expect(t.timers.size).toBe(0);
+  });
+
+  test("the saved status carries the node count and whether the node limit was hit", async () => {
+    const leaf = { kind: "text" };
+    const tree = { kind: "element", children: [leaf, { kind: "element", children: [leaf] }] };
+    const limited = {
+      ...CAPTURE,
+      root: tree,
+      warnings: [{ code: "node-limit", nodeId: "", detail: "x" }],
+    };
+    sendCapture(t.run, "r1", JSON.stringify(limited));
+    t.run.onEnd("r1");
+    await tick();
+    expect(last(t.statuses)).toMatchObject({ state: "saved", nodes: 4, nodeLimit: true });
   });
 
   test("a 60 s no-progress timeout reports an error, and chunks restart it", () => {
@@ -141,7 +157,10 @@ describe("CaptureRun", () => {
     sendCapture(t.run, "r1");
     t.run.onEnd("r1");
     await tick();
-    expect(t.run.take()).toEqual({ state: "saved", filename: "example.com-2026-10-31.frottage" });
+    expect(t.run.take()).toMatchObject({
+      state: "saved",
+      filename: "example.com-2026-10-31.frottage",
+    });
     expect(t.run.take()).toEqual({ state: "idle" });
   });
 
@@ -163,7 +182,7 @@ describe("CaptureRun", () => {
     sendCapture(f.run, "r3");
     f.run.onEnd("r3");
     await tick();
-    expect(last(f.statuses)).toEqual({
+    expect(last(f.statuses)).toMatchObject({
       state: "saved",
       filename: "example.com-2026-10-31 (1).frottage",
     });

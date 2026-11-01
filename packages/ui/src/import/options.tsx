@@ -18,6 +18,8 @@ const GROUPS: { title: string; rows: Row[] }[] = [
       { key: "tokens", label: "Create styles and variables" },
       { key: "useLocalStyles", label: "Use existing local styles" },
       { key: "hyperlinks", label: "Hyperlinks" },
+      { key: "components", label: "Components" },
+      { key: "hoverComponents", label: "Hover components (slower)" },
     ],
   },
 ];
@@ -42,7 +44,7 @@ function OptionRow({
   );
 }
 
-/** The import switches, remembered per domain. Components and hover components arrive in Stage 2. */
+/** The import switches, remembered per domain. */
 export function OptionsSheet({
   options,
   onChange,
@@ -62,8 +64,12 @@ export function OptionsSheet({
               key={key}
               label={label}
               checked={options[key]}
-              // Matching existing styles does nothing while styles are not created or bound.
-              disabled={key === "useLocalStyles" && !options.tokens}
+              // Matching existing styles does nothing while styles are not created or bound, and
+              // hover variants belong to components.
+              disabled={
+                (key === "useLocalStyles" && !options.tokens) ||
+                (key === "hoverComponents" && !options.components)
+              }
               onChange={(value) => onChange({ ...options, [key]: value })}
             />
           ))}

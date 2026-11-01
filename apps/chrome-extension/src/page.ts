@@ -65,3 +65,29 @@ export function friendlyError(raw: string): string {
   }
   return raw;
 }
+
+/** Layers in a capture at which the popup starts to warn that Figma may be slow. */
+export const NODE_WARN = 5_000;
+/** The most layers a capture holds; the walker stops here. */
+export const NODE_LIMIT = 20_000;
+
+/** What the popup says about a finished capture's size, in plain words. */
+export function nodeAdvice(
+  nodes: number,
+  nodeLimit: boolean
+): { warning: string | null; offerCollapse: boolean } {
+  const stopped = nodeLimit || nodes >= NODE_LIMIT;
+  if (stopped) {
+    return {
+      warning: `This page has more than ${NODE_LIMIT.toLocaleString("en-US")} layers. The rest was left out of the file.`,
+      offerCollapse: true,
+    };
+  }
+  if (nodes >= NODE_WARN) {
+    return {
+      warning: `This capture has ${nodes.toLocaleString("en-US")} layers. Importing more than ${NODE_WARN.toLocaleString("en-US")} layers can be slow in Figma.`,
+      offerCollapse: false,
+    };
+  }
+  return { warning: null, offerCollapse: false };
+}

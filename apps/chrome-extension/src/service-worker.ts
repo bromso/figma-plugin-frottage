@@ -43,17 +43,20 @@ async function toOffscreen(message: OffscreenMessage): Promise<Reply | undefined
   return chrome.runtime.sendMessage(message);
 }
 
-async function startCapture(tabId: number): Promise<Reply> {
+async function startCapture(tabId: number, collapseWrappers: boolean): Promise<Reply> {
   const runId = crypto.randomUUID();
   const started = await toOffscreen({ target: "offscreen", type: "run-start", runId });
   if (!started?.ok) return started ?? { ok: false, error: "The capture could not start" };
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
-      func: (id: string) => {
-        (window as unknown as { __frottageRunId?: string }).__frottageRunId = id;
+      // The run's settings travel with its id; the worker keeps nothing between messages.
+      func: (id: string, collapse: boolean) => {
+        const win = window as unknown as { __frottageRunId?: string; __frottageCollapse?: boolean };
+        win.__frottageRunId = id;
+        win.__frottageCollapse = collapse;
       },
-      args: [runId],
+      args: [runId, collapseWrappers],
     });
     await chrome.scripting.executeScript({ target: { tabId }, files: ["capture-entry.js"] });
     return { ok: true };
@@ -89,7 +92,7 @@ async function saveFile(url: string, filename: string): Promise<Reply> {
 chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse) => {
   if (message?.target !== "sw") return;
   if (message.type === "start") {
-    startCapture(message.tabId).then(sendResponse, (e) =>
+    startCapture(message.tabId, message.collapseWrappers === true).then(sendResponse, (e) =>
       sendResponse({ ok: false, error: errorText(e) })
     );
     return true;

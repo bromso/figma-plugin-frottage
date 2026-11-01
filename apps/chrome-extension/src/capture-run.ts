@@ -1,11 +1,12 @@
-import { type Capture, LIMITS } from "@repo/capture-schema";
+import { type Capture, countNodes, LIMITS } from "@repo/capture-schema";
 import { AssetAssembler, ChunkAssembler, type ChunkMessage } from "./chunks";
 import { captureFilename } from "./page";
 
 export type RunStatus =
   | { state: "idle" }
   | { state: "capturing" | "packing" | "saving" }
-  | { state: "saved"; filename: string }
+  /** `nodes` is the layer count in the file; `nodeLimit` is set when the page had more than fit. */
+  | { state: "saved"; filename: string; nodes: number; nodeLimit: boolean }
   | { state: "error"; message: string };
 
 export type RunDeps = {
@@ -213,10 +214,12 @@ export class CaptureRun {
       const bytes = this.deps.pack(capture, listed);
       url = this.deps.makeBlobUrl(bytes);
       const filename = captureFilename(capture.source.url, this.deps.now());
+      const nodes = capture.root ? countNodes(capture.root) : 0;
+      const nodeLimit = (capture.warnings ?? []).some((w) => w.code === "node-limit");
       this.set({ state: "saving" });
       const saved = await this.deps.download({ url, filename });
       this.active = false;
-      this.set({ state: "saved", filename: saved ?? filename });
+      this.set({ state: "saved", filename: saved ?? filename, nodes, nodeLimit });
     } catch (e) {
       this.fail(`Could not save the file: ${message(e)}`);
     } finally {

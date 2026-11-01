@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wrappers</title>
+<style>
+body { margin: 0; font: 14px/1.4 Helvetica, Arial, sans-serif; color: #111; }
+.in { height: 20px; margin-left: 30px; background: #fc0; }
+.paint { background: #eee; }
+.pad { padding: 4px; }
+.rel { position: relative; }
+.tf { transform: translateX(3px); }
+.fade { opacity: 0.5; }
+.gap { display: flex; gap: 6px; }
+.clip { overflow: hidden; }
+</style>
+</head>
+<body>
+  <!-- collapsed: nothing paints or positions the wrapper -->
+  <div class="w-plain"><div class="in-plain in"></div></div>
+  <div class="w-outer"><div class="w-inner"><div class="in-deep in"></div></div></div>
+
+  <!-- kept -->
+  <nav class="w-nav"><div class="in-nav in"></div></nav>
+  <a class="w-link" href="https://example.com/x"><div class="in-link in"></div></a>
+  <button class="w-button" type="button"><div class="in-button in"></div></button>
+  <header class="w-header"><div class="in-header in"></div></header>
+  <h2 class="w-heading"><div class="in-heading in"></div></h2>
+  <div class="w-role" role="group"><div class="in-role in"></div></div>
+  <div class="w-label" aria-label="Section"><div class="in-label in"></div></div>
+  <div class="w-text">Words <div class="in-text in"></div></div>
+  <div class="w-two"><div class="in-two-a in"></div><div class="in-two-b in"></div></div>
+  <div class="w-paint paint"><div class="in-paint in"></div></div>
+  <div class="w-pad pad"><div class="in-pad in"></div></div>
+  <div class="w-rel rel"><div class="in-rel in"></div></div>
+  <div class="w-tf tf"><div class="in-tf in"></div></div>
+  <div class="w-fade fade"><div class="in-fade in"></div></div>
+  <div class="w-gap gap"><div class="in-gap in"></div></div>
+  <div class="w-clip clip"><div class="in-clip in"></div></div>
+
+  <!-- shadow hosts: the shadow root's children are the host's children -->
+  <div class="w-host-one"></div>
+  <div class="w-host-two"></div>
+  <script>
+    const one = document.querySelector(".w-host-one").attachShadow({ mode: "open" });
+    const css = "<style>.in { height: 20px; margin-left: 30px; background: #fc0; }</style>";
+    one.innerHTML = css + '<div class="in-shadow-one in"></div>';
+    const two = document.querySelector(".w-host-two").attachShadow({ mode: "open" });
+    two.innerHTML = css + '<div class="in-shadow-two-a in"></div><div class="in-shadow-two-b in"></div>';
+  </script>
+</body>
+</html>

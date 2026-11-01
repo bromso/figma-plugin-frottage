@@ -176,6 +176,8 @@ function App({ port }: { port?: ImportPort }) {
   const errorRef = useRef<HTMLParagraphElement>(null);
   const headingRef = useRef<HTMLParagraphElement>(null);
   const working = state.step === "working";
+  const abort = useRef<AbortController | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   // A drop outside the drop area must not make Figma's iframe navigate to the file.
   useEffect(() => {
@@ -203,14 +205,25 @@ function App({ port }: { port?: ImportPort }) {
       const target = port ?? (await import("./app.network")).channelImportPort;
       const forceReview = optionsOpen;
       setOptionsOpen(false);
-      await runImport(file, target, setState, {
-        forceReview,
-        decide: () =>
-          new Promise<ReviewDecision | null>((resolve) => {
-            decide.current = resolve;
-          }),
-      });
+      const controller = new AbortController();
+      abort.current = controller;
+      setCancelling(false);
+      await runImport(
+        file,
+        target,
+        setState,
+        {
+          forceReview,
+          decide: () =>
+            new Promise<ReviewDecision | null>((resolve) => {
+              decide.current = resolve;
+            }),
+        },
+        controller.signal
+      );
     } finally {
+      abort.current = null;
+      setCancelling(false);
       busy.current = false;
     }
   }
@@ -300,6 +313,16 @@ function App({ port }: { port?: ImportPort }) {
             {total > 0 ? `Importing ${state.done} of ${total} layers` : "Reading the file"}
           </p>
           <Progress value={percent} aria-label="Import progress" />
+          <Button
+            variant="secondary"
+            disabled={cancelling}
+            onClick={() => {
+              setCancelling(true);
+              abort.current?.abort();
+            }}
+          >
+            {cancelling ? "Cancelling…" : "Cancel"}
+          </Button>
         </div>
       )}
 

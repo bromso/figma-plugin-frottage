@@ -177,7 +177,7 @@ describe("App (options and font table)", () => {
     expect(await screen.findByText("Import complete")).toBeInTheDocument();
   });
 
-  it("opens the options for the next file, grouped, without the Stage 2 options", async () => {
+  it("opens the options for the next file, grouped, with Components and Hover components", async () => {
     const user = userEvent.setup();
     const port = fakePort(fonts);
     render(<App port={port} />);
@@ -191,10 +191,12 @@ describe("App (options and font table)", () => {
       "Create styles and variables",
       "Use existing local styles",
       "Hyperlinks",
+      "Components",
+      "Hover components (slower)",
     ]) {
       expect(screen.getByRole("switch", { name })).toBeInTheDocument();
     }
-    expect(screen.queryByRole("switch", { name: /Components|Hover/ })).toBeNull();
+    expect(screen.getByRole("switch", { name: "Components" })).toBeChecked();
     expect(screen.getByRole("switch", { name: "Auto layout" })).toBeChecked();
     expect(screen.getByRole("switch", { name: "HTML layer names" })).not.toBeChecked();
 
@@ -214,6 +216,42 @@ describe("App (options and font table)", () => {
     expect(local).toBeEnabled();
     await user.click(screen.getByRole("switch", { name: "Create styles and variables" }));
     expect(local).toBeDisabled();
+  });
+
+  it("Hover components (slower) is off by default, and disabled with Components off", async () => {
+    const user = userEvent.setup();
+    render(<App port={fakePort(fonts)} />);
+    await user.click(screen.getByRole("button", { name: "Options" }));
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    const hover = await screen.findByRole("switch", { name: "Hover components (slower)" });
+    expect(hover).not.toBeChecked();
+    expect(hover).toBeEnabled();
+    await user.click(screen.getByRole("switch", { name: "Components" }));
+    expect(hover).toBeDisabled();
+  });
+
+  it("Cancel shows while importing and stops the import", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const batch = port.batch.bind(port);
+    port.batch = async (ops) => {
+      await gate;
+      await batch(ops);
+    };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    const cancel = await screen.findByRole("button", { name: "Cancel" });
+    await user.click(cancel);
+    expect(screen.getByRole("button", { name: "Cancelling…" })).toBeDisabled();
+    release();
+    expect(await screen.findByRole("button", { name: /Choose a file/ })).toBeInTheDocument();
+    expect(port.log).toContain("cancel");
+    expect(port.log).not.toContain("end");
+    expect(screen.queryByText("Import complete")).toBeNull();
   });
 
   it("lists each missing font with a labelled choice and never blocks Import", async () => {
@@ -255,7 +293,9 @@ describe("App (options and font table)", () => {
     const port = fakePort(fonts);
     render(<App port={port} />);
     await user.upload(screen.getByLabelText("Choose a .frottage file"), fontFile("Nimbus Sans"));
-    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+    // The working state has its own Cancel; wait for the review step's.
+    await screen.findByText("Import settings");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(await screen.findByRole("button", { name: /Choose a file/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Import" })).toBeNull();
     expect(port.log).not.toContain("begin");

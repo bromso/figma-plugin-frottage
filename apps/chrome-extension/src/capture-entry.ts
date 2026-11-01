@@ -14,13 +14,15 @@ import { CAPTURE_PORT, type PageMessage } from "./messages";
 /** The offscreen timeout is 60 s; stay well inside it. */
 const HEARTBEAT_MS = 10_000;
 
-type RunWindow = Window & { __frottageRunId?: string };
+type RunWindow = Window & { __frottageRunId?: string; __frottageCollapse?: boolean };
 
 // `void`: the script's completion value is undefined, so executeScript does not wait on the run.
 void (async () => {
   const win = window as RunWindow;
   const runId = win.__frottageRunId;
+  const collapseWrappers = win.__frottageCollapse === true;
   win.__frottageRunId = undefined;
+  win.__frottageCollapse = undefined;
   if (!runId) return;
 
   const port = chrome.runtime.connect({ name: `${CAPTURE_PORT}${runId}` });
@@ -36,6 +38,7 @@ void (async () => {
     const capture = captureDocument(document, {
       now: () => new Date().toISOString(),
       toolVersion: pkg.version,
+      collapseWrappers,
       getShadowRoot: (el) =>
         el instanceof HTMLElement ? chrome.dom.openOrClosedShadowRoot(el) : null,
     });

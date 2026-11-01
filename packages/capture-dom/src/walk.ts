@@ -41,6 +41,12 @@ export type CaptureEnv = {
   toolVersion: string;
   /** Reaches closed shadow roots (the extension passes `chrome.dom.openOrClosedShadowRoot`); open ones are read without it. */
   getShadowRoot?: (el: Element) => ShadowRoot | null;
+  /**
+   * Leave out an element that does nothing but hold one child: no paint, spacing, position,
+   * effect, text or meaning of its own. The child keeps its own box, in page coordinates, so the
+   * look is the same with fewer layers. Off by default.
+   */
+  collapseWrappers?: boolean;
 };
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -63,6 +69,34 @@ const MAX_DEPTH = 256;
 const MAX_NODES = 20_000;
 const XHTML = "http://www.w3.org/1999/xhtml";
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** Elements that mean something on their own, so they stay even when they only hold one child. */
+const KEPT_WRAPPER_TAGS = new Set([
+  "a",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "label",
+  "summary",
+  "details",
+  "dialog",
+  "form",
+  "fieldset",
+  "table",
+  "li",
+  "ul",
+  "ol",
+  "p",
+  "pre",
+  "blockquote",
+  "figure",
+  "iframe",
+  "canvas",
+  "video",
+  "svg",
+  "img",
+]);
 
 const IGNORED_TAGS = new Set([
   "script",
@@ -1033,6 +1067,60 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return s.position !== "static" || item ? { zIndex: z } : {};
   }
 
+  /** The one element a collapsible wrapper holds, or null when `el` is not such a wrapper. */
+  function wrappedChild(el: Element, s: CSSStyleDeclaration): Element | null {
+    if (el === root || el === doc.body || el.namespaceURI !== XHTML) return null;
+    if (KEPT_WRAPPER_TAGS.has(el.localName) || isEditable(el) || hovers.has(el)) return null;
+    if (!/^(block|flex|grid|flow-root)$/.test(s.display)) return null;
+    if (s.position !== "static" || s.zIndex !== "auto" || s.visibility !== "visible") return null;
+    if (s.transform !== "none" || s.filter !== "none" || s.mixBlendMode !== "normal") return null;
+    if (s.opacity !== "1" || s.overflowX !== "visible" || s.overflowY !== "visible") return null;
+    const backdrop = s.getPropertyValue("backdrop-filter");
+    if (backdrop && backdrop !== "none") return null;
+    if (s.getPropertyValue("clip-path") !== "none" || s.getPropertyValue("mask-image") !== "none") {
+      return null;
+    }
+    const layout = readLayout(s);
+    if (layout.padding.some((p) => p > 0) || layout.gap?.some((g) => g > 0)) return null;
+    const style = readStyle(s, 0, 0);
+    if (
+      style.backgroundColor.a > 0 ||
+      style.backgroundImages.length > 0 ||
+      style.boxShadows.length > 0 ||
+      style.borders.top.width > 0 ||
+      style.borders.right.width > 0 ||
+      style.borders.bottom.width > 0 ||
+      style.borders.left.width > 0
+    ) {
+      return null;
+    }
+    const semantic = semanticOf(el);
+    if (
+      semantic.role ||
+      semantic.ariaLabel ||
+      semantic.headingLevel ||
+      semantic.landmark ||
+      semantic.href ||
+      semantic.alt
+    ) {
+      return null;
+    }
+    if (readPseudo(el, "before", pseudoCtx) || readPseudo(el, "after", pseudoCtx)) return null;
+    let only: Element | null = null;
+    for (const child of childrenOf(el)) {
+      if (child.nodeType === 3) {
+        if ((child.nodeValue ?? "").trim() !== "") return null;
+      } else if (child.nodeType === 1) {
+        const e = child as Element;
+        if (IGNORED_TAGS.has(e.localName) || cs(e).display === "none") continue;
+        // A second child, or one that is inline and would join a line of text.
+        if (only || isMergeable(e) || cs(e).display === "contents") return null;
+        only = e;
+      }
+    }
+    return only;
+  }
+
   function visit(el: Element, depth: number, isRoot: boolean, up: Inherited): CaptureNode[] {
     if (IGNORED_TAGS.has(el.localName)) return [];
     if (el instanceof win.HTMLInputElement && el.type === "hidden") return [];
@@ -1043,6 +1131,11 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       if (!isEditable(el)) return visitChildren(el, depth - 1, inherited);
       warnEditable();
       return [];
+    }
+
+    if (env.collapseWrappers) {
+      const only = wrappedChild(el, s);
+      if (only) return visit(only, depth, false, inherited);
     }
 
     const box = boxOf(el, s);
