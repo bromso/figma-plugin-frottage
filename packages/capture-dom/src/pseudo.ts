@@ -5,6 +5,14 @@ import { cleanText } from "./urls";
 export type Box = { x: number; y: number; w: number; h: number };
 export type Which = "before" | "after";
 
+/** What text takes from the elements around it, passed down the walk. */
+export type Inherited = {
+  /** The link in effect. `undefined` is no link. */
+  link: string | undefined;
+  /** The `text-decoration-line` in effect. */
+  decoration: string;
+};
+
 /** What a pseudo-element needs from the walker; kept narrow so this file does not import it. */
 export type PseudoCtx = {
   win: Window & typeof globalThis;
@@ -22,7 +30,13 @@ export type PseudoCtx = {
   /** Whether a field's content must never be read. */
   isSecret: (el: Element) => boolean;
   /** A text node for a string the page does not hold in a text node. */
-  text: (value: string, style: CSSStyleDeclaration, box: Box, tag: string) => TextNode | null;
+  text: (
+    value: string,
+    style: CSSStyleDeclaration,
+    box: Box,
+    tag: string,
+    inherited: Inherited
+  ) => TextNode | null;
   cache: WeakMap<Element, { before?: Pseudo | null; after?: Pseudo | null }>;
 };
 
@@ -210,7 +224,12 @@ const used = (value: string): number | null => {
  * `height`. Any other sits at its element's content edge: the start for `::before`, the end for
  * `::after`; that placement is approximate and counted in a `pseudo-approximate` warning.
  */
-export function pseudoNodes(el: Element, which: Which, ctx: PseudoCtx): CaptureNode[] {
+export function pseudoNodes(
+  el: Element,
+  which: Which,
+  ctx: PseudoCtx,
+  inherited: Inherited
+): CaptureNode[] {
   const p = readPseudo(el, which, ctx);
   if (p?.mode !== "box") return [];
   const s = p.style;
@@ -313,7 +332,7 @@ export function pseudoNodes(el: Element, which: Which, ctx: PseudoCtx): CaptureN
       w: round2(Math.max(box.w - border.l - border.r - pad.l - pad.r, textW)),
       h: round2(lineH),
     };
-    const t = ctx.text(text.trim(), s, inner, tag);
+    const t = ctx.text(text.trim(), s, inner, tag, inherited);
     if (t) node.children.push(t);
   }
   return [node];

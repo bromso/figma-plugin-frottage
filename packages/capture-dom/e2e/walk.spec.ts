@@ -1588,3 +1588,56 @@ test("a MathML or SVG anchor outside an svg gives no link and does not stop the 
   expect(JSON.stringify(c)).not.toContain("/maths");
   expect(JSON.stringify(c)).not.toContain("/vector");
 });
+
+// ---------- Text decoration from ancestors
+
+const runOfWord = (c: Capture, word: string) => {
+  const t = findText(c, word);
+  const at = t.text.indexOf(word);
+  const run = t.runs.find((r) => r.start <= at && r.end > at);
+  if (!run) throw new Error(`no run for ${word}`);
+  return run;
+};
+
+test("an ancestor's underline reaches the text inside it", async ({ page }) => {
+  const c = await capture(page, "links.html");
+  expect(runOfWord(c, "Span in anchor").decoration).toBe("underline");
+  expect(runOfWord(c, "Paragraph in block").decoration).toBe("underline");
+  expect(runOfWord(c, "Item in block").decoration).toBe("underline");
+});
+
+test("decorations add up", async ({ page }) => {
+  const c = await capture(page, "links.html");
+  const lines = runOfWord(c, "Both lines").decoration.split(" ").sort();
+  expect(lines).toEqual(["line-through", "underline"]);
+});
+
+test("an underline stops at an inline block and at what is out of flow", async ({ page }) => {
+  const c = await capture(page, "links.html");
+  expect(runOfWord(c, "Line then").decoration).toBe("underline");
+  expect(runOfWord(c, "Atomic word").decoration).toBe("none");
+  expect(runOfWord(c, "Out of flow word").decoration).toBe("none");
+  expect(runOfWord(c, "Floated word").decoration).toBe("none");
+});
+
+test("a block pseudo-element inside a link takes the link and the underline", async ({ page }) => {
+  const c = await capture(page, "links.html");
+  const gen = findText(c, "Block generated");
+  expect(gen.runs[0]?.href).toBe("https://example.com/gen");
+  const pinned = findText(c, "Pinned generated");
+  expect(pinned.runs[0]?.href).toBe("https://example.com/pinned");
+  expect(pinned.runs[0]?.decoration).toBe("none");
+  let underlined = false;
+  each(c, (n) => {
+    if (n.kind !== "text" || n.text !== "Block generated") return;
+    if (n.runs[0]?.href === "https://example.com/gen2") {
+      underlined = n.runs[0]?.decoration === "underline";
+    }
+  });
+  expect(underlined).toBe(true);
+});
+
+test("the links fixture still parses, with its pseudo-elements", async ({ page }) => {
+  const c = await capture(page, "links.html");
+  expect(parseCapture(c).ok).toBe(true);
+});

@@ -11,6 +11,7 @@ import { flatChildren, insideEditable, isEditable, shadowRootOf } from "./flatte
 import { authoredTracksReader } from "./grid";
 import {
   collapse,
+  type Inherited,
   noteApproximations,
   type Pseudo,
   type PseudoCtx,
@@ -206,7 +207,12 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     viewport: { w: root.clientWidth, h: root.clientHeight },
     measure: (text, style) => measure(text, style),
     isSecret: isPrivate,
-    text: (value, style, box, tag) => boxedText(value, style, box, tag),
+    text: (value, style, box, tag, up) => {
+      const node = boxedText(value, style, box, tag);
+      const inside = { link: up.link, decoration: decorationInside(style, up.decoration) };
+      if (node) for (const run of node.runs) inherit(run, inside);
+      return node;
+    },
     cache: new WeakMap(),
   };
 
@@ -350,8 +356,37 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       ? anchorTarget(el)
       : inherited;
 
-  const withLink = (run: Run, link: Link): Run => {
-    if (link !== undefined) run.href = link;
+  /** Two `text-decoration-line` values as one; decorations add up rather than replace. */
+  function bothDecorations(a: string, b: string): string {
+    if (a === "none" || a === b) return b;
+    if (b === "none") return a;
+    return [...new Set(`${a} ${b}`.split(" "))].join(" ");
+  }
+
+  /**
+   * The decoration in effect inside a box. `text-decoration` does not inherit but propagates to
+   * the text below, so a run's own computed value leaves out its ancestors'. CSS stops that at
+   * atomic inlines, floats and absolutely positioned boxes.
+   */
+  function decorationInside(s: CSSStyleDeclaration, up: string): string {
+    const own = s.textDecorationLine || "none";
+    const stops =
+      ATOMIC_INLINE.has(s.display) ||
+      s.display === "inline-table" ||
+      s.position === "absolute" ||
+      s.position === "fixed" ||
+      s.cssFloat !== "none";
+    return stops ? own : bothDecorations(up, own);
+  }
+
+  const inside = (el: Element, s: CSSStyleDeclaration, up: Inherited): Inherited => ({
+    link: linkInside(el, up.link),
+    decoration: decorationInside(s, up.decoration),
+  });
+
+  const inherit = (run: Run, up: Inherited): Run => {
+    run.decoration = bothDecorations(up.decoration, run.decoration);
+    if (up.link !== undefined) run.href = up.link;
     return run;
   };
 
@@ -577,7 +612,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return round2(ctx.measureText(shown).width + spacing * shown.length);
   }
 
-  function buildText(group: Item[], parent: Element, link: Link): TextNode | null {
+  function buildText(group: Item[], parent: Element, inherited: Inherited): TextNode | null {
     let text = "";
     const runs: Run[] = [];
     const rects: Rect[] = [];
@@ -591,7 +626,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       else runs.push({ ...run, start, end: text.length });
     };
 
-    const addText = (node: Text, parentEl: Element, link: Link) => {
+    const addText = (node: Text, parentEl: Element, up: Inherited) => {
       // A slotted text node takes its style from the slot it is assigned to, not its light parent.
       const s = cs(node.assignedSlot ?? parentEl);
       if (s.visibility !== "visible") return;
@@ -614,10 +649,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         rects.push(pageBox(r));
       }
       if (!any) return;
-      append(piece, withLink(runOf(s, 0, 0), link));
+      append(piece, inherit(runOf(s, 0, 0), up));
     };
 
-    const addPseudo = (p: Pseudo, link: Link) => {
+    const addPseudo = (p: Pseudo, up: Inherited) => {
       noteApproximations(p, undefined, pseudoCtx);
       const s = p.style;
       if (s.visibility !== "visible") return;
@@ -630,15 +665,15 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       if (!piece) return;
       const lineH = px(s.lineHeight) || px(s.fontSize) * 1.2;
       rects.push({ x: 0, y: 0, w: measure(piece, s), h: round2(lineH), gen: p.which });
-      append(piece, withLink(runOf(s, 0, 0), link));
+      append(piece, inherit(runOf(s, 0, 0), up));
     };
 
-    const addNodes = (nodes: Iterable<Item>, styleEl: Element, link: Link) => {
+    const addNodes = (nodes: Iterable<Item>, styleEl: Element, up: Inherited) => {
       for (const n of nodes) {
         if (isPseudoItem(n)) {
-          addPseudo(n.pseudo, link);
+          addPseudo(n.pseudo, up);
         } else if (n.nodeType === 3) {
-          addText(n as Text, styleEl, link);
+          addText(n as Text, styleEl, up);
         } else if (n.nodeType === 1) {
           const e = n as Element;
           if (IGNORED_TAGS.has(e.localName)) continue;
@@ -653,14 +688,14 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
                 break;
               }
             }
-            append("\n", withLink(runOf(cs(e), 0, 0), link));
+            append("\n", inherit(runOf(cs(e), 0, 0), up));
           } else {
-            addNodes(inlineItems(e), e, linkInside(e, link));
+            addNodes(inlineItems(e), e, inside(e, cs(e), up));
           }
         }
       }
     };
-    addNodes(group, parent, link);
+    addNodes(group, parent, inherited);
     placeGenerated(rects, parent);
 
     const trimmed = text.replace(/[ \n]+$/, "");
@@ -926,8 +961,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return layout;
   }
 
-  /** `link` is the link in effect inside `el`. */
-  function visitChildren(el: Element, depth: number, link: Link): CaptureNode[] {
+  /** `inherited` is what is in effect inside `el`. */
+  function visitChildren(el: Element, depth: number, inherited: Inherited): CaptureNode[] {
     const out: CaptureNode[] = [];
     let group: Item[] = [];
     const flush = () => {
@@ -937,11 +972,11 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       // An atomic inline joins a sentence, not its neighbours: with no text to join it stays a box.
       if (!items.some(holdsText) && items.some(holdsAtomic)) {
         for (const item of items.filter(holdsAtomic)) {
-          out.push(...visit(item as Element, depth + 1, false, link));
+          out.push(...visit(item as Element, depth + 1, false, inherited));
         }
         return;
       }
-      const node = buildText(items, el, link);
+      const node = buildText(items, el, inherited);
       if (node) out.push(node);
     };
     const generated = (which: Which) => {
@@ -954,7 +989,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         group.push(new PseudoItem(p));
       } else {
         flush();
-        out.push(...pseudoNodes(el, which, pseudoCtx));
+        out.push(...pseudoNodes(el, which, pseudoCtx, inherited));
       }
     };
     generated("before");
@@ -968,7 +1003,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
           group.push(e);
         } else {
           flush();
-          out.push(...visit(e, depth + 1, false, link));
+          out.push(...visit(e, depth + 1, false, inherited));
         }
       }
     }
@@ -977,13 +1012,15 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return out;
   }
 
-  function visit(el: Element, depth: number, isRoot: boolean, inherited: Link): CaptureNode[] {
+  function visit(el: Element, depth: number, isRoot: boolean, up: Inherited): CaptureNode[] {
     if (IGNORED_TAGS.has(el.localName)) return [];
     if (el instanceof win.HTMLInputElement && el.type === "hidden") return [];
     const s = cs(el);
     if (s.display === "none") return [];
-    const link = linkInside(el, inherited);
-    if (s.display === "contents") return isEditable(el) ? [] : visitChildren(el, depth - 1, link);
+    const inherited = inside(el, s, up);
+    if (s.display === "contents") {
+      return isEditable(el) ? [] : visitChildren(el, depth - 1, inherited);
+    }
 
     const box = boxOf(el, s);
     const clipped = el !== doc.body && (s.overflowX !== "visible" || s.overflowY !== "visible");
@@ -1102,7 +1139,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         if (t) element.children.push(t);
       }
     } else {
-      element.children = visitChildren(el, depth, link);
+      element.children = visitChildren(el, depth, inherited);
     }
 
     if (isRoot) {
@@ -1117,7 +1154,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return [element];
   }
 
-  const [tree] = visit(root, 1, true, undefined);
+  const [tree] = visit(root, 1, true, { link: undefined, decoration: "none" });
   if (tree?.kind !== "element") throw new Error("The document has no root element");
 
   // ---------- Tokens
