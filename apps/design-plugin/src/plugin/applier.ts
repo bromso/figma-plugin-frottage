@@ -16,6 +16,7 @@ import {
   clampSize,
   createLayoutTracker,
   type TextFit,
+  turnAbout,
   widenToLines,
 } from "./layout-tracker";
 import { createTokenSet, NO_TOKENS, type TokenCounts, type TokenSet } from "./tokens";
@@ -303,16 +304,7 @@ export function createApplier(api: PluginAPI) {
   function rotate(node: SceneNode, op: PlanOp, placed: boolean) {
     const degrees = "rotation" in op ? op.rotation : undefined;
     if (!placed || !degrees) return;
-    const theta = (degrees * Math.PI) / 180;
-    const cos = Math.cos(theta);
-    const sin = Math.sin(theta);
-    const { width, height } = node;
-    const cx = op.x + op.w / 2;
-    const cy = op.y + op.h / 2;
-    node.relativeTransform = [
-      [cos, -sin, cx - ((width / 2) * cos - (height / 2) * sin)],
-      [sin, cos, cy - ((width / 2) * sin + (height / 2) * cos)],
-    ];
+    turnAbout(node, op, degrees);
   }
 
   function setTracks(tracks: GridTrackSize[], plan: PlanTrack[]) {
@@ -491,8 +483,11 @@ export function createApplier(api: PluginAPI) {
     node.effects = effects(op.effects);
     node.opacity = op.opacity;
     // The import root is placed by the applier, not at its captured offset.
-    if (parent) rotate(node, op, place(node, parent, op));
-    else place(node, null, op, rootX, 0);
+    // A frame in auto layout is turned by the tracker once its size is final.
+    if (parent) {
+      const placed = place(node, parent, op);
+      if (node.layoutMode === "NONE") rotate(node, op, placed);
+    } else place(node, null, op, rootX, 0);
     if (op.layout.mode === "NONE" && op.layout.reason) tracker.countFallback(op.layout.reason);
     fillParent(node, parent, op);
     return node;

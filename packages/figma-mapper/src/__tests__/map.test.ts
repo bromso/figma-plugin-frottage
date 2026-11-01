@@ -1182,6 +1182,48 @@ describe("transforms", () => {
   });
 });
 
+describe("rotation edge cases", () => {
+  const spin = (m: ElementNode["transform"], kids: ElementNode[] = []) =>
+    cap(el("root", [0, 0], [el("a", [10, 10], kids, { transform: m })]));
+  const t360 = (360 * Math.PI) / 180;
+
+  test("rotate(360deg) and rotate(0) set no rotation", () => {
+    const full = frame(
+      spin([Math.cos(t360), Math.sin(t360), -Math.sin(t360), Math.cos(t360), 0, 0]),
+      "a"
+    );
+    expect(full.rotation).toBeUndefined();
+    expect(frame(spin([1, 0, 0, 1, 0, 0]), "a").rotation).toBeUndefined();
+  });
+  test("a rotated import root is not turned, says so once, and leaves its content", () => {
+    const t = Math.PI / 6;
+    const kid = el("kid", [30, 40], [], {}, [20, 10]);
+    const root = el("root", [0, 0], [kid], {
+      transform: [Math.cos(t), Math.sin(t), -Math.sin(t), Math.cos(t), 0, 0],
+    });
+    const plan = mapCapture(cap(root), inter);
+    expect(plan.ops.find((o) => o.id === "root")).not.toHaveProperty("rotation");
+    expect(plan.report.warnings.filter((w) => w.includes("root layer"))).toHaveLength(1);
+    expect(plan.ops.find((o) => o.id === "kid")).toMatchObject({ x: 30, y: 40, w: 20, h: 10 });
+  });
+  test("content of a rotated and scaled frame is reported as not corrected", () => {
+    const t = Math.PI / 6;
+    const m: ElementNode["transform"] = [
+      2 * Math.cos(t),
+      2 * Math.sin(t),
+      -2 * Math.sin(t),
+      2 * Math.cos(t),
+      0,
+      0,
+    ];
+    const plan = mapCapture(spin(m, [el("kid", [10, 10])]), inter);
+    expect(plan.report.warnings.filter((w) => w.includes("not corrected"))).toHaveLength(1);
+    expect(
+      mapCapture(spin(m), inter).report.warnings.some((w) => w.includes("not corrected"))
+    ).toBe(false);
+  });
+});
+
 describe("content of rotated frames", () => {
   type Matrix = NonNullable<ElementNode["transform"]>;
   type B = { x: number; y: number; w: number; h: number };

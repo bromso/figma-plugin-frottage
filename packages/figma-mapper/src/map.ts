@@ -406,10 +406,17 @@ export function mapCapture(
   let scaledLayers = 0;
   let skewedLayers = 0;
   /** The rotation to apply to a layer, counting the scale and skew of its transform that are left out. */
-  const rotationOf = (node: CaptureNode): { rotation: number } | Record<string, never> => {
+  const rotationOf = (
+    node: CaptureNode,
+    keep = true
+  ): { rotation: number } | Record<string, never> => {
     const motion = readMotion(node.transform);
     if (motion.scaled) scaledLayers++;
     if (motion.skewed) skewedLayers++;
+    if (motion.rotation !== undefined && !keep) {
+      warn("A rotation on the page's root layer was left out.");
+      return {};
+    }
     return motion.rotation === undefined ? {} : { rotation: motion.rotation };
   };
 
@@ -612,6 +619,8 @@ export function mapCapture(
         const layout: PlanLayout = options.autoLayout
           ? settle(inferred, childLayout)
           : { mode: "NONE" };
+        // The import root is not turned: Figma places the import.
+        const turn = rotationOf(node, parent !== null);
         op = {
           op: "frame",
           id: node.id,
@@ -629,7 +638,7 @@ export function mapCapture(
           effects: hidden ? [] : mapEffects(s, ignoredFilters),
           clips: s.overflow.split(/\s+/).some((o) => o !== "" && o !== "visible"),
           layout,
-          ...rotationOf(node),
+          ...turn,
           childCount: 0, // known once the walk has seen what the children turn into
         };
         const children = visualOrder(node, node.children, layout);

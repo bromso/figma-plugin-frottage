@@ -32,6 +32,8 @@ type LaidFrame = {
   /** Null when the parent is not in auto layout: nothing about this frame affects it then. */
   parent: LaidFrame | null;
   children: Child[];
+  /** Whether to turn the frame once its size is final: a rotated frame that auto layout sizes. */
+  turn: boolean;
   /** FILL text, whose lines can only be judged once this frame's size is final. */
   fillTexts: Child[];
   containsText: boolean;
@@ -45,6 +47,27 @@ const MIN_SIZE = 0.01;
 const MAX_WIDEN_STEPS = 8;
 /** Reads are quick, but a fallback writes, so the applier's time limit is not the only one. */
 const MAX_VERIFIES_PER_SLICE = 200;
+
+/**
+ * Turns a placed node about the centre its op gave it, using the size it has now. Sets the whole
+ * transform, so its x and y become where the unturned corner went.
+ */
+export function turnAbout(
+  node: SceneNode,
+  box: { x: number; y: number; w: number; h: number },
+  degrees: number
+) {
+  const theta = (degrees * Math.PI) / 180;
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  const { width, height } = node;
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  node.relativeTransform = [
+    [cos, -sin, cx - ((width / 2) * cos - (height / 2) * sin)],
+    [sin, cos, cy - ((width / 2) * sin + (height / 2) * cos)],
+  ];
+}
 
 export const clampSize = (n: number) => Math.max(n, MIN_SIZE);
 
@@ -150,6 +173,8 @@ export function createLayoutTracker() {
 
   function placeChild(c: Child) {
     const { node } = c;
+    // Its parent's layout never placed it, and writing x and y would move a turned node's corner.
+    if (c.rotated) return;
     if (c.fit) {
       // Nothing gives it its width now, and it may have been keeping its lines on a wider box.
       if (!widenToLines(node as TextNode, c.fit)) rewrappedTexts++;
@@ -207,16 +232,17 @@ export function createLayoutTracker() {
     let reason: string | undefined;
     try {
       const verdict = verifyFrame(frame.frame, expectation(frame));
-      if (verdict.ok) {
-        autoLayoutFrames++;
-        return;
-      }
-      reason = verdict.reason ?? "unknown";
+      if (verdict.ok) autoLayoutFrames++;
+      else reason = verdict.reason ?? "unknown";
     } catch {
       reason = "error";
     }
-    countFallback(reason);
-    fallBack(frame);
+    if (reason !== undefined) {
+      countFallback(reason);
+      fallBack(frame);
+    }
+    // Last, from the size it ended with: turning it earlier would let a later resize move its centre.
+    if (frame.turn) attempt(() => turnAbout(frame.frame, frame.op, frame.op.rotation as number));
   }
 
   return {
@@ -266,6 +292,8 @@ export function createLayoutTracker() {
           sizingV,
           child,
           parent: parent ?? null,
+          turn:
+            op.parent !== null && Boolean(op.rotation) && op.childLayout?.positioning !== "AUTO",
           children: [],
           fillTexts: [],
           containsText: false,

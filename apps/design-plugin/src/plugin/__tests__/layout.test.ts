@@ -1100,6 +1100,49 @@ describe("rotation", () => {
     expect(pin.x).toBeCloseTo(170, 6);
     expect(pin.y).toBeCloseTo(5, 6);
   });
+  test("a parent that falls back leaves a rotated absolute child on its centre", async () => {
+    const f = fakeFigma({ shiftChild: 5 });
+    const r = await importOps(f, [
+      frameOp("row", null, [0, 0, 200, 40], row(), 3),
+      boxOp("a", "row", [0, 0, 50, 40]),
+      boxOp("b", "row", [60, 0, 50, 40]),
+      turned(
+        frameOp(
+          "pin",
+          "row",
+          [150, 5, 20, 10],
+          { mode: "NONE" },
+          0,
+          flowChild({ positioning: "ABSOLUTE" })
+        ),
+        90
+      ),
+    ]);
+    expect(r.fallbackFrames).toBe(1);
+    const pin = f.frame("row").children[2];
+    // Turned 90 degrees about (160, 10); its unturned corner is at (165, 0).
+    expect(pin.rotation).toBeCloseTo(-90, 6);
+    expect(pin.x).toBeCloseTo(165, 6);
+    expect(pin.y).toBeCloseTo(0, 6);
+  });
+  test("a turned frame that auto layout resizes keeps its centre", async () => {
+    const f = fakeFigma({ textWiderBy: 0.2 });
+    const hug = row({ sizingH: "HUG", sizingV: "HUG" });
+    const r = await importOps(f, [
+      frameOp("root", null, [0, 0, 400, 300], { mode: "NONE" }, 1),
+      turned(frameOp("box", "root", [100, 50, 25, 12], hug, 1), 30),
+      textOp("t", "box", [0, 0, 25, 12], "hello"),
+    ]);
+    expect(r).toMatchObject({ failedOps: 0, fallbackFrames: 0 });
+    const n = f.frame("box");
+    // Figma's text came out wider than the capture's, so the frame hugged wider than 25.
+    expect(n.width).toBeGreaterThan(25);
+    const t = (30 * Math.PI) / 180;
+    const [[a, b, tx], [c, d, ty]] = n.relativeTransform;
+    expect(tx + (a * n.width) / 2 + (b * n.height) / 2).toBeCloseTo(112.5, 6);
+    expect(ty + (c * n.width) / 2 + (d * n.height) / 2).toBeCloseTo(56, 6);
+    expect(Math.cos(t)).toBeCloseTo(a, 6);
+  });
   test("a child that auto layout places is not rotated", async () => {
     const f = fakeFigma();
     await importOps(f, [

@@ -72,18 +72,20 @@ function anyRotation(root: CaptureNode): boolean {
 
 /** The tree with every box inside a rotated element turned back. Untouched without rotation. */
 export function unrotateTree(root: CaptureNode, warn: (message: string) => void): CaptureNode {
-  if (!anyRotation(root)) return root;
+  // The import root is never turned, so what is inside it stays where the page drew it.
+  if (!(root.kind === "element" && root.children.some(anyRotation))) return root;
   let approximate = false;
+  let uncorrected = false;
   type Item = { src: ElementNode; dst: ElementNode; turns: Turn[] };
   const own = (node: CaptureNode, turns: Turn[]): Turn[] => {
-    const theta = rotationOf(node);
+    const motion = readMotion(node.kind === "element" ? node.transform : undefined);
+    const theta = motion.rotation;
+    // The bounds of content under a scale or skew do not undo with a rotation alone.
+    if (theta !== undefined && (motion.scaled || motion.skewed)) uncorrected = true;
     return theta === undefined ? turns : [...turns, { centre: centreOf(node.box), theta }];
   };
-  const top = root as ElementNode;
-  const first: Item[] = [];
-  const rootCopy: CaptureNode = root.kind === "element" ? { ...root, children: [] } : { ...root };
-  if (root.kind === "element")
-    first.push({ src: top, dst: rootCopy as ElementNode, turns: own(root, []) });
+  const rootCopy: ElementNode = { ...root, children: [] };
+  const first: Item[] = [{ src: root, dst: rootCopy, turns: [] }];
   const stack = first;
   while (stack.length > 0) {
     const { src, dst, turns } = stack.pop() as Item;
@@ -107,10 +109,19 @@ export function unrotateTree(root: CaptureNode, warn: (message: string) => void)
       if (child.kind === "element") {
         next = { ...child, box: moved.box, children: [] };
         // The child's own turn is about its box as it stands once the outer turns are undone.
-        stack.push({ src: child, dst: next, turns: own(next, turns) });
+        stack.push({
+          src: child,
+          dst: next,
+          turns: child.children.length > 0 ? own(next, turns) : turns,
+        });
       }
       dst.children.push(next);
     }
+  }
+  if (uncorrected) {
+    warn(
+      "Content inside a layer that is rotated and also scaled or skewed was not corrected for the rotation (rotated-content)."
+    );
   }
   if (approximate) {
     warn(
