@@ -873,6 +873,33 @@
                   "required": ["r", "g", "b", "a"],
                   "additionalProperties": false
                 },
+                "restingColor": {
+                  "type": "object",
+                  "properties": {
+                    "r": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "g": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "b": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "a": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  "required": ["r", "g", "b", "a"],
+                  "additionalProperties": false
+                },
                 "borderColor": {
                   "type": "object",
                   "properties": {

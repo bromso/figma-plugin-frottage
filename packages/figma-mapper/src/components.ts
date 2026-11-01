@@ -249,26 +249,50 @@ function flatten(top: Tree, rename: (id: string) => string): PlanOp[] {
   return out;
 }
 
-/** The hover patches of the first occurrence, by index down the expanded tree, parents first. */
-function hoverOf(first: Tree, hovers: Map<string, HoverPatch>): PlanHoverPatch[] {
-  const out: PlanHoverPatch[] = [];
-  const stack = [{ node: first, path: [] as number[] }];
+/** The most patches one component carries; a page with more is cut off there. */
+export const MAX_HOVER_PATCHES = 200;
+
+/** The hover patches of one occurrence, by index down the expanded tree, parents first. */
+function hoverOf(
+  top: Tree,
+  hovers: Map<string, HoverPatch>
+): { patches: PlanHoverPatch[]; capped: boolean } {
+  const patches: PlanHoverPatch[] = [];
+  const stack = [{ node: top, path: [] as number[] }];
   for (let at = stack.pop(); at; at = stack.pop()) {
     const patch = hovers.get(at.node.op.id);
-    if (patch) out.push({ path: at.path, ...patch });
+    if (patch) {
+      if (patches.length >= MAX_HOVER_PATCHES) return { patches, capped: true };
+      patches.push({ path: at.path, ...patch });
+    }
     for (let i = at.node.children.length - 1; i >= 0; i--) {
       stack.push({ node: childAt(at.node.children, i), path: [...at.path, i] });
     }
   }
-  return out;
+  return { patches, capped: false };
 }
 
-function definition(component: Component, hovers: Map<string, HoverPatch>): PlanOp[] {
+function definition(
+  component: Component,
+  hovers: Map<string, HoverPatch>,
+  onCapped: () => void
+): PlanOp[] {
   const { key, name } = component;
   const first = component.occurrences[0] as Tree;
   const [root, ...rest] = flatten(first, (id) => `${key}/${id}`);
   const { childLayout: _placedByInstances, ...own } = root as Extract<PlanOp, { op: "frame" }>;
-  const hover = hovers.size > 0 ? hoverOf(first, hovers) : [];
+  let hover: PlanHoverPatch[] = [];
+  if (hovers.size > 0) {
+    // The first occurrence that changes on hover; the others share its structure.
+    for (const occurrence of component.occurrences) {
+      const found = hoverOf(occurrence, hovers);
+      if (found.capped) onCapped();
+      if (found.patches.length > 0) {
+        hover = found.patches;
+        break;
+      }
+    }
+  }
   const info = { key, name, ...(hover.length > 0 ? { hover } : {}) };
   return [{ ...own, parent: null, name, x: 0, y: 0, component: info }, ...rest];
 }
@@ -307,16 +331,22 @@ export function extractComponents(
   ops: PlanOp[],
   tags: Map<string, string>,
   hovers: Map<string, HoverPatch> = new Map()
-): { ops: PlanOp[]; components: number; instances: number } {
+): { ops: PlanOp[]; components: number; instances: number; hoverCapped?: number } {
   const nodes = buildForest(ops);
   const found = findComponents(nodes, tags);
   if (found.length === 0) return { ops, components: 0, instances: 0 };
   const roots = nodes.filter((n) => n.parent === null);
-  const definitions = found.map((c) => definition(c, hovers));
+  let hoverCapped = 0;
+  const definitions = found.map((c) =>
+    definition(c, hovers, () => {
+      hoverCapped++;
+    })
+  );
   const page = roots.flatMap((r) => flatten(r, (id) => id));
   return {
     ops: [...definitions.flat(), ...page],
     components: found.length,
     instances: canvasInstances(found, definitions, page),
+    ...(hoverCapped > 0 ? { hoverCapped } : {}),
   };
 }

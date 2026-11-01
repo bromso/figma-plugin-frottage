@@ -875,6 +875,7 @@ describe("hover patches", () => {
     ...node,
     hover,
   });
+  const black = { r: 0, g: 0, b: 0, a: 1 };
   const hoverOn = { ...on, hoverComponents: true };
   const hoverOf = (p: LayerPlan) => definitions(p)[0]?.component?.hover;
   const button = (id: string, hover?: ElementNode["hover"], over: Partial<ElementNode> = {}) => {
@@ -904,14 +905,48 @@ describe("hover patches", () => {
   });
 
   test("a color hover reaches text under that element", () => {
+    const p = plan([button("a", { color: blue, restingColor: black }), button("b")], hoverOn);
+    expect(hoverOf(p)).toEqual([{ path: [0], textColor: blue, ranges: [[0, 3]] }]);
+  });
+
+  test("a colour hover with no resting colour recolours all the text, as older captures had it", () => {
     const p = plan([button("a", { color: blue }), button("b")], hoverOn);
-    expect(hoverOf(p)).toEqual([{ path: [0], textColor: blue }]);
+    expect(hoverOf(p)).toEqual([{ path: [0], textColor: blue, ranges: [[0, 3]] }]);
+  });
+
+  test("an own-coloured label under a hovered link stays", () => {
+    const own = label("own", "Own", { color: red });
+    const link = hovering(painted(tagged("x-btn", "a", [label("t1", "Top"), own]), red), {
+      color: blue,
+      restingColor: black,
+    });
+    const twin = painted(
+      tagged("x-btn", "b", [label("t2", "Top"), label("t3", "Own", { color: red })]),
+      red
+    );
+    const p = plan([link, twin], hoverOn);
+    expect(hoverOf(p)).toEqual([{ path: [0], textColor: blue, ranges: [[0, 3]] }]);
+  });
+
+  test("a two-run text recolours only the run that inherits", () => {
+    const mixed = (id: string) =>
+      textNode(id, {
+        text: "Buy now",
+        runs: [run({ start: 0, end: 3 }), run({ start: 3, end: 7, color: red })],
+      });
+    const link = hovering(painted(tagged("x-btn", "a", [mixed("t1")]), red), {
+      color: blue,
+      restingColor: black,
+    });
+    const p = plan([link, painted(tagged("x-btn", "b", [mixed("t2")]), red)], hoverOn);
+    expect(hoverOf(p)).toEqual([{ path: [0], textColor: blue, ranges: [[0, 3]] }]);
   });
 
   test("a deeper element's own colour hover wins", () => {
     const inner = hovering(tagged("span", "in", [label("tin", "Deep")]), { color: red });
     const outer = hovering(painted(tagged("x-btn", "a", [label("t1", "Top"), inner]), red), {
       color: blue,
+      restingColor: black,
     });
     const twin = painted(
       tagged("x-btn", "b", [label("t2", "Top"), tagged("span", "in2", [label("t3", "Deep")])]),
@@ -919,8 +954,8 @@ describe("hover patches", () => {
     );
     const p = plan([outer, twin], hoverOn);
     expect(hoverOf(p)).toEqual([
-      { path: [0], textColor: blue },
-      { path: [1, 0], textColor: red },
+      { path: [0], textColor: blue, ranges: [[0, 3]] },
+      { path: [1, 0], textColor: red, ranges: [[0, 4]] },
     ]);
   });
 
@@ -990,9 +1025,27 @@ describe("hover patches", () => {
     ]);
   });
 
-  test("hover comes from the first occurrence only", () => {
+  test("hover comes from the first occurrence that has any", () => {
     const p = plan([button("a"), button("b", { backgroundColor: blue })], hoverOn);
-    expect(hoverOf(p)).toBeUndefined();
+    expect(hoverOf(p)?.map((h) => h.path)).toEqual([[]]);
+  });
+
+  test("patches are cut off at 200 a component and reported once", () => {
+    const row = (id: string, hover: boolean) =>
+      painted(
+        tagged(
+          "x-btn",
+          id,
+          Array.from({ length: 205 }, (_, i) => {
+            const n = tagged("span", `${id}-${i}`, [], {}, [4, 4]);
+            return hover ? hovering(painted(n, red), { backgroundColor: blue }) : painted(n, red);
+          })
+        ),
+        red
+      );
+    const p = plan([row("a", true), row("b", false)], hoverOn);
+    expect(hoverOf(p)).toHaveLength(200);
+    expect(p.report.warnings.filter((w) => w.includes("cut off"))).toHaveLength(1);
   });
 
   test("a hover on an element that is not repeated adds no patch", () => {
@@ -1010,10 +1063,14 @@ describe("hover patches", () => {
     };
     const card = (id: string, ic: ElementNode) => painted(tagged("x-card", id, [ic]), red);
     const p = plan(
-      [card("c1", icon("i1", { color: red })), card("c2", icon("i2")), icon("i3")],
+      [
+        card("c1", icon("i1", { color: red, restingColor: { r: 0, g: 0, b: 0, a: 1 } })),
+        card("c2", icon("i2")),
+        icon("i3"),
+      ],
       hoverOn
     );
     const card1 = definitions(p).find((d) => d.component?.name.startsWith("x-card"));
-    expect(card1?.component?.hover).toEqual([{ path: [0, 0], textColor: red }]);
+    expect(card1?.component?.hover).toEqual([{ path: [0, 0], textColor: red, ranges: [[0, 1]] }]);
   });
 });

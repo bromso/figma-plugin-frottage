@@ -1797,6 +1797,13 @@ test("a var() value is resolved, with its fallback", async ({ page }) => {
   expect(hover?.backgroundColor).toEqual(rgb(0, 0, 0, 0.5));
 });
 
+test("a colour hover carries the resting colour, and other hovers do not", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  near(hoverOf(c, "x-btn", "vars")?.restingColor?.r, 0x11 / 255);
+  expect(hoverOf(c, "x-btn", "vars")?.restingColor?.a).toBe(1);
+  expect(hoverOf(c, "x-btn", "plain")?.restingColor).toBeUndefined();
+});
+
 test("authored hex, named, rgb and shadow forms are read", async ({ page }) => {
   const c = await capture(page, "hover.html");
   const shadows = hoverOf(c, "x-btn", "shadow")?.boxShadows;

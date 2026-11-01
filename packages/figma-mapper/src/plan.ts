@@ -115,8 +115,10 @@ export type PlanHoverPatch = {
   strokeColor?: PlanRgb & { a: number };
   opacity?: number;
   effects?: PlanEffect[];
-  /** Text layers: the colour of every run. */
+  /** Text layers: the colour of the runs in `ranges`, or of the whole text without them. */
   textColor?: PlanRgb & { a: number };
+  /** [start, end) character ranges that take `textColor`; the runs with a colour of their own stay. */
+  ranges?: [number, number][];
   decoration?: PlanRun["decoration"];
 };
 

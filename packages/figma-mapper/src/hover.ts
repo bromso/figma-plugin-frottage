@@ -11,6 +11,7 @@ export type HoverPatch = {
   opacity?: number;
   effects?: PlanEffect[];
   textColor?: Color;
+  ranges?: [number, number][];
   decoration?: PlanRun["decoration"];
 };
 
@@ -62,7 +63,25 @@ function boxPatch(node: ElementNode, hover: Hover, op: PlanOp): HoverPatch {
   return patch;
 }
 
-type Inherited = { color?: Color; decoration?: string };
+type Inherited = { color?: Color; resting?: Color; decoration?: string };
+
+/** The ranges of runs coloured `resting`, or all runs when it is unknown, that are not `color` yet. */
+function inheritedRanges(
+  runs: Extract<PlanOp, { op: "text" }>["runs"],
+  color: Color,
+  resting: Color | undefined
+): [number, number][] {
+  const ranges: [number, number][] = [];
+  for (const run of runs) {
+    const at = { ...run.color, a: run.opacity };
+    if (resting && !sameColor(at, resting)) continue;
+    if (sameColor(at, color)) continue;
+    const last = ranges.at(-1);
+    if (last && last[1] === run.start) last[1] = run.end;
+    else ranges.push([run.start, run.end]);
+  }
+  return ranges;
+}
 
 /**
  * What `:hover` changes, per op id, compared with the look the plan already has. A colour or
@@ -82,6 +101,7 @@ export function hoverPatches(root: CaptureNode, ops: PlanOp[]): Map<string, Hove
       if (hover) {
         inherited = {
           color: hover.color ?? inherited.color,
+          resting: hover.color ? hover.restingColor : inherited.resting,
           decoration: hover.decoration ?? inherited.decoration,
         };
         const patch = op ? boxPatch(node, hover, op) : {};
@@ -91,7 +111,13 @@ export function hoverPatches(root: CaptureNode, ops: PlanOp[]): Map<string, Hove
     } else if (node.kind === "text" && op?.op === "text") {
       const patch: HoverPatch = {};
       const color = inherited.color;
-      if (color && node.runs.some((r) => !sameColor(r.color, color))) patch.textColor = color;
+      if (color) {
+        const ranges = inheritedRanges(op.runs, color, inherited.resting);
+        if (ranges.length > 0) {
+          patch.textColor = color;
+          patch.ranges = ranges;
+        }
+      }
       if (inherited.decoration !== undefined) {
         const decoration = decorationOf(inherited.decoration);
         if (node.runs.some((r) => decorationOf(r.decoration) !== decoration)) {

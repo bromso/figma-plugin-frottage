@@ -44,7 +44,11 @@ function patchLayer(node: SceneNode, patch: PlanHoverPatch, paint: HoverPaint) {
     if (end === 0) return;
     if (textColor) {
       const { a, ...color } = textColor;
-      node.setRangeFills(0, end, [paint.solid(color, a)]);
+      for (const [from, to] of patch.ranges ?? [[0, end]]) {
+        const start = Math.max(0, from);
+        const stop = Math.min(end, to);
+        if (start < stop) node.setRangeFills(start, stop, [paint.solid(color, a)]);
+      }
     }
     if (decoration) node.setRangeTextDecoration(0, end, decoration);
   }
@@ -63,30 +67,36 @@ export function createComponentSet(api: PluginAPI, rootName: string, paint: Hove
    * Turns a main into a State set with Default and Hover, and gives the set. Any failure leaves the
    * main as it was. `combineAsVariants` lays nothing out, so the caller places the variants.
    */
-  function addHover(main: ComponentNode, patches: PlanHoverPatch[]): ComponentSetNode | null {
+  function addHover(
+    main: ComponentNode,
+    patches: PlanHoverPatch[]
+  ): { set: ComponentSetNode; hover: ComponentNode } | null {
     const name = main.name;
     let hover: ComponentNode | undefined;
+    let combined = false;
     try {
       hover = main.clone();
       for (const patch of patches) patchLayer(childAt(hover, patch.path), patch, paint);
       main.name = "State=Default";
       hover.name = "State=Hover";
-      let set: ComponentSetNode;
-      try {
-        set = api.combineAsVariants([main, hover], section as SectionNode);
-      } catch (error) {
-        main.name = name;
-        throw error;
-      }
+      const set = api.combineAsVariants([main, hover], section as SectionNode);
+      combined = true;
       hoverVariants++;
       try {
         set.name = name;
       } catch {
         // the set keeps a default name
       }
-      return set;
+      return { set, hover };
     } catch {
       hoverFailures++;
+      if (!combined) {
+        try {
+          main.name = name;
+        } catch {
+          // the main keeps its variant name
+        }
+      }
       try {
         hover?.remove();
       } catch {
@@ -119,39 +129,50 @@ export function createComponentSet(api: PluginAPI, rootName: string, paint: Hove
      */
     layOut(root: { x: number; y: number; width: number }) {
       if (!section) return;
+      let failed = false;
       const placed: (ComponentNode | ComponentSetNode)[] = [];
       for (const [key, node] of mains) {
         const patches = hovers.get(key);
-        const set = patches ? addHover(node, patches) : null;
-        if (set) {
-          const hover = set.children[1] as ComponentNode;
+        const made = patches ? addHover(node, patches) : null;
+        placed.push(made?.set ?? node);
+        if (!made) continue;
+        // One component that cannot be sized does not stop the rest.
+        try {
+          const { set, hover } = made;
           node.x = 0;
           node.y = 0;
           hover.x = node.width + VARIANT_GAP;
           hover.y = 0;
           set.resize(hover.x + hover.width, Math.max(node.height, hover.height));
+        } catch {
+          failed = true;
         }
-        placed.push(set ?? node);
       }
       let x = PADDING;
       let y = PADDING;
       let right = PADDING;
       let rowHeight = 0;
       for (const node of placed) {
-        if (x > PADDING && x + node.width > WRAP_AT) {
-          x = PADDING;
-          y += rowHeight + GAP;
-          rowHeight = 0;
+        try {
+          if (x > PADDING && x + node.width > WRAP_AT) {
+            x = PADDING;
+            y += rowHeight + GAP;
+            rowHeight = 0;
+          }
+          node.x = x;
+          node.y = y;
+          right = Math.max(right, x + node.width);
+          rowHeight = Math.max(rowHeight, node.height);
+          x += node.width + GAP;
+        } catch {
+          failed = true;
         }
-        node.x = x;
-        node.y = y;
-        right = Math.max(right, x + node.width);
-        rowHeight = Math.max(rowHeight, node.height);
-        x += node.width + GAP;
       }
       section.resizeWithoutConstraints(right + PADDING, y + rowHeight + PADDING);
       section.x = root.x + root.width + SECTION_GAP;
       section.y = root.y;
+      // The caller counts it once; what could be placed has been.
+      if (failed) throw new Error("some components could not be placed");
     },
 
     /** Takes the section and all in it back. Instances of the mains go with their own trees. */

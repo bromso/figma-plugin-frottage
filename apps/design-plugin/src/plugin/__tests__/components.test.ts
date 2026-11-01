@@ -1234,3 +1234,61 @@ test("one failed variant does not stop the next component's", async () => {
   expect(r).toMatchObject({ hoverVariants: 1, hoverFailures: 1 });
   expect(ofType(f, "COMPONENT_SET")).toHaveLength(1);
 });
+
+test("a text colour patch with ranges recolours only those ranges", async () => {
+  const { f } = await imported(
+    hovered(1, [
+      {
+        path: [0],
+        textColor: { ...BLUE, a: 1 },
+        ranges: [
+          [0, 2],
+          [3, 5],
+        ],
+      },
+    ])
+  );
+  const [dflt, hover] = (setsOf(f)[0] as FakeNode).children as [FakeNode, FakeNode];
+  const spans = (n: FakeNode) =>
+    (n.children[0].ranges ?? [])
+      .filter(
+        (x: { m: string; v: { color: { b: number } }[] }) =>
+          x.m === "setRangeFills" && x.v[0].color.b === 1
+      )
+      .map((x: { s: number; e: number }) => [x.s, x.e]);
+  expect(spans(hover)).toEqual([
+    [0, 2],
+    [3, 5],
+  ]);
+  expect(spans(dflt)).toEqual([]);
+});
+
+test("a component that cannot be sized does not stop the rest being placed", async () => {
+  const f = fakeFigma();
+  const real = (f.figma as unknown as { combineAsVariants: (...a: unknown[]) => FakeNode })
+    .combineAsVariants;
+  let first = true;
+  (f.figma as unknown as Record<string, unknown>).combineAsVariants = (...a: unknown[]) => {
+    const set = real(...a);
+    if (first) {
+      first = false;
+      set.resize = () => {
+        throw new Error("refused");
+      };
+    }
+    return set;
+  };
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const hover = [{ path: [], fills: blueFill }];
+  await a.applyBatch([
+    main("x-a", { component: { key: "x-a", name: "x-a", hover } }),
+    main("x-b", { component: { key: "x-b", name: "x-b", hover } }),
+    frame("root"),
+  ]);
+  const r = await a.end();
+  expect(r).toMatchObject({ hoverVariants: 2, layoutFailures: 1 });
+  const second = setsOf(f).find((n) => n.name === "x-b") as FakeNode;
+  expect(second.width).toBe(224);
+  expect(second.x).toBeGreaterThan(40);
+});

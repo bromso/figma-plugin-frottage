@@ -1256,7 +1256,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     // Overflow on these two propagates to the viewport instead of clipping the element itself.
     if (el === root || el === doc.body) element.style.overflow = "visible";
     const hover = hovers.get(el);
-    if (hover) element.hover = hover;
+    if (hover) {
+      // What text inherits at rest, so the mapper can tell it from text with a colour of its own.
+      element.hover = hover.color ? { ...hover, restingColor: colorOf(s.color) } : hover;
+    }
 
     const leafControl = tag === "input" || tag === "textarea" || tag === "select";
     if (isEditable(el)) {

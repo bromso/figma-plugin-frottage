@@ -67,6 +67,8 @@ const MAX_HOVER_SHADOWS = 8;
 const hoverBase = z.object({
   backgroundColor: color.optional(),
   color: color.optional(),
+  /** The element's computed `color` at rest, set with `color`: text that has it inherits the hover. */
+  restingColor: color.optional(),
   borderColor: color.optional(),
   opacity: unit.optional(),
   decoration: z.string().max(60).optional(),

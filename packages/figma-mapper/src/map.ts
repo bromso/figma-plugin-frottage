@@ -1,5 +1,5 @@
 import type { Capture, CaptureNode, ElementNode, TextNode } from "@repo/capture-schema";
-import { extractComponents } from "./components";
+import { extractComponents, MAX_HOVER_PATCHES } from "./components";
 import { mapFilters } from "./filters";
 import { matchFont } from "./fonts";
 import { hoverPatches } from "./hover";
@@ -769,6 +769,11 @@ export function mapCapture(
     finished = found.ops;
     report.components = found.components;
     report.instances = found.instances;
+    if (found.hoverCapped) {
+      warn(
+        `Hover changes on ${found.hoverCapped} component${found.hoverCapped === 1 ? "" : "s"} were cut off at ${MAX_HOVER_PATCHES} layers each.`
+      );
+    }
   }
   return { ops: finished, tokens, fonts: [...fonts.values()], assetHashes: [...hashes], report };
 }
