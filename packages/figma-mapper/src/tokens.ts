@@ -115,16 +115,23 @@ function tokenName(prop: string): string | null {
   return `color/${bare.replace("-", "/")}`;
 }
 
+/** The opaque colour a custom property resolves to, as a colour token's key, or null. */
+export function cssColorOf(prop: string, props: Record<string, string>): string | null {
+  const raw = Object.hasOwn(props, prop) ? props[prop] : undefined;
+  if (raw === undefined || raw.length > MAX_VALUE_LENGTH) return null;
+  const value = resolveVars(raw, props);
+  return value ? opaqueColor(value) : null;
+}
+
 type CssName = { name: string; cssVar: string };
 
 /** Which custom properties hold each colour, the shortest name first. */
 function cssNamesByColor(props: Record<string, string>): Map<string, CssName[]> {
   const out = new Map<string, CssName[]>();
-  for (const [cssVar, raw] of Object.entries(props)) {
-    if (!SAFE_PROPERTY.test(cssVar) || raw.length > MAX_VALUE_LENGTH) continue;
+  for (const cssVar of Object.keys(props)) {
+    if (!SAFE_PROPERTY.test(cssVar)) continue;
     const name = tokenName(cssVar);
-    const value = name ? resolveVars(raw, props) : null;
-    const key = value ? opaqueColor(value) : null;
+    const key = name ? cssColorOf(cssVar, props) : null;
     if (!name || !key) continue;
     const list = out.get(key);
     if (list) list.push({ name, cssVar });

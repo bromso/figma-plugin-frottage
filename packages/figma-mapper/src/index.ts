@@ -8,11 +8,14 @@ export type {
   FontRef,
   ImportReport,
   LayerPlan,
+  ModeValue,
   PlanChildLayout,
   PlanColor,
   PlanEffect,
   PlanHoverPatch,
   PlanLayout,
+  PlanModeColor,
+  PlanModeType,
   PlanOp,
   PlanOverride,
   PlanPaint,
@@ -22,4 +25,6 @@ export type {
   PlanTextStyle,
   PlanTokens,
   PlanTrack,
+  PlanVersionTokens,
 } from "./plan";
+export { mergeVersions, type TokenVersion } from "./versions";

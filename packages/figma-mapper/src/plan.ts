@@ -278,6 +278,44 @@ export type PlanTokens = {
   collection: string;
 };
 
+/** One mode's value. `mode` is the version's index; a mode with none reads the first mode's. */
+export type ModeValue<T> = { mode: number; value: T };
+
+/** A colour across versions. `key` is its values by mode plus its name. */
+export type PlanModeColor = {
+  key: string;
+  /** From the first version that has it. A proposal, as on `PlanColor`. */
+  name: string;
+  cssVar?: string;
+  values: ModeValue<PlanRgb & { a: number }>[];
+  /** Per version, the single-version token key this replaces. */
+  from: (string | null)[];
+};
+
+/** A type treatment across versions: only its size and line height vary by mode. */
+export type PlanModeType = {
+  key: string;
+  /** From the first version that has it. A proposal, as on `PlanTextStyle`. */
+  name: string;
+  fontName: FontRef;
+  letterSpacing: number;
+  decoration: PlanRun["decoration"];
+  textCase: PlanRun["textCase"];
+  fontSize: ModeValue<number>[];
+  lineHeight: ModeValue<number | null>[];
+  /** Per version, the single-version token key this replaces. */
+  from: (string | null)[];
+};
+
+/** The tokens of a set of versions, with one mode per version. */
+export type PlanVersionTokens = {
+  collection: string;
+  /** Unique, in version order. */
+  modes: string[];
+  colors: PlanModeColor[];
+  textStyles: PlanModeType[];
+};
+
 export type LayerPlan = {
   ops: PlanOp[];
   tokens: PlanTokens;
