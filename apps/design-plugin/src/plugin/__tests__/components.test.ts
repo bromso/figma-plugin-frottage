@@ -527,6 +527,69 @@ test("a swapped instance goes on hugging where its new main hugs", async () => {
   expect(swapped.width).toBe(25);
 });
 
+test("a swap keeps a FILL its instance had in an auto layout parent", async () => {
+  const { r, root } = await imported([
+    main("x-small", { w: 16, h: 16 }),
+    main("x-large", { w: 24, h: 24 }),
+    main("x-box", {
+      w: 200,
+      h: 40,
+      layout: hStack({ sizingH: "FIXED", sizingV: "FIXED" }),
+      childCount: 1,
+    }),
+    instance("x-box/i", "x-box/n", "x-small", {
+      x: 0,
+      y: 0,
+      w: 200,
+      h: 40,
+      childLayout: { positioning: "AUTO", sizingH: "FILL", sizingV: "FILL" },
+    }),
+    frame("root", null, { childCount: 1 }),
+    instance("a", "root", "x-box", {
+      w: 200,
+      h: 40,
+      overrides: [{ path: [0], kind: "swap", key: "x-large" }],
+    }),
+  ]);
+  const swapped = root.children[0].children[0] as FakeNode;
+  expect(swapped.main.name).toBe("x-large");
+  expect(swapped.layoutSizingHorizontal).toBe("FILL");
+  expect(swapped.layoutSizingVertical).toBe("FILL");
+  expect([swapped.width, swapped.height]).toEqual([200, 40]);
+  expect(r.overrideFailures).toBe(0);
+});
+
+test("a resize that fails after a swap counts once, and what is below still applies", async () => {
+  const { r, root } = await imported(
+    nested(
+      instance("a", "root", "x-box", {
+        overrides: [{ path: [0], kind: "swap", key: "x-b" }, textOver([0, 1], "after swap")],
+      })
+    ),
+    { swappedResizeThrows: true }
+  );
+  expect(r.overrideFailures).toBe(1);
+  expect(root.children[0].children[0].main.name).toBe("x-b");
+  expect(root.children[0].children[0].children[1].characters).toBe("after swap");
+});
+
+test("a resize that fails after a swap leaves the definition whole", async () => {
+  const { r, root } = await imported(
+    nested(instance("a", "root", "x-outer", { overrides: [textOver([0, 0, 1], "reached")] }), {
+      extra: [
+        main("x-outer", { childCount: 1 }),
+        instance("x-outer/i", "x-outer/n", "x-box", {
+          overrides: [{ path: [0], kind: "swap", key: "x-b" }],
+        }),
+      ],
+    }),
+    { swappedResizeThrows: true }
+  );
+  expect(r.overrideFailures).toBe(1);
+  expect(r.overrideFailuresInMains).toBe(1);
+  expect(root.children[0].children[0].children[0].children[1].characters).toBe("reached");
+});
+
 test("a swap refused inside a definition stops overrides from outside walking through it", async () => {
   const { r, root } = await imported(
     nested(instance("a", "root", "x-outer", { overrides: [textOver([0, 0, 0], "wrong place")] }), {

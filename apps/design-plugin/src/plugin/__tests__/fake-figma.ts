@@ -33,6 +33,8 @@ type Options = LayoutOptions &
     lineHeightDrift?: number;
     /** Text measures this much wider than the charWidth rule, as Figma's does than Chrome's. */
     textWiderBy?: number;
+    /** `resize` throws on an instance that has been swapped. */
+    swappedResizeThrows?: boolean;
     /** Setting this layout property throws, as for a value Figma refuses. */
     failLayout?: string;
   };
@@ -286,6 +288,8 @@ export function fakeFigma(opts: Options = {}) {
       copy.moveTo("x", kid.x);
       copy.moveTo("y", kid.y);
       if (kid.layoutPositioning === "ABSOLUTE") copy.layoutPositioning = "ABSOLUTE";
+      if (kid.layoutSizingHorizontal === "FILL") copy.layoutSizingHorizontal = "FILL";
+      if (kid.layoutSizingVertical === "FILL") copy.layoutSizingVertical = "FILL";
     }
     model.reflow(to);
     return to;
@@ -298,6 +302,7 @@ export function fakeFigma(opts: Options = {}) {
   function instanceShell(main: FakeNode): FakeNode {
     const n = makeNode("INSTANCE");
     n.main = main;
+    let swapped = false;
     // Reading this under `dynamic-page` throws in Figma.
     Object.defineProperty(n, "mainComponent", {
       get() {
@@ -307,6 +312,7 @@ export function fakeFigma(opts: Options = {}) {
     const resize = n.resize;
     n.resize = (w: number, h: number) => {
       calls.push("instance.resize");
+      if (swapped && opts.swappedResizeThrows) throw new Error("resize refused");
       resize(w, h);
     };
     n.swapComponent = (next: FakeNode) => {
@@ -314,6 +320,7 @@ export function fakeFigma(opts: Options = {}) {
       if (next?.type !== "COMPONENT") throw new Error("swapComponent needs a component");
       // As in Figma, the instance keeps its old size, even when it hugs or its parent does.
       const { width, height } = n;
+      swapped = true;
       n.main = next;
       copyBody(next, n);
       n.width = width;

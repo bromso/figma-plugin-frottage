@@ -639,9 +639,17 @@ export function createApplier(api: PluginAPI) {
     } else if (override.kind === "swap") {
       const main = components?.main(override.key);
       if (!main || node.type !== "INSTANCE") throw new Error("nothing to swap");
+      const { layoutSizingHorizontal: sizingH, layoutSizingVertical: sizingV } = node;
       node.swapComponent(main);
-      // A swap keeps the instance's old size.
-      sizeLike(node, main, main.width, main.height);
+      // The swap itself held, so what is below it goes on: only the size is lost if this fails.
+      try {
+        // A swap keeps the instance's old size. `resize` then drops a FILL, which is its parent's.
+        sizeLike(node, main, main.width, main.height);
+        if (sizingH === "FILL") node.layoutSizingHorizontal = "FILL";
+        if (sizingV === "FILL") node.layoutSizingVertical = "FILL";
+      } catch {
+        noteOverrideFailures(1);
+      }
     } else {
       if (node.type !== "TEXT") throw new Error("not text");
       const before = node.height;

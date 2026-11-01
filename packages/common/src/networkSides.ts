@@ -33,6 +33,8 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     componentsCreated: number;
     instancesCreated: number;
     overrideFailures: number;
+    overrideFailuresInMains: number;
+    layoutFailures: number;
     stylesCreated: number;
     stylesReused: number;
     variablesCreated: number;
