@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { strToU8, Unzip, Zip, ZipDeflate, ZipPassThrough, zipSync } from "fflate";
+import { strToU8, Unzip, unzipSync, Zip, ZipDeflate, ZipPassThrough, zipSync } from "fflate";
 import {
   type Capture,
   captureSchema,
@@ -7,8 +7,10 @@ import {
   FrottageFileError,
   LIMITS,
   packFrottage,
+  packFrottageSet,
   parseCapture,
   unpackFrottage,
+  unpackFrottageSet,
 } from "../index";
 import { elementNode, imageStyle, minimalCapture, textNode, treeOfThree } from "./fixtures";
 
@@ -661,5 +663,75 @@ describe("unexpected failures stay coded", () => {
       },
     };
     expect(parseCapture(stack)).toMatchObject({ ok: false, reason: "too-deep" });
+  });
+});
+
+describe("frottage sets", () => {
+  const enc = (c: unknown) => strToU8(JSON.stringify(c));
+  const named = (title: string): Capture => ({ ...sample, source: { ...sample.source, title } });
+
+  test("round trips three captures that share assets, each asset stored once", () => {
+    const shared = captureUsingAsset("abc123");
+    const captures = ["a", "b", "c"].map((t) => ({
+      ...shared,
+      source: { ...shared.source, title: t },
+    }));
+    const bytes = packFrottageSet(captures, new Map([["abc123", png]]));
+    const out = unpackFrottageSet(bytes);
+    expect(out.captures.map((c) => c.source.title)).toEqual(["a", "b", "c"]);
+    expect(out.assets.size).toBe(1);
+    const names = Object.keys(unzipSync(bytes));
+    expect(names.filter((n) => n.startsWith("assets/")).length).toBe(1);
+  });
+
+  test("reads an old file with capture.json as a set of one", () => {
+    const out = unpackFrottageSet(packFrottage(sample, new Map()));
+    expect(out.captures).toEqual([unpackFrottage(packFrottage(sample, new Map())).capture]);
+    expect(out.captures[0]?.source.title).toBe(sample.source.title);
+  });
+
+  test("refuses a file with both capture.json and captures/", () => {
+    const bytes = zipSync({ "capture.json": enc(sample), "captures/0.json": enc(sample) });
+    expectCode(() => unpackFrottageSet(bytes), "not-a-frottage-file");
+  });
+
+  test("refuses a gap in the numbering", () => {
+    const bytes = zipSync({ "captures/0.json": enc(sample), "captures/2.json": enc(sample) });
+    expectCode(() => unpackFrottageSet(bytes), "not-a-frottage-file");
+  });
+
+  test("refuses a non-numeric capture entry", () => {
+    const bytes = zipSync({ "captures/a.json": enc(sample) });
+    expectCode(() => unpackFrottageSet(bytes), "not-a-frottage-file");
+  });
+
+  test("refuses an empty captures list", () => {
+    expectCode(() => unpackFrottageSet(zipSync({ "other.txt": enc("x") })), "not-a-frottage-file");
+  });
+
+  test("applies captureJsonBytes per capture and totalBytes to the whole file", () => {
+    const one = enc(sample).length;
+    const limits = { ...LIMITS, captureJsonBytes: one, totalBytes: Math.floor(one * 2.5) };
+    const two = packFrottageSet([sample, sample], new Map());
+    expect(unpackFrottageSet(two, limits).captures.length).toBe(2);
+    const three = packFrottageSet([sample, sample, sample], new Map());
+    expectCode(() => unpackFrottageSet(three, limits), "too-large");
+  });
+
+  test("checks every capture's assets", () => {
+    const bytes = packFrottageSet(
+      [captureUsingAsset("abc123"), captureUsingAsset("def456")],
+      new Map([["abc123", png]])
+    );
+    expectCode(() => unpackFrottageSet(bytes), "missing-asset");
+  });
+
+  test("packFrottageSet with no captures throws", () => {
+    expect(() => packFrottageSet([], new Map())).toThrow();
+  });
+
+  test("unpackFrottage refuses a file of several captures", () => {
+    const bytes = packFrottageSet([named("a"), named("b")], new Map());
+    expectCode(() => unpackFrottage(bytes), "not-a-frottage-file");
   });
 });

@@ -3,7 +3,9 @@ export {
   FrottageFileError,
   LIMITS,
   packFrottage,
+  packFrottageSet,
   unpackFrottage,
+  unpackFrottageSet,
 } from "./container";
 export { countNodes, type ParseResult, parseCapture } from "./parse";
 export {
