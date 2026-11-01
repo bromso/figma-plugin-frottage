@@ -1,4 +1,5 @@
 import { parseComputedColor } from "./color";
+import { insideEditable } from "./flatten";
 
 /**
  * Serialises an inline `<svg>` so it can be rebuilt in Figma without the page around it.
@@ -148,7 +149,7 @@ function idOf(ref: string): string {
 function lookup(st: State, id: string): Element | null {
   const root = st.tree as Partial<Document>;
   const hit = typeof root.getElementById === "function" ? root.getElementById(id) : null;
-  return hit && hit.namespaceURI === SVG_NS ? hit : null;
+  return hit && hit.namespaceURI === SVG_NS && !insideEditable(hit) ? hit : null;
 }
 
 function declares(el: Element, prop: string): boolean {

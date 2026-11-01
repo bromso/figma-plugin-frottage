@@ -7,7 +7,7 @@ import type {
   TextNode,
 } from "@repo/capture-schema";
 import type { Rgba } from "./color";
-import { flatChildren, shadowRootOf } from "./flatten";
+import { flatChildren, insideEditable, isEditable, shadowRootOf } from "./flatten";
 import { authoredTracksReader } from "./grid";
 import {
   collapse,
@@ -135,6 +135,16 @@ function isSecretField(el: Element): boolean {
   return SECRET_AUTOCOMPLETE.test((el.getAttribute("autocomplete") ?? "").toLowerCase());
 }
 
+/** Whether anything inside `el` must stay unread: a secret field, or text a person can type into. */
+const isPrivate = (el: Element): boolean => isSecretField(el) || isEditable(el);
+
+/** `textContent`, skipping what must stay unread. */
+function publicText(node: Node): string {
+  if (node.nodeType === 3) return node.nodeValue ?? "";
+  if (node.nodeType !== 1 || isPrivate(node as Element)) return "";
+  return Array.from(node.childNodes, publicText).join("");
+}
+
 export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   const win = doc.defaultView as Window & typeof globalThis;
   const root = doc.documentElement;
@@ -183,7 +193,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     scroll: { x: scrollX, y: scrollY },
     viewport: { w: root.clientWidth, h: root.clientHeight },
     measure: (text, style) => measure(text, style),
-    isSecret: isSecretField,
+    isSecret: isPrivate,
     text: (value, style, box, tag) => boxedText(value, style, box, tag),
     cache: new WeakMap(),
   };
@@ -373,6 +383,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       ok = true;
     } else if (
       el.namespaceURI === XHTML &&
+      !isEditable(el) &&
       !NOT_TEXT.has(el.localName) &&
       !IGNORED_TAGS.has(el.localName)
     ) {
@@ -712,7 +723,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const tree = el.getRootNode() as Partial<Document>;
     const ids = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean);
     const named = ids
-      .map((id) => tree.getElementById?.(id)?.textContent?.trim() ?? "")
+      .map((id) => {
+        const label = tree.getElementById?.(id);
+        return label && !insideEditable(label) ? publicText(label).trim() : "";
+      })
       .filter(Boolean)
       .join(" ");
     return named;
@@ -893,7 +907,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const s = cs(el);
     if (s.display === "none") return [];
     const link = linkInside(el, inherited);
-    if (s.display === "contents") return visitChildren(el, depth - 1, link);
+    if (s.display === "contents") return isEditable(el) ? [] : visitChildren(el, depth - 1, link);
 
     const box = boxOf(el, s);
     const clipped = el !== doc.body && (s.overflowX !== "visible" || s.overflowY !== "visible");
@@ -989,7 +1003,9 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     if (el === root || el === doc.body) element.style.overflow = "visible";
 
     const leafControl = tag === "input" || tag === "textarea" || tag === "select";
-    if (leafControl) {
+    if (isEditable(el)) {
+      // What a person typed: the box and style stay, and nothing inside is read.
+    } else if (leafControl) {
       // A secret field keeps its box and style; nothing inside it is read.
       if (depth < MAX_DEPTH && !isSecretField(el)) {
         const t = controlNode(el, s, box);

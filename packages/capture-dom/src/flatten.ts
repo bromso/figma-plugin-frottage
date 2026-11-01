@@ -65,3 +65,20 @@ export function flatChildren(
   const root = shadowRootOf(el, env);
   return expand(root ? root.childNodes : el.childNodes, keepSlot);
 }
+
+/**
+ * Whether a person can type into `el`. Tests the attribute, not `isContentEditable`, so a page
+ * with `designMode` on keeps its text. The value is matched as HTML does: any case.
+ */
+export function isEditable(el: Element): boolean {
+  const value = el.getAttribute("contenteditable");
+  return value !== null && value.toLowerCase() !== "false";
+}
+
+/** Whether `el` is editable or sits in an editable element of its own tree. */
+export function insideEditable(el: Element): boolean {
+  for (let at: Element | null = el; at; at = at.parentElement) {
+    if (isEditable(at)) return true;
+  }
+  return false;
+}

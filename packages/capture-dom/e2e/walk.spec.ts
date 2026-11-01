@@ -11,6 +11,7 @@ import {
   type ElementNode,
   parseCapture,
 } from "@repo/capture-schema";
+import { mapCapture } from "@repo/figma-mapper";
 
 // Bundle the walker once into an IIFE global (`globalThis.__frottageCapture`), so it runs in the
 // page exactly as the extension would inject it. Playwright runs under Node, so the bundle is built
@@ -1214,4 +1215,77 @@ test("an inline-flex holding a non-mergeable element stays separate", async ({ p
   const c = await capture(page, "inline-blocks.html");
   expect(findText(c, "Gamma").text).not.toContain("Boxed");
   expect(findText(c, "Boxed").text).not.toContain("omega");
+});
+
+// ---------- contenteditable
+
+test("nothing typed into an editable element reaches the capture or the plan", async ({ page }) => {
+  const c = await capture(page, "secrets.html", { closedShadow: true });
+  const plan = mapCapture(c, [{ family: "Inter", style: "Regular" }]);
+  expect(parseCapture(c).ok).toBe(true);
+  expect(JSON.stringify(c)).not.toContain("SECRET-EDITABLE");
+  expect(JSON.stringify(plan)).not.toContain("SECRET-EDITABLE");
+});
+
+test("an editable element keeps its box and has no children", async ({ page }) => {
+  const c = await capture(page, "secrets.html");
+  const box = findKind(c, "element", (n) => n.semantic.id === "draft");
+  expect(box.children).toEqual([]);
+  expect(box.box).toMatchObject({ w: 202, h: 42 });
+  expect(box.style.borders.top.width).toBe(1);
+});
+
+test("an editable span does not merge, and the sentence around it stays", async ({ page }) => {
+  const c = await capture(page, "secrets.html");
+  expect(textOf(c)).toContain("Dear");
+  expect(textOf(c)).toContain("reader");
+  const sentence = findKind(c, "element", (n) => n.semantic.id === "sentence");
+  expect(sentence.children.filter((n) => n.kind === "element")).toHaveLength(1);
+});
+
+test('contenteditable="false" is read, and designMode does not blank the page', async ({
+  page,
+}) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/secrets.html");
+  await page.evaluate(() => {
+    document.designMode = "on";
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  expect(textOf(c)).toContain("Read only text");
+  expect(textOf(c)).toContain("Dear");
+});
+
+test("the text of an editable element is not read at all", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/secrets.html");
+  await page.addScriptTag({ content: bundle });
+  const reads = await page.evaluate(() => {
+    let count = 0;
+    const counted = (node: Node, prop: string) =>
+      Object.defineProperty(node, prop, {
+        get() {
+          count++;
+          return "";
+        },
+      });
+    for (const el of document.querySelectorAll(
+      '[contenteditable]:not([contenteditable="false"])'
+    )) {
+      counted(el, "textContent");
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        counted(walker.currentNode, "nodeValue");
+        counted(walker.currentNode, "data");
+        counted(walker.currentNode, "textContent");
+      }
+    }
+    (globalThis as unknown as Hook).__frottageCapture.captureDocument(document, {
+      now: () => "x",
+      toolVersion: "t",
+    });
+    return count;
+  });
+  expect(reads).toBe(0);
 });
