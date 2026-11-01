@@ -91,7 +91,8 @@ const NOT_TEXT = new Set([
   "progress",
 ]);
 
-const GENERIC_FAMILIES: Record<string, string> = {
+/** Page strings index this table and `LANDMARK_TAGS`, so neither has a prototype. */
+const GENERIC_FAMILIES: Record<string, string> = Object.assign(Object.create(null), {
   "sans-serif": "Arial",
   serif: "Times New Roman",
   monospace: "Courier New",
@@ -104,7 +105,16 @@ const GENERIC_FAMILIES: Record<string, string> = {
   "ui-rounded": "Arial",
   "-apple-system": "Arial",
   blinkmacsystemfont: "Arial",
-};
+});
+
+const LANDMARK_TAGS: Record<string, string> = Object.assign(Object.create(null), {
+  header: "banner",
+  nav: "navigation",
+  main: "main",
+  footer: "contentinfo",
+  aside: "complementary",
+  form: "form",
+});
 
 const NO_TEXT_INPUTS = new Set([
   "checkbox",
@@ -764,15 +774,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const name = (isSvg && svgName(el)) || label || (isSvg && svgTitle(el)) || "";
     if (name) semantic.ariaLabel = name;
     if (/^h[1-6]$/.test(tag)) semantic.headingLevel = Number(tag[1]);
-    const landmarks: Record<string, string> = {
-      header: "banner",
-      nav: "navigation",
-      main: "main",
-      footer: "contentinfo",
-      aside: "complementary",
-      form: "form",
-    };
-    const landmark = landmarks[tag];
+    const landmark = LANDMARK_TAGS[tag];
     if (landmark) semantic.landmark = landmark;
     if (tag === "a" && el.hasAttribute("href")) {
       semantic.href = cleanUrl((el as HTMLAnchorElement).href);

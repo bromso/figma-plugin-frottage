@@ -237,3 +237,23 @@ describe("fix round 1", () => {
     expect(layerName(elem({ id: "css-1x2y3z" }), [], o)).toBe("Div");
   });
 });
+
+describe("names that match Object.prototype", () => {
+  for (const word of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+    test(`${word} as a role gives a plain name`, () => {
+      expect(layerName(elem({ role: word }), [], o)).toBe("Div");
+      expect(layerName(elem({ role: word, ariaLabel: "Menu" }), [], o)).toBe("Menu");
+    });
+    test(`${word} as a landmark gives a plain name`, () => {
+      expect(layerName(elem({ landmark: word }), [], o)).toBe("Div");
+    });
+    test(`${word} as a tag gives a string`, () => {
+      expect(typeof layerName(elem({ tag: word }), [], o)).toBe("string");
+      expect(typeof layerName(elem({ tag: word }, [words("Only text")]), [], o)).toBe("string");
+    });
+  }
+  test("a tag named constructor reads as text, not as a function", () => {
+    expect(layerName(elem({ tag: "constructor" }), [], o)).toBe("Constructor");
+    expect(layerName(elem({ tag: "constructor" }, [words("Hello")]), [], o)).toBe("Hello");
+  });
+});

@@ -28,6 +28,13 @@ function textOp(capture: Parameters<typeof mapCapture>[0]): TextPlanOp {
 const frame = (c: Parameters<typeof mapCapture>[0], id: string) =>
   mapCapture(c, inter).ops.find((o) => o.id === id) as FramePlanOp;
 
+describe("text alignment", () => {
+  test.each(["constructor", "__proto__", "toString"])("%s falls back to LEFT", (align) => {
+    const op = textOp(withText(textNode("t", { runs: [run({ align })] })));
+    expect(op.align).toBe("LEFT");
+  });
+});
+
 describe("mapCapture", () => {
   test("positions children relative to their parent", () => {
     const { ops } = mapCapture(nested({ parent: [100, 50], child: [130, 90] }), inter);

@@ -1289,3 +1289,49 @@ test("the text of an editable element is not read at all", async ({ page }) => {
   });
   expect(reads).toBe(0);
 });
+
+// ---------- Page strings that match Object.prototype
+
+test("tags, roles and font families named after Object.prototype are plain strings", async ({
+  page,
+}) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/form.html");
+  await page.evaluate(() => {
+    for (const name of ["constructor", "__proto__"]) {
+      const el = document.createElement(name);
+      el.style.cssText = "display:block;width:40px;height:20px";
+      el.setAttribute("role", name);
+      document.body.appendChild(el);
+      const p = document.createElement("p");
+      p.style.fontFamily = name === "__proto__" ? "__proto__" : "Constructor";
+      p.textContent = `Family ${name}`;
+      document.body.appendChild(p);
+    }
+  });
+  await page.addScriptTag({ content: bundle });
+  // Not through JSON, which would drop a function or an object in a string field.
+  const out = await page.evaluate(() => {
+    const c = (globalThis as unknown as Hook).__frottageCapture.captureDocument(document, {
+      now: () => "x",
+      toolVersion: "t",
+    });
+    const odd: string[] = [];
+    const go = (n: CaptureNode) => {
+      if (n.semantic.landmark !== undefined && typeof n.semantic.landmark !== "string") {
+        odd.push(`landmark of ${n.semantic.tag}`);
+      }
+      if (n.semantic.tag === "constructor" || n.semantic.tag === "__proto__") {
+        if (n.semantic.landmark !== undefined) odd.push(`landmark of ${n.semantic.tag}`);
+      }
+      if (n.kind === "text") {
+        for (const r of n.runs) if (typeof r.family !== "string") odd.push(`family of ${n.text}`);
+      }
+      if (n.kind === "element") n.children.forEach(go);
+    };
+    go(c.root);
+    return { odd, fonts: c.fonts.map((f) => typeof f.family) };
+  });
+  expect(out.odd).toEqual([]);
+  expect(out.fonts.every((t) => t === "string")).toBe(true);
+});

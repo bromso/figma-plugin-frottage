@@ -4,7 +4,11 @@ const MAX = 40;
 /** How many nodes are looked at below an element when reading its text. */
 const SCAN = 40;
 
-const LANDMARKS: Record<string, string> = {
+/** Page strings index these tables, so nothing may come from `Object.prototype`. */
+const table = (entries: Record<string, string>): Record<string, string> =>
+  Object.assign(Object.create(null), entries);
+
+const LANDMARKS = table({
   banner: "Header",
   navigation: "Navigation",
   main: "Main",
@@ -13,9 +17,9 @@ const LANDMARKS: Record<string, string> = {
   form: "Form",
   search: "Search",
   region: "Region",
-};
+});
 
-const ROLES: Record<string, string> = {
+const ROLES = table({
   ...LANDMARKS,
   dialog: "Dialog",
   alertdialog: "Dialog",
@@ -45,9 +49,9 @@ const ROLES: Record<string, string> = {
   listbox: "List",
   option: "Option",
   progressbar: "Progress",
-};
+});
 
-const TAGS: Record<string, string> = {
+const TAGS = table({
   ul: "List",
   ol: "List",
   li: "Item",
@@ -94,14 +98,14 @@ const TAGS: Record<string, string> = {
   dd: "Definition",
   body: "Page",
   html: "Page",
-};
+});
 
-const PLACEHOLDERS: Record<string, string> = {
+const PLACEHOLDERS = table({
   canvas: "Canvas",
   video: "Video",
   "cross-origin-iframe": "Embed",
   "blocked-image": "Image",
-};
+});
 
 const INTERACTIVE = new Set(["a", "button", "summary"]);
 const CLASS_STOP = new Set([

@@ -123,7 +123,7 @@ export function parseBackgroundImages(cs: CSSStyleDeclaration): BackgroundImage[
           const n = Number.parseFloat(deg[1] as string);
           angle = deg[2] === "turn" ? n * 360 : deg[2] === "rad" ? (n * 180) / Math.PI : n;
           colorArgs = args.slice(1);
-        } else if (first in DIRECTIONS) {
+        } else if (Object.hasOwn(DIRECTIONS, first)) {
           angle = DIRECTIONS[first];
           colorArgs = args.slice(1);
         } else if (type === "linear-gradient") {

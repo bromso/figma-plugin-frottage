@@ -2,8 +2,8 @@ import type { FontRef } from "./plan";
 
 const FALLBACK: FontRef = { family: "Inter", style: "Regular" };
 
-// Lower-case, spaceless style words to weights.
-const WEIGHTS: Record<string, number> = {
+// Lower-case, spaceless style words to weights. Font names index it, so it has no prototype.
+const WEIGHTS: Record<string, number> = Object.assign(Object.create(null), {
   thin: 100,
   hairline: 100,
   extralight: 200,
@@ -20,7 +20,7 @@ const WEIGHTS: Record<string, number> = {
   ultrabold: 800,
   heavy: 800,
   black: 900,
-};
+});
 
 function parseStyle(style: string): { weight: number; italic: boolean } | null {
   const lower = style.toLowerCase();

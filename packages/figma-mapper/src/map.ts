@@ -116,7 +116,9 @@ const ALIGN = {
 } as const;
 
 function mapAlign(align: string | undefined): "LEFT" | "CENTER" | "RIGHT" | "JUSTIFIED" {
-  return ALIGN[(align ?? "left") as keyof typeof ALIGN] ?? "LEFT";
+  return align !== undefined && Object.hasOwn(ALIGN, align)
+    ? ALIGN[align as keyof typeof ALIGN]
+    : "LEFT";
 }
 
 /** Only web pages get a Figma link; the capture has already dropped query, fragment and userinfo. */
