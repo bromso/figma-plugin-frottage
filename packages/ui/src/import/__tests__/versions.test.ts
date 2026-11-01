@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { unpackFrottage } from "@repo/capture-schema";
-import { groupVersions, type LoadedFile } from "../versions";
+import { groupVersions, type LoadedFile, pageKey } from "../versions";
 import { versionFile } from "./helpers";
 
 async function load(file: File): Promise<LoadedFile> {
@@ -52,5 +52,31 @@ describe("groupVersions", () => {
     ]);
     const sets = groupVersions(files);
     expect(sets.map((s) => names(s.versions))).toEqual([["a", "c"], ["b"]]);
+  });
+
+  test("equal widths keep file order", async () => {
+    const files = await Promise.all([
+      load(versionFile({ name: "first", width: 1440, label: "1440" })),
+      load(versionFile({ name: "second", width: 1440, label: "1440" })),
+      load(versionFile({ name: "third", width: 1440, label: "1440" })),
+    ]);
+    expect(names(groupVersions(files)[0]?.versions ?? [])).toEqual(["first", "second", "third"]);
+  });
+
+  test("an unlabelled file sorts by width among labelled ones and takes its width as label", async () => {
+    const files = await Promise.all([
+      load(versionFile({ name: "a", width: 834, label: "Tablet" })),
+      load(versionFile({ name: "plain", width: 1280 })),
+      load(versionFile({ name: "c", width: 1512, label: "Wide" })),
+    ]);
+    const versions = groupVersions(files)[0]?.versions ?? [];
+    expect(names(versions)).toEqual(["c", "plain", "a"]);
+    expect(versions.map((v) => v.capture.version?.label)).toEqual(["Wide", "1280", "Tablet"]);
+  });
+
+  test("pageKey drops query, fragment and trailing slash, and survives a bad URL", () => {
+    expect(pageKey("https://example.com/a/?x=1#top")).toBe("https://example.com/a");
+    expect(pageKey("https://example.com/a")).toBe(pageKey("https://example.com/a/"));
+    expect(pageKey("not a url/")).toBe("not a url");
   });
 });

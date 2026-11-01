@@ -199,6 +199,11 @@ async function verifyAssets(assets: Map<string, Uint8Array>): Promise<void> {
 export const MAX_FILES = 8;
 export const MAX_TOTAL_BYTES = 600 * 1024 * 1024;
 
+/** Shared by the screen's partial and all-failed reports. */
+export function failureHeading(count: number): string {
+  return count === 1 ? "1 file could not be imported" : `${count} files could not be imported`;
+}
+
 const TOO_MANY_FILES = `Frottage imports up to ${MAX_FILES} files at a time. Choose fewer files and try again.`;
 const TOO_MANY_BYTES = "These files add up to more than 600 MB. Choose fewer files and try again.";
 
@@ -214,13 +219,22 @@ export async function loadFile(file: File, verify = true): Promise<LoadedFile> {
 
 type FileInfo = { index: number; total: number; name: string };
 
+type Plan = ReturnType<typeof mapCapture>;
+
+/** One version, ready to create: its plan, its images and the names the report uses. */
+export type PreparedVersion = {
+  plan: Plan;
+  assets: Map<string, Uint8Array>;
+  /** The root layer's name. */
+  rootName: string;
+  version: { name: string; label: string };
+};
+
 type VersionContext = {
   port: ImportPort;
   onState: (s: ImportState) => void;
   signal?: AbortSignal;
-  available: FontRef[];
   options: ImportOptions;
-  overrides?: Record<string, string>;
   file: FileInfo;
 };
 
@@ -255,15 +269,15 @@ function versionResult(
 }
 
 /**
- * Create one version in Figma, from a file already loaded and verified. Returns null when the
+ * Create one version in Figma, from a plan and its verified images. Returns null when the
  * user cancelled (the sandbox is already undone); throws on failure, after undoing what it made.
  */
 export async function importVersion(
-  loaded: LoadedFile,
+  prepared: PreparedVersion,
   ctx: VersionContext
-): Promise<VersionResult | null> {
+): Promise<VersionReport | null> {
   const { port, onState, signal, file } = ctx;
-  const { capture, assets } = loaded;
+  const { plan, assets, version } = prepared;
   let begun = false;
   const stop = async () => {
     if (begun) {
@@ -273,13 +287,12 @@ export async function importVersion(
     return null;
   };
   try {
-    const plan = mapCapture(capture, ctx.available, ctx.options, ctx.overrides);
     const total = plan.ops.length;
     onState({ step: "working", done: 0, total, file });
 
     // Set first: a begin that fails halfway may still have created state to cancel.
     begun = true;
-    await port.begin({ name: importName(capture.source), fonts: plan.fonts, totalOps: total });
+    await port.begin({ name: prepared.rootName, fonts: plan.fonts, totalOps: total });
     // A Cancel pressed while begin ran waits for it to return, then undoes what it made.
     if (signal?.aborted) return await stop();
     await port.tokens(plan.tokens, ctx.options);
@@ -304,7 +317,7 @@ export async function importVersion(
     if (!result.rootId) throw new Error("Nothing was created");
     begun = false;
     onState({ step: "working", done: total, total, file });
-    return versionResult(plan.report, result);
+    return { ...versionResult(plan.report, result), ...version };
   } catch (error) {
     if (begun) {
       try {
@@ -318,7 +331,10 @@ export async function importVersion(
 }
 
 /** Fold one more file's missing fonts into the set's, by family; the first `nearest` stays. */
-function mergeMissing(into: Map<string, string>, found: { family: string; nearest: string }[]) {
+export function mergeMissing(
+  into: Map<string, string>,
+  found: { family: string; nearest: string }[]
+) {
   for (const { family, nearest } of found) if (!into.has(family)) into.set(family, nearest);
 }
 
@@ -345,31 +361,38 @@ export async function runImports(
     const message =
       failures.length === 1
         ? (failures[0]?.message ?? "")
-        : failures.map((f) => `${f.name}: ${f.message}`).join("\n");
+        : [failureHeading(failures.length), ...failures.map((f) => `${f.name}: ${f.message}`)].join(
+            "\n"
+          );
     onState({ step: "error", message });
   };
+  /** Files are numbered one way throughout: by position in the order they were dropped. */
+  const working = (index: number, name: string, done = 0, total = 0): ImportState => ({
+    step: "working",
+    done,
+    total,
+    file: { index, total: files.length, name },
+  });
 
   try {
     if (files.length > MAX_FILES) return onState({ step: "error", message: TOO_MANY_FILES });
     if (files.reduce((sum, f) => sum + f.size, 0) > MAX_TOTAL_BYTES) {
       return onState({ step: "error", message: TOO_MANY_BYTES });
     }
+    const single = files.length === 1;
 
     // Pass 1, one file at a time: keep each capture but let its images go, unless it is the only
     // file. The images are read again when their version imports.
     const sources = new Map<Capture["source"], File>();
+    const assetKeys = new Map<Capture["source"], Set<string>>();
     const light: LoadedFile[] = [];
     for (const [i, file] of files.entries()) {
-      onState({
-        step: "working",
-        done: 0,
-        total: 0,
-        file: { index: i + 1, total: files.length, name: file.name },
-      });
+      onState(working(i + 1, file.name));
       try {
-        const loaded = await loadFile(file, files.length === 1);
-        const kept = files.length === 1 ? loaded : { ...loaded, assets: new Map() };
+        const loaded = await loadFile(file, single);
+        const kept = single ? loaded : { ...loaded, assets: new Map() };
         sources.set(kept.capture.source, file);
+        assetKeys.set(kept.capture.source, new Set(loaded.assets.keys()));
         light.push(kept);
       } catch (error) {
         fail(file.name, error);
@@ -385,17 +408,18 @@ export async function runImports(
 
     await yieldToPaint();
     const available = await port.listFonts();
+    // One review for the drop, so its options belong to the first version's page alone.
     const hostname = hostnameOf(ordered[0]?.capture.source.url ?? "");
     let options = sanitizeOptions(
       hostname ? await readPref(port, `options:${hostname}`) : undefined
     );
 
     const missing = new Map<string, string>();
+    let firstPlan: Plan | undefined;
     for (const v of ordered) {
-      mergeMissing(
-        missing,
-        missingFonts(mapCapture(v.capture, available, options).report, available)
-      );
+      const plan = mapCapture(v.capture, available, options);
+      if (ordered.length === 1) firstPlan = plan;
+      mergeMissing(missing, missingFonts(plan.report, available));
     }
 
     let overrides: Record<string, string> | undefined;
@@ -410,6 +434,8 @@ export async function runImports(
       onState({ step: "review", missing: reviewFonts, families, options, hostname });
       const decision = await session.decide();
       if (!decision) return onState({ step: "idle" });
+      // The review is gone: show progress at once, with a Cancel that works.
+      onState(working(1, ordered[0]?.name ?? ""));
       options = sanitizeOptions(decision.options);
       // Prefilled choices the user left alone still apply to the plan, but are not remembered.
       overrides = Object.create(null) as Record<string, string>;
@@ -420,43 +446,52 @@ export async function runImports(
         overrides[family] = chosen;
         if (chosen !== choice) changed.push([family, chosen]);
       }
+      firstPlan = undefined;
       await yieldToPaint();
       if (hostname) await writePref(port, `options:${hostname}`, options);
       for (const [family, chosen] of changed) await writePref(port, `font:${family}`, chosen);
     }
 
-    // Pass 2: the set loop. Task 7 puts a set (one token collection, one mode per version) around
-    // each iteration of the inner loop.
+    // The set loop. A set's plans are built after the review and before its first begin, so
+    // Task 7 can merge their tokens first; each plan is dropped once its version is created.
     const versions: VersionReport[] = [];
     let index = 0;
     for (const set of sets) {
-      for (const version of set.versions) {
+      const plans = set.versions.map(
+        (v) => firstPlan ?? mapCapture(v.capture, available, options, overrides)
+      );
+      // Task 7: mergeVersions(plans) goes here and replaces each plan's tokens with the set's.
+      for (const [i, version] of set.versions.entries()) {
         index += 1;
         if (signal?.aborted) return onState({ step: "idle" });
-        const info: FileInfo = { index, total: ordered.length, name: version.name };
-        onState({ step: "working", done: 0, total: 0, file: info });
+        const info: FileInfo = { index, total: files.length, name: version.name };
+        onState(working(index, version.name));
+        const plan = plans[i] as Plan;
         try {
-          const source = fileOf(version);
-          const full =
-            files.length === 1 ? version : { ...version, assets: (await loadFile(source)).assets };
-          const result = await importVersion(full, {
-            port,
-            onState,
-            signal,
-            available,
-            options,
-            overrides,
-            file: info,
-          });
-          if (!result) return onState({ step: "idle" });
-          versions.push({
-            ...result,
-            name: version.name,
-            label: version.capture.version?.label ?? "",
-          });
+          let assets = version.assets;
+          if (!single) {
+            const again = await loadFile(fileOf(version));
+            if (!sameKeys(again.assets, assetKeys.get(version.capture.source))) {
+              throw new FrottageFileError("invalid-capture");
+            }
+            assets = again.assets;
+          }
+          const report = await importVersion(
+            {
+              plan,
+              assets,
+              rootName: importName(version.capture.source),
+              version: { name: version.name, label: version.capture.version?.label ?? "" },
+            },
+            { port, onState, signal, options, file: info }
+          );
+          if (!report) return onState({ step: "idle" });
+          versions.push(report);
         } catch (error) {
           fail(version.name, error);
         }
+        // Let this version's plan go before the next is made.
+        plans[i] = undefined as unknown as Plan;
       }
     }
 
@@ -466,4 +501,11 @@ export async function runImports(
   } catch (error) {
     onState({ step: "error", message: messageForError(error) });
   }
+}
+
+/** A file re-read for its images must still hold the images it held when it was planned. */
+function sameKeys(assets: Map<string, Uint8Array>, expected: Set<string> | undefined): boolean {
+  return (
+    !!expected && assets.size === expected.size && [...assets.keys()].every((k) => expected.has(k))
+  );
 }

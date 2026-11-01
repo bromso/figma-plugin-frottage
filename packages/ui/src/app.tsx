@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FontTable } from "./import/font-table";
 import {
+  failureHeading,
   type ImportPort,
   type ImportState,
   type ReviewDecision,
@@ -140,20 +141,21 @@ function VersionsReport({
       {state.failures.length > 0 && (
         <div role="alert">
           <p className="font-medium text-figma-text-danger">
-            {state.failures.length === 1 ? "1 file" : `${state.failures.length} files`} could not be
-            imported
+            {failureHeading(state.failures.length)}
           </p>
           <ul className="text-figma-text-secondary">
-            {state.failures.map((f) => (
-              <li key={`${f.name}:${f.message}`}>
+            {state.failures.map((f, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: the same file name can fail twice
+              <li key={`${i}:${f.name}`}>
                 {f.name}: {f.message}
               </li>
             ))}
           </ul>
         </div>
       )}
-      {state.versions.map((v) => (
-        <Report key={`${v.name}:${v.label}`} state={v} heading={`${v.label} · ${v.name}`} />
+      {state.versions.map((v, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: two versions can share a name and label
+        <Report key={`${i}:${v.name}:${v.label}`} state={v} heading={`${v.label} · ${v.name}`} />
       ))}
     </div>
   );
@@ -340,7 +342,7 @@ function App({ port }: { port?: ImportPort }) {
           ref={errorRef}
           role="alert"
           tabIndex={-1}
-          className="text-figma-text-danger outline-none"
+          className="whitespace-pre-line text-figma-text-danger outline-none"
         >
           {state.message}
         </p>

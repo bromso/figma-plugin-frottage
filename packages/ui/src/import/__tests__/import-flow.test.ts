@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { FrottageFileError, packFrottage } from "@repo/capture-schema";
 import { DEFAULT_IMPORT_OPTIONS } from "@repo/figma-mapper";
 import {
+  failureHeading,
   type ImportState,
+  mergeMissing,
   messageForError,
   type ReviewDecision,
   type ReviewSession,
@@ -652,14 +654,19 @@ describe("runImports with several files", () => {
   });
 
   test("more than 8 files are refused before reading", async () => {
-    const read = () => Promise.reject(new Error("read"));
-    const many = Array.from(
-      { length: 9 },
-      () => ({ size: 1, arrayBuffer: read }) as unknown as File
-    );
+    let reads = 0;
+    const many = Array.from({ length: 9 }, () => {
+      const file = versionFile({ name: "x" });
+      file.arrayBuffer = () => {
+        reads += 1;
+        return Promise.resolve(new ArrayBuffer(0));
+      };
+      return file;
+    });
     const { port, states } = await runMany(many);
+    expect(reads).toBe(0);
     expect(port.log).toEqual([]);
-    expect(states.at(-1)).toMatchObject({ step: "error" });
+    expect((states.at(-1) as { message: string }).message).toContain("8 files");
   });
 
   test("total bytes over the limit are refused before reading", async () => {
@@ -692,5 +699,185 @@ describe("runImports with several files", () => {
     expect(port.log.filter((l) => l === "begin")).toHaveLength(1);
     expect(port.log).toContain("cancel");
     expect(states.at(-1)).toEqual({ step: "idle" });
+  });
+
+  function counting(file: File) {
+    const counter = { reads: 0 };
+    const original = file.arrayBuffer.bind(file);
+    file.arrayBuffer = () => {
+      counter.reads += 1;
+      return original();
+    };
+    return counter;
+  }
+
+  test("a version that fails at import time is named and the others carry on", async () => {
+    const port = fakePort();
+    const begin = port.begin.bind(port);
+    let calls = 0;
+    port.begin = async (meta) => {
+      calls += 1;
+      if (calls === 1) throw new Error("boom");
+      await begin(meta);
+    };
+    const { states } = await runMany(
+      [
+        versionFile({ name: "wide", width: 1512, label: "1512" }),
+        versionFile({ name: "narrow", width: 834, label: "834" }),
+      ],
+      port
+    );
+    const done = states.at(-1);
+    if (done?.step !== "done") throw new Error("not done");
+    expect(done.failures.map((f) => f.name)).toEqual(["wide"]);
+    expect(done.versions.map((v) => v.name)).toEqual(["narrow"]);
+    expect(port.log).toContain("cancel");
+  });
+
+  test("in a multi-file drop each file is read again and its images are sent", async () => {
+    const withImage = await imageFile(true);
+    const other = versionFile({ name: "other", width: 100, label: "100" });
+    const reads = counting(withImage);
+    const { port, states } = await runMany([withImage, other]);
+    expect(reads.reads).toBe(2);
+    expect(port.log).toContain("image");
+    expect(states.at(-1)).toMatchObject({ step: "done" });
+  });
+
+  test("a file that changed between the two reads fails by name", async () => {
+    const changing = await imageFile(true);
+    const original = changing.arrayBuffer.bind(changing);
+    const plain = await frottageFile(1).arrayBuffer();
+    let reads = 0;
+    changing.arrayBuffer = () => {
+      reads += 1;
+      return reads === 1 ? original() : Promise.resolve(plain);
+    };
+    const { states } = await runMany([changing, versionFile({ name: "ok", width: 100 })]);
+    const done = states.at(-1);
+    if (done?.step !== "done") throw new Error("not done");
+    expect(done.failures.map((f) => f.name)).toEqual(["img.frottage"]);
+    expect(done.versions.map((v) => v.name)).toEqual(["ok"]);
+  });
+
+  test("Cancel between files stops before the next begin", async () => {
+    const port = fakePort();
+    const controller = new AbortController();
+    const end = port.end.bind(port);
+    port.end = async () => {
+      const result = await end();
+      controller.abort();
+      return result;
+    };
+    const states: ImportState[] = [];
+    await runImports(
+      [
+        versionFile({ name: "a", width: 1512, label: "1512" }),
+        versionFile({ name: "b", width: 834, label: "834" }),
+      ],
+      port,
+      (s) => states.push(s),
+      undefined,
+      controller.signal
+    );
+    expect(port.log.filter((l) => l === "begin")).toHaveLength(1);
+    expect(port.log).not.toContain("cancel");
+    expect(states.at(-1)).toEqual({ step: "idle" });
+  });
+
+  test("file.index counts the versions through pass 2, of the dropped total", async () => {
+    const { states } = await runMany([
+      versionFile({ name: "a", width: 1512, label: "1512" }),
+      versionFile({ name: "b", width: 1000, label: "1000" }),
+      versionFile({ name: "c", width: 834, label: "834" }),
+    ]);
+    const withLayers = states.flatMap((s) => (s.step === "working" && s.total > 0 ? [s.file] : []));
+    const seen = [...new Map(withLayers.map((f) => [f.index, f])).values()];
+    expect(seen.map((f) => [f.index, f.total, f.name])).toEqual([
+      [1, 3, "a"],
+      [2, 3, "b"],
+      [3, 3, "c"],
+    ]);
+  });
+
+  test("options come from the first page's hostname, and only it is written back", async () => {
+    const port = fakePort();
+    port.prefs.set("options:one.example", { autoLayout: false });
+    port.prefs.set("options:two.example", { components: false });
+    const session: ReviewSession = {
+      forceReview: true,
+      decide: async () => ({
+        options: { ...DEFAULT_IMPORT_OPTIONS, htmlNames: true },
+        fonts: new Map(),
+      }),
+    };
+    const { states } = await runMany(
+      [
+        versionFile({ name: "a", url: "https://one.example/" }),
+        versionFile({ name: "b", url: "https://two.example/" }),
+      ],
+      port,
+      session
+    );
+    const review = states.find((s) => s.step === "review");
+    if (review?.step !== "review") throw new Error("no review");
+    expect(review.hostname).toBe("one.example");
+    expect(review.options.autoLayout).toBe(false);
+    expect(port.log).toContain("getPrefs options:one.example");
+    expect(port.log).not.toContain("getPrefs options:two.example");
+    expect(port.log.filter((l) => l.startsWith("setPrefs options:"))).toEqual([
+      "setPrefs options:one.example",
+    ]);
+    expect(port.prefs.get("options:two.example")).toEqual({ components: false });
+  });
+
+  test("the progress screen replaces the review before anything is saved or planned", async () => {
+    const port = fakePort();
+    const session: ReviewSession = {
+      forceReview: true,
+      decide: async () => ({
+        options: { ...DEFAULT_IMPORT_OPTIONS, htmlNames: true },
+        fonts: new Map(),
+      }),
+    };
+    const states: ImportState[] = [];
+    const logAt: string[][] = [];
+    await runImports(
+      [frottageFile(1), frottageFile(1, 1, "b.frottage")],
+      port,
+      (s) => {
+        states.push(s);
+        logAt.push([...port.log]);
+      },
+      session
+    );
+    const at = states.findIndex((s) => s.step === "review");
+    expect(states[at + 1]?.step).toBe("working");
+    expect(logAt[at + 1]?.some((l) => l.startsWith("setPrefs"))).toBe(false);
+  });
+
+  test("a drop where every file fails lists them under the same heading as a partial one", async () => {
+    const { states } = await runMany([
+      new File([new Uint8Array([1])], "a.txt"),
+      new File([new Uint8Array([2])], "b.txt"),
+    ]);
+    const message = (states.at(-1) as { message: string }).message;
+    expect(message.split("\n")[0]).toBe(failureHeading(2));
+    expect(failureHeading(1)).toBe("1 file could not be imported");
+  });
+});
+
+describe("mergeMissing", () => {
+  test("merges by family and keeps the first nearest", () => {
+    const into = new Map<string, string>();
+    mergeMissing(into, [{ family: "Brand", nearest: "Inter" }]);
+    mergeMissing(into, [
+      { family: "Brand", nearest: "Roboto" },
+      { family: "Other", nearest: "Roboto" },
+    ]);
+    expect([...into]).toEqual([
+      ["Brand", "Inter"],
+      ["Other", "Roboto"],
+    ]);
   });
 });

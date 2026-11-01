@@ -6,9 +6,14 @@ export type LoadedFile = { name: string; capture: Capture; assets: Map<string, U
 /** The files of one page, in the order they import: widest viewport first, then themes and languages. */
 export type VersionSet = { url: string; versions: LoadedFile[] };
 
-/** Pages compare by the stored, already cleaned URL, ignoring a trailing slash. */
+/** Pages compare by origin and path: no query, no fragment, no trailing slash. */
 export function pageKey(url: string): string {
-  return url.replace(/\/+$/, "");
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.host}${u.pathname}`.replace(/\/+$/, "");
+  } catch {
+    return url.replace(/\/+$/, "");
+  }
 }
 
 /**
