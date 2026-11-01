@@ -18,6 +18,9 @@ Capture a page with the Chrome extension, then open the `.frottage` file in the 
 
 - **Page capture** — layout, text, images, inline SVG, pseudo-elements, video posters and open or closed shadow DOM, with anything left out listed in the import report
 - **Native Figma layers** — auto layout with a per-frame fallback, real vectors, hyperlinks and readable layer names
+- **Components and hover variants** — repeated custom elements become components with instances, and their `:hover` rules become a Hover variant
+- **Paint and transforms** — gradients, filters, rotation and z-index order come through as native fills, effects and layers
+- **Image access** — images a site blocks from the page can be fetched by the extension, after you allow it with one click
 - **Styles and variables** — repeated values become text styles and colour variables, reused on later imports
 - **Import options** — remembered per site, with a replacement picked for each missing font
 - **Turborepo monorepo** with Bun package manager — fast installs, cached builds
