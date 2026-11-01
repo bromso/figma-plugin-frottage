@@ -1641,3 +1641,16 @@ test("the links fixture still parses, with its pseudo-elements", async ({ page }
   const c = await capture(page, "links.html");
   expect(parseCapture(c).ok).toBe(true);
 });
+
+// ---------- Custom properties
+
+test("only colours, var() chains and lengths are kept from :root", async ({ page }) => {
+  const c = await capture(page, "secrets.html");
+  expect(c.tokens.cssCustomProperties).toEqual({
+    "--brand": "#336699",
+    "--brand-alias": "var(--brand)",
+    "--brand-fallback": "var(--missing, #123456)",
+    "--brand-named": "rebeccapurple",
+    "--gap": "16px",
+  });
+});

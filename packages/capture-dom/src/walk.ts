@@ -21,6 +21,7 @@ import {
 } from "./pseudo";
 import {
   colorOf,
+  isTokenValue,
   px,
   readBorders,
   readFlow,
@@ -31,7 +32,7 @@ import {
   readTransform,
 } from "./styles";
 import { emptySvgReport, MAX_SVG_BYTES, SvgTooLargeError, serialiseSvg } from "./svg";
-import { cleanCss, cleanUrl, rememberUrl } from "./urls";
+import { cleanUrl, rememberUrl } from "./urls";
 
 export type CaptureEnv = {
   now: () => string;
@@ -1172,8 +1173,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         if (!(rule instanceof win.CSSStyleRule)) continue;
         if (!/(^|,)\s*(:root|html)\s*(,|$)/.test(rule.selectorText)) continue;
         for (const name of Array.from(rule.style)) {
-          if (name.startsWith("--")) {
-            cssCustomProperties[name] = cleanCss(rule.style.getPropertyValue(name).trim());
+          if (!name.startsWith("--")) continue;
+          const value = rule.style.getPropertyValue(name).trim();
+          if (isTokenValue(value, (v) => win.CSS.supports("color", v))) {
+            cssCustomProperties[name] = value;
           }
         }
       }

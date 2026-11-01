@@ -38,6 +38,25 @@ export function splitTop(value: string, separator: "," | " " = ","): string[] {
   return out;
 }
 
+const MAX_TOKEN_VALUE = 200;
+const LENGTH =
+  /^[+-]?(?:\d+\.?\d*|\.\d+)(?:px|r?em|ex|ch|lh|rlh|[sld]?v[wh]|[sld]?vmin|[sld]?vmax|cm|mm|q|in|pt|pc|%)$/i;
+const VAR_CHAIN = /^var\(\s*--[^\s,)]+\s*(?:,(.*))?\)$/is;
+
+/**
+ * Whether a custom property's value may be stored: a colour, a length, or a `var()` chain ending
+ * in one, within 200 characters. The rest (fonts, URLs, session tokens) is no use to Figma and may
+ * not be the page's to give. `isColor` is `CSS.supports("color", value)` in the page.
+ */
+export function isTokenValue(value: string, isColor: (value: string) => boolean): boolean {
+  const v = value.trim();
+  if (v === "" || v.length > MAX_TOKEN_VALUE) return false;
+  const chain = VAR_CHAIN.exec(v);
+  if (chain) return chain[1] === undefined || isTokenValue(chain[1], isColor);
+  if (/var\(/i.test(v)) return false;
+  return v === "0" || LENGTH.test(v) || isColor(v);
+}
+
 const DIRECTIONS: Record<string, number> = {
   "to top": 0,
   "to right": 90,
