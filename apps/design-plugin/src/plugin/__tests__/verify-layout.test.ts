@@ -56,6 +56,25 @@ const frame = (boxes: Box[], width = 200, height = 100) => ({
 const a = child([0, 0, 50, 20]);
 const b = child([60, 0, 50, 20]);
 
+describe("verifyFrame: rotation", () => {
+  test("verification skips a rotated child's size", () => {
+    const turned = child([60, 0, 50, 20], { rotated: true });
+    // The child reads back at a size the layout did not give it; a rotated one is not judged on it.
+    const read = frame([
+      [0, 0, 50, 20],
+      [60, 0, 70, 35],
+    ]);
+    expect(verifyFrame(read, expected(auto(), [a, turned]))).toEqual({ ok: true });
+  });
+  test("the same size on an unrotated child fails", () => {
+    const read = frame([
+      [0, 0, 50, 20],
+      [60, 0, 70, 35],
+    ]);
+    expect(verifyFrame(read, expected(auto(), [a, b])).ok).toBe(false);
+  });
+});
+
 describe("verifyFrame: arrangement", () => {
   test("a frame that matches the capture passes", () => {
     const r = verifyFrame(

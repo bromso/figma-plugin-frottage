@@ -20,6 +20,8 @@ export type ExpectedChild = {
   w: number;
   h: number;
   absolute: boolean;
+  /** Turned about its centre: its width and height are its own, not what the layout sees. */
+  rotated?: boolean;
   text: boolean;
   containsText: boolean;
   sizingH: Sizing;
@@ -67,8 +69,8 @@ const drift = (span: Span, free: boolean) => (free ? span.size - span.capSize : 
 function toItem(read: Read, c: ExpectedChild, horizontal: boolean): Item {
   const h: Span = { at: read.x, size: read.width, capAt: c.x, capSize: c.w };
   const v: Span = { at: read.y, size: read.height, capAt: c.y, capSize: c.h };
-  const freeH = c.text || (c.sizingH === "HUG" && c.containsText);
-  const freeV = c.text || (c.sizingV === "HUG" && c.containsText);
+  const freeH = c.text || c.rotated || (c.sizingH === "HUG" && c.containsText);
+  const freeV = c.text || c.rotated || (c.sizingV === "HUG" && c.containsText);
   const fillH = c.sizingH === "FILL";
   const fillV = c.sizingV === "FILL";
   return horizontal

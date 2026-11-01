@@ -1079,3 +1079,105 @@ describe("filters", () => {
     expect(notes[0]).toContain("sepia (1)");
   });
 });
+
+describe("transforms", () => {
+  type Matrix = NonNullable<ElementNode["transform"]>;
+  const rotate = (deg: number, scale = 1): Matrix => {
+    const t = (deg * Math.PI) / 180;
+    return [
+      scale * Math.cos(t),
+      scale * Math.sin(t),
+      -scale * Math.sin(t),
+      scale * Math.cos(t),
+      0,
+      0,
+    ];
+  };
+  const withTransform = (transform: Matrix | undefined) => {
+    const c = cap(el("root", [0, 0], [el("a", [10, 10], [], transform ? { transform } : {})]));
+    return { plan: mapCapture(c, inter), op: frame(c, "a") };
+  };
+
+  test("translate only sets no rotation", () => {
+    const { op, plan } = withTransform([1, 0, 0, 1, 40, 20]);
+    expect(op.rotation).toBeUndefined();
+    expect(plan.report.warnings).toEqual([]);
+  });
+  test("no transform sets no rotation", () => {
+    expect(withTransform(undefined).op.rotation).toBeUndefined();
+  });
+  test("rotate(30deg) gives rotation 30", () => {
+    const { op, plan } = withTransform(rotate(30));
+    expect(op.rotation).toBeCloseTo(30, 6);
+    expect(plan.report.warnings).toEqual([]);
+  });
+  test("a negative angle stays negative", () => {
+    expect(withTransform(rotate(-45)).op.rotation).toBeCloseTo(-45, 6);
+  });
+  test("the box keeps its unrotated size", () => {
+    const { op } = withTransform(rotate(30));
+    expect([op.x, op.y, op.w, op.h]).toEqual([10, 10, 100, 100]);
+  });
+  test("scale is left out and reported", () => {
+    const { op, plan } = withTransform([2, 0, 0, 2, 0, 0]);
+    expect(op.rotation).toBeUndefined();
+    expect([op.w, op.h]).toEqual([100, 100]);
+    expect(plan.report.warnings.join(" ")).toMatch(/scale.*1 layer\b/i);
+  });
+  test("a rotation with scale keeps the rotation", () => {
+    const { op, plan } = withTransform(rotate(90, 1.5));
+    expect(op.rotation).toBeCloseTo(90, 6);
+    expect(plan.report.warnings.join(" ")).toMatch(/scale/i);
+  });
+  test("skew keeps the rotation and is reported", () => {
+    // rotate(20deg) then skewX(15deg): the x axis keeps its 20 degrees, the y axis leans.
+    const r = (20 * Math.PI) / 180;
+    const k = Math.tan((15 * Math.PI) / 180);
+    const [a, b, c, d] = rotate(20);
+    const matrix: Matrix = [a, b, c + a * k, d + b * k, 0, 0];
+    const { op, plan } = withTransform(matrix);
+    expect(op.rotation).toBeCloseTo((r * 180) / Math.PI, 6);
+    expect(plan.report.warnings.join(" ")).toMatch(/skew/i);
+  });
+  test("a mirror is reported as scale and not rotated", () => {
+    const { op, plan } = withTransform([-1, 0, 0, 1, 0, 0]);
+    expect(op.rotation).toBeUndefined();
+    expect(plan.report.warnings.join(" ")).toMatch(/scale/i);
+  });
+  test("images and svg carry the rotation, text does not", () => {
+    const base = {
+      box: { x: 0, y: 0, w: 40, h: 20 },
+      paintOrder: 0,
+      visible: true,
+      opacity: 1,
+      blendMode: "normal",
+      semantic: { tag: "img" },
+      transform: rotate(10),
+    };
+    const c = cap(
+      el(
+        "root",
+        [0, 0],
+        [
+          {
+            ...base,
+            ...imageStyle,
+            id: "i",
+            kind: "image",
+            assetHash: "h",
+            fit: "cover",
+            objectPosition: "",
+          },
+          { ...base, id: "s", kind: "svg", markup: "<svg/>" },
+          textNode("t", { transform: rotate(10) }),
+        ]
+      )
+    );
+    const ops = mapCapture(c, inter).ops;
+    const rotation = (id: string) =>
+      (ops.find((o) => o.id === id) as { rotation?: number }).rotation;
+    expect(rotation("i")).toBeCloseTo(10, 6);
+    expect(rotation("s")).toBeCloseTo(10, 6);
+    expect(rotation("t")).toBeUndefined();
+  });
+});

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { FontRef, PlanOp, PlanRun } from "@repo/figma-mapper";
 import { createApplier } from "../applier";
-import { fakeFigma } from "./fake-figma";
+import { type FakeNode, fakeFigma } from "./fake-figma";
 
 const inter: FontRef = { family: "Inter", style: "Regular" };
 const bold: FontRef = { family: "Inter", style: "Bold" };
@@ -909,4 +909,57 @@ test("gradient fills become gradient paints with their transform and stops", asy
     { type: "SOLID", color: { r: 0, g: 1, b: 0 }, opacity: 1 },
     { type: "GRADIENT_LINEAR", gradientTransform: transform, gradientStops: stops },
   ]);
+});
+
+/** Where the middle of a node's box is in its parent, which a turn must not move. */
+function centreOf(n: FakeNode): [number, number] {
+  const [[a, b, tx], [c, d, ty]] = n.relativeTransform as [
+    [number, number, number],
+    [number, number, number],
+  ];
+  return [tx + (a * n.width) / 2 + (b * n.height) / 2, ty + (c * n.width) / 2 + (d * n.height) / 2];
+}
+
+test("a rotated frame turns about the centre the capture had", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), frame("b", "a", { x: 20, y: 30, w: 80, h: 40, rotation: 30 })]);
+  const r = await a.end();
+  const b = f.node(r.rootId).children[0];
+  const [cx, cy] = centreOf(b);
+  expect(cx).toBeCloseTo(20 + 40, 6);
+  expect(cy).toBeCloseTo(30 + 20, 6);
+  // Clockwise on screen: Figma's `rotation` reads back as the negative angle.
+  expect(b.rotation).toBeCloseTo(-30, 6);
+  expect([b.width, b.height]).toEqual([80, 40]);
+});
+
+test("a frame without rotation never has its transform written", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), frame("b", "a")]);
+  await a.end();
+  expect(f.count("relativeTransform")).toBe(0);
+});
+
+test("image, svg and missing-image layers rotate too", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.addImage("abc", png);
+  await a.applyBatch([
+    frame("a"),
+    { ...imageOp("abc"), x: 10, y: 10, w: 40, h: 20, rotation: 90 } as PlanOp,
+    svgOp("<svg/>", { rotation: -15 }),
+    { ...imageOp("gone"), id: "gone", rotation: 45 } as PlanOp,
+  ]);
+  const r = await a.end();
+  const [img, vec, gone] = f.node(r.rootId).children;
+  expect(img.rotation).toBeCloseTo(-90, 6);
+  expect(vec.rotation).toBeCloseTo(15, 6);
+  expect(gone.rotation).toBeCloseTo(-45, 6);
+  const [cx, cy] = centreOf(img);
+  expect([cx, cy].map((n) => Math.round(n * 1e6) / 1e6)).toEqual([30, 20]);
 });

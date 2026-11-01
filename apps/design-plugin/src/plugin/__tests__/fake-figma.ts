@@ -167,6 +167,28 @@ export function fakeFigma(opts: Options = {}) {
       model.reflow(node);
     };
     model.installChild(node);
+    // A node's x and y are the translation of its transform, as in Figma, so a turned node's
+    // x and y are where its unturned top-left corner went. `rotation` reads back as -θ.
+    let turn = 0;
+    Object.defineProperties(node, {
+      relativeTransform: {
+        configurable: true,
+        get: () => [
+          [Math.cos(turn), -Math.sin(turn), node.x],
+          [Math.sin(turn), Math.cos(turn), node.y],
+        ],
+        set: (m: number[][]) => {
+          calls.push("relativeTransform");
+          turn = Math.atan2(m[1]?.[0] as number, m[0]?.[0] as number);
+          node.x = m[0]?.[2] as number;
+          node.y = m[1]?.[2] as number;
+        },
+      },
+      rotation: {
+        configurable: true,
+        get: () => (-turn * 180) / Math.PI,
+      },
+    });
     tokens.installNode(node);
     if (type === "FRAME") {
       model.installFrame(node, () => calls.push("layoutMode"));

@@ -243,6 +243,7 @@ export function createLayoutTracker() {
           w: op.w,
           h: op.h,
           absolute: op.childLayout?.positioning === "ABSOLUTE",
+          rotated: "rotation" in op && Boolean(op.rotation),
           text: op.op === "text",
           containsText: false,
           sizingH,

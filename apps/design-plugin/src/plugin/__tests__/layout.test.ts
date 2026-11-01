@@ -1058,3 +1058,55 @@ describe("staying responsive", () => {
     expect(a.isActive()).toBe(true);
   });
 });
+
+describe("rotation", () => {
+  const turned = (op: PlanOp, rotation = 30): PlanOp => ({ ...op, rotation }) as PlanOp;
+
+  test("a row the mapper made NONE for a rotated child is reported as transformed-child", async () => {
+    const f = fakeFigma();
+    const r = await importOps(f, [
+      frameOp("row", null, [0, 0, 200, 40], { mode: "NONE", reason: "transformed-child" }, 2),
+      boxOp("a", "row", [0, 0, 50, 40], undefined),
+      turned(frameOp("b", "row", [60, 0, 50, 40], { mode: "NONE" }, 0)),
+    ]);
+    expect(r).toMatchObject({ failedOps: 0, fallbackFrames: 1, autoLayoutFrames: 0 });
+    expect(r.fallbackReasons).toEqual({ "transformed-child": 1 });
+    expect(f.frame("row").layoutMode).toBe("NONE");
+    expect(f.frame("row").children[1].rotation).toBeCloseTo(-30, 6);
+  });
+  test("a rotated absolute child stays in an auto layout parent and keeps its centre", async () => {
+    const f = fakeFigma();
+    const r = await importOps(f, [
+      frameOp("row", null, [0, 0, 200, 40], row(), 3),
+      boxOp("a", "row", [0, 0, 50, 40]),
+      boxOp("b", "row", [60, 0, 50, 40]),
+      turned(
+        frameOp(
+          "pin",
+          "row",
+          [150, 5, 20, 20],
+          { mode: "NONE" },
+          0,
+          flowChild({ positioning: "ABSOLUTE" })
+        ),
+        90
+      ),
+    ]);
+    expect(r).toMatchObject({ failedOps: 0, fallbackFrames: 0, autoLayoutFrames: 1 });
+    const pin = f.frame("row").children[2];
+    expect(pin.layoutPositioning).toBe("ABSOLUTE");
+    expect(pin.rotation).toBeCloseTo(-90, 6);
+    // Turned 90 degrees about (160, 15): the unturned corner lands at (170, 5).
+    expect(pin.x).toBeCloseTo(170, 6);
+    expect(pin.y).toBeCloseTo(5, 6);
+  });
+  test("a child that auto layout places is not rotated", async () => {
+    const f = fakeFigma();
+    await importOps(f, [
+      frameOp("row", null, [0, 0, 200, 40], row(), 2),
+      boxOp("a", "row", [0, 0, 50, 40]),
+      turned(frameOp("b", "row", [60, 0, 50, 40], { mode: "NONE" }, 0, flowChild())),
+    ]);
+    expect(f.count("relativeTransform")).toBe(0);
+  });
+});

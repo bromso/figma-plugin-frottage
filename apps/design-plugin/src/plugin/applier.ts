@@ -283,13 +283,36 @@ export function createApplier(api: PluginAPI) {
   const inLayout = (parent: FrameNode | null): parent is FrameNode =>
     parent !== null && parent.layoutMode !== "NONE";
 
-  /** Where the parent does not place the child, puts it at `x`, `y`. Needs the child in the parent. */
-  function place(node: Built, parent: FrameNode | null, op: PlanOp, x = op.x, y = op.y) {
+  /**
+   * Where the parent does not place the child, puts it at `x`, `y`. Needs the child in the parent.
+   * Returns whether it did: a child that auto layout places is never rotated.
+   */
+  function place(node: Built, parent: FrameNode | null, op: PlanOp, x = op.x, y = op.y): boolean {
     const child = inLayout(parent) ? op.childLayout : undefined;
-    if (child?.positioning === "AUTO") return;
+    if (child?.positioning === "AUTO") return false;
     if (child) node.layoutPositioning = "ABSOLUTE";
     node.x = x;
     node.y = y;
+    return true;
+  }
+
+  /**
+   * Turns a placed node about its centre, which stays where the capture had it. The mapper keeps a
+   * rotated child out of auto layout, so only absolute and unlaid children get here.
+   */
+  function rotate(node: SceneNode, op: PlanOp, placed: boolean) {
+    const degrees = "rotation" in op ? op.rotation : undefined;
+    if (!placed || !degrees) return;
+    const theta = (degrees * Math.PI) / 180;
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+    const { width, height } = node;
+    const cx = op.x + op.w / 2;
+    const cy = op.y + op.h / 2;
+    node.relativeTransform = [
+      [cos, -sin, cx - ((width / 2) * cos - (height / 2) * sin)],
+      [sin, cos, cy - ((width / 2) * sin + (height / 2) * cos)],
+    ];
   }
 
   function setTracks(tracks: GridTrackSize[], plan: PlanTrack[]) {
@@ -468,8 +491,9 @@ export function createApplier(api: PluginAPI) {
     node.effects = effects(op.effects);
     node.opacity = op.opacity;
     // The import root is placed by the applier, not at its captured offset.
-    if (parent) place(node, parent, op);
+    if (parent) rotate(node, op, place(node, parent, op));
     else place(node, null, op, rootX, 0);
+    if (op.layout.mode === "NONE" && op.layout.reason) tracker.countFallback(op.layout.reason);
     fillParent(node, parent, op);
     return node;
   }
@@ -550,7 +574,7 @@ export function createApplier(api: PluginAPI) {
           node.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 }, opacity: 0.08 }];
           setRadius(node, op.radius);
           node.opacity = op.opacity;
-          place(node, parent, op);
+          rotate(node, op, place(node, parent, op));
           return node;
         }
         const node = api.createRectangle();
@@ -562,7 +586,7 @@ export function createApplier(api: PluginAPI) {
         setRadius(node, op.radius);
         setStroke(node, op.strokes);
         node.opacity = op.opacity;
-        place(node, parent, op);
+        rotate(node, op, place(node, parent, op));
         return node;
       }
       case "svg": {
@@ -580,7 +604,7 @@ export function createApplier(api: PluginAPI) {
           const node = newFrame(parent, op, `SVG (not imported): ${op.name}`);
           node.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 }, opacity: 0.08 }];
           node.opacity = op.opacity;
-          place(node, parent, op);
+          rotate(node, op, place(node, parent, op));
           return node;
         }
         pending = imported;
@@ -599,7 +623,7 @@ export function createApplier(api: PluginAPI) {
         imported.clipsContent = op.clips !== false;
         imported.resize(clampSize(op.w), clampSize(op.h));
         imported.opacity = op.opacity;
-        place(imported, parent, op);
+        rotate(imported, op, place(imported, parent, op));
         return imported;
       }
       case "placeholder": {

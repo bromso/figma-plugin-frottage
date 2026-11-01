@@ -27,6 +27,7 @@ import type {
   PlanStroke,
 } from "./plan";
 import { extractTokens } from "./tokens";
+import { readMotion } from "./transform";
 
 type Fit = "FILL" | "FIT" | "CROP" | "TILE";
 type Color = { r: number; g: number; b: number; a: number };
@@ -385,6 +386,15 @@ export function mapCapture(
   };
 
   const ignoredFilters = new Map<string, number>();
+  let scaledLayers = 0;
+  let skewedLayers = 0;
+  /** The rotation to apply to a layer, counting the scale and skew of its transform that are left out. */
+  const rotationOf = (node: CaptureNode): { rotation: number } | Record<string, never> => {
+    const motion = readMotion(node.transform);
+    if (motion.scaled) scaledLayers++;
+    if (motion.skewed) skewedLayers++;
+    return motion.rotation === undefined ? {} : { rotation: motion.rotation };
+  };
 
   const font = (family: string, weight: number, style: string): FontRef => {
     const italic = /italic|oblique/i.test(style);
@@ -602,6 +612,7 @@ export function mapCapture(
           effects: hidden ? [] : mapEffects(s, ignoredFilters),
           clips: s.overflow.split(/\s+/).some((o) => o !== "" && o !== "visible"),
           layout,
+          ...rotationOf(node),
           childCount: 0, // known once the walk has seen what the children turn into
         };
         const children = visualOrder(node, node.children, layout);
@@ -647,6 +658,7 @@ export function mapCapture(
             opacity: node.opacity,
             radius: [...node.borderRadius] as [number, number, number, number],
             strokes: mapStroke(node.borders),
+            ...rotationOf(node),
           };
         } else {
           op = placeholder(
@@ -678,6 +690,7 @@ export function mapCapture(
                 clips:
                   node.overflow === undefined ||
                   node.overflow.split(/\s+/).some((o) => o !== "" && o !== "visible"),
+                ...rotationOf(node),
               };
         break;
       case "placeholder":
@@ -708,6 +721,16 @@ export function mapCapture(
   if (ignoredFilters.size > 0) {
     const names = [...ignoredFilters].map(([name, n]) => `${name} (${n})`).join(", ");
     report.warnings.push(`These filters have no Figma equivalent and were left out: ${names}.`);
+  }
+  if (scaledLayers > 0) {
+    warn(
+      `Scale in a CSS transform was left out on ${scaledLayers} layer${scaledLayers === 1 ? "" : "s"}.`
+    );
+  }
+  if (skewedLayers > 0) {
+    warn(
+      `Skew in a CSS transform was left out on ${skewedLayers} layer${skewedLayers === 1 ? "" : "s"}; any rotation was kept.`
+    );
   }
   return { ops, tokens, fonts: [...fonts.values()], assetHashes: [...hashes], report };
 }

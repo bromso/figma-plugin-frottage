@@ -65,7 +65,11 @@ export type PlanTrack = { type: "FIXED" | "FLEX" | "HUG"; value: number };
 
 /** Padding is [top, right, bottom, left], and takes in the CSS border, which Figma does not lay out. */
 export type PlanLayout =
-  | { mode: "NONE" }
+  | {
+      mode: "NONE";
+      /** Why a frame that would have had auto layout stays absolute; the applier counts it. */
+      reason?: "transformed-child";
+    }
   | {
       mode: "HORIZONTAL" | "VERTICAL";
       wrap: boolean;
@@ -113,6 +117,8 @@ export type PlanOp = (
       effects: PlanEffect[];
       clips: boolean;
       layout: PlanLayout;
+      /** Clockwise degrees as in CSS, about the box centre; absent when not rotated. */
+      rotation?: number;
       /** Direct child ops that follow, so the applier knows when this frame is complete. */
       childCount: number;
     }
@@ -151,6 +157,8 @@ export type PlanOp = (
       /** [topLeft, topRight, bottomRight, bottomLeft]. */
       radius: [number, number, number, number];
       strokes: PlanStroke | null;
+      /** Clockwise degrees as in CSS, about the box centre; absent when not rotated. */
+      rotation?: number;
     }
   | {
       op: "svg";
@@ -166,6 +174,8 @@ export type PlanOp = (
       opacity: number;
       /** Whether the frame clips its content, as browsers clip inline SVG. Absent means yes. */
       clips?: boolean;
+      /** Clockwise degrees as in CSS, about the box centre; absent when not rotated. */
+      rotation?: number;
     }
   | {
       op: "placeholder";

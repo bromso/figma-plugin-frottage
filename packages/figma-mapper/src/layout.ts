@@ -1,5 +1,6 @@
 import type { CaptureNode, ElementNode, TextNode } from "@repo/capture-schema";
 import type { PlanChildLayout, PlanLayout, PlanTrack } from "./plan";
+import { readMotion } from "./transform";
 
 /**
  * Proposes Figma auto layout from captured layout: CSS says what was meant, measured boxes say what
@@ -866,10 +867,28 @@ export type LayoutContext = {
   parent?: PlanLayout;
 };
 
+/** Whether the applier will rotate this node, which CSS leaves in its flow slot and Figma would not. */
+function rotates(node: CaptureNode): boolean {
+  const target = collapsed(node);
+  return target.kind !== "text" && readMotion(target.transform).rotation !== undefined;
+}
+
 export function inferLayout(
   node: ElementNode,
   children: CaptureNode[],
   context: LayoutContext = {}
+): PlanLayout {
+  const layout = inferUnrotated(node, children, context);
+  if (layout.mode === "NONE") return layout;
+  // CSS keeps a rotated item's unrotated slot, so the siblings do not move; Figma's would.
+  const flow = children.filter((c) => renders(c) && !isAbsolute(c));
+  return flow.some(rotates) ? { mode: "NONE", reason: "transformed-child" } : layout;
+}
+
+function inferUnrotated(
+  node: ElementNode,
+  children: CaptureNode[],
+  context: LayoutContext
 ): PlanLayout {
   const shown = children.filter(renders);
   const flow = shown.filter((c) => !isAbsolute(c));
