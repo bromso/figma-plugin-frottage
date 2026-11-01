@@ -109,7 +109,13 @@ function parseStops(args: string[]): BackgroundImage["stops"] {
   return stops.map((s) => ({ color: s.color, position: s.position ?? 0 }));
 }
 
-export function parseBackgroundImages(cs: CSSStyleDeclaration): BackgroundImage[] {
+/** Matches `MAX_GRADIENT_STOPS` in @repo/capture-schema; kept local so the walker stays type-only. */
+const MAX_STOPS = 256;
+
+export function parseBackgroundImages(
+  cs: CSSStyleDeclaration,
+  onStopsCut?: () => void
+): BackgroundImage[] {
   const value = cs.backgroundImage;
   if (!value || value === "none") return [];
   const sizes = splitTop(cs.backgroundSize);
@@ -151,7 +157,9 @@ export function parseBackgroundImages(cs: CSSStyleDeclaration): BackgroundImage[
       } else if (!parseComputedColor(splitTop(first, " ")[0] ?? "")) {
         colorArgs = args.slice(1); // radial shape and position
       }
-      const stops = parseStops(colorArgs);
+      const parsed = parseStops(colorArgs);
+      const stops = parsed?.slice(0, MAX_STOPS);
+      if (parsed && parsed.length > MAX_STOPS) onStopsCut?.();
       out.push({
         type,
         ...base,
@@ -266,12 +274,17 @@ export const readBorders = (cs: CSSStyleDeclaration): Style["borders"] => ({
   left: border(cs, "Left"),
 });
 
-export function readStyle(cs: CSSStyleDeclaration, w: number, h: number): Style {
+export function readStyle(
+  cs: CSSStyleDeclaration,
+  w: number,
+  h: number,
+  onStopsCut?: () => void
+): Style {
   const overflowX = cs.overflowX;
   const overflowY = cs.overflowY;
   const style: Style = {
     backgroundColor: colorOf(cs.backgroundColor),
-    backgroundImages: parseBackgroundImages(cs),
+    backgroundImages: parseBackgroundImages(cs, onStopsCut),
     borders: readBorders(cs),
     borderRadius: readRadii(cs, w, h),
     boxShadows: parseBoxShadows(cs.boxShadow),

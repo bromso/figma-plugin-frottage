@@ -2222,3 +2222,44 @@ test.describe("hover on what merges into text", () => {
     expect(elements(c, "x-tag")).toHaveLength(0);
   });
 });
+
+test("a chain of collapsible wrappers stops at the depth limit", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/layout.html");
+  await page.evaluate(() => {
+    let at: HTMLElement = document.body;
+    for (let i = 0; i < 1000; i++) {
+      const next = document.createElement("div");
+      at.appendChild(next);
+      at = next;
+    }
+    at.textContent = "Bottom";
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x", { collapseWrappers: true });
+  expect(c.warnings.some((w) => w.code === "depth-limit")).toBe(true);
+  expect(parseCapture(c).ok).toBe(true);
+});
+
+test("a gradient past the stop limit is cut there and still imports", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/layout.html");
+  await page.evaluate(() => {
+    const stops = Array.from({ length: 300 }, (_, i) => (i % 2 ? "red" : "blue")).join(",");
+    const box = document.createElement("div");
+    box.id = "zq-stops";
+    box.style.cssText = `width:50px;height:50px;background:linear-gradient(90deg,${stops})`;
+    document.body.appendChild(box);
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  let held = 0;
+  each(c, (n) => {
+    if (n.kind === "element" && n.semantic.id === "zq-stops") {
+      held = n.style.backgroundImages[0]?.stops?.length ?? 0;
+    }
+  });
+  expect(held).toBe(256);
+  expect(parseCapture(c).ok).toBe(true);
+  expect(c.warnings.some((w) => w.code === "gradient-stops")).toBe(true);
+});

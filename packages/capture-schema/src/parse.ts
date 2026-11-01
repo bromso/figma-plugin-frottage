@@ -1,4 +1,10 @@
-import { type Capture, type CaptureNode, parts, SCHEMA_VERSION } from "./schema";
+import {
+  type Capture,
+  type CaptureNode,
+  MAX_GRADIENT_STOPS,
+  parts,
+  SCHEMA_VERSION,
+} from "./schema";
 
 export const LIMITS = {
   totalBytes: 268_435_456,
@@ -35,8 +41,14 @@ function check<T>(schema: Schema, input: unknown, where: string): T {
   throw new Reject("invalid", `${path}: ${issue?.message ?? "invalid"}`.slice(0, 300));
 }
 
-function checkList<T>(schema: Schema, input: unknown, where: string): T[] {
+function checkList<T>(
+  schema: Schema,
+  input: unknown,
+  where: string,
+  max = Number.POSITIVE_INFINITY
+): T[] {
   if (!Array.isArray(input)) throw new Reject("invalid", `${where}: expected an array`);
+  if (input.length > max) throw new Reject("invalid", `${where}: more than ${max} items`);
   const out: T[] = [];
   for (let i = 0; i < input.length; i++) out.push(check<T>(schema, input[i], `${where}.${i}`));
   return out;
@@ -126,7 +138,9 @@ function checkBackgrounds(input: unknown, where: string): unknown[] {
     const at = `${where}.${i}`;
     if (!isRecord(item)) throw new Reject("invalid", `${at}: expected an object`);
     const out = check<Record<string, unknown>>(parts.backgroundImage, rest(item, "stops"), at);
-    if (item.stops !== undefined) out.stops = checkList(parts.stop, item.stops, `${at}.stops`);
+    if (item.stops !== undefined) {
+      out.stops = checkList(parts.stop, item.stops, `${at}.stops`, MAX_GRADIENT_STOPS);
+    }
     return out;
   });
 }

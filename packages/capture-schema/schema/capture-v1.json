@@ -340,6 +340,7 @@
                         "type": "string"
                       },
                       "stops": {
+                        "maxItems": 256,
                         "type": "array",
                         "items": {
                           "type": "object",

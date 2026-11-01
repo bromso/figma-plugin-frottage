@@ -26,9 +26,15 @@ function decorationOf(css: string): PlanRun["decoration"] {
   return "NONE";
 }
 
+const hasBorder = ({ borders }: ElementNode["style"]) =>
+  Object.values(borders).some((b) => b.width > 0 && !/^(none|hidden)$/.test(b.style));
+
+const cssRgb = ({ r, g, b }: Color) =>
+  `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+
 const SHADOWS = new Set<PlanEffect["type"]>(["DROP_SHADOW", "INNER_SHADOW"]);
 
-function boxPatch(node: ElementNode, hover: Hover, op: PlanOp): HoverPatch {
+function boxPatch(node: ElementNode, hover: Hover, op: PlanOp, onLost: () => void): HoverPatch {
   const patch: HoverPatch = {};
   const { style } = node;
   if (hover.opacity !== undefined && hover.opacity !== node.opacity) patch.opacity = hover.opacity;
@@ -47,6 +53,9 @@ function boxPatch(node: ElementNode, hover: Hover, op: PlanOp): HoverPatch {
   const edge = hover.borderColor;
   if (edge && stroke && !sameColor(edge, { ...stroke.color, a: stroke.opacity })) {
     patch.strokeColor = edge;
+  } else if (edge && !stroke && hasBorder(style)) {
+    // A border that paints nothing at rest has no stroke for a patch to recolour.
+    onLost();
   }
 
   if (hover.boxShadows) {
@@ -89,8 +98,13 @@ export function inheritedRanges(
  * What `:hover` changes, per op id, compared with the look the plan already has. A colour or
  * decoration on a hovered element reaches the text below it, until a deeper element sets its own.
  * Hovering something inside also hovers what holds it, so what a holder sets is kept below.
+ * `onLost` hears of each layer a hover changes that no patch can reach.
  */
-export function hoverPatches(root: CaptureNode, ops: PlanOp[]): Map<string, HoverPatch> {
+export function hoverPatches(
+  root: CaptureNode,
+  ops: PlanOp[],
+  onLost: () => void = () => {}
+): Map<string, HoverPatch> {
   const byId = new Map(ops.map((op) => [op.id, op]));
   const out = new Map<string, HoverPatch>();
   const stack: { node: CaptureNode; inherited: Inherited }[] = [{ node: root, inherited: {} }];
@@ -106,7 +120,7 @@ export function hoverPatches(root: CaptureNode, ops: PlanOp[]): Map<string, Hove
           resting: hover.color ? hover.restingColor : inherited.resting,
           decoration: hover.decoration ?? inherited.decoration,
         };
-        const patch = op ? boxPatch(node, hover, op) : {};
+        const patch = op ? boxPatch(node, hover, op, onLost) : {};
         if (Object.keys(patch).length > 0) out.set(node.id, patch);
       }
       for (const child of node.children) stack.push({ node: child, inherited });
@@ -128,6 +142,10 @@ export function hoverPatches(root: CaptureNode, ops: PlanOp[]): Map<string, Hove
         }
       }
       if (Object.keys(patch).length > 0) out.set(node.id, patch);
+    } else if (node.kind === "svg" && inherited.color) {
+      // Colours are written out in the markup, so a vector drawn in the resting colour keeps it.
+      const { resting } = inherited;
+      if (!resting || node.markup.includes(cssRgb(resting))) onLost();
     }
   }
   return out;

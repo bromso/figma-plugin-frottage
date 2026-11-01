@@ -23,6 +23,8 @@ export type PseudoCtx = {
   /** The next node id, or null once the node budget is spent. */
   nextId: () => number | null;
   warn: (code: string, nodeId: string | undefined, detail: string) => void;
+  /** Reports a gradient cut off at the limit on colour stops. */
+  warnStops: (nodeId: string) => void;
   /** Page-space border box of an element. */
   pageBox: (el: Element) => Box;
   scroll: { x: number; y: number };
@@ -324,7 +326,7 @@ export function pseudoNodes(
     blendMode: s.mixBlendMode,
     ...(transform ? { transform } : {}),
     semantic: { tag },
-    style: readStyle(s, box.w, box.h),
+    style: readStyle(s, box.w, box.h, () => ctx.warnStops(id)),
     layout: readLayout(s),
     children: [],
   };

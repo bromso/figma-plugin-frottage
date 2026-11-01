@@ -241,6 +241,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     cs: (el, pseudo) => win.getComputedStyle(el, pseudo),
     nextId: () => nextId(),
     warn: (code, nodeId, detail) => warn(code, nodeId, detail),
+    warnStops: (nodeId) => warnStops(nodeId),
     pageBox: (el) => pageBox(el.getBoundingClientRect()),
     scroll: { x: scrollX, y: scrollY },
     viewport: { w: root.clientWidth, h: root.clientHeight },
@@ -1006,6 +1007,9 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     else warnings.set(code, { first: { code, ...(nodeId ? { nodeId } : {}), detail }, count: 1 });
   }
 
+  const warnStops = (nodeId: string) =>
+    warn("gradient-stops", nodeId, "A gradient was cut off at the limit on colour stops");
+
   /** `warn`, counted `count` times. */
   function warnEach(count: number, code: string, nodeId: string, detail: string) {
     for (let i = 0; i < count; i++) warn(code, nodeId, detail);
@@ -1190,8 +1194,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     }
 
     if (env.collapseWrappers) {
-      const only = wrappedChild(el, s);
-      if (only) return visit(only, depth, false, inherited);
+      const only = depth < MAX_DEPTH ? wrappedChild(el, s) : null;
+      if (only) return visit(only, depth + 1, false, inherited);
     }
 
     const box = boxOf(el, s);
@@ -1305,7 +1309,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const element: ElementNode = {
       ...common,
       kind: "element",
-      style: readStyle(s, box.w, box.h),
+      style: readStyle(s, box.w, box.h, () => warnStops(id)),
       layout: layoutOf(el, s),
       children: [],
     };

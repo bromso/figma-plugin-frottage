@@ -50,6 +50,9 @@ function parseV6(text: string): number[] | null {
   return fill < 1 ? null : [...head, ...new Array<number>(fill).fill(0), ...tail];
 }
 
+/** Names reserved or customary for private networks. */
+const PRIVATE_NAMES = /(?:^|\.)(?:localhost|local|internal|lan|home\.arpa|intranet)$/;
+
 /**
  * Whether a `URL.hostname` names a loopback, private, link-local or similar address. `new URL`
  * has already turned decimal and hex IPv4 (`2130706433`, `0x7f.1`) into dotted form and an
@@ -60,10 +63,11 @@ export function isPrivateHost(hostname: string): boolean {
     .toLowerCase()
     .replace(/^\[|\]$/g, "")
     .replace(/\.$/, "");
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (PRIVATE_NAMES.test(host)) return true;
   const dotted = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(host);
   if (dotted) return v4(Number(dotted[1]), Number(dotted[2]));
-  if (!host.includes(":")) return false;
+  // A name with no dot only resolves on a local network, like `intranet` or `nas`.
+  if (!host.includes(":")) return !host.includes(".");
   const g = parseV6(host);
   if (!g) return true;
   const g0 = g[0] ?? 0;

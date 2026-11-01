@@ -1146,6 +1146,55 @@ describe("hover patches", () => {
     });
   });
 
+  describe("hover that has no place in the plan", () => {
+    const lost = (p: LayerPlan) => p.report.warnings.filter((w) => /no place in Figma/.test(w));
+    const clearEdge = { width: 1, color: { ...blue, a: 0 }, style: "solid" };
+    const bordered = (id: string, hover?: ElementNode["hover"]) => {
+      const node = button(id, hover);
+      const borders = { top: clearEdge, right: clearEdge, bottom: clearEdge, left: clearEdge };
+      return { ...node, style: { ...node.style, borders } };
+    };
+
+    test("a border colour on a border that paints nothing at rest is counted", () => {
+      const p = plan([bordered("a", { borderColor: blue }), bordered("b")], hoverOn);
+      expect(lost(p)).toEqual([
+        "Hover changes on 1 layer have no place in Figma and were left out.",
+      ]);
+    });
+    test("a border colour with no border at all changes nothing, so it is not counted", () => {
+      const p = plan([button("a", { borderColor: blue }), button("b")], hoverOn);
+      expect(lost(p)).toEqual([]);
+    });
+    test("a text colour on an SVG drawn in that colour is counted", () => {
+      const drawn = (id: string, colour: string, hover?: ElementNode["hover"]) =>
+        painted(
+          tagged("x-btn", id, [svg(`${id}s`, `<svg><path fill="${colour}"/></svg>`)], {
+            ...(hover ? { hover } : {}),
+          }),
+          red
+        );
+      const onHover = { color: blue, restingColor: black };
+      const inherits = plan(
+        [drawn("a", "rgb(0, 0, 0)", onHover), drawn("b", "rgb(0, 0, 0)")],
+        hoverOn
+      );
+      expect(lost(inherits)).toHaveLength(1);
+      const own = plan([drawn("a", "rgb(9, 9, 9)", onHover), drawn("b", "rgb(9, 9, 9)")], hoverOn);
+      expect(lost(own)).toEqual([]);
+    });
+    test("a wrapper with a hover does not collapse, so its background hover survives", () => {
+      const card = (id: string, hover?: ElementNode["hover"]) => {
+        const inner = painted(tagged("span", `${id}-in`, [label(`${id}-t`, "Buy")]), red);
+        const wrap = tagged("div", `${id}-w`, [inner], hover ? { hover } : {});
+        return painted(tagged("x-btn", id, [wrap]), red);
+      };
+      const on = { backgroundColor: blue };
+      const p = plan([card("a", on), card("b", on)], hoverOn);
+      expect(hoverOf(p)?.[0]).toMatchObject({ path: [0] });
+      expect(lost(p)).toEqual([]);
+    });
+  });
+
   test("patches are cut off at 200 a component and reported once", () => {
     const row = (id: string, hover: boolean) =>
       painted(

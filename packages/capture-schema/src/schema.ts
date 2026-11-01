@@ -26,11 +26,14 @@ const borders = z.object({
 
 const stop = z.object({ color, position: z.number() });
 
+/** Past this a file is refused; the walker cuts a gradient here, so its captures still import. */
+export const MAX_GRADIENT_STOPS = 256;
+
 const backgroundImage = z.object({
   type: z.enum(["linear-gradient", "radial-gradient", "conic-gradient", "image"]),
   css: z.string(),
   assetHash: z.string().optional(),
-  stops: z.array(stop).optional(),
+  stops: z.array(stop).max(MAX_GRADIENT_STOPS).optional(),
   angle: z.number().optional(),
   size: z.string().optional(),
   position: z.string().optional(),

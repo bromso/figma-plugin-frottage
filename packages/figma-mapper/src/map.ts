@@ -126,6 +126,9 @@ function angularTransform(angle: number): Transform {
 
 type Stop = GradientPaint["stops"][number];
 
+/** The most stops a capture may hold, for captures that were not parsed. */
+const MAX_STOPS = 256;
+
 /** Whether a `background-size` makes the layer smaller than the box, so it is a pattern. */
 function isPattern(size: string | undefined, w: number, h: number): boolean {
   const tokens = (size ?? "").trim().split(/\s+/).filter(Boolean);
@@ -188,7 +191,11 @@ function mapGradient(
     warn(`A ${kind} sized as a repeating pattern (background-size) was left out.`);
     return null;
   }
+  if (img.stops.length > MAX_STOPS) {
+    warn(`A ${kind} had more than ${MAX_STOPS} colour stops; the rest were left out.`);
+  }
   let stops: Stop[] = img.stops
+    .slice(0, MAX_STOPS)
     .map((s) => ({
       position: s.position,
       color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a },
@@ -569,6 +576,9 @@ export function mapCapture(
     peers: CaptureNode[]
   ): PlanOp => {
     report.placeholders++;
+    if (readMotion(node.transform).rotation !== undefined) {
+      warn("A rotation on a placeholder was left out.");
+    }
     return {
       op: "placeholder",
       id: node.id,
@@ -784,10 +794,15 @@ export function mapCapture(
   }
   let finished = ops;
   if (options.components) {
+    let lostHovers = 0;
     const found = extractComponents(
       ops,
       tagsOf(pageRoot),
-      options.hoverComponents ? hoverPatches(pageRoot, ops) : undefined
+      options.hoverComponents
+        ? hoverPatches(pageRoot, ops, () => {
+            lostHovers++;
+          })
+        : undefined
     );
     finished = found.ops;
     report.components = found.components;
@@ -795,6 +810,11 @@ export function mapCapture(
     if (found.hoverCapped) {
       warn(
         `Hover changes on ${found.hoverCapped} component${found.hoverCapped === 1 ? "" : "s"} were cut off at ${MAX_HOVER_PATCHES} layers each.`
+      );
+    }
+    if (lostHovers > 0) {
+      warn(
+        `Hover changes on ${lostHovers} layer${lostHovers === 1 ? "" : "s"} have no place in Figma and were left out.`
       );
     }
     if (found.hoverSwapped) {

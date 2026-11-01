@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ElementNode } from "@repo/capture-schema";
+import type { CaptureNode, ElementNode } from "@repo/capture-schema";
 import {
   batchOps,
   DEFAULT_IMPORT_OPTIONS,
@@ -1028,6 +1028,14 @@ describe("gradients", () => {
     expect(text.runs[0]).toMatchObject({ color: { r: 1, g: 0, b: 0 }, opacity: 1 });
     expect(plan.report.warnings.filter((w) => /clip/i.test(w))).toHaveLength(1);
   });
+  test("a longer list of stops than a capture may hold loses the excess, with a warning", () => {
+    const stops = Array.from({ length: 300 }, (_, i) => ({ color: red, position: i / 299 }));
+    const { fills, plan } = planWith([
+      { type: "linear-gradient", css: "linear-gradient()", angle: 90, stops },
+    ]);
+    expect((fills[0] as Grad).stops).toHaveLength(256);
+    expect(plan.report.warnings.join(" ")).toMatch(/more than 256 colour stops/);
+  });
   describe("transparent text clipped to a background", () => {
     type Background = ElementNode["style"]["backgroundImages"][number];
     const clear = { r: 0, g: 0, b: 0, a: 0 };
@@ -1537,5 +1545,44 @@ describe("content of rotated frames", () => {
   test("a page without rotation is untouched", () => {
     const c = cap(el("root", [0, 0], [el("a", [10, 10])]));
     expect(ops(c).find((o) => o.id === "a")).toMatchObject({ x: 10, y: 10, w: 100, h: 100 });
+  });
+});
+
+describe("a rotated layer with nothing to rotate", () => {
+  const quarter: ElementNode["transform"] = [0, 1, -1, 0, 0, 0];
+  const warningsFor = (child: CaptureNode) =>
+    mapCapture(cap(el("root", [0, 0], [child])), inter).report.warnings.filter((w) =>
+      /rotation/i.test(w)
+    );
+  const blocked: CaptureNode = {
+    id: "p",
+    kind: "placeholder",
+    box: { x: 0, y: 0, w: 10, h: 10 },
+    paintOrder: 1,
+    visible: true,
+    opacity: 1,
+    blendMode: "normal",
+    semantic: { tag: "img" },
+    placeholderKind: "blocked-image",
+  };
+
+  test("a placeholder says its rotation was left out, once", () => {
+    expect(warningsFor({ ...blocked, transform: quarter })).toEqual([
+      "A rotation on a placeholder was left out.",
+    ]);
+  });
+  test("an image with no asset says so too", () => {
+    const image = {
+      ...blocked,
+      kind: "image",
+      transform: quarter,
+      fit: "fill",
+      objectPosition: "50% 50%",
+      ...imageStyle,
+    } as CaptureNode;
+    expect(warningsFor(image)).toHaveLength(1);
+  });
+  test("a placeholder with no rotation says nothing", () => {
+    expect(warningsFor(blocked)).toEqual([]);
   });
 });

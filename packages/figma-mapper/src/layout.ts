@@ -1011,6 +1011,8 @@ export function repeatedItems(children: CaptureNode[]): Set<string> {
 function wrappedChild(node: ElementNode): CaptureNode | null {
   // A custom element carries meaning Stage 2 needs, even when it paints nothing.
   if (node.semantic.tag.includes("-")) return null;
+  // A hover needs a layer of its own to land on.
+  if (node.hover) return null;
   if (!node.visible || node.opacity < 1 || node.blendMode !== "normal") return null;
   if (node.transform || isPainted(node)) return null;
   const shown = node.children.filter(renders);

@@ -111,17 +111,17 @@ describe("readImage", () => {
 
   test("caps one image, whatever Content-Length says", async () => {
     const big = fakeFetch(new Uint8Array(100), { pieces: 10, headers: { "content-length": "5" } });
-    await expect(readImage("https://x/a", { fetch: big.impl, maxBytes: 50 })).rejects.toThrow(
-      "larger than 32 MiB"
-    );
+    await expect(
+      readImage("https://x.example/a", { fetch: big.impl, maxBytes: 50 })
+    ).rejects.toThrow("larger than 32 MiB");
     const declared = fakeFetch(new Uint8Array(10), { headers: { "content-length": "999" } });
-    await expect(readImage("https://x/a", { fetch: declared.impl, maxBytes: 50 })).rejects.toThrow(
-      "larger than 32 MiB"
-    );
+    await expect(
+      readImage("https://x.example/a", { fetch: declared.impl, maxBytes: 50 })
+    ).rejects.toThrow("larger than 32 MiB");
     const ok = fakeFetch(new Uint8Array(50), { pieces: 5 });
-    expect((await readImage("https://x/a", { fetch: ok.impl, maxBytes: 50 })).bytes).toHaveLength(
-      50
-    );
+    expect(
+      (await readImage("https://x.example/a", { fetch: ok.impl, maxBytes: 50 })).bytes
+    ).toHaveLength(50);
   });
 
   test("an error message never carries the URL", async () => {
@@ -175,9 +175,9 @@ describe("worker and page over a port", () => {
       p.workerPort,
       deps(f, async () => false)
     );
-    await expect(fetchViaWorker("https://x/a.png", undefined, () => p.pagePort)).rejects.toThrow(
-      "not allowed"
-    );
+    await expect(
+      fetchViaWorker("https://x.example/a.png", undefined, () => p.pagePort)
+    ).rejects.toThrow("not allowed");
     expect(f.calls).toHaveLength(0);
   });
 
@@ -208,7 +208,7 @@ describe("worker and page over a port", () => {
     const p = pair(fromTab);
     serveImagePort(p.workerPort, { ...deps(fakeFetch(new Uint8Array())), fetch: hang });
     const abort = new AbortController();
-    const result = fetchViaWorker("https://x/a.png", abort.signal, () => p.pagePort);
+    const result = fetchViaWorker("https://x.example/a.png", abort.signal, () => p.pagePort);
     await tick();
     abort.abort();
     await expect(result).rejects.toThrow("Aborted");
@@ -218,7 +218,7 @@ describe("worker and page over a port", () => {
 
   test("a worker that goes away fails the fetch", async () => {
     const p = pair(fromTab);
-    const result = fetchViaWorker("https://x/a.png", undefined, () => p.pagePort);
+    const result = fetchViaWorker("https://x.example/a.png", undefined, () => p.pagePort);
     p.workerPort.disconnect();
     await expect(result).rejects.toThrow();
   });
@@ -228,6 +228,12 @@ describe("private addresses", () => {
   const blocked = [
     "http://localhost/a.png",
     "http://app.localhost/a.png",
+    "https://cdn.internal/a.png",
+    "https://nas.lan/a.png",
+    "https://printer.home.arpa/a.png",
+    "https://wiki.intranet/a.png",
+    "http://intranet/a.png",
+    "http://nas/a.png",
     "http://printer.local/a.png",
     "http://127.0.0.1/a.png",
     "http://127.255.0.9/a.png",
@@ -257,6 +263,8 @@ describe("private addresses", () => {
     "http://[2001:db8::1]/a.png",
     "http://[::ffff:8.8.8.8]/a.png",
     "https://localhost.example.com/a.png",
+    "https://internal.example.com/a.png",
+    "https://lan.example/a.png",
   ];
 
   test.each(blocked)("%s is private", (url) => {
@@ -385,7 +393,7 @@ describe("only images are returned", () => {
       hasAccess: async () => true,
       runIsLive: async () => true,
     });
-    await fetchViaWorker("https://x/a", undefined, () => p.pagePort).catch(() => {});
+    await fetchViaWorker("https://x.example/a", undefined, () => p.pagePort).catch(() => {});
     expect(JSON.stringify(seen)).not.toContain("secret");
     expect(seen).toEqual([{ type: "image-error", message: "Image access is not allowed" }]);
   });
@@ -411,7 +419,7 @@ describe("the run behind a port", () => {
         return true;
       })
     );
-    await fetchViaWorker("https://x/a.png", undefined, () => p.pagePort);
+    await fetchViaWorker("https://x.example/a.png", undefined, () => p.pagePort);
     expect(asked).toEqual(["run-42"]);
   });
 
@@ -422,9 +430,9 @@ describe("the run behind a port", () => {
       p.workerPort,
       base(f, async () => false)
     );
-    await expect(fetchViaWorker("https://x/a.png", undefined, () => p.pagePort)).rejects.toThrow(
-      "not allowed"
-    );
+    await expect(
+      fetchViaWorker("https://x.example/a.png", undefined, () => p.pagePort)
+    ).rejects.toThrow("not allowed");
     expect(f.calls).toHaveLength(0);
   });
 
@@ -455,17 +463,17 @@ describe("port protocol guards", () => {
   test("a port serves one request", async () => {
     const f = fakeFetch(new Uint8Array([1]));
     const p = serve(f);
-    p.pagePort.postMessage({ type: "fetch-image", url: "https://x/a.png" });
-    p.pagePort.postMessage({ type: "fetch-image", url: "https://x/b.png" });
+    p.pagePort.postMessage({ type: "fetch-image", url: "https://x.example/a.png" });
+    p.pagePort.postMessage({ type: "fetch-image", url: "https://x.example/b.png" });
     await tick();
-    expect(f.calls.map((c) => c.url)).toEqual(["https://x/a.png"]);
+    expect(f.calls.map((c) => c.url)).toEqual(["https://x.example/a.png"]);
   });
 
   test("a message of another type, or without a string URL, is ignored", async () => {
     const f = fakeFetch(new Uint8Array([1]));
     const p = serve(f);
     for (const m of [
-      { type: "other", url: "https://x/a" },
+      { type: "other", url: "https://x.example/a" },
       { type: "fetch-image" },
       { type: "fetch-image", url: 5 },
       null,
@@ -483,7 +491,7 @@ describe("port protocol guards", () => {
     const p = serve(f);
     // The worker's cap is not lowered here; the page's own cap is.
     await expect(
-      fetchViaWorker("https://x/a.png", undefined, () => p.pagePort, 10)
+      fetchViaWorker("https://x.example/a.png", undefined, () => p.pagePort, 10)
     ).rejects.toThrow("larger than 32 MiB");
     expect(p.isClosed()).toBe(true);
   });
@@ -512,27 +520,27 @@ describe("makeFetchBytes", () => {
 
   test("a page success never reaches the worker", async () => {
     const t = setup({ pageFetch: async () => new Blob([new Uint8Array([1])]), imageAccess: true });
-    expect((await t.f("https://x/a.png")).size).toBe(1);
+    expect((await t.f("https://x.example/a.png")).size).toBe(1);
     expect(t.urls).toEqual([]);
   });
 
   test("a page failure without access stays a failure", async () => {
     const t = setup({ imageAccess: false });
-    await expect(t.f("https://x/a.png")).rejects.toThrow("Failed to fetch");
+    await expect(t.f("https://x.example/a.png")).rejects.toThrow("Failed to fetch");
     expect(t.urls).toEqual([]);
   });
 
   test("a page failure with access asks the worker", async () => {
     const t = setup({ imageAccess: true });
-    expect((await t.f("https://x/a.png?t=1")).size).toBe(1);
-    expect(t.urls).toEqual(["https://x/a.png?t=1"]);
+    expect((await t.f("https://x.example/a.png?t=1")).size).toBe(1);
+    expect(t.urls).toEqual(["https://x.example/a.png?t=1"]);
   });
 
   test("an aborted fetch does not ask the worker", async () => {
     const abort = new AbortController();
     abort.abort();
     const t = setup({ imageAccess: true });
-    await expect(t.f("https://x/a.png", abort.signal)).rejects.toThrow();
+    await expect(t.f("https://x.example/a.png", abort.signal)).rejects.toThrow();
     expect(t.urls).toEqual([]);
   });
 
