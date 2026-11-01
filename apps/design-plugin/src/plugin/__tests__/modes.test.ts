@@ -1601,4 +1601,107 @@ describe("a width added to a set", () => {
     expect(f.tokens.writes.slice(writes).filter((w) => w.startsWith("color/mine:"))).toEqual([]);
     expect(variablesIn(f).map((v) => v.name)).toContain("color/mine-2");
   });
+
+  describe("a style taken over", () => {
+    const WIDE = ["1728", "1512", "834"];
+    const flatThree = () =>
+      set({
+        modes: ["1512", "1024", "834"],
+        colors: [ink([INK, PAPER, INK])],
+        textStyles: [body([48, 48, 48], [56, 56, 56])],
+      });
+
+    test("a mode outside the set keeps reading what the style held", async () => {
+      const f = fakeFigma();
+      await settle(f, flatThree());
+      const next = body([56, 48, 48], [56, 56, 56]);
+      await settle(f, set({ modes: WIDE, colors: [ink([INK, INK, INK])], textStyles: [next] }));
+      const [collection] = collectionsIn(f);
+      const size = variableNamed(f, "type/body/1/size");
+      expect(stylesIn(f)).toHaveLength(1);
+      expect(size.valuesByMode[modeId(collection, "1024")]).toBe(48);
+      expect(size.valuesByMode[modeId(collection, "1728")]).toBe(56);
+    });
+
+    test("a field refused after another bound leaves no binding to a removed variable", async () => {
+      const f = fakeFigma({ failStyleBinding: "lineHeight" });
+      const flat = body([48, 48], [56, 56]);
+      await settle(f, set({ modes: TWO, colors: [ink([INK, PAPER])], textStyles: [flat] }));
+      const [style] = stylesIn(f);
+      const next = body([48, 48, 32], [56, 56, 40]);
+      const colors = [ink([INK, PAPER, SKY])];
+      const tokens = await settle(f, set({ modes: THREE, colors, textStyles: [next] }));
+      expect(style.boundVariables ?? {}).toEqual({});
+      expect(variablesIn(f).map((v) => v.name)).toEqual(["color/ink"]);
+      expect(tokens.textStyleId(next.key)).toBeUndefined();
+      expect(tokens.counts().tokenFailures).toBe(1);
+    });
+
+    test("an unbinding that fails keeps the variable it would have left dangling", async () => {
+      const f = fakeFigma({ failStyleBinding: "lineHeight" });
+      const flat = body([48, 48], [56, 56]);
+      await settle(f, set({ modes: TWO, colors: [ink([INK, PAPER])], textStyles: [flat] }));
+      const [style] = stylesIn(f);
+      const bind = style.setBoundVariable;
+      style.setBoundVariable = (field: string, variable: unknown) => {
+        if (variable === null) throw new Error("no unbinding");
+        bind(field, variable);
+      };
+      const colors = [ink([INK, PAPER, SKY])];
+      const next = body([48, 48, 32], [56, 56, 40]);
+      await settle(f, set({ modes: THREE, colors, textStyles: [next] }));
+      expect(f.tokens.variables.has(style.boundVariables.fontSize.id)).toBe(true);
+    });
+
+    test("Cancel takes its binding back, with the variable and the mode", async () => {
+      const f = fakeFigma();
+      const flat = body([48, 48], [56, 56]);
+      await settle(f, set({ modes: TWO, colors: [ink([INK, PAPER])], textStyles: [flat] }));
+      const [style] = stylesIn(f);
+      const next = body([48, 48, 32], [56, 56, 56]);
+      const colors = [ink([INK, PAPER, SKY])];
+      const tokens = await settle(f, set({ modes: THREE, colors, textStyles: [next] }));
+      expect(style.boundVariables.fontSize).toBeDefined();
+      await tokens.discard();
+      expect(style.boundVariables).toEqual({});
+      expect(variablesIn(f).map((v) => v.name)).toEqual(["color/ink"]);
+      expect(modeNames(collectionsIn(f)[0])).toEqual(TWO);
+    });
+
+    test("a binding it had before stays on Cancel", async () => {
+      const f = fakeFigma();
+      await settle(f, set({ modes: TWO, colors: [], textStyles: [body([16, 14], [24, 24])] }));
+      const [style] = stylesIn(f);
+      const tokens = await settle(
+        f,
+        set({ modes: THREE, colors: [], textStyles: [body([16, 14, 12], [24, 24, 24])] })
+      );
+      await tokens.discard();
+      expect(style.boundVariables.fontSize).toBeDefined();
+    });
+
+    test("1512+834 then 834+390 shares one style, its bound fields read by their variables", async () => {
+      const f = fakeFigma();
+      await settle(f, set({ modes: TWO, colors: [], textStyles: [body([16, 14], [24, 20])] }));
+      const tokens = await settle(
+        f,
+        set({ modes: ["834", "390"], colors: [], textStyles: [body([14, 12], [20, 18])] })
+      );
+      expect(stylesIn(f)).toHaveLength(1);
+      expect(tokens.counts()).toMatchObject({ stylesCreated: 0, variablesCreated: 0 });
+      expect(modeNames(collectionsIn(f)[0])).toEqual([...TWO, "390"]);
+    });
+
+    test("an unbound field outside the default still has to read the same at shared widths", async () => {
+      const f = fakeFigma();
+      const flat = body([16, 16], [24, 24]);
+      await settle(f, set({ modes: TWO, colors: [ink([INK, PAPER])], textStyles: [flat] }));
+      const next = body([15, 12], [24, 24]);
+      await settle(
+        f,
+        set({ modes: ["834", "390"], colors: [ink([PAPER, SKY])], textStyles: [next] })
+      );
+      expect(stylesIn(f)).toHaveLength(2);
+    });
+  });
 });

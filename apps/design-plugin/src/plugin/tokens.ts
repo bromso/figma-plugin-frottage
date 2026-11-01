@@ -311,6 +311,18 @@ function boundFields(style: TextStyle): boolean {
   return Boolean(bound?.fontSize ?? bound?.lineHeight ?? bound?.letterSpacing);
 }
 
+/** What a style holds for a field that can vary, in pixels. */
+function heldBy(style: TextStyle, field: TypeField["field"], look: TextLook): number | null {
+  if (field === "fontSize") return style.fontSize;
+  if (field === "letterSpacing") {
+    const { unit, value } = style.letterSpacing;
+    return unit === "PIXELS" ? value : (value * style.fontSize) / 100;
+  }
+  // A role and a style that disagree on AUTO keep disagreeing, for `sameTextStyle` to find.
+  if (look.lineHeight === null) return null;
+  return style.lineHeight.unit === "PIXELS" ? style.lineHeight.value : look.lineHeight;
+}
+
 /** Marks a collection as Frottage's. Failing costs little: its variables' keys still say so. */
 function tagCollection(collection: VariableCollection, hostname: string): void {
   try {
@@ -365,6 +377,8 @@ export function createTokenSet(api: PluginAPI) {
   let createdCollection: VariableCollection | null = null;
   /** Modes added to a collection that was already there. A created one goes whole. */
   let createdModes: { collection: VariableCollection; modeId: string }[] = [];
+  /** Bindings this import added to a style that was already there, to take back on Cancel. */
+  let adoptedBindings: { style: TextStyle; field: TypeField["field"] }[] = [];
   /** Each version's mode, in `modesCollection`. A version that has none is missing. */
   let modeIds = new Map<number, string>();
   let modesCollection: VariableCollection | null = null;
@@ -373,6 +387,21 @@ export function createTokenSet(api: PluginAPI) {
 
   function failed(n = 1) {
     counts.tokenFailures += n;
+  }
+
+  /** Takes back the bindings added to one style, or to all. False if one wouldn't come off. */
+  function unbindAdopted(only?: TextStyle): boolean {
+    let clean = true;
+    adoptedBindings = adoptedBindings.filter(({ style, field }) => {
+      if (only && style !== only) return true;
+      try {
+        style.setBoundVariable(field, null);
+      } catch {
+        clean = false;
+      }
+      return false;
+    });
+    return clean;
   }
 
   function createStyle(token: TextLook, taken: Set<string>): TextStyle {
@@ -906,6 +935,7 @@ export function createTokenSet(api: PluginAPI) {
         if (!variable) return true;
         if (!reused) made.push(variable);
         style.setBoundVariable(field, variable);
+        if (!createdStyles.includes(style)) adoptedBindings.push({ style, field });
         if (reused) counts.variablesReused++;
         return true;
       } catch {
@@ -961,9 +991,9 @@ export function createTokenSet(api: PluginAPI) {
     };
 
     /**
-     * Frottage's style of this name for a set with another width. It holds what its first mode
-     * read, so that's what it's compared with, and a field not bound yet has to read the same at
-     * every label shared, or the style wasn't this role's.
+     * Frottage's style of this name for a set with another width. A bound field goes by what its
+     * variable reads at the labels shared, and a field not bound yet has to hold what they all
+     * read, or the style wasn't this role's.
      */
     const styleByName = (
       role: PlanModeType,
@@ -971,30 +1001,30 @@ export function createTokenSet(api: PluginAPI) {
       fields: { field: TypeField; varying: boolean }[],
       target: Home
     ) => {
-      const defaultId = target.collection.defaultModeId;
-      const reads: TextLook = { ...look };
-      for (const { field } of fields) {
-        if (field.field === "lineHeight" && look.lineHeight === null) continue;
-        reads[field.field] = field.wants.get(defaultId) ?? look[field.field] ?? 0;
-      }
       const shared = sharedModes(fields[0]?.field.wants ?? new Map());
       if (shared.length === 0) return undefined;
-      const readsAcross = ({ field, wants }: TypeField) =>
+      const readsAcross = ({ field, wants }: TypeField, value: number | null) =>
         shared.every((modeId) => {
           const want = wants.get(modeId);
-          return want === undefined || FLOAT.same(want, reads[field] ?? 0);
+          return want === undefined || FLOAT.same(want, value ?? 0);
         });
-      return ownStylesNamed
-        .get(role.name)
-        ?.find(
-          (s) =>
-            sameTextStyle(s, reads) &&
-            fields.every(({ field }) =>
-              s.boundVariables?.[field.field]
-                ? boundFits(s, field, target, true)
-                : readsAcross(field)
-            )
+      const fits = (s: TextStyle) => {
+        const reads: TextLook = {
+          ...look,
+          fontSize: heldBy(s, "fontSize", look) ?? look.fontSize,
+          lineHeight: heldBy(s, "lineHeight", look),
+          letterSpacing: heldBy(s, "letterSpacing", look) ?? look.letterSpacing,
+        };
+        return (
+          sameTextStyle(s, reads) &&
+          fields.every(({ field }) =>
+            s.boundVariables?.[field.field]
+              ? boundFits(s, field, target, true)
+              : readsAcross(field, reads[field.field])
+          )
         );
+      };
+      return ownStylesNamed.get(role.name)?.find(fits);
     };
 
     const settleVaryingRole = async (
@@ -1020,10 +1050,14 @@ export function createTokenSet(api: PluginAPI) {
             await fillIn(bound.variable, bound.stale);
             if (closed) return;
             counts.variablesReused++;
-          } else if (varying && !(await bindType(found, field, target, made))) {
-            // The style was there before this import: it stays, and its runs keep plain values.
-            for (const variable of made) dropVariable(variable);
-            return;
+          } else if (varying) {
+            // Frames already in the file sit on the other modes, reading what the style held.
+            const first = heldBy(found, field.field, look) ?? field.first;
+            if (!(await bindType(found, { ...field, first }, target, made))) {
+              // The style was there before this import: it stays, as it was, and its runs go plain.
+              if (unbindAdopted(found)) for (const variable of made) dropVariable(variable);
+              return;
+            }
           }
           if (closed) return;
         }
@@ -1245,6 +1279,8 @@ export function createTokenSet(api: PluginAPI) {
      */
     async discard(): Promise<void> {
       closed = true;
+      // First: a variable a style is bound to counts as used, and would stay.
+      unbindAdopted();
       const styles = createdStyles;
       const variables = createdVariables;
       const collection = createdCollection;

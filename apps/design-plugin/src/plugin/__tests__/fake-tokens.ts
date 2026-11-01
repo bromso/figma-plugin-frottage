@@ -133,6 +133,11 @@ export function tokenModel(
       called("textStyle.setBoundVariable");
       if (opts.failStyleBinding === field) throw new Error(`${field} refused`);
       writes.push(`${state.name}: bound ${field}`);
+      if (variable === null) {
+        const { [field]: _, ...rest } = style.boundVariables ?? {};
+        style.boundVariables = rest;
+        return;
+      }
       if (typeof variable === "string") throw new Error("dynamic-page needs the variable");
       if (!["fontSize", "lineHeight", "letterSpacing"].includes(field))
         throw new Error(`can't bind ${field}`);
