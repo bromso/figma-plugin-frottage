@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   allowAccessAndRecapture,
   captureFilename,
-  devtoolsSteps,
+  captureLabel,
+  DEVICES,
   friendlyError,
   imageAdvice,
   isRestrictedUrl,
@@ -13,7 +14,7 @@ import {
   pageVersion,
   parseChoices,
   parseWidths,
-  VIEWPORT_PRESETS,
+  popupView,
   viewportAdvice,
   viewportStatusLabel,
 } from "../page";
@@ -268,14 +269,38 @@ describe("pageOrigin", () => {
   });
 });
 
-describe("viewport widths", () => {
-  test("presets are 1512, 1440, 834, 393, 390", () => {
-    expect(VIEWPORT_PRESETS).toEqual([1512, 1440, 834, 393, 390]);
+describe("DEVICES", () => {
+  test("lists the eight sizes in order", () => {
+    expect(DEVICES.map((d) => d.name)).toEqual([
+      "TV",
+      "Desktop",
+      "Laptop",
+      "Tablet landscape",
+      "Tablet portrait",
+      "Phone landscape",
+      "Phone portrait",
+      "Watch",
+    ]);
+    expect(DEVICES.map((d) => d.width)).toEqual([3840, 1440, 1512, 1194, 834, 844, 390, 198]);
+    expect(DEVICES.filter((d) => d.on).map((d) => d.name)).toEqual([
+      "Laptop",
+      "Tablet portrait",
+      "Phone portrait",
+    ]);
   });
 
-  test("each preset is editable, and widths under 320 or over 3840 are refused", () => {
-    expect(parseWidths(["1600", " 900 ", "320", "3840"])).toEqual([1600, 900, 320, 3840]);
-    expect(parseWidths(["319", "3841", "0", "-5", "", "abc", "12.5", "1e3"])).toEqual([]);
+  test("landscape tablets and phones turn their icon", () => {
+    expect(DEVICES.filter((d) => d.rotate).map((d) => d.name)).toEqual([
+      "Tablet landscape",
+      "Phone landscape",
+    ]);
+  });
+});
+
+describe("viewport widths", () => {
+  test("parseWidths accepts 120 and 3840, and refuses 119 and 3841", () => {
+    expect(parseWidths(["1600", " 900 ", "120", "3840"])).toEqual([1600, 900, 120, 3840]);
+    expect(parseWidths(["119", "3841", "0", "-5", "", "abc", "12.5", "1e3"])).toEqual([]);
   });
 
   test("duplicates collapse, keeping the first position", () => {
@@ -283,33 +308,41 @@ describe("viewport widths", () => {
   });
 
   test("saved choices come back, and anything malformed falls back to the defaults", () => {
-    const saved = JSON.stringify([
-      { text: "1600", on: false },
-      { text: "1440", on: true },
-      { text: "834", on: true },
-      { text: "393", on: false },
-      { text: "390", on: false },
-    ]);
-    expect(parseChoices(saved)[0]).toEqual({ text: "1600", on: false });
     const defaults = parseChoices(null);
-    expect(defaults.map((c) => c.text)).toEqual(["1512", "1440", "834", "393", "390"]);
-    expect(defaults.map((c) => c.on)).toEqual([true, true, true, false, false]);
+    expect(defaults.map((c) => c.text)).toEqual(DEVICES.map((d) => String(d.width)));
+    expect(defaults.map((c) => c.on)).toEqual(DEVICES.map((d) => d.on));
+    const saved = JSON.stringify(
+      defaults.map((c, i) => (i === 0 ? { text: "2560", on: true } : c))
+    );
+    expect(parseChoices(saved)[0]).toEqual({ text: "2560", on: true });
     expect(parseChoices("not json")).toEqual(defaults);
     expect(parseChoices('[{"text":1}]')).toEqual(defaults);
   });
+
+  test("saved choices in the old five-row shape fall back to the defaults", () => {
+    const old = JSON.stringify(
+      ["1512", "1440", "834", "393", "390"].map((text) => ({ text, on: true }))
+    );
+    expect(parseChoices(old)).toEqual(parseChoices(null));
+  });
 });
 
-describe("devtoolsSteps", () => {
-  test("widths under 500 show the DevTools steps, naming the keys", () => {
-    const steps = devtoolsSteps([393, 1440, 390]);
-    expect(steps?.join(" ")).toContain("View");
-    expect(steps?.join(" ")).toContain("Developer Tools");
-    expect(steps?.join(" ")).toContain("393 and 390");
-    expect(steps?.join(" ")).toContain("Capture this page");
+describe("captureLabel", () => {
+  test("names how many sizes the button captures", () => {
+    expect(captureLabel(0)).toBe("Capture");
+    expect(captureLabel(1)).toBe("Capture 1 size");
+    expect(captureLabel(3)).toBe("Capture 3 sizes");
   });
-  test("there are none when every width can be reached by resizing", () => {
-    expect(devtoolsSteps([1440, 500])).toBeNull();
-    expect(devtoolsSteps([])).toBeNull();
+});
+
+describe("popupView", () => {
+  test("a run in progress shows over a page that can't be captured", () => {
+    const running = { state: "viewport", index: 1, total: 3, label: "1512" } as const;
+    expect(popupView(running, true)).toBe("run");
+    expect(popupView(running, null)).toBe("run");
+    expect(popupView({ state: "idle" }, true)).toBe("restricted");
+    expect(popupView({ state: "idle" }, false)).toBe("sizes");
+    expect(popupView({ state: "idle" }, null)).toBe("sizes");
   });
 });
 
@@ -320,6 +353,7 @@ describe("viewportAdvice", () => {
       { label: "1440", width: 1440 },
       { label: "834", width: 834 },
     ],
+    filename: "www.volvogroup.com-2026-11-01.frottage" as string | undefined,
     mismatched: [],
     skipped: [] as number[],
     nodes: 0,
@@ -330,6 +364,7 @@ describe("viewportAdvice", () => {
   test("lists what was saved", () => {
     const a = viewportAdvice(base);
     expect(a.saved).toEqual(["1440", "834"]);
+    expect(a.summary).toBe("Saved www.volvogroup.com-2026-11-01.frottage with 1440 and 834.");
     expect(a.stopped).toBeNull();
     expect(a.mismatches).toEqual([]);
   });
@@ -362,8 +397,30 @@ describe("viewportAdvice", () => {
     expect(a.blockedImages).toBe(3);
   });
 
-  test("nothing saved says so", () => {
-    expect(viewportAdvice({ ...base, saved: [] }).saved).toEqual([]);
+  test("the saved line names the file and the widths", () => {
+    const three = [
+      { label: "1512", width: 1512 },
+      { label: "834", width: 834 },
+      { label: "390", width: 390 },
+    ];
+    expect(viewportAdvice({ ...base, saved: three }).summary).toBe(
+      "Saved www.volvogroup.com-2026-11-01.frottage with 1512, 834 and 390."
+    );
+    expect(viewportAdvice({ ...base, saved: three.slice(0, 1) }).summary).toBe(
+      "Saved www.volvogroup.com-2026-11-01.frottage with 1512."
+    );
+  });
+
+  test("with no file the line says so, and a stop reason still shows", () => {
+    const none = viewportAdvice({ ...base, saved: [], filename: undefined, cancelled: true });
+    expect(none.summary).toBe("No file was saved.");
+    expect(none.stopped).toBe("You stopped the run.");
+    const partial = viewportAdvice({
+      ...base,
+      stopped: "The page changed address, so the run stopped.",
+    });
+    expect(partial.summary).toStartWith("Saved www.volvogroup.com-2026-11-01.frottage");
+    expect(partial.stopped).toBe("The page changed address, so the run stopped.");
   });
 });
 

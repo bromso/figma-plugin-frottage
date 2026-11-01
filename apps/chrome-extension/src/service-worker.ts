@@ -91,15 +91,13 @@ const hasImageAccess = (): Promise<boolean> =>
 async function startCapture(
   tabId: number,
   collapseWrappers: boolean,
-  versionLabel: string,
-  viewport: boolean
+  versionLabel: string
 ): Promise<Reply> {
   const runId = crypto.randomUUID();
   const started = await toOffscreen({
     target: "offscreen",
     type: "run-start",
     runId,
-    viewport,
   });
   if (!started?.ok) return started ?? { ok: false, error: "The capture could not start" };
   try {
@@ -160,12 +158,10 @@ function answer(call: () => Promise<Reply>, sendResponse: (reply: Reply) => void
 chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse) => {
   if (message?.target !== "sw") return;
   if (message.type === "start") {
-    startCapture(
-      message.tabId,
-      message.collapseWrappers === true,
-      message.versionLabel ?? "",
-      message.viewport === true
-    ).then(sendResponse, (e) => sendResponse({ ok: false, error: errorText(e) }));
+    startCapture(message.tabId, message.collapseWrappers === true, message.versionLabel ?? "").then(
+      sendResponse,
+      (e) => sendResponse({ ok: false, error: errorText(e) })
+    );
     return true;
   }
   if (message.type === "download") {

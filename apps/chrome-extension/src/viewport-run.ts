@@ -75,17 +75,12 @@ const RUN_BUSY = "A capture at several widths is already running";
 const CAPTURE_BUSY = "A capture is already running";
 
 /**
- * Why a start must be refused, or null. `capture` is a plain capture, `width` one of a viewport
- * run's own, and `viewport` a new run. Check before changing anything: a refused run must not
+ * Why a new run must be refused, or null. Check before changing anything: a refused run must not
  * touch the live one.
  */
-export function startRefusal(
-  request: "capture" | "width" | "viewport",
-  { capturing, viewportRunning }: Busy
-): string | null {
-  if (request === "width") return null;
+export function startRefusal({ capturing, viewportRunning }: Busy): string | null {
   if (viewportRunning) return RUN_BUSY;
-  return request === "viewport" && capturing ? CAPTURE_BUSY : null;
+  return capturing ? CAPTURE_BUSY : null;
 }
 
 export type ViewportDeps = {

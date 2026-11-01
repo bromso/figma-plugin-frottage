@@ -1,4 +1,5 @@
 import type { Capture } from "@repo/capture-schema";
+import type { StaticIconName } from "@repo/ui";
 import type { RunStatus } from "./capture-run";
 
 const RESTRICTED_SCHEMES = [
@@ -202,22 +203,61 @@ export async function allowAccessAndRecapture(
   return granted;
 }
 
-/** Widths the popup offers, in order. */
-export const VIEWPORT_PRESETS = [1512, 1440, 834, 393, 390];
-/** Widths ticked the first time. */
-const DEFAULT_ON = new Set([1512, 1440, 834]);
-const WIDTH_MIN = 320;
+export type DeviceId =
+  | "tv"
+  | "desktop"
+  | "laptop"
+  | "tablet-landscape"
+  | "tablet-portrait"
+  | "phone-landscape"
+  | "phone-portrait"
+  | "watch";
+
+/** The sizes the popup lists, in order: the icon, the width first shown, and whether it starts ticked. */
+export const DEVICES: readonly {
+  id: DeviceId;
+  name: string;
+  icon: StaticIconName;
+  rotate?: boolean;
+  width: number;
+  on: boolean;
+}[] = [
+  { id: "tv", name: "TV", icon: "lucide:tv", width: 3840, on: false },
+  { id: "desktop", name: "Desktop", icon: "lucide:monitor", width: 1440, on: false },
+  { id: "laptop", name: "Laptop", icon: "lucide:laptop", width: 1512, on: true },
+  {
+    id: "tablet-landscape",
+    name: "Tablet landscape",
+    icon: "lucide:tablet",
+    rotate: true,
+    width: 1194,
+    on: false,
+  },
+  { id: "tablet-portrait", name: "Tablet portrait", icon: "lucide:tablet", width: 834, on: true },
+  {
+    id: "phone-landscape",
+    name: "Phone landscape",
+    icon: "lucide:smartphone",
+    rotate: true,
+    width: 844,
+    on: false,
+  },
+  { id: "phone-portrait", name: "Phone portrait", icon: "lucide:smartphone", width: 390, on: true },
+  { id: "watch", name: "Watch", icon: "lucide:watch", width: 198, on: false },
+];
+
+const WIDTH_MIN = 120;
 const WIDTH_MAX = 3840;
 
-/** One row of the width list: the number as typed, and whether it is ticked. */
+/** One row of the size list: the number as typed, and whether it is ticked. */
 export type WidthChoice = { text: string; on: boolean };
 
 function defaultChoices(): WidthChoice[] {
-  return VIEWPORT_PRESETS.map((w) => ({ text: String(w), on: DEFAULT_ON.has(w) }));
+  return DEVICES.map((d) => ({ text: String(d.width), on: d.on }));
 }
 
 /**
- * The widths to capture from what was typed: whole numbers from 320 to 3840, anything else dropped,
+ * The widths to capture from what was typed: whole numbers from 120 to 3840, anything else dropped,
  * a repeat collapsed into its first place.
  */
 export function parseWidths(text: string[]): number[] {
@@ -232,13 +272,31 @@ export function parseWidths(text: string[]): number[] {
   return widths;
 }
 
+/** The label on the Capture button. */
+export function captureLabel(count: number): string {
+  if (count <= 0) return "Capture";
+  return `Capture ${count} ${count === 1 ? "size" : "sizes"}`;
+}
+
+/**
+ * What the popup shows. A run in progress comes first, because Chrome closes the popup when the tab
+ * moves and a reopened one, on any tab, has to show progress and Cancel.
+ */
+export function popupView(
+  status: RunStatus,
+  restricted: boolean | null
+): "run" | "restricted" | "sizes" {
+  if (status.state === "viewport") return "run";
+  return restricted ? "restricted" : "sizes";
+}
+
 /** The saved choices from `localStorage`, or the defaults when they are missing or malformed. */
 export function parseChoices(raw: string | null): WidthChoice[] {
   try {
     const value: unknown = raw ? JSON.parse(raw) : null;
     if (
       Array.isArray(value) &&
-      value.length === VIEWPORT_PRESETS.length &&
+      value.length === DEVICES.length &&
       value.every(
         (c) =>
           c &&
@@ -255,25 +313,9 @@ export function parseChoices(raw: string | null): WidthChoice[] {
   return defaultChoices();
 }
 
-function joinNumbers(widths: number[]): string {
+function joinList(widths: (string | number)[]): string {
   if (widths.length <= 1) return widths.join("");
   return `${widths.slice(0, -1).join(", ")} and ${widths[widths.length - 1]}`;
-}
-
-/**
- * The steps for widths under 500, which resizing the window can't reach; null when there are none.
- * Capturing in device mode labels the file with its width by itself.
- */
-export function devtoolsSteps(widths: number[]): string[] | null {
-  const narrow = widths.filter((w) => w < NARROW_UNDER);
-  if (narrow.length === 0) return null;
-  return [
-    `${joinNumbers(narrow)} can't be reached by resizing the window, so the run skips ${narrow.length === 1 ? "it" : "them"}. Capture ${narrow.length === 1 ? "it" : "each"} yourself:`,
-    "Open Developer Tools (F12, or Cmd+Option+I on Mac), or choose View, then Developer, then Developer Tools.",
-    "Click the device toolbar button (the phone and tablet icon).",
-    "Set the width to the one you want.",
-    "Press Capture this page.",
-  ];
 }
 
 /** The button text while a viewport run is on one of its widths. */
@@ -284,6 +326,7 @@ export function viewportStatusLabel(status: RunStatus & { state: "viewport" }): 
 /** What the popup says about a finished viewport run. */
 export function viewportAdvice(status: RunStatus & { state: "viewport-done" }): {
   saved: string[];
+  summary: string;
   mismatches: string[];
   stopped: string | null;
   skipped: string[];
@@ -292,6 +335,9 @@ export function viewportAdvice(status: RunStatus & { state: "viewport-done" }): 
 } {
   return {
     saved: status.saved.map((s) => s.label),
+    summary: status.filename
+      ? `Saved ${status.filename} with ${joinList(status.saved.map((s) => s.label))}.`
+      : "No file was saved.",
     mismatches: status.mismatched.map((m) => `${m.requested} was captured at ${m.width}.`),
     stopped: status.stopped ?? (status.cancelled ? "You stopped the run." : null),
     skipped: status.skipped.map((w) => `${w} couldn't be reached, so it was skipped.`),

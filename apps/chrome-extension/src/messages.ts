@@ -33,8 +33,6 @@ export type SwMessage =
       tabId: number;
       collapseWrappers?: boolean;
       versionLabel?: string;
-      /** This capture is one of a viewport run's. A plain capture can be labelled viewport too. */
-      viewport?: boolean;
     }
   | {
       target: "sw";
@@ -59,8 +57,7 @@ export type SwMessage =
 
 /** Worker and popup messages to the offscreen document. */
 export type OffscreenMessage =
-  /** `viewport` marks a capture that belongs to the viewport run. */
-  | { target: "offscreen"; type: "run-start"; runId: string; viewport?: boolean }
+  | { target: "offscreen"; type: "run-start"; runId: string }
   | {
       target: "offscreen";
       type: "viewport-start";

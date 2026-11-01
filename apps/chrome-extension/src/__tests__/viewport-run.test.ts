@@ -676,29 +676,20 @@ describe("ViewportRun", () => {
 });
 
 describe("startRefusal", () => {
-  const idle = { capturing: false, viewportRunning: false };
-
   test("a second run is refused while one is going, so it can't retarget the first", () => {
-    expect(startRefusal("viewport", { ...idle, viewportRunning: true })).toBe(
+    expect(startRefusal({ capturing: false, viewportRunning: true })).toBe(
       "A capture at several widths is already running"
     );
   });
 
-  test("a run is refused during a plain capture", () => {
-    expect(startRefusal("viewport", { ...idle, capturing: true })).toBe(
+  test("a run is refused while a capture is going", () => {
+    expect(startRefusal({ capturing: true, viewportRunning: false })).toBe(
       "A capture is already running"
     );
   });
 
-  test("a plain capture is refused during a run, the run's own captures are not", () => {
-    const running = { ...idle, viewportRunning: true };
-    expect(startRefusal("capture", running)).toBe("A capture at several widths is already running");
-    expect(startRefusal("width", running)).toBeNull();
-  });
-
   test("nothing is refused when nothing is running", () => {
-    expect(startRefusal("capture", idle)).toBeNull();
-    expect(startRefusal("viewport", idle)).toBeNull();
+    expect(startRefusal({ capturing: false, viewportRunning: false })).toBeNull();
   });
 });
 

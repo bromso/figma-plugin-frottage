@@ -140,7 +140,6 @@ const viewport: ViewportRun = new ViewportRun({
         tabId: viewportTab,
         ...(collapseWrappers ? { collapseWrappers: true } : {}),
         ...(typedLabel ? { versionLabel: typedLabel } : {}),
-        viewport: true,
       } satisfies SwMessage)
     ),
   pageWidth: async () => {
@@ -151,8 +150,8 @@ const viewport: ViewportRun = new ViewportRun({
   onStatus: (status) => toPopup(status, (s) => viewport.acknowledge(s)),
 });
 
-function refuseIfBusy(request: Parameters<typeof startRefusal>[0]): void {
-  const refused = startRefusal(request, { capturing: run.busy, viewportRunning: viewport.running });
+function refuseIfBusy(): void {
+  const refused = startRefusal({ capturing: run.busy, viewportRunning: viewport.running });
   if (refused) throw new Error(refused);
 }
 
@@ -161,7 +160,6 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
   switch (message.type) {
     case "run-start":
       try {
-        refuseIfBusy(message.viewport ? "width" : "capture");
         run.start(message.runId);
         sendResponse({ ok: true } satisfies Reply);
       } catch (error) {
@@ -173,7 +171,7 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
       return;
     case "viewport-start":
       try {
-        refuseIfBusy("viewport");
+        refuseIfBusy();
         viewportTab = message.tabId;
         collapseWrappers = message.collapseWrappers === true;
         typedLabel = message.versionLabel ?? "";

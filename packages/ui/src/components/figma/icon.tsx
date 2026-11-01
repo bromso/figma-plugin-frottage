@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 // no references to api.iconify.design, no fetch, no XMLHttpRequest.
 //
 // Body strings are copied verbatim from
-// node_modules/@iconify-json/lucide/icons.json (v1.2.102) keys plus/info/star/ellipsis.
+// node_modules/@iconify-json/lucide/icons.json (v1.2.102) keys plus/info/star/ellipsis/tv/monitor/laptop/tablet/smartphone/watch.
 const lucideSubset: IconifyJSON = {
   prefix: "lucide",
   icons: {
@@ -27,6 +27,24 @@ const lucideSubset: IconifyJSON = {
     },
     ellipsis: {
       body: '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></g>',
+    },
+    tv: {
+      body: '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="m17 2l-5 5l-5-5"/><rect width="20" height="15" x="2" y="7" rx="2"/></g>',
+    },
+    monitor: {
+      body: '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8m-4-4v4"/></g>',
+    },
+    laptop: {
+      body: '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zm2.054 10.987H3.946"/>',
+    },
+    tablet: {
+      body: '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></g>',
+    },
+    smartphone: {
+      body: '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></g>',
+    },
+    watch: {
+      body: '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 10v2.2l1.6 1m2.53-5.54l-.81-4.05a2 2 0 0 0-2-1.61h-2.68a2 2 0 0 0-2 1.61l-.78 4.05m.02 8.7l.8 4a2 2 0 0 0 2 1.61h2.72a2 2 0 0 0 2-1.61l.81-4.05"/><circle cx="12" cy="12" r="6"/></g>',
     },
   },
   width: 24,
@@ -61,6 +79,12 @@ export interface StaticIconNameMap {
   "lucide:info": true;
   "lucide:star": true;
   "lucide:ellipsis": true;
+  "lucide:tv": true;
+  "lucide:monitor": true;
+  "lucide:laptop": true;
+  "lucide:tablet": true;
+  "lucide:smartphone": true;
+  "lucide:watch": true;
 }
 
 export type StaticIconName = keyof StaticIconNameMap;
@@ -71,6 +95,12 @@ export const ICONS = {
   info: "lucide:info",
   star: "lucide:star",
   ellipsis: "lucide:ellipsis",
+  tv: "lucide:tv",
+  monitor: "lucide:monitor",
+  laptop: "lucide:laptop",
+  tablet: "lucide:tablet",
+  smartphone: "lucide:smartphone",
+  watch: "lucide:watch",
 } as const satisfies Record<string, StaticIconName>;
 
 // ---------------------------------------------------------------------------
