@@ -333,6 +333,37 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return JSON.stringify(x) === JSON.stringify(y);
   };
 
+  const ATOMIC_INLINE = new Set(["inline-block", "inline-flex", "inline-grid"]);
+
+  /**
+   * An atomic inline that is only a wrapper around its text: static, no margin, padding or
+   * overflow, and a box no different from the text inside it. Such an element cannot break
+   * internally, so merging it into the sentence loses nothing but its own (invisible) box.
+   */
+  function actsAsText(el: Element, s: CSSStyleDeclaration): boolean {
+    if (s.position !== "static" || s.overflowX !== "visible" || s.overflowY !== "visible") {
+      return false;
+    }
+    for (const side of ["Top", "Right", "Bottom", "Left"]) {
+      const pad = (s as unknown as Record<string, string>)[`padding${side}`];
+      const margin = (s as unknown as Record<string, string>)[`margin${side}`];
+      if (parseFloat(pad) !== 0 || parseFloat(margin) !== 0) return false;
+    }
+    const range = doc.createRange();
+    range.selectNodeContents(el);
+    const inner = range.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    // Text rects are as tall as the glyphs, boxes as tall as their line, so allow the leading.
+    const size = parseFloat(s.fontSize) || 0;
+    const line = parseFloat(s.lineHeight);
+    const leading = Math.max(0, (Number.isNaN(line) ? size * 1.5 : line) - size);
+    return (
+      Math.abs(box.width - inner.width) <= 1 &&
+      box.height >= inner.height - 1 &&
+      box.height <= inner.height + leading + 1
+    );
+  }
+
   /** Inline elements that can merge into their block's text node. */
   function isMergeable(el: Element): boolean {
     const hit = mergeable.get(el);
@@ -347,7 +378,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     ) {
       const s = cs(el);
       ok =
-        s.display === "inline" &&
+        (s.display === "inline" || (ATOMIC_INLINE.has(s.display) && actsAsText(el, s))) &&
         s.transform === "none" &&
         s.opacity === "1" &&
         s.filter === "none" &&

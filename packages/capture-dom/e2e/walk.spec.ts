@@ -1186,3 +1186,32 @@ test("pseudo-element text inside an anchor is linked, and outside one is not", a
   expect(hrefsOf(linked).every((h) => h === "https://example.com/pseudo")).toBe(true);
   expect(hrefsOf(findText(c, "Not linked")).every((h) => h === undefined)).toBe(true);
 });
+
+// ---------- Atomic inlines that act as plain text
+
+test("a text-only inline-flex merges into its sentence", async ({ page }) => {
+  const c = await capture(page, "inline-blocks.html");
+  const t = findText(c, "Sentence one");
+  expect(t.text).toContain("Sentence one before Lastword");
+  let separate = 0;
+  each(c, (n) => {
+    if (n.kind === "text" && n.text.includes("Lastword") && n !== t) separate++;
+  });
+  expect(separate).toBe(0);
+});
+
+test("an inline-block with padding stays separate", async ({ page }) => {
+  const c = await capture(page, "inline-blocks.html");
+  expect(findText(c, "Padded").text).not.toContain("Alpha");
+});
+
+test("a fixed-width inline-block stays separate", async ({ page }) => {
+  const c = await capture(page, "inline-blocks.html");
+  expect(findText(c, "Fixedwidth").text).not.toContain("Beta");
+});
+
+test("an inline-flex holding a non-mergeable element stays separate", async ({ page }) => {
+  const c = await capture(page, "inline-blocks.html");
+  expect(findText(c, "Gamma").text).not.toContain("Boxed");
+  expect(findText(c, "Boxed").text).not.toContain("omega");
+});

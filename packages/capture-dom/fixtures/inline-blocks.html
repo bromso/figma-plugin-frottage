@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inline blocks</title>
+<style>
+body { margin: 0; padding: 16px; font: 14px/20px Arial, sans-serif; color: #111; width: 600px; }
+.last { display: inline-flex; }
+.badge { display: inline-block; padding: 2px 8px; }
+.fixed { display: inline-block; width: 120px; }
+.holder { display: inline-flex; }
+.holder b { display: inline-block; padding: 0 4px; }
+</style>
+</head>
+<body>
+<h3 id="merge"><span>Sentence one before </span><span class="last">Lastword </span></h3>
+<p id="padded">Alpha <span class="badge">Padded</span> omega</p>
+<p id="fixed">Beta <span class="fixed">Fixedwidth</span> omega</p>
+<p id="holder">Gamma <span class="holder"><b>Boxed</b></span> omega</p>
+</body>
+</html>
