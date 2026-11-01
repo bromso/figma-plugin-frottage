@@ -224,9 +224,13 @@ async function collect(capture: Capture, deps: AssetDeps): Promise<AssetResult> 
     else warn("image-failed", id, `Could not decode ${what}: ${cleanText(r.detail)}`);
   };
 
+  // Images the page could not read, counted for both `<img>` and backgrounds. An HTTP error is
+  // left out: a permission would not change it.
+  let unreadable = 0;
   const dropped = new Set<Layer>();
   for (const ref of refs) {
     const r = ref.url ? loaded.get(ref.url) : undefined;
+    if (r && !r.ok && r.code === "image-blocked" && !r.detail.startsWith("HTTP ")) unreadable++;
     if (ref.kind === "image") {
       if (r?.ok) ref.node.assetHash = r.hash;
       else {
@@ -273,6 +277,14 @@ async function collect(capture: Capture, deps: AssetDeps): Promise<AssetResult> 
     capture.warnings.push(
       count > 1 ? { ...first, detail: `${first.detail} (${count} times)` } : first
     );
+  }
+  // One line with the count and no URL, which the extension reads to decide whether to offer
+  // image access.
+  if (unreadable > 0) {
+    capture.warnings.push({
+      code: "images-blocked",
+      detail: `${unreadable} ${unreadable === 1 ? "image" : "images"} could not be read`,
+    });
   }
 
   const assets = new Map<string, Uint8Array>();
@@ -431,7 +443,7 @@ async function encode(
   return new Uint8Array(await out.arrayBuffer());
 }
 
-function fitWithin(w: number, h: number): { w: number; h: number; scaled: boolean } {
+export function fitWithin(w: number, h: number): { w: number; h: number; scaled: boolean } {
   const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(w, h));
   return {
     w: Math.max(1, Math.min(MAX_IMAGE_SIDE, Math.round(w * scale))),
@@ -488,7 +500,8 @@ async function rasteriseSvg(
 /**
  * PNG, JPEG and GIF keep their bytes (an animated GIF stays animated) unless a side exceeds
  * 4096 or a JPEG carries an EXIF rotation. Anything else the browser can decode (WebP, AVIF, BMP,
- * ...) becomes a PNG at its natural size; SVG becomes a PNG at its display size times the larger of 2 and the device pixel ratio. All are
+ * ...) becomes a PNG at its natural size; SVG becomes a PNG at its display size times the larger
+ * of 2 and the device pixel ratio. All are
  * capped at 4096 per side.
  *
  * The header is read first: above 100 megapixels the image is refused, and for sides over 4096 the

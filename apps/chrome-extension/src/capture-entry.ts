@@ -9,8 +9,8 @@ import {
 } from "@repo/capture-dom";
 import pkg from "../package.json";
 import { assetChunks, splitIntoChunks } from "./chunks";
-import { fetchViaWorker } from "./image-fetch";
-import { CAPTURE_PORT, IMAGE_PORT, type PageMessage } from "./messages";
+import { fetchViaWorker, imagePortName, makeFetchBytes } from "./image-fetch";
+import { CAPTURE_PORT, type PageMessage } from "./messages";
 
 /** The offscreen timeout is 60 s; stay well inside it. */
 const HEARTBEAT_MS = 10_000;
@@ -53,16 +53,12 @@ void (async () => {
     // told the optional host permission is held, a failed fetch is retried by the worker, one port
     // per image; otherwise, or if that fails too, the image becomes a placeholder. The request
     // comes from this script, not the page's world, so a page script cannot ask for it.
-    const fetchBytes = async (url: string, signal?: AbortSignal): Promise<Blob> => {
-      try {
-        return await browserFetchBytes(url, signal);
-      } catch (error) {
-        if (!imageAccess || signal?.aborted) throw error;
-        return fetchViaWorker(url, signal, () =>
-          chrome.runtime.connect({ name: `${IMAGE_PORT}${crypto.randomUUID()}` })
-        );
-      }
-    };
+    const fetchBytes = makeFetchBytes({
+      pageFetch: browserFetchBytes,
+      imageAccess,
+      fetchViaWorker: (url, signal) =>
+        fetchViaWorker(url, signal, () => chrome.runtime.connect({ name: imagePortName(runId) })),
+    });
     const { assets } = await collectAssets(capture, {
       fetchBytes,
       normalise: browserNormalise,

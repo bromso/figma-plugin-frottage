@@ -99,11 +99,12 @@ export function imageAdvice(
 ): { message: string; offerAccess: boolean } | null {
   if (blocked <= 0) return null;
   const these = blocked === 1 ? "1 image" : `${blocked.toLocaleString("en-US")} images`;
-  return {
-    message: `${these} could not be read, because the site that serves ${blocked === 1 ? "it" : "them"} does not allow it. ${blocked === 1 ? "It was" : "They were"} left as placeholders.`,
-    // With access held the worker already tried, so asking again would change nothing.
-    offerAccess: !accessHeld,
-  };
+  const left = `${blocked === 1 ? "It was" : "They were"} left as placeholders.`;
+  // With access held the worker already tried, so the site's refusal is no longer the reason.
+  const message = accessHeld
+    ? `${these} could not be fetched. ${left}`
+    : `${these} could not be read, because the site that serves ${blocked === 1 ? "it" : "them"} does not allow it. ${left}`;
+  return { message, offerAccess: !accessHeld };
 }
 
 /**

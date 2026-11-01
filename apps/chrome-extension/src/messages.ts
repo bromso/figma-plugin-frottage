@@ -6,7 +6,7 @@ export const CAPTURE_PORT = "frottage-capture:";
 /** Prefix of the port the service worker opens to the offscreen document to pass chunks on. */
 export const RELAY_PORT = "frottage-relay:";
 
-/** Prefix of the port the page script opens, one per image, to have the worker fetch it. */
+/** Prefix of the port the page script opens, one per image: `<prefix><runId>:<nonce>`. */
 export const IMAGE_PORT = "frottage-image:";
 
 /** Page script to worker, once per image port. */
@@ -34,6 +34,7 @@ export type SwMessage =
 export type OffscreenMessage =
   | { target: "offscreen"; type: "run-start"; runId: string }
   | { target: "offscreen"; type: "inject-failed"; runId: string; detail: string }
+  | { target: "offscreen"; type: "run-live"; runId: string }
   | { target: "offscreen"; type: "get-status" };
 
 /** Offscreen document to the popup. */

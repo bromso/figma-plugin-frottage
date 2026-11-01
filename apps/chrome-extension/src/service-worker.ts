@@ -45,6 +45,22 @@ async function toOffscreen(message: OffscreenMessage): Promise<Reply | undefined
   return chrome.runtime.sendMessage(message);
 }
 
+/** Asks the offscreen document, without creating it, whether this run is still going. */
+async function runIsLive(runId: string): Promise<boolean> {
+  try {
+    const existing = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
+    if (existing.length === 0) return false;
+    const reply: Reply | undefined = await chrome.runtime.sendMessage({
+      target: "offscreen",
+      type: "run-live",
+      runId,
+    } satisfies OffscreenMessage);
+    return reply?.ok === true;
+  } catch {
+    return false;
+  }
+}
+
 const hasImageAccess = (): Promise<boolean> =>
   chrome.permissions.contains({ origins: ["<all_urls>"] }).catch(() => false);
 
@@ -127,6 +143,7 @@ chrome.runtime.onConnect.addListener((port) => {
       fetch: (url, init) => fetch(url, init),
       extensionId: chrome.runtime.id,
       hasAccess: hasImageAccess,
+      runIsLive,
     });
     return;
   }

@@ -44,6 +44,7 @@ function Popup() {
   const [collapsed, setCollapsed] = useState(false);
 
   // Whether the optional image permission is held; read when a capture finishes with blocked images.
+  const [declined, setDeclined] = useState(false);
   const [accessHeld, setAccessHeld] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -77,6 +78,7 @@ function Popup() {
   async function capture(collapseWrappers = false) {
     if (tabId === null) return;
     setCollapsed(collapseWrappers);
+    setDeclined(false);
     setStatus({ state: "capturing" });
     try {
       const reply: Reply | undefined = await chrome.runtime.sendMessage({
@@ -95,14 +97,16 @@ function Popup() {
   }
 
   // The request is the first thing the click does, so Chrome sees the user gesture.
-  const allowImages = () =>
-    allowAccessAndRecapture(
+  const allowImages = async () => {
+    const granted = await allowAccessAndRecapture(
       () => chrome.permissions.request(IMAGE_ORIGINS),
       () => {
         setAccessHeld(true);
         void capture(collapsed);
       }
     );
+    setDeclined(!granted);
+  };
 
   const busy = BUSY.has(status.state);
   const advice = status.state === "saved" ? nodeAdvice(status.nodes, status.nodeLimit) : null;
@@ -138,26 +142,24 @@ function Popup() {
       <div aria-live="polite">
         {status.state === "saved" && <Type>Saved {status.filename} to your Downloads.</Type>}
         {advice?.warning && <Type className="text-muted-foreground">{advice.warning}</Type>}
+        {images && <Type className="text-muted-foreground">{images.message}</Type>}
+        {declined && <Type>Image access wasn't granted.</Type>}
         {status.state === "error" && (
           <Type role="alert" className="text-destructive">
             {friendlyError(status.message)}
           </Type>
         )}
       </div>
-      {images && (
+      {images?.offerAccess && (
         <div className="flex flex-col gap-2">
-          <Type className="text-muted-foreground">{images.message}</Type>
-          {images.offerAccess && (
-            <>
-              <Button variant="secondary" disabled={busy} onClick={allowImages}>
-                Allow image access
-              </Button>
-              <Type size="xsmall" className="text-muted-foreground">
-                This lets Frottage download images from any site while you capture, only to put them
-                in the file. Nothing is sent anywhere.
-              </Type>
-            </>
-          )}
+          <Button variant="secondary" disabled={busy} onClick={allowImages}>
+            Allow image access
+          </Button>
+          <Type size="xsmall" className="text-muted-foreground">
+            This lets Frottage download images from any site, only to put them in the file while you
+            capture. The access stays until you remove it in Chrome's extension settings. Nothing is
+            sent anywhere.
+          </Type>
         </div>
       )}
       {advice?.offerCollapse && !collapsed && !busy && (

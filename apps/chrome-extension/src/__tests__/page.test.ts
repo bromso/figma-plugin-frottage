@@ -104,13 +104,15 @@ describe("imageAdvice", () => {
   test("counts blocked images and offers access when it is not held", () => {
     const a = imageAdvice(3, false);
     expect(a?.message).toContain("3 images could not be read");
+    expect(a?.message).toContain("does not allow");
     expect(a?.offerAccess).toBe(true);
     expect(imageAdvice(1, false)?.message).toContain("1 image could not be read");
   });
 
   test("offers no button once access is held, because the fallback already ran", () => {
     const a = imageAdvice(2, true);
-    expect(a?.message).toContain("2 images");
+    expect(a?.message).toContain("2 images could not be fetched");
+    expect(a?.message).not.toContain("does not allow");
     expect(a?.offerAccess).toBe(false);
   });
 });

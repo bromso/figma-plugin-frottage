@@ -80,17 +80,39 @@ describe("CaptureRun", () => {
     expect(t.timers.size).toBe(0);
   });
 
-  test("the saved status counts images left as blocked-image placeholders", async () => {
-    const blocked = { kind: "placeholder", placeholderKind: "blocked-image" };
-    const other = { kind: "placeholder", placeholderKind: "video" };
-    const tree = {
-      kind: "element",
-      children: [blocked, other, { kind: "element", children: [blocked, { kind: "text" }] }],
+  test("the saved status carries the count from the images-blocked warning", async () => {
+    const warned = {
+      ...CAPTURE,
+      root: { kind: "element", children: [] },
+      warnings: [
+        { code: "image-blocked", detail: "Could not read x: Failed to fetch" },
+        { code: "images-blocked", detail: "3 images could not be read" },
+      ],
     };
-    sendCapture(t.run, "r1", JSON.stringify({ ...CAPTURE, root: tree }));
+    sendCapture(t.run, "r1", JSON.stringify(warned));
     t.run.onEnd("r1");
     await tick();
-    expect(last(t.statuses)).toMatchObject({ state: "saved", blockedImages: 2 });
+    expect(last(t.statuses)).toMatchObject({ state: "saved", blockedImages: 3 });
+  });
+
+  test("placeholders alone are not counted as blocked images", async () => {
+    const blocked = { kind: "placeholder", placeholderKind: "blocked-image" };
+    sendCapture(
+      t.run,
+      "r1",
+      JSON.stringify({ ...CAPTURE, root: { kind: "element", children: [blocked] } })
+    );
+    t.run.onEnd("r1");
+    await tick();
+    expect(last(t.statuses)).toMatchObject({ state: "saved", blockedImages: 0 });
+  });
+
+  test("a run knows whether it is live for an id", () => {
+    expect(t.run.isLive("r1")).toBe(true);
+    expect(t.run.isLive("other")).toBe(false);
+    sendCapture(t.run, "r1");
+    t.run.onEnd("r1");
+    expect(t.run.isLive("r1")).toBe(false);
   });
 
   test("the saved status carries the node count and whether the node limit was hit", async () => {

@@ -72,6 +72,13 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
       run.onInjectFailed(message.runId, message.detail);
       sendResponse({ ok: true } satisfies Reply);
       return;
+    case "run-live":
+      sendResponse(
+        run.isLive(message.runId)
+          ? ({ ok: true } satisfies Reply)
+          : ({ ok: false, error: "No such run" } satisfies Reply)
+      );
+      return;
     case "get-status": {
       const status = run.take();
       sendResponse(status);
