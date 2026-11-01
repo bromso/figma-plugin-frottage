@@ -1,4 +1,5 @@
 import type { Capture, CaptureNode, ElementNode, TextNode } from "@repo/capture-schema";
+import { mapFilters } from "./filters";
 import { matchFont } from "./fonts";
 import {
   collapseTarget,
@@ -279,14 +280,20 @@ function mapStroke(borders: ElementNode["style"]["borders"]): PlanStroke | null 
   return { color: rgb(best.color), opacity: best.color.a, weights };
 }
 
-function mapEffects(style: ElementNode["style"]): PlanEffect[] {
-  return style.boxShadows.map((s) => ({
-    type: s.inset ? "INNER_SHADOW" : "DROP_SHADOW",
-    color: { ...rgb(s.color), a: s.color.a },
-    offset: { x: s.x, y: s.y },
-    radius: s.blur,
-    spread: s.spread,
-  }));
+/** Box shadows first, then filter effects. Filters with no Figma equivalent are counted in `ignored`. */
+function mapEffects(style: ElementNode["style"], ignored: Map<string, number>): PlanEffect[] {
+  const shadows = style.boxShadows.map(
+    (s): PlanEffect => ({
+      type: s.inset ? "INNER_SHADOW" : "DROP_SHADOW",
+      color: { ...rgb(s.color), a: s.color.a },
+      offset: { x: s.x, y: s.y },
+      radius: s.blur,
+      spread: s.spread,
+    })
+  );
+  const filtered = mapFilters(style);
+  for (const name of filtered.ignored) ignored.set(name, (ignored.get(name) ?? 0) + 1);
+  return [...shadows, ...filtered.effects];
 }
 
 const ALIGN = {
@@ -376,6 +383,8 @@ export function mapCapture(
     warned.add(message);
     report.warnings.push(message);
   };
+
+  const ignoredFilters = new Map<string, number>();
 
   const font = (family: string, weight: number, style: string): FontRef => {
     const italic = /italic|oblique/i.test(style);
@@ -590,7 +599,7 @@ export function mapCapture(
           // [topLeft, topRight, bottomRight, bottomLeft], as the walker emits.
           radius: [...s.borderRadius] as [number, number, number, number],
           opacity: node.opacity,
-          effects: hidden ? [] : mapEffects(s),
+          effects: hidden ? [] : mapEffects(s, ignoredFilters),
           clips: s.overflow.split(/\s+/).some((o) => o !== "" && o !== "visible"),
           layout,
           childCount: 0, // known once the walk has seen what the children turn into
@@ -696,6 +705,10 @@ export function mapCapture(
   report.nodes = ops.length;
   report.substitutedFonts = [...substituted].map(([from, to]) => ({ from, to }));
   const tokens = extractTokens(capture, ops, options);
+  if (ignoredFilters.size > 0) {
+    const names = [...ignoredFilters].map(([name, n]) => `${name} (${n})`).join(", ");
+    report.warnings.push(`These filters have no Figma equivalent and were left out: ${names}.`);
+  }
   return { ops, tokens, fonts: [...fonts.values()], assetHashes: [...hashes], report };
 }
 

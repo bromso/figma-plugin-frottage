@@ -22,6 +22,7 @@ import {
 import {
   colorOf,
   isTokenValue,
+  parseFilters,
   px,
   readBorders,
   readFlow,
@@ -1063,6 +1064,16 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
     const leaf = { ...common, ...readFlow(el, s) };
     const tag = el.localName;
+
+    // These nodes carry no style, so a filter on one cannot reach the plan.
+    if ((tag === "img" || tag === "svg" || tag === "video") && s.filter !== "none") {
+      const names = parseFilters(s.filter).map((f) => f.split("(")[0]);
+      warn(
+        "filter-on-leaf",
+        id,
+        `A filter (${names.join(", ")}) on an image, SVG or video was not imported`
+      );
+    }
 
     if (!isRoot && boxArea(box) <= 0 && ["img", "svg", "canvas", "video", "iframe"].includes(tag)) {
       return [];

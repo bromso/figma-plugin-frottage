@@ -30,13 +30,15 @@ export type PlanStroke = {
   weights: { top: number; right: number; bottom: number; left: number };
 };
 
-export type PlanEffect = {
-  type: "DROP_SHADOW" | "INNER_SHADOW";
-  color: PlanRgb & { a: number };
-  offset: { x: number; y: number };
-  radius: number;
-  spread: number;
-};
+export type PlanEffect =
+  | {
+      type: "DROP_SHADOW" | "INNER_SHADOW";
+      color: PlanRgb & { a: number };
+      offset: { x: number; y: number };
+      radius: number;
+      spread: number;
+    }
+  | { type: "LAYER_BLUR" | "BACKGROUND_BLUR"; radius: number };
 
 export type PlanRun = {
   start: number;

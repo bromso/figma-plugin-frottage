@@ -359,6 +359,24 @@ test("collapses repeated warnings into one with a count", async ({ page }) => {
   expect(warned[0]?.detail).toContain("(5 times)");
 });
 
+test("a filter on an image, svg or video is warned about, with names only", async ({ page }) => {
+  await page.setContent("<body></body>");
+  await page.evaluate(() => {
+    for (let i = 0; i < 2; i++) {
+      document.body.insertAdjacentHTML(
+        "beforeend",
+        '<svg width="10" height="10" style="filter: grayscale(1) blur(2px)"></svg>'
+      );
+    }
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const warned = c.warnings.filter((w) => w.code === "filter-on-leaf");
+  expect(warned).toHaveLength(1);
+  expect(warned[0]?.detail).toContain("grayscale, blur");
+  expect(warned[0]?.detail).toContain("(2 times)");
+});
+
 test("keeps the subtree of a zero-area element whose children have area", async ({ page }) => {
   const c = await capture(page, "form.html");
   expect(findText(c, "Overflowing child")).toBeTruthy();

@@ -241,15 +241,20 @@ export function createApplier(api: PluginAPI) {
   }
 
   function effects(list: PlanEffect[]): Effect[] {
-    return list.map((e) => ({
-      type: e.type,
-      color: e.color,
-      offset: e.offset,
-      radius: e.radius,
-      spread: e.spread,
-      visible: true,
-      blendMode: "NORMAL",
-    }));
+    return list.map((e): Effect => {
+      if (!("color" in e)) {
+        return { type: e.type, blurType: "NORMAL", radius: e.radius, visible: true };
+      }
+      return {
+        type: e.type,
+        color: e.color,
+        offset: e.offset,
+        radius: e.radius,
+        spread: e.spread,
+        visible: true,
+        blendMode: "NORMAL",
+      };
+    });
   }
 
   /** Adds a node to its parent, into its cell if it has one. A grid has no other way to place it. */

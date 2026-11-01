@@ -1003,3 +1003,79 @@ describe("gradients", () => {
     expect(plan.report.warnings.join(" ")).toMatch(/gradient/i);
   });
 });
+
+describe("filters", () => {
+  const styled = (over: Partial<ElementNode["style"]>) =>
+    cap(el("root", [0, 0], [], { style: { ...el("x", [0, 0]).style, ...over } }));
+
+  test("blur(4px) is a layer blur of radius 8", () => {
+    expect(frame(styled({ filters: ["blur(4px)"] }), "root").effects).toEqual([
+      { type: "LAYER_BLUR", radius: 8 },
+    ]);
+  });
+  test("drop-shadow(1px 2px 3px red) is a drop shadow of radius 6", () => {
+    // Computed style puts the colour first.
+    const effects = frame(
+      styled({ filters: ["drop-shadow(rgb(255, 0, 0) 1px 2px 3px)"] }),
+      "root"
+    ).effects;
+    expect(effects).toEqual([
+      {
+        type: "DROP_SHADOW",
+        color: { r: 1, g: 0, b: 0, a: 1 },
+        offset: { x: 1, y: 2 },
+        radius: 6,
+        spread: 0,
+      },
+    ]);
+    // And the authored order, colour last.
+    expect(
+      frame(styled({ filters: ["drop-shadow(1px 2px 3px rgba(0, 0, 255, 0.5))"] }), "root")
+        .effects[0]
+    ).toMatchObject({ color: { r: 0, g: 0, b: 1, a: 0.5 }, offset: { x: 1, y: 2 }, radius: 6 });
+  });
+  test("backdrop-filter: blur(10px) is a background blur of radius 20", () => {
+    expect(frame(styled({ backdropFilter: "blur(10px)" }), "root").effects).toEqual([
+      { type: "BACKGROUND_BLUR", radius: 20 },
+    ]);
+  });
+  test("box shadows come first, then drop shadows, then blurs", () => {
+    const shadow = {
+      inset: false,
+      x: 0,
+      y: 0,
+      blur: 1,
+      spread: 0,
+      color: { r: 0, g: 0, b: 0, a: 1 },
+    };
+    const types = frame(
+      styled({
+        boxShadows: [shadow],
+        filters: ["blur(1px)", "drop-shadow(rgb(0, 0, 0) 1px 1px 1px)"],
+        backdropFilter: "blur(1px)",
+      }),
+      "root"
+    ).effects.map((e) => e.type);
+    expect(types).toEqual(["DROP_SHADOW", "DROP_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"]);
+  });
+  test("grayscale(1) is ignored and reported once with a count", () => {
+    const c = cap(
+      el(
+        "root",
+        [0, 0],
+        [
+          el("a", [0, 0], [], { style: { ...el("x", [0, 0]).style, filters: ["grayscale(1)"] } }),
+          el("b", [0, 0], [], {
+            style: { ...el("x", [0, 0]).style, filters: ["grayscale(0.5)", "sepia(1)"] },
+          }),
+        ]
+      )
+    );
+    const plan = mapCapture(c, inter);
+    expect(frame(c, "a").effects).toEqual([]);
+    const notes = plan.report.warnings.filter((w) => w.includes("grayscale"));
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain("grayscale (2)");
+    expect(notes[0]).toContain("sepia (1)");
+  });
+});

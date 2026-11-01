@@ -122,9 +122,11 @@ export function fakeFigma(opts: Options = {}) {
       },
       set effects(v: any[]) {
         for (const e of v) {
-          if (typeof e.visible !== "boolean" || typeof e.blendMode !== "string") {
+          const blur = e.type === "LAYER_BLUR" || e.type === "BACKGROUND_BLUR";
+          if (typeof e.visible !== "boolean" || (!blur && typeof e.blendMode !== "string")) {
             throw new Error("effect needs visible and blendMode");
           }
+          if (blur && e.blurType !== "NORMAL") throw new Error("a blur needs blurType NORMAL");
         }
         effects = v;
       },

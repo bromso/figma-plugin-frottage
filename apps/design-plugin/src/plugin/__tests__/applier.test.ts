@@ -454,6 +454,26 @@ test("frame effects carry visible and blendMode, sizes clamp, default fill is re
   expect(n.effects[0]).toMatchObject({ visible: true, blendMode: "NORMAL" });
 });
 
+test("blur effects set blurType NORMAL and carry no shadow fields", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a", null, {
+      effects: [
+        { type: "LAYER_BLUR", radius: 8 },
+        { type: "BACKGROUND_BLUR", radius: 20 },
+      ],
+    }),
+  ]);
+  const r = await a.end();
+  expect(r.failedOps).toBe(0);
+  expect(f.node(r.rootId).effects).toEqual([
+    { type: "LAYER_BLUR", blurType: "NORMAL", radius: 8, visible: true },
+    { type: "BACKGROUND_BLUR", blurType: "NORMAL", radius: 20, visible: true },
+  ]);
+});
+
 test("a bad stroke weight drops the stroke, not the frame", async () => {
   const f = fakeFigma();
   const a = createApplier(f.figma);
