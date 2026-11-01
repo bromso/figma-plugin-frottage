@@ -9,7 +9,7 @@ import type {
 import type { Rgba } from "./color";
 import { flatChildren, insideEditable, isEditable, shadowRootOf } from "./flatten";
 import { authoredTracksReader } from "./grid";
-import { type Hover, hoverCandidates, readHover } from "./hover";
+import { type Hover, type HoverDeps, hoverCandidates, readHover } from "./hover";
 import {
   collapse,
   type Inherited,
@@ -587,6 +587,42 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return isAtomic(item as Element) || childrenOf(item as Element).some(holdsAtomic);
   }
 
+  /** Whether an item adds to the text of the block it sits in. */
+  function showsText(item: Item): boolean {
+    if (isPseudoItem(item) || item.nodeType === 3) return holdsText(item);
+    if (item.nodeType !== 1 || !isMergeable(item as Element)) return false;
+    return inlineItems(item as Element).some(showsText);
+  }
+
+  /** The element that holds all of `el`'s text, if one does. */
+  function soleTextElement(el: Element): Element | null {
+    const shown = inlineItems(el).filter(showsText);
+    const only = shown[0];
+    return only && shown.length === 1 && !isPseudoItem(only) && only.nodeType === 1
+      ? (only as Element)
+      : null;
+  }
+
+  /** A repeated custom element would be a component, so it stays out of the text around it. */
+  const staysElement = (el: Element, parent: Element) =>
+    repeatedTags.has(el.localName) && soleTextElement(parent) === el;
+
+  /**
+   * A merged element has no node to keep a hover on, so one that is all of its parent's text hands
+   * its hover to the parent, with the colour its own text rests at. The elements it read go in
+   * `liftedHovers`; any other merged hover is lost, and counted.
+   */
+  function liftedHover(parent: Element): Hover | undefined {
+    if (hovers.size === 0) return undefined;
+    const merged = soleTextElement(parent);
+    if (!merged || staysElement(merged, parent)) return undefined;
+    const own = hovers.get(merged);
+    if (own) liftedHovers.add(merged);
+    const lifted = own?.color ? { ...own, restingColor: colorOf(cs(merged).color) } : own;
+    const below = liftedHover(merged);
+    return lifted || below ? { ...lifted, ...below } : undefined;
+  }
+
   /**
    * Gives generated rects a position from the real rects around them: `::before` ends where the
    * next real rect starts, `::after` starts where the previous one ends. With no real rect on the
@@ -756,6 +792,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
             }
             append("\n", inherit(runOf(cs(e), 0, 0, up.clipped), up));
           } else {
+            if (hovers.has(e) && !liftedHovers.has(e)) reportHover("hover-partial", 1);
             addNodes(inlineItems(e), e, inside(e, cs(e), up));
           }
         }
@@ -1073,7 +1110,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       } else if (child.nodeType === 1) {
         const e = child as Element;
         if (IGNORED_TAGS.has(e.localName)) continue;
-        if (isMergeable(e)) {
+        if (isMergeable(e) && !staysElement(e, el)) {
           group.push(e);
         } else {
           flush();
@@ -1274,11 +1311,11 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
     // Overflow on these two propagates to the viewport instead of clipping the element itself.
     if (el === root || el === doc.body) element.style.overflow = "visible";
-    const hover = hovers.get(el);
-    if (hover) {
-      // What text inherits at rest, so the mapper can tell it from text with a colour of its own.
-      element.hover = hover.color ? { ...hover, restingColor: colorOf(s.color) } : hover;
-    }
+    const stored = hovers.get(el);
+    // What text inherits at rest, so the mapper can tell it from text with a colour of its own.
+    const hover = stored?.color ? { ...stored, restingColor: colorOf(s.color) } : stored;
+    const lifted = liftedHover(el);
+    if (hover || lifted) element.hover = { ...hover, ...lifted };
 
     const leafControl = tag === "input" || tag === "textarea" || tag === "select";
     if (isEditable(el)) {
@@ -1308,23 +1345,27 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   // Hover differences are read once, up front, from the stylesheets; the walk only looks them up.
   let hovers = new Map<Element, Hover>();
+  let repeatedTags = new Set<string>();
+  const liftedHovers = new WeakSet<Element>();
+  const reportHover: HoverDeps["report"] = (code, count) =>
+    warnEach(
+      count,
+      code,
+      "",
+      code === "hover-unreadable"
+        ? "A stylesheet could not be read, so its :hover rules were left out"
+        : code === "hover-stopped"
+          ? "Reading :hover rules stopped at its time or rule limit, so later ones were left out"
+          : "A :hover rule was only partly read, so part of it was left out"
+    );
   try {
-    const { candidates, roots } = hoverCandidates(doc, env);
-    hovers = readHover(roots, candidates, {
+    const found = hoverCandidates(doc, env);
+    repeatedTags = found.repeatedTags;
+    hovers = readHover(found.roots, found.candidates, {
       win,
       computed: cs,
       now: () => win.performance.now(),
-      report: (code, count) =>
-        warnEach(
-          count,
-          code,
-          "",
-          code === "hover-unreadable"
-            ? "A stylesheet could not be read, so its :hover rules were left out"
-            : code === "hover-stopped"
-              ? "Reading :hover rules stopped at its time or rule limit, so later ones were left out"
-              : "A :hover rule was only partly read, so part of it was left out"
-        ),
+      report: reportHover,
     });
   } catch {
     warn("hover-unreadable", undefined, "Hover styles could not be read");

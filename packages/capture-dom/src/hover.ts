@@ -36,12 +36,13 @@ const MAX_LONGHANDS = 500;
  * Elements whose hover is worth storing: custom elements (a hyphen in the tag) whose tag appears
  * at least twice, which are the ones that become components, and everything below them in the
  * flat tree. Editable elements and what they hold are left out. Also returns the roots whose
- * rules can reach them: the roots they sit in, and the shadow roots they host.
+ * rules can reach them, the roots they sit in and the shadow roots they host, and the tags that
+ * repeat.
  */
 export function hoverCandidates(
   doc: Document,
   env: CaptureEnv
-): { candidates: Set<Element>; roots: Set<Root> } {
+): { candidates: Set<Element>; roots: Set<Root>; repeatedTags: Set<string> } {
   const byTag = new Map<string, Element[]>();
   const stack: Element[] = [doc.documentElement];
   let seen = 0;
@@ -59,8 +60,10 @@ export function hoverCandidates(
   }
 
   const candidates = new Set<Element>();
-  for (const list of byTag.values()) {
+  const repeatedTags = new Set<string>();
+  for (const [tag, list] of byTag) {
     if (list.length < 2) continue;
+    repeatedTags.add(tag);
     for (const start of list) {
       const down: Element[] = [start];
       while (down.length > 0 && candidates.size < MAX_ELEMENTS) {
@@ -80,7 +83,7 @@ export function hoverCandidates(
     const own = shadowRootOf(el, env);
     if (own) roots.add(own);
   }
-  return { candidates, roots };
+  return { candidates, roots, repeatedTags };
 }
 
 // ---------- Selectors

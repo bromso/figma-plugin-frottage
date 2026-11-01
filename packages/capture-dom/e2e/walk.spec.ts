@@ -11,7 +11,7 @@ import {
   type ElementNode,
   parseCapture,
 } from "@repo/capture-schema";
-import { mapCapture } from "@repo/figma-mapper";
+import { DEFAULT_IMPORT_OPTIONS, mapCapture } from "@repo/figma-mapper";
 
 // Bundle the walker once into an IIFE global (`globalThis.__frottageCapture`), so it runs in the
 // page exactly as the extension would inject it. Playwright runs under Node, so the bundle is built
@@ -2115,4 +2115,110 @@ test("collapseWrappers is off by default", async ({ page }) => {
   const c = await capture(page, "wrappers.html");
   for (const cls of ["w-plain", "w-outer", "w-inner", "w-host-one"])
     expect(has(c, cls), cls).toBe(true);
+});
+
+test.describe("hover on what merges into text", () => {
+  const plain = async (page: Page, html: string, setup?: () => void) => {
+    await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+    await page.goto("/layout.html");
+    await page.evaluate((markup) => {
+      document.body.innerHTML = markup;
+    }, html);
+    if (setup) await page.evaluate(setup);
+    await page.addScriptTag({ content: bundle });
+    return runCapture(page, "x");
+  };
+  const elements = (c: Capture, tag: string) => {
+    const found: ElementNode[] = [];
+    each(c, (n) => {
+      if (n.kind === "element" && n.semantic.tag === tag) found.push(n);
+    });
+    return found;
+  };
+  const arial = [{ family: "Arial", style: "Regular" }];
+  const redHover = { r: 1, g: 0, b: 0, a: 1 };
+
+  test("an anchor that is all of its parent's text lifts its hover, with its own colour", async ({
+    page,
+  }) => {
+    const c = await plain(
+      page,
+      `<style>x-btn { display: block; color: rgb(0, 0, 0) }
+       x-btn a { color: rgb(0, 0, 255) } x-btn a:hover { color: red }</style>
+       <x-btn><a href="https://e.test/1">One</a></x-btn>
+       <x-btn><a href="https://e.test/2">Two</a></x-btn>`
+    );
+    const [first] = elements(c, "x-btn");
+    expect(first?.hover?.color).toEqual(redHover);
+    expect(first?.hover?.restingColor).toEqual({ r: 0, g: 0, b: 1, a: 1 });
+    expect(c.warnings.some((w) => w.code === "hover-partial")).toBe(false);
+    expect(parseCapture(c).ok).toBe(true);
+    const options = { ...DEFAULT_IMPORT_OPTIONS, components: true, hoverComponents: true };
+    const main = mapCapture(c, arial, options).ops.find((o) => o.op === "frame" && o.component);
+    const hover = main?.op === "frame" ? main.component?.hover : undefined;
+    expect(hover?.[0]).toMatchObject({ path: [0], textColor: redHover, ranges: [[0, 3]] });
+  });
+
+  test("a nested inline hover reaches the parent too", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-btn { display: block } x-btn b:hover { text-decoration: underline }
+       x-btn a:hover { color: red }</style>
+       <x-btn><a href="https://e.test/1"><b>One</b></a></x-btn><x-btn><a><b>Two</b></a></x-btn>`
+    );
+    const [first] = elements(c, "x-btn");
+    expect(first?.hover).toMatchObject({ color: redHover, decoration: "underline" });
+  });
+
+  test("an anchor in a shadow root lifts its hover to the host", async ({ page }) => {
+    const c = await plain(page, "<x-btn>One</x-btn><x-btn>Two</x-btn>", () => {
+      for (const host of Array.from(document.querySelectorAll("x-btn"))) {
+        const root = host.attachShadow({ mode: "open" });
+        root.innerHTML =
+          '<style>:host { display: block } a:hover { color: red }</style><a href="https://e.test/"><slot></slot></a>';
+      }
+    });
+    const [first] = elements(c, "x-btn");
+    expect(first?.hover?.color).toEqual(redHover);
+    expect(first?.hover?.restingColor).toBeDefined();
+  });
+
+  test("an anchor beside an icon is still all of the text", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-btn { display: block } x-btn a:hover { color: red }
+       i { display: inline-block; width: 8px; height: 8px; background: #000 }</style>
+       <x-btn><i></i><a href="https://e.test/1">One</a></x-btn><x-btn><i></i><a>Two</a></x-btn>`
+    );
+    expect(elements(c, "x-btn")[0]?.hover?.color).toEqual(redHover);
+  });
+
+  test("a hover in the middle of a sentence is counted, not lifted", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-btn { display: block } x-btn a:hover { color: red }</style>
+       <x-btn>See <a href="https://e.test/1">this</a> now</x-btn>
+       <x-btn>See <a href="https://e.test/2">that</a> now</x-btn>`
+    );
+    expect(elements(c, "x-btn")[0]?.hover).toBeUndefined();
+    const partial = c.warnings.find((w) => w.code === "hover-partial");
+    expect(partial?.detail).toContain("(2 times)");
+  });
+
+  test("a repeated custom element that is all of its parent's text stays an element", async ({
+    page,
+  }) => {
+    const c = await plain(
+      page,
+      "<p><x-tag>Tag one</x-tag></p><p><x-tag>Tag one</x-tag></p><p>One <x-tag>mid</x-tag> line</p>"
+    );
+    expect(elements(c, "x-tag")).toHaveLength(2);
+    expect(findText(c, "One mid line")).toBeTruthy();
+    expect(mapCapture(c, arial).report.components).toBe(1);
+  });
+
+  test("a custom element that does not repeat merges as before", async ({ page }) => {
+    const c = await plain(page, "<p><x-tag>Only</x-tag></p><p><y-tag>Other</y-tag></p>");
+    expect(elements(c, "x-tag")).toHaveLength(0);
+  });
 });
