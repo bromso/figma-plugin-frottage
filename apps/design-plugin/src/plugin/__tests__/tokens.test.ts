@@ -620,6 +620,7 @@ describe("a user's own tokens", () => {
     const f = fakeFigma();
     f.tokens.seedTextStyle("body/1", { ...userText, fontSize: 99 });
     const collection = f.tokens.seedCollection("example.com");
+    collection.setSharedPluginData("frottage", "collection", "example.com");
     f.tokens.seedVariable("color/primary", collection, { r: 1, g: 0, b: 0, a: 1 });
     const end = await runImport(f, tokens(), options({ useLocalStyles: false }));
     expect(end.tokenFailures).toBe(0);

@@ -330,10 +330,10 @@ export function tokenModel(
     collections,
     count: (name: string) => log.filter((x) => x === name).length,
     textStyleById: (id: string) => textStyles.get(id),
-    /** What a variable reads in a mode, which is the default mode's value if it has none. */
+    /** What a variable reads in a mode. Unset, that is a blank value, not the default mode's. */
     valueIn(variable: Fake, modeId: string) {
-      const collection = collections.get(variable.variableCollectionId);
-      return variable.valuesByMode[modeId] ?? variable.valuesByMode[collection?.defaultModeId];
+      const blank = variable.resolvedType === "COLOR" ? { r: 1, g: 1, b: 1, a: 1 } : 0;
+      return variable.valuesByMode[modeId] ?? blank;
     },
 
     /** A style someone else made. */

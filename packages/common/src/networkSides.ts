@@ -53,5 +53,7 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     tokenFailures: number;
     modes: number;
     modesDropped: number;
+    droppedVersions: number[];
+    autoLineHeights: number;
   };
 }>();

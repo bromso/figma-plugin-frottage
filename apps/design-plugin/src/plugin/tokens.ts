@@ -19,7 +19,10 @@ import type {
 
 const NAMESPACE = "frottage";
 const VALUE_KEY = "valueKey";
-/** On a collection Frottage made. Older ones have none, and go by their variables' value keys. */
+/**
+ * On a collection Frottage made, holding its hostname, so that it's found under any name. Older
+ * ones have none, and go by their variables' value keys.
+ */
 const COLLECTION_KEY = "collection";
 /** Half an 8-bit step: two colours this close are the same colour. */
 const CHANNEL_TOLERANCE = 1 / 512;
@@ -35,8 +38,15 @@ export type TokenCounts = {
   tokenFailures: number;
   /** Versions with a mode of their own. */
   modes: number;
-  /** Versions without one, which read the collection's default mode. */
+  /** How many versions asked for a mode and got none. */
   modesDropped: number;
+  /**
+   * Those versions. Their frames lose their tokens: a null `modeOf` alone doesn't say that, as one
+   * can also mean nothing needed a mode.
+   */
+  droppedVersions: number[];
+  /** Roles with AUTO and a number across modes, which a float variable can't hold, so one stays. */
+  autoLineHeights: number;
 };
 
 export const NO_TOKENS: TokenCounts = {
@@ -47,6 +57,8 @@ export const NO_TOKENS: TokenCounts = {
   tokenFailures: 0,
   modes: 0,
   modesDropped: 0,
+  droppedVersions: [],
+  autoLineHeights: 0,
 };
 
 /** What the applier lends for one run: its time budget and its fonts. */
@@ -74,7 +86,19 @@ type Home = {
   added: Set<string>;
 };
 
-/** A variable to make, and what each of the versions' modes should read. */
+/** One of a text style's fields that can vary by mode, as a float variable. */
+type TypeField = {
+  field: "fontSize" | "lineHeight" | "letterSpacing";
+  name: string;
+  key: string;
+  first: number;
+  wants: Map<string, number>;
+};
+
+/**
+ * A variable to make, and what the versions' modes should read. Every other mode of the collection
+ * reads `first`: left unset, it wouldn't fall back on the default mode.
+ */
 type VariableSpec<T> = {
   name: string;
   key: string;
@@ -124,9 +148,17 @@ function valuesFor<T>(
   return out;
 }
 
-/** Whether modes would differ. One mode, or none, has nothing to differ from. */
-function varies<T extends VariableValue>(wants: Map<string, T>, first: T, kind: Kind<T>): boolean {
-  return wants.size > 1 && [...wants.values()].some((v) => !kind.same(v, first));
+/** The earliest version's value among those with a mode, else `first`. */
+function leadOf<T>(wants: Map<string, T>, first: T): T {
+  for (const value of wants.values()) return value;
+  return first;
+}
+
+/** Whether modes differ from each other. One mode, or none, has nothing to differ from. */
+function varies<T extends VariableValue>(wants: Map<string, T>, kind: Kind<T>): boolean {
+  const values = [...wants.values()];
+  const [lead] = values;
+  return lead !== undefined && values.some((v) => !kind.same(v, lead));
 }
 
 /** Whether versions differ, before knowing how many of them get a mode. */
@@ -233,20 +265,25 @@ function boundOnPage(page: PageNode, ids: Set<string>): Set<string> {
       if (id !== undefined && ids.has(id)) used.add(id);
     }
   };
+  /** A node's own fields, each an alias or a list of them, such as a gap or a size. */
+  const noteFields = (bound: object | undefined) => {
+    for (const value of Object.values(bound ?? {})) {
+      for (const alias of [value].flat() as VariableAlias[]) {
+        if (alias?.id !== undefined && ids.has(alias.id)) used.add(alias.id);
+      }
+    }
+  };
   page.findAll((node) => {
     if ("fills" in node) note(node.fills);
     if ("strokes" in node) note(node.strokes);
+    noteFields(node.boundVariables);
     return false;
   });
   return used;
 }
 
-/** The same value in every mode. */
-const flatten = <T>(wants: Map<string, T>, first: T) =>
-  new Map([...wants.keys()].map((modeId) => [modeId, first]));
-
-/** A role's look as the first version has it: a style holds only one of each value. */
-function firstLook(
+/** A role's look as a style holds it: only one of each value, whatever the modes do. */
+function styleLook(
   role: PlanModeType,
   fontSize: number,
   lineHeight: number | null,
@@ -262,12 +299,45 @@ function boundFields(style: TextStyle): boolean {
 }
 
 /** Marks a collection as Frottage's. Failing costs little: its variables' keys still say so. */
-function tagCollection(collection: VariableCollection): void {
+function tagCollection(collection: VariableCollection, hostname: string): void {
   try {
-    collection.setSharedPluginData(NAMESPACE, COLLECTION_KEY, "1");
+    collection.setSharedPluginData(NAMESPACE, COLLECTION_KEY, hostname);
   } catch {
     // its variables still carry theirs
   }
+}
+
+/** The name for a new collection: a user's of the host's name stays as it is, beside this one. */
+const ownCollectionName = (hostname: string) => `${hostname} (Frottage)`;
+
+function newCollectionName(collections: VariableCollection[], hostname: string): string {
+  const free = !collections.some((c) => c.name === hostname);
+  return free ? hostname : ownCollectionName(hostname);
+}
+
+/**
+ * Frottage's collection for this host: by its tag, then by name. One counts as Frottage's when it's
+ * tagged, or when all its variables carry a value key, which is how older ones are told apart.
+ * Figma doesn't let a plugin add to a remote or extended one, so those are never it.
+ */
+function findOwnCollection(
+  collections: VariableCollection[],
+  ownVariables: Map<string, Variable[]>,
+  hostname: string
+): VariableCollection | undefined {
+  const tagged = new Set([...ownVariables.values()].flat().map((v) => v.id));
+  const hostOf = (c: VariableCollection) => c.getSharedPluginData(NAMESPACE, COLLECTION_KEY);
+  const own = collections.filter((c) => {
+    if (c.isExtension || c.remote) return false;
+    const host = hostOf(c);
+    if (host !== "") return host === hostname;
+    return c.variableIds.length > 0 && c.variableIds.every((id) => tagged.has(id));
+  });
+  return (
+    own.find((c) => hostOf(c) === hostname) ??
+    own.find((c) => c.name === ownCollectionName(hostname)) ??
+    own.find((c) => c.name === hostname)
+  );
 }
 
 export function createTokenSet(api: PluginAPI) {
@@ -351,7 +421,8 @@ export function createTokenSet(api: PluginAPI) {
     const name = takeName(token.name, taken, token.cssVar !== undefined);
     const variable = api.variables.createVariable(name, collection, "COLOR");
     try {
-      variable.setValueForMode(collection.defaultModeId, token.rgba);
+      // Every mode: an unset one doesn't fall back on the default.
+      for (const { modeId } of collection.modes) variable.setValueForMode(modeId, token.rgba);
       if (token.cssVar) variable.setVariableCodeSyntax("WEB", `var(${token.cssVar})`);
       variable.setSharedPluginData(NAMESPACE, VALUE_KEY, token.key);
     } catch (e) {
@@ -367,7 +438,8 @@ export function createTokenSet(api: PluginAPI) {
     runtime: TokenRuntime
   ): Promise<void> {
     if (plan.colors.length === 0) return;
-    const variables = await api.variables.getLocalVariablesAsync("COLOR");
+    // Of every type: whether a collection is Frottage's goes by all its variables.
+    const variables = await api.variables.getLocalVariablesAsync();
     const collections = await api.variables.getLocalVariableCollectionsAsync();
     const paintStyles = useLocal ? await api.getLocalPaintStylesAsync() : [];
     if (closed) return;
@@ -390,11 +462,12 @@ export function createTokenSet(api: PluginAPI) {
     /** Made only when a variable needs it, so that an import that reuses all adds nothing. */
     const home = () => {
       if (target) return target;
-      let collection = collections.find((c) => c.name === plan.collection);
+      let collection = findOwnCollection(collections, own, plan.collection);
       if (!collection) {
-        collection = api.variables.createVariableCollection(plan.collection);
+        const name = newCollectionName(collections, plan.collection);
+        collection = api.variables.createVariableCollection(name);
         createdCollection = collection;
-        tagCollection(collection);
+        tagCollection(collection, plan.collection);
       }
       const { id } = collection;
       const names = variables.filter((v) => v.variableCollectionId === id).map((v) => v.name);
@@ -440,7 +513,7 @@ export function createTokenSet(api: PluginAPI) {
   /** Puts each version in a mode, up to the plan's limit. `fresh` is a collection made just now. */
   async function settleModes(
     collection: VariableCollection,
-    labels: string[],
+    { modes: labels, collection: hostname }: PlanVersionTokens,
     fresh: boolean,
     pause: () => Promise<boolean>
   ): Promise<Set<string>> {
@@ -470,7 +543,7 @@ export function createTokenSet(api: PluginAPI) {
         modeIds.set(version, modeId);
         added.add(modeId);
         if (!fresh) createdModes.push({ collection, modeId });
-        if (!tagged) tagCollection(collection);
+        if (!tagged) tagCollection(collection, hostname);
         tagged = true;
       } catch (e) {
         // A plan's limit is a limit, not a failure, and the plugin says so through `modesDropped`.
@@ -478,8 +551,23 @@ export function createTokenSet(api: PluginAPI) {
         break;
       }
     }
+    // With no room for its label, the first version still needs a mode for its tokens to bind in.
+    const claimed = new Set(modeIds.values()).has(collection.defaultModeId);
+    if (!closed && !modeIds.has(0) && !claimed) modeIds.set(0, collection.defaultModeId);
+    // In version order, which `leadOf` depends on.
+    modeIds = new Map([...modeIds].sort(([a], [b]) => a - b));
     return added;
   }
+
+  /** Records which versions went without a mode. */
+  function recordModes(dropped: number[]): void {
+    counts.modes = modeIds.size;
+    counts.modesDropped = dropped.length;
+    counts.droppedVersions = dropped;
+  }
+
+  const withoutMode = (plan: PlanVersionTokens) =>
+    plan.modes.flatMap((_, version) => (modeIds.has(version) ? [] : [version]));
 
   async function resolveVersions(
     plan: PlanVersionTokens,
@@ -505,6 +593,7 @@ export function createTokenSet(api: PluginAPI) {
     const ownVariables = byOwnKey(variables);
     const ownStyles = byOwnKey(textStyles);
     const tagged = new Set([...ownVariables.values()].flat().map((v) => v.id));
+    const byId = new Map(variables.map((v) => [v.id, v]));
     const local = useLocal ? variables.filter((v) => v.resolvedType === "COLOR") : [];
     const solids = paintStyles.flatMap((s) => {
       const color = solidColorOf(s);
@@ -512,12 +601,7 @@ export function createTokenSet(api: PluginAPI) {
     });
     const takenStyles = new Set(textStyles.map((s) => s.name));
 
-    const isOwn = (c: VariableCollection) =>
-      c.getSharedPluginData(NAMESPACE, COLLECTION_KEY) !== "" ||
-      (c.variableIds.length > 0 && c.variableIds.every((id) => tagged.has(id)));
-    const ownNamed = (name: string) => collections.find((c) => c.name === name && isOwn(c));
-    const ownName = `${plan.collection} (Frottage)`;
-    const existing = ownNamed(ownName) ?? ownNamed(plan.collection);
+    const existing = findOwnCollection(collections, ownVariables, plan.collection);
 
     let home: Home | null = null;
     /** Whether anything asked for modes, so that their absence means something. */
@@ -528,50 +612,64 @@ export function createTokenSet(api: PluginAPI) {
       wanted = true;
       let collection = existing;
       if (!collection) {
-        const free = !collections.some((c) => c.name === plan.collection);
-        collection = api.variables.createVariableCollection(free ? plan.collection : ownName);
+        const name = newCollectionName(collections, plan.collection);
+        collection = api.variables.createVariableCollection(name);
         createdCollection = collection;
-        tagCollection(collection);
+        tagCollection(collection, plan.collection);
       }
       const { id } = collection;
       const names = variables.filter((v) => v.variableCollectionId === id).map((v) => v.name);
-      const added = await settleModes(collection, plan.modes, !existing, pause);
+      const added = await settleModes(collection, plan, !existing, pause);
       home = { collection, taken: new Set(names), added };
       return home;
     };
 
     /**
-     * The modes of `wants` that this variable doesn't read as asked yet, or null if it can't be made
-     * to: only a mode added just now is still empty, and any other value is the file's.
+     * What a variable in the home collection lacks: the modes with no value yet, each with what it
+     * should read. Null if it can't be used, because a value it holds says otherwise, or because
+     * it's the user's and would need a write. A mode outside the set may hold anything, but the
+     * default reads `first`, or an edited variable would pass when every label is new.
      */
-    const staleModes = <T>(variable: Variable, wants: Map<string, T>, kind: Kind<T>) => {
+    const staleModes = <T>(variable: Variable, wants: Map<string, T>, first: T, kind: Kind<T>) => {
       const values = held.get(variable.id);
-      const base = values?.[defaults.get(variable.variableCollectionId) ?? ""];
+      const defaultId = defaults.get(variable.variableCollectionId) ?? "";
+      if (!wants.has(defaultId) && !kind.same(values?.[defaultId], first)) return null;
       const stale: [string, T][] = [];
-      for (const [modeId, want] of wants) {
-        if (kind.same(values?.[modeId] ?? base, want)) continue;
-        if (!home?.added.has(modeId)) return null;
-        stale.push([modeId, want]);
+      for (const { modeId } of home?.collection.modes ?? []) {
+        const want = wants.get(modeId);
+        const have = values?.[modeId];
+        if (have !== undefined) {
+          if (want !== undefined && !kind.same(have, want)) return null;
+        } else if (tagged.has(variable.id)) {
+          stale.push([modeId, want ?? first]);
+        } else if (want !== undefined) {
+          return null;
+        }
       }
       return stale;
+    };
+
+    const fillIn = async <T extends VariableValue>(variable: Variable, stale: [string, T][]) => {
+      for (const [modeId, value] of stale) {
+        if (!(await pause())) return;
+        variable.setValueForMode(modeId, value);
+      }
     };
 
     /** Frottage's own variable with this key in the home collection, filling in any new modes. */
     const reuseOwn = async <T extends VariableValue>(
       key: string,
       wants: Map<string, T>,
+      first: T,
       kind: Kind<T>,
       { collection }: Home
     ): Promise<Variable | null> => {
       for (const variable of ownVariables.get(key) ?? []) {
         if (variable.variableCollectionId !== collection.id) continue;
-        const stale = staleModes(variable, wants, kind);
+        const stale = staleModes(variable, wants, first, kind);
         if (!stale) continue;
-        for (const [modeId, value] of stale) {
-          if (!(await pause())) return null;
-          variable.setValueForMode(modeId, value);
-        }
-        return variable;
+        await fillIn(variable, stale);
+        return closed ? null : variable;
       }
       return null;
     };
@@ -581,20 +679,15 @@ export function createTokenSet(api: PluginAPI) {
       spec: VariableSpec<T>,
       { collection, taken }: Home
     ): Promise<Variable | null> => {
-      const { kind, wants } = spec;
+      const { wants, first, kind } = spec;
       const name = takeName(spec.name, taken, spec.cssVar !== undefined);
       const variable = api.variables.createVariable(name, collection, kind.type);
       // Now, not at the end: writing the modes yields, and `discard` may run during it.
       createdVariables.push(variable);
       try {
-        // A version without a mode reads this. If a version holds the default, its value decides.
-        const { defaultModeId } = collection;
-        const base = wants.get(defaultModeId) ?? spec.first;
-        variable.setValueForMode(defaultModeId, base);
-        for (const [modeId, value] of wants) {
-          if (modeId === defaultModeId || kind.same(value, base)) continue;
+        for (const { modeId } of collection.modes) {
           if (!(await pause())) return null;
-          variable.setValueForMode(modeId, value);
+          variable.setValueForMode(modeId, wants.get(modeId) ?? first);
         }
         if (spec.cssVar) variable.setVariableCodeSyntax("WEB", `var(${spec.cssVar})`);
         variable.setSharedPluginData(NAMESPACE, VALUE_KEY, spec.key);
@@ -605,28 +698,33 @@ export function createTokenSet(api: PluginAPI) {
       return variable;
     };
 
+    /** The single-version key of the version `leadOf` takes its value from. */
+    const leadKey = (from: (string | null)[]) => from[[...modeIds.keys()][0] ?? 0] ?? "";
+
     /** Follows `resolveColors`: Frottage's own, then the user's, then a new variable. */
     const settleFlatColor = async (
       token: PlanModeColor,
-      first: RGBA,
+      value: RGBA,
       wants: Map<string, RGBA>
     ): Promise<void> => {
-      const flat = flatten(wants, first);
-      const mode = (v: Variable) => defaults.get(v.variableCollectionId) ?? "";
+      const inHome = (v: Variable) => v.variableCollectionId === existing?.id;
+      const defaultOf = (v: Variable) => defaults.get(v.variableCollectionId) ?? "";
       // In the home collection the variable is read in the versions' modes too, not only by default.
       const fits = (v: Variable) =>
-        COLOR.same(held.get(v.id)?.[mode(v)], first) &&
-        (v.variableCollectionId !== existing?.id || staleModes(v, flat, COLOR) !== null);
+        COLOR.same(held.get(v.id)?.[defaultOf(v)], value) &&
+        (!inHome(v) || staleModes(v, wants, value, COLOR) !== null);
       const reused =
         ownVariables.get(token.key)?.find(fits) ??
-        ownVariables.get(token.from[0] ?? "")?.find(fits) ??
+        ownVariables.get(leadKey(token.from))?.find(fits) ??
         local.find(fits);
       if (reused) {
+        if (inHome(reused)) await fillIn(reused, staleModes(reused, wants, value, COLOR) ?? []);
+        if (closed) return;
         colors.set(token.key, { variable: reused });
         counts.variablesReused++;
         return;
       }
-      const style = solids.find((s) => sameColor(s.color, first));
+      const style = solids.find((s) => sameColor(s.color, value));
       if (style) {
         colors.set(token.key, { paintStyleId: style.id });
         counts.stylesReused++;
@@ -634,11 +732,8 @@ export function createTokenSet(api: PluginAPI) {
       }
       const target = await homeOf();
       if (closed) return;
-      // With no modes asked for, every mode reads the default.
-      const variable = await makeVariable(
-        { ...token, kind: COLOR, first, wants: new Map() },
-        target
-      );
+      const spec = { ...token, kind: COLOR, first: value, wants: new Map<string, RGBA>() };
+      const variable = await makeVariable(spec, target);
       if (!variable) return;
       colors.set(token.key, { variable });
       counts.variablesCreated++;
@@ -648,10 +743,10 @@ export function createTokenSet(api: PluginAPI) {
       const first = token.values[0]?.value;
       if (!first) throw new Error("no value");
       const wants = valuesFor(token.values, first, modeIds);
-      if (!varies(wants, first, COLOR)) return settleFlatColor(token, first, wants);
+      if (!varies(wants, COLOR)) return settleFlatColor(token, leadOf(wants, first), wants);
       const target = await homeOf();
       if (closed) return;
-      const reused = await reuseOwn(token.key, wants, COLOR, target);
+      const reused = await reuseOwn(token.key, wants, first, COLOR, target);
       if (closed) return;
       if (reused) {
         colors.set(token.key, { variable: reused });
@@ -664,18 +759,14 @@ export function createTokenSet(api: PluginAPI) {
       counts.variablesCreated++;
     };
 
-    /** Binds a float variable to a style just made. A refused binding leaves the first value. */
+    /** Binds a float variable to a style just made. A refused binding leaves the style's value. */
     const bindType = async (
       style: TextStyle,
-      field: "fontSize" | "lineHeight" | "letterSpacing",
-      name: string,
-      key: string,
-      first: number,
-      wants: Map<string, number>,
+      { field, name, key, first, wants }: TypeField,
       target: Home
     ): Promise<void> => {
       try {
-        const reused = await reuseOwn(key, wants, FLOAT, target);
+        const reused = await reuseOwn(key, wants, first, FLOAT, target);
         if (closed) return;
         const variable =
           reused ?? (await makeVariable({ name, key, kind: FLOAT, first, wants }, target));
@@ -693,89 +784,127 @@ export function createTokenSet(api: PluginAPI) {
       }
     };
 
-    const settleRole = async (role: PlanModeType): Promise<void> => {
-      const firstSize = role.fontSize[0]?.value;
-      if (firstSize === undefined) throw new Error("no value");
-      const firstLine = role.lineHeight[0]?.value ?? null;
-      const firstTracking = role.letterSpacing[0]?.value ?? 0;
-      const look = firstLook(role, firstSize, firstLine, firstTracking);
-      const sizes = valuesFor(role.fontSize, firstSize, modeIds);
-      // AUTO has no number, so a role that starts on it stays on it in every mode.
-      const lines =
-        firstLine === null
-          ? new Map<string, number>()
-          : valuesFor(role.lineHeight, firstLine, modeIds);
-      const sizeVaries = varies(sizes, firstSize, FLOAT);
-      const lineVaries = firstLine !== null && varies(lines, firstLine, FLOAT);
-      const trackings = valuesFor(role.letterSpacing, firstTracking, modeIds);
-      const trackingVaries = varies(trackings, firstTracking, FLOAT);
+    /** The variable a style is bound to for a field, if it's in the home collection and fits. */
+    const boundFits = (
+      style: TextStyle,
+      { field, first, wants }: TypeField,
+      { collection }: Home
+    ) => {
+      const alias = style.boundVariables?.[field];
+      const variable = alias && byId.get(alias.id);
+      if (variable?.variableCollectionId !== collection.id) return null;
+      const stale = staleModes(variable, wants, first, FLOAT);
+      return stale ? { variable, stale } : null;
+    };
 
-      if (!sizeVaries && !lineVaries && !trackingVaries) {
-        // A style of Frottage's bound to modes reads differently in them, whatever it says here.
-        const fits = (s: TextStyle) =>
-          sameTextStyle(s, look) &&
-          !(s.getSharedPluginData(NAMESPACE, VALUE_KEY) && boundFields(s));
-        const found =
-          ownStyles.get(role.key)?.find(fits) ??
-          ownStyles.get(role.from[0] ?? "")?.find(fits) ??
-          (useLocal ? textStyles.find(fits) : undefined);
-        if (found) {
-          styleIds.set(role.key, found.id);
-          counts.stylesReused++;
-          return;
-        }
-        const style = createStyle(look, takenStyles);
-        createdStyles.push(style);
-        styleIds.set(role.key, style.id);
-        counts.stylesCreated++;
-        return;
-      }
-
-      const target = await homeOf();
-      if (closed) return;
-      const sizeKey = `${role.key}/size`;
-      const lineKey = `${role.key}/line-height`;
-      const trackingKey = `${role.key}/tracking`;
-      const found = ownStyles
-        .get(role.key)
-        ?.find(
-          (s) =>
-            sameTextStyle(s, look) &&
-            (!sizeVaries || s.boundVariables?.fontSize) &&
-            (!lineVaries || s.boundVariables?.lineHeight) &&
-            (!trackingVaries || s.boundVariables?.letterSpacing)
-        );
+    const settleFlatRole = (role: PlanModeType, look: PlanTextStyle) => {
+      // A style of Frottage's bound to modes reads differently in them, whatever it says here.
+      const fits = (s: TextStyle) =>
+        sameTextStyle(s, look) && !(s.getSharedPluginData(NAMESPACE, VALUE_KEY) && boundFields(s));
+      const found =
+        ownStyles.get(role.key)?.find(fits) ??
+        ownStyles.get(leadKey(role.from))?.find(fits) ??
+        (useLocal ? textStyles.find(fits) : undefined);
       if (found) {
         styleIds.set(role.key, found.id);
         counts.stylesReused++;
-        for (const [isVaried, key, wants] of [
-          [sizeVaries, sizeKey, sizes],
-          [lineVaries, lineKey, lines],
-          [trackingVaries, trackingKey, trackings],
-        ] as const) {
-          if (!isVaried) continue;
-          const reused = await reuseOwn(key, wants, FLOAT, target);
-          if (closed) return;
-          if (reused) counts.variablesReused++;
-        }
         return;
       }
       const style = createStyle(look, takenStyles);
       createdStyles.push(style);
       styleIds.set(role.key, style.id);
       counts.stylesCreated++;
+    };
+
+    const settleVaryingRole = async (
+      role: PlanModeType,
+      look: PlanTextStyle,
+      fields: { field: TypeField; varying: boolean }[]
+    ): Promise<void> => {
+      const target = await homeOf();
+      if (closed) return;
+      // Every field a style binds has to read what this set asks, even one that doesn't vary here.
+      const isFit = (s: TextStyle) =>
+        sameTextStyle(s, look) &&
+        fields.every(({ field, varying }) =>
+          s.boundVariables?.[field.field] ? boundFits(s, field, target) : !varying
+        );
+      const found = ownStyles.get(role.key)?.find(isFit);
+      if (found) {
+        for (const { field } of fields) {
+          const bound = boundFits(found, field, target);
+          if (!bound) continue;
+          await fillIn(bound.variable, bound.stale);
+          if (closed) return;
+          counts.variablesReused++;
+        }
+        styleIds.set(role.key, found.id);
+        counts.stylesReused++;
+        return;
+      }
+      const style = createStyle(look, takenStyles);
+      createdStyles.push(style);
+      styleIds.set(role.key, style.id);
+      counts.stylesCreated++;
+      for (const { field, varying } of fields) {
+        if (closed) return;
+        if (varying) await bindType(style, field, target);
+      }
+    };
+
+    const settleRole = async (role: PlanModeType): Promise<void> => {
+      const firstSize = role.fontSize[0]?.value;
+      if (firstSize === undefined) throw new Error("no value");
+      const firstLine = role.lineHeight[0]?.value ?? null;
+      const firstTracking = role.letterSpacing[0]?.value ?? 0;
+
+      const sizes = valuesFor(role.fontSize, firstSize, modeIds);
+      const trackings = valuesFor(role.letterSpacing, firstTracking, modeIds);
+      const heldLines = [...modeIds.keys()].flatMap((version) =>
+        role.lineHeight.filter((v) => v.mode === version).map((v) => v.value)
+      );
+      if (heldLines.includes(null) && heldLines.some((v) => v !== null)) counts.autoLineHeights++;
+      // AUTO has no number: a role that starts on it stays on it, and a later AUTO takes the number.
+      const leadLine = heldLines.length > 0 ? (heldLines[0] ?? null) : firstLine;
+      const lineFirst = firstLine ?? leadLine;
+      const lines =
+        lineFirst === null || leadLine === null
+          ? new Map<string, number>()
+          : valuesFor(role.lineHeight, lineFirst, modeIds);
+
+      const sizeVaries = varies(sizes, FLOAT);
+      const lineVaries = varies(lines, FLOAT);
+      const trackingVaries = varies(trackings, FLOAT);
+      const look = styleLook(
+        role,
+        sizeVaries ? firstSize : leadOf(sizes, firstSize),
+        lineVaries ? lineFirst : leadLine,
+        trackingVaries ? firstTracking : leadOf(trackings, firstTracking)
+      );
+      if (!sizeVaries && !lineVaries && !trackingVaries) return settleFlatRole(role, look);
+
       const prefix = `type/${role.name}`;
-      if (sizeVaries) {
-        await bindType(style, "fontSize", `${prefix}/size`, sizeKey, firstSize, sizes, target);
-      }
-      if (lineVaries && !closed) {
-        const name = `${prefix}/line-height`;
-        await bindType(style, "lineHeight", name, lineKey, firstLine, lines, target);
-      }
-      if (trackingVaries && !closed) {
-        const name = `${prefix}/tracking`;
-        await bindType(style, "letterSpacing", name, trackingKey, firstTracking, trackings, target);
-      }
+      const field = (
+        name: TypeField["field"],
+        suffix: string,
+        first: number,
+        wants: Map<string, number>,
+        varying: boolean
+      ) => ({
+        field: {
+          field: name,
+          name: `${prefix}/${suffix}`,
+          key: `${role.key}/${suffix}`,
+          first,
+          wants,
+        },
+        varying,
+      });
+      await settleVaryingRole(role, look, [
+        field("fontSize", "size", firstSize, sizes, sizeVaries),
+        field("lineHeight", "line-height", lineFirst ?? 0, lines, lineVaries),
+        field("letterSpacing", "tracking", firstTracking, trackings, trackingVaries),
+      ]);
     };
 
     try {
@@ -818,14 +947,15 @@ export function createTokenSet(api: PluginAPI) {
       }
     } finally {
       if (!closed) {
+        const dropped = wanted ? withoutMode(plan) : [];
         if (createdCollection && createdVariables.length === 0) {
+          // Nothing needed it, so a version that held a mode lost nothing by its going.
           createdCollection.remove();
           createdCollection = null;
           modesCollection = null;
           modeIds = new Map();
         }
-        counts.modes = modeIds.size;
-        counts.modesDropped = wanted ? plan.modes.length - modeIds.size : 0;
+        recordModes(dropped);
       }
     }
   }
@@ -892,6 +1022,7 @@ export function createTokenSet(api: PluginAPI) {
       } catch {
         const total = plan.textStyles.length + plan.colors.length;
         failed(Math.max(total - styleIds.size - colors.size, 1));
+        recordModes(withoutMode(plan));
       }
     },
 

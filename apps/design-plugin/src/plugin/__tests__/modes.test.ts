@@ -4,6 +4,7 @@ import {
   type FontRef,
   type ImportOptions,
   type ModeValue,
+  type PlanColor,
   type PlanModeColor,
   type PlanModeType,
   type PlanOp,
@@ -86,6 +87,17 @@ async function settle(
   const tokens = createTokenSet(f.figma);
   await tokens.resolveModes(plan, opts, runtime);
   return tokens;
+}
+
+/** A single file with one colour, imported to the end. */
+async function importFile(f: Fake, colorToken: PlanColor) {
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.importTokens(
+    { textStyles: [], colors: [colorToken], collection: "example.com" },
+    options()
+  );
+  return a.end();
 }
 
 const collectionsIn = (f: Fake) => [...f.tokens.collections.values()] as any[];
@@ -393,7 +405,8 @@ describe("mode limits", () => {
     // Nothing needed the collection, so it goes, and no version has a mode.
     expect(collectionsIn(f)).toEqual([library]);
     expect(tokens.modeOf(0)).toBeNull();
-    expect(tokens.counts()).toMatchObject({ modes: 0, modesDropped: 2 });
+    // The first version keeps its tokens: only the second lost anything.
+    expect(tokens.counts()).toMatchObject({ modes: 0, modesDropped: 1, droppedVersions: [1] });
   });
 
   test("with one mode left, a varying role keeps its first values and no variables", async () => {
@@ -425,12 +438,13 @@ describe("mode limits", () => {
     );
     const [collection] = collectionsIn(f);
     expect(modeNames(collection)).toEqual(["A", "B"]);
-    expect(tokens.modeOf(0)).toBeNull();
+    // No room for its label, so the first version takes the default mode, which nobody claimed.
+    expect(tokens.modeOf(0)?.modeId).toBe(collection.defaultModeId);
     expect(tokens.modeOf(1)?.modeId).toBe(modeId(collection, "B"));
-    expect(tokens.counts()).toMatchObject({ modes: 1, modesDropped: 1 });
-    // A single mode left: the first version's value goes in, as Stage 1 would.
+    expect(tokens.counts()).toMatchObject({ modes: 2, modesDropped: 0 });
     const variable = variableNamed(f, "color/other");
     expect(channel(variable.valuesByMode[collection.defaultModeId])).toBe(SKY.g);
+    expect(channel(variable.valuesByMode[modeId(collection, "B")])).toBe(PAPER.g);
   });
 
   test("a new variable's default mode takes the first value, unless a version holds it", async () => {
@@ -816,5 +830,352 @@ describe("the time budget", () => {
     );
     // One for each mode added, one for the token, and one for each value past the default.
     expect(breaths).toBeGreaterThanOrEqual(3 + 1 + 2);
+  });
+});
+
+describe("every mode holds a value", () => {
+  test("a new variable has one in every mode, outside the set too", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ modes: ["Old", "Other"] }));
+    await settle(f, set({ modes: ["Other", "New"], colors: [color("color/b", [SKY, PAPER])] }));
+    const [collection] = collectionsIn(f);
+    const variable = variableNamed(f, "color/b");
+    expect(Object.keys(variable.valuesByMode).sort()).toEqual(
+      collection.modes.map((m: any) => m.modeId).sort()
+    );
+    expect(channel(variable.valuesByMode[modeId(collection, "Old")])).toBe(SKY.g);
+  });
+
+  test("a single value is set in every mode", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ colors: [color("color/flat", [INK, INK])] }));
+    const [collection] = collectionsIn(f);
+    const [variable] = variablesIn(f);
+    expect(channel(variable.valuesByMode[modeId(collection, "Dark")])).toBe(INK.g);
+  });
+
+  test("a single file's new variable is set in every mode of a Frottage collection", async () => {
+    const f = fakeFigma();
+    await settle(f);
+    const [collection] = collectionsIn(f);
+    await importFile(f, { key: "#4080bf", name: "color/sky", rgba: SKY });
+    const variable = variableNamed(f, "color/sky");
+    expect(channel(variable.valuesByMode[modeId(collection, "Dark")])).toBe(SKY.g);
+  });
+
+  test("a reused variable of Frottage's gets a value in an added mode", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ colors: [color("color/flat", [INK, INK])] }));
+    const [collection] = collectionsIn(f);
+    const [variable] = variablesIn(f);
+    const tokens = await settle(
+      f,
+      set({ modes: ["Light", "Dim"], colors: [color("color/flat", [INK, INK])] })
+    );
+    expect(channel(variable.valuesByMode[modeId(collection, "Dim")])).toBe(INK.g);
+    expect(tokens.counts()).toMatchObject({ variablesCreated: 0, variablesReused: 1 });
+  });
+
+  test("a variable of Frottage's with an unset mode is filled in", async () => {
+    const f = fakeFigma();
+    const older = f.tokens.seedCollection("example.com", ["One", "Two"]);
+    const token = color("color/flat", [INK, INK]);
+    const made = tagged(f.tokens.seedVariable("color/flat", older, INK), token.key);
+    await settle(f, set({ modes: ["One", "Two"], colors: [token] }));
+    expect(channel(made.valuesByMode[modeId(older, "Two")])).toBe(INK.g);
+  });
+
+  test("a reused variable of Frottage's is filled in outside the set too", async () => {
+    const f = fakeFigma();
+    const older = f.tokens.seedCollection("example.com", ["One", "Two", "Three"]);
+    const token = color("color/flat", [INK, INK]);
+    const made = tagged(f.tokens.seedVariable("color/flat", older, INK), token.key);
+    await settle(f, set({ modes: ["One", "Two"], colors: [token] }));
+    expect(channel(made.valuesByMode[modeId(older, "Three")])).toBe(INK.g);
+  });
+
+  test("the earliest version leads, though a later one's label was found first", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ modes: ["X", "B"] }));
+    await settle(
+      f,
+      set({ modes: ["A", "B"], colors: [], textStyles: [role("note/1", [12, 12], [null, 20])] })
+    );
+    expect(stylesIn(f)[0].lineHeight).toEqual({ unit: "AUTO" });
+  });
+
+  test("a user's variable in Frottage's collection isn't used for a mode it has no value in", async () => {
+    const f = fakeFigma();
+    await settle(f);
+    const [collection] = collectionsIn(f);
+    const theirs = f.tokens.seedVariable("mine", collection, SKY);
+    theirs.setValueForMode(modeId(collection, "Dark"), SKY);
+    f.tokens.writes.length = 0;
+    const token = color("color/sky", [SKY, SKY]);
+    const tokens = await settle(f, set({ modes: ["Light", "Added"], colors: [token] }));
+    expect(tokens.counts()).toMatchObject({ variablesCreated: 1, variablesReused: 0 });
+    expect(f.tokens.writes.filter((w) => w.startsWith("mine:"))).toEqual([]);
+  });
+});
+
+describe("a later version on the only mode left", () => {
+  /** One slot, taken by label by the second version, while the first can't be placed. */
+  async function lastModeHeld(f: Fake, plan: PlanVersionTokens) {
+    const tokens = await settle(f, plan);
+    expect(tokens.modeOf(0)).toBeNull();
+    expect(tokens.modeOf(1)).not.toBeNull();
+    return tokens;
+  }
+
+  test("a colour, size, line height and tracking all come from the held version", async () => {
+    const f = fakeFigma({ modeLimit: 2 });
+    await settle(f, set({ modes: ["A", "B"] }));
+    const paint = color("color/late", [SKY, PAPER]);
+    const body = role("body/1", [16, 14], [24, 20], {
+      letterSpacing: [
+        { mode: 0, value: 0 },
+        { mode: 1, value: 1 },
+      ],
+    });
+    const tokens = await lastModeHeld(
+      f,
+      set({ modes: ["Z", "A"], colors: [paint], textStyles: [body] })
+    );
+    expect(tokens.counts().droppedVersions).toEqual([0]);
+    const [collection] = collectionsIn(f);
+    const variable = variableNamed(f, "color/late");
+    expect(channel(variable.valuesByMode[modeId(collection, "A")])).toBe(PAPER.g);
+    const style = stylesIn(f).at(-1);
+    expect(style.fontSize).toBe(14);
+    expect(style.lineHeight).toEqual({ unit: "PIXELS", value: 20 });
+    expect(style.letterSpacing).toEqual({ unit: "PIXELS", value: 1 });
+    expect(style.boundVariables).toBeUndefined();
+  });
+
+  test("the held value matches a user's variable, not the dropped one's", async () => {
+    const f = fakeFigma({ modeLimit: 2 });
+    await settle(f, set({ modes: ["A", "B"] }));
+    const mine = f.tokens.seedVariable("mine", f.tokens.seedCollection("Brand"), PAPER);
+    const token = color("color/late", [SKY, PAPER]);
+    const tokens = await lastModeHeld(f, set({ modes: ["Z", "A"], colors: [token] }));
+    expect((tokens.color(token.key) as any).variable).toBe(mine);
+  });
+});
+
+describe("a single file and the user's collection", () => {
+  const sky = { key: "#4080bf", name: "color/sky", rgba: SKY };
+
+  test("a user's collection of the same name is left alone", async () => {
+    const f = fakeFigma();
+    const mine = f.tokens.seedCollection("example.com");
+    f.tokens.seedVariable("ink", mine, INK);
+    await importFile(f, sky);
+    const variable = variableNamed(f, "color/sky");
+    expect(variable.variableCollectionId).not.toBe(mine.id);
+    expect(f.tokens.collections.get(variable.variableCollectionId)?.name).toBe(
+      "example.com (Frottage)"
+    );
+    await importFile(f, { key: "#bfbfbf", name: "color/paper", rgba: PAPER });
+    expect(collectionsIn(f)).toHaveLength(2);
+  });
+
+  test("an older Frottage collection is still used", async () => {
+    const f = fakeFigma();
+    const older = f.tokens.seedCollection("example.com");
+    tagged(f.tokens.seedVariable("color/old", older, INK), "#404040");
+    await importFile(f, sky);
+    expect(variableNamed(f, "color/sky").variableCollectionId).toBe(older.id);
+  });
+});
+
+describe("a renamed collection", () => {
+  test("is found by its tag", async () => {
+    const f = fakeFigma();
+    await settle(f);
+    const [collection] = collectionsIn(f);
+    collection.name = "Web tokens";
+    const tokens = await settle(f, set({ colors: [color("color/b", [SKY, PAPER])] }));
+    expect(collectionsIn(f)).toEqual([collection]);
+    expect(tokens.modeOf(0)?.collection.id).toBe(collection.id);
+  });
+
+  test("tagged for another host isn't taken for this one by its name", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ collection: "other.org" }));
+    const [theirs] = collectionsIn(f);
+    theirs.name = "example.com";
+    await settle(f);
+    expect(modeNames(theirs)).toEqual(["Light", "Dark"]);
+    expect(collectionsIn(f).at(-1).name).toBe("example.com (Frottage)");
+    expect(variablesIn(f)).toHaveLength(2);
+  });
+
+  test("of another host isn't", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ collection: "other.org" }));
+    const [theirs] = collectionsIn(f);
+    theirs.name = "Web tokens";
+    await settle(f);
+    expect(collectionsIn(f)).toHaveLength(2);
+  });
+});
+
+describe("a role's own style", () => {
+  const body = () => role("body/1", [16, 14], [24, 24]);
+
+  test("bound outside the home collection makes a new style", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ colors: [], textStyles: [body()] }));
+    const [style] = stylesIn(f);
+    const other = f.tokens.seedCollection("Sizes", ["Light", "Dark"]);
+    style.setBoundVariable("fontSize", f.tokens.seedVariable("size", other, 16, "FLOAT"));
+    await settle(f, set({ colors: [], textStyles: [body()] }));
+    expect(stylesIn(f)).toHaveLength(2);
+  });
+
+  test("bound to values that no longer match makes a new style", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ colors: [], textStyles: [body()] }));
+    const [collection] = collectionsIn(f);
+    variableNamed(f, "type/body/1/size").setValueForMode(modeId(collection, "Dark"), 30);
+    const tokens = await settle(f, set({ colors: [], textStyles: [body()] }));
+    expect(stylesIn(f)).toHaveLength(2);
+    expect(tokens.counts().stylesReused).toBe(0);
+    expect(stylesIn(f).at(-1).boundVariables.fontSize).toBeDefined();
+  });
+
+  test("bound to a field that doesn't vary here is checked as well", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ colors: [], textStyles: [body()] }));
+    const [style] = stylesIn(f);
+    const other = f.tokens.seedCollection("Lines", ["Light", "Dark"]);
+    style.setBoundVariable("lineHeight", f.tokens.seedVariable("line", other, 24, "FLOAT"));
+    await settle(f, set({ colors: [], textStyles: [body()] }));
+    expect(stylesIn(f)).toHaveLength(2);
+  });
+});
+
+describe("a collection with no room", () => {
+  test("Starter's existing collection gives the first version its default mode", async () => {
+    const f = fakeFigma({ modeLimit: 1 });
+    await settle(f, set({ modes: ["Only"] }));
+    const [collection] = collectionsIn(f);
+    f.tokens.writes.length = 0;
+    const token = color("color/b", [SKY, PAPER]);
+    const tokens = await settle(f, set({ modes: ["New", "Other"], colors: [token] }));
+    expect(tokens.modeOf(0)?.modeId).toBe(collection.defaultModeId);
+    expect(tokens.modeOf(1)).toBeNull();
+    expect(modeNames(collection)).toEqual(["Only"]);
+    expect(f.tokens.count("renameMode")).toBe(1);
+    expect(tokens.counts()).toMatchObject({ modes: 1, modesDropped: 1, droppedVersions: [1] });
+    expect(tokens.color(token.key)).toBeDefined();
+  });
+
+  test("the default mode stays with a version whose label it has", async () => {
+    const f = fakeFigma({ modeLimit: 2 });
+    await settle(f, set({ modes: ["A", "B"] }));
+    const tokens = await settle(
+      f,
+      set({ modes: ["Z", "A"], colors: [color("color/b", [SKY, PAPER])] })
+    );
+    expect(tokens.modeOf(0)).toBeNull();
+    expect(tokens.counts().droppedVersions).toEqual([0]);
+  });
+});
+
+describe("an edited variable", () => {
+  test("with all labels new isn't reused or written", async () => {
+    const f = fakeFigma();
+    await settle(f);
+    const [collection] = collectionsIn(f);
+    const [variable] = variablesIn(f);
+    variable.setValueForMode(collection.defaultModeId, SKY);
+    f.tokens.writes.length = 0;
+    const tokens = await settle(f, set({ modes: ["Day", "Night"] }));
+    expect(tokens.counts()).toMatchObject({ variablesCreated: 1, variablesReused: 0 });
+    expect(f.tokens.writes.filter((w) => w.startsWith("color/primary:"))).toEqual([]);
+  });
+});
+
+describe("what the report gets", () => {
+  test("a line height that loses AUTO counts", async () => {
+    const f = fakeFigma();
+    const tokens = await settle(
+      f,
+      set({ colors: [], textStyles: [role("body/1", [16, 14], [24, null])] })
+    );
+    expect(tokens.counts().autoLineHeights).toBe(1);
+  });
+
+  test("a role that stays AUTO over a number counts", async () => {
+    const f = fakeFigma();
+    const tokens = await settle(
+      f,
+      set({ colors: [], textStyles: [role("body/1", [16, 14], [null, 20])] })
+    );
+    expect(tokens.counts().autoLineHeights).toBe(1);
+  });
+
+  test("all AUTO doesn't count", async () => {
+    const f = fakeFigma();
+    const tokens = await settle(
+      f,
+      set({ colors: [], textStyles: [role("body/1", [16, 14], [null, null])] })
+    );
+    expect(tokens.counts().autoLineHeights).toBe(0);
+  });
+
+  test("reading the file failing still reports the versions without a mode", async () => {
+    const f = fakeFigma({ failTokens: ["getLocalVariablesAsync"] });
+    const tokens = await settle(f);
+    expect(tokens.counts()).toMatchObject({
+      modes: 0,
+      modesDropped: 2,
+      droppedVersions: [0, 1],
+      tokenFailures: 1,
+    });
+  });
+
+  test("no version is dropped when nothing needed a mode", async () => {
+    const f = fakeFigma();
+    f.tokens.seedVariable("ink", f.tokens.seedCollection("Brand"), INK);
+    const tokens = await settle(f, set({ colors: [color("color/flat", [INK, INK])] }));
+    expect(tokens.counts().droppedVersions).toEqual([]);
+    expect(tokens.modeOf(0)).toBeNull();
+  });
+});
+
+describe("collections Frottage can't change", () => {
+  test.each(["isExtension", "remote"])(
+    "a tagged collection with %s is left alone",
+    async (flag) => {
+      const f = fakeFigma();
+      await settle(f);
+      const [collection] = collectionsIn(f);
+      collection[flag] = true;
+      await settle(f);
+      expect(collectionsIn(f)).toHaveLength(2);
+    }
+  );
+});
+
+describe("cancel and a frame's bound variables", () => {
+  test("a variable a frame's field is bound to stays", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ modes: ["One"] }));
+    const body = role("body/1", [16, 14], [24, 24]);
+    const tokens = createTokenSet(f.figma);
+    await tokens.resolveModes(
+      set({ modes: ["One", "Two"], colors: [], textStyles: [body] }),
+      options(),
+      runtimeFor(f)
+    );
+    const size = variableNamed(f, "type/body/1/size");
+    const node = f.figma.createFrame() as any;
+    node.boundVariables = { itemSpacing: { type: "VARIABLE_ALIAS", id: size.id } };
+    f.figma.currentPage.appendChild(node);
+    await tokens.discard();
+    expect(variableNamed(f, "type/body/1/size")).toBeDefined();
+    expect(modeNames(collectionsIn(f)[0])).toEqual(["One", "Two"]);
   });
 });
