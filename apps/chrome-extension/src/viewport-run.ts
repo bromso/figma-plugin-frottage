@@ -128,6 +128,8 @@ export type ViewportDeps = {
   restore: () => Promise<void>;
   /** One capture, start to saved file. `label` is what the window says; the page has the last word. */
   capture: (label: string) => Promise<CaptureResult>;
+  /** The width the page is laid out at; null when it can't be read. */
+  pageWidth: () => Promise<number | null>;
   /** Pages re-lay out on resize: this gives them time. */
   settle: () => Promise<void>;
   onStatus: (status: RunStatus) => void;
@@ -140,6 +142,11 @@ const LEFT_PAGE = "The page changed address, so the run stopped.";
 const NOT_RESIZED = "The window couldn't be resized, so the run stopped.";
 const NOT_RESTORED = "The window could not be put back as it was.";
 const WENT_WRONG = "Something went wrong, so the run stopped.";
+const held = (width: number) =>
+  `The page stayed at ${width} when the window was resized, so the run stopped. Turn off the device toolbar in Developer Tools and capture again.`;
+
+/** How far the window moves to see whether the page follows it. */
+const PROBE_PX = 40;
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -270,6 +277,8 @@ export class ViewportRun {
       await this.deps.settle();
       if (this.stopping(done)) return undefined;
       if ((await this.origin()) !== home) return this.whyGone();
+      const stuck = await this.heldAt(given);
+      if (stuck !== null) return held(stuck);
       const result = await this.deps
         .capture(String(given))
         .catch((error): CaptureResult => ({ ok: false, message: messageOf(error) }));
@@ -286,6 +295,29 @@ export class ViewportRun {
       done.blockedImages = Math.max(done.blockedImages, result.blockedImages);
     }
     return undefined;
+  }
+
+  /**
+   * The width the page is held at, or null. Device mode keeps a page at its own width whatever the
+   * window does, and then every width would save the same file. A page narrower than its window
+   * can also just share it with docked Developer Tools, so moving the window tells them apart.
+   */
+  private async heldAt(windowWidth: number): Promise<number | null> {
+    const width = await this.pageWidth();
+    if (width === null || width === windowWidth) return null;
+    const probe =
+      windowWidth - PROBE_PX >= MIN_WINDOW_WIDTH ? windowWidth - PROBE_PX : windowWidth + PROBE_PX;
+    await this.deps.resize(probe);
+    await this.deps.settle();
+    const moved = await this.pageWidth();
+    if (moved === width) return width;
+    await this.deps.resize(windowWidth);
+    await this.deps.settle();
+    return null;
+  }
+
+  private pageWidth(): Promise<number | null> {
+    return this.deps.pageWidth().catch(() => null);
   }
 
   private stopping(done: Final): boolean {

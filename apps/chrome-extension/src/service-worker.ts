@@ -175,6 +175,15 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
       return { ok: true, origin: pageOrigin(tab.url) };
     }, sendResponse);
   }
+  if (message.type === "page-width") {
+    return answer(async () => {
+      const [frame] = await chrome.scripting.executeScript({
+        target: { tabId: message.tabId },
+        func: () => window.innerWidth,
+      });
+      return { ok: true, width: frame?.result };
+    }, sendResponse);
+  }
   if (message.type === "window-state") {
     return answer(async () => {
       const { windowId } = await chrome.tabs.get(message.tabId);

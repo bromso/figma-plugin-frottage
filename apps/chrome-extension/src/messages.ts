@@ -40,6 +40,7 @@ export type SwMessage =
   | { target: "sw"; type: "viewport-start"; tabId: number; widths: number[] }
   | { target: "sw"; type: "download"; url: string; filename: string }
   | { target: "sw"; type: "tab-origin"; tabId: number }
+  | { target: "sw"; type: "page-width"; tabId: number }
   | { target: "sw"; type: "window-state"; tabId: number }
   | { target: "sw"; type: "window-open"; windowId: number }
   | { target: "sw"; type: "resize-window"; windowId: number; width: number; left?: number }
@@ -61,7 +62,7 @@ export type PopupMessage = { target: "popup"; type: "status"; status: RunStatus 
 
 /**
  * `filename` is the saved basename, set by the worker for downloads. `origin`, `window`, `open` and
- * `width` answer `tab-origin`, `window-state`, `window-open` and `resize-window`.
+ * `width` answer `tab-origin`, `window-state`, `window-open`, and `resize-window` or `page-width`.
  */
 export type Reply =
   | {

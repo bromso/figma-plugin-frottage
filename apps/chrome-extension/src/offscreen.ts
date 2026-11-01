@@ -123,6 +123,10 @@ const viewport: ViewportRun = new ViewportRun({
         viewport: true,
       } satisfies SwMessage)
     ),
+  pageWidth: async () => {
+    const reply = await askWorker({ target: "sw", type: "page-width", tabId: viewportTab });
+    return reply.width ?? null;
+  },
   settle: () => new Promise((resolve) => setTimeout(resolve, SETTLE_MS)),
   onStatus: (status) => toPopup(status, (s) => viewport.acknowledge(s)),
 });

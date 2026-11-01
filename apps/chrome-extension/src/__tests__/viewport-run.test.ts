@@ -63,6 +63,8 @@ type Over = {
   capture?: (label: string, run: ViewportRun, count: number) => Promise<CaptureResult> | null;
   /** Width lost to something beside the page, such as a classic scrollbar. */
   scrollbar?: number;
+  /** The page's width for a window width; by default the page fills the window. */
+  pageWidth?: (windowWidth: number) => number | null;
   onStatus?: (status: RunStatus) => void;
 };
 
@@ -106,6 +108,10 @@ function setup(over: Over = {}) {
         nodeLimit: false,
         blockedImages: 0,
       };
+    },
+    pageWidth: async () => {
+      const width = fake.win.width ?? 0;
+      return over.pageWidth ? over.pageWidth(width) : width;
     },
     settle: async () => {
       events.push("settle");
@@ -198,6 +204,58 @@ describe("ViewportRun", () => {
     await t.run.start([1440]);
     expect(t.final().saved).toEqual([put("1200")]);
     expect(t.final().mismatched).toEqual([{ requested: 1440, width: 1200 }]);
+  });
+
+  test("a page held at one width stops the run before any file is saved", async () => {
+    const t = setup({ pageWidth: () => 390 });
+    await t.run.start([1512, 1440, 834]);
+    expect(t.captures).toEqual([]);
+    expect(t.final().saved).toEqual([]);
+    expect(t.final().stopped).toBe(
+      "The page stayed at 390 when the window was resized, so the run stopped. Turn off the device toolbar in Developer Tools and capture again."
+    );
+    expect(t.fake.win).toMatchObject({ state: "normal", width: 1728, left: 10 });
+  });
+
+  test("a held page is found when the window is already at the first width", async () => {
+    const t = setup({ width: 1512, pageWidth: () => 390 });
+    await t.run.start([1512, 834]);
+    expect(t.captures).toEqual([]);
+    expect(t.final().stopped).toContain("390");
+  });
+
+  test("a held page is found at the narrowest width a window can take", async () => {
+    const t = setup({ pageWidth: () => 390 });
+    await t.run.start([500]);
+    expect(t.captures).toEqual([]);
+    expect(t.final().stopped).toContain("390");
+  });
+
+  test("a page narrower than its window but following it is captured at the window's width", async () => {
+    const widths: (number | undefined)[] = [];
+    const t = setup({
+      pageWidth: (window) => window - 400,
+      capture: () => {
+        widths.push(t.fake.win.width);
+        return null;
+      },
+    });
+    await t.run.start([1512, 834]);
+    expect(widths).toEqual([1512, 834]);
+    expect(t.final().stopped).toBeUndefined();
+  });
+
+  test("a page that fills its window takes no extra resize", async () => {
+    const t = setup();
+    await t.run.start([1440]);
+    expect(t.events).toEqual(["resize 1440", "settle", "restore"]);
+  });
+
+  test("a page width that can't be read does not stop the run", async () => {
+    const t = setup({ pageWidth: () => null });
+    await t.run.start([1440]);
+    expect(t.captures).toEqual(["1440"]);
+    expect(t.final().stopped).toBeUndefined();
   });
 
   test("a classic scrollbar is not a mismatch", async () => {
