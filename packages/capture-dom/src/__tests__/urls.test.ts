@@ -50,6 +50,11 @@ describe("cleanText", () => {
     ["(/reset?token=SECRET)", "(/reset)"],
     ["href=/reset?token=SECRET", "href=/reset"],
     ["a /b?t=SECRET,/c?t=SECRET", "a /b"],
+    ["[/reset?token=SECRET]", "[/reset]"],
+    ["</reset?token=SECRET>", "</reset>"],
+    ["{/reset?token=SECRET}", "{/reset}"],
+    ["a|/reset?token=SECRET", "a|/reset"],
+    ["a|/reset?token=SECRET|RET", "a|/reset"],
   ])("takes the query off %s", (raw, clean) => {
     expect(cleanText(raw)).toBe(clean);
   });
@@ -62,6 +67,10 @@ describe("cleanText", () => {
     "What is /etc/passwd? A file",
     "1 / 2 # 3",
     "Rock & roll!",
+    "[Why? Because]",
+    "{a|b}? Yes",
+    "<b>Why?</b> Because",
+    "a | b # c",
   ])("leaves prose alone: %s", (text) => {
     expect(cleanText(text)).toBe(text);
   });

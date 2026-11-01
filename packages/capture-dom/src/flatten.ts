@@ -75,10 +75,18 @@ export function isEditable(el: Element): boolean {
   return value !== null && value.toLowerCase() !== "false";
 }
 
-/** Whether `el` is editable or sits in an editable element of its own tree. */
-export function insideEditable(el: Element): boolean {
-  for (let at: Element | null = el; at; at = at.parentElement) {
-    if (isEditable(at)) return true;
+/** The parent in the flattened tree, as far as it can be reached: closed roots hide their slots. */
+function flatParent(node: Node): Node | null {
+  const slot = (node as Partial<Slottable>).assignedSlot;
+  if (slot) return slot;
+  const parent = node.parentNode;
+  return parent?.nodeType === 11 && "host" in parent ? (parent as ShadowRoot).host : parent;
+}
+
+/** Whether `node` is editable, or shows inside something editable in the flattened tree. */
+export function insideEditable(node: Node): boolean {
+  for (let at: Node | null = node; at; at = flatParent(at)) {
+    if (at.nodeType === 1 && isEditable(at as Element)) return true;
   }
   return false;
 }

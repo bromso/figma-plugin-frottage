@@ -152,9 +152,9 @@ function isSecretField(el: Element): boolean {
 /** Whether anything inside `el` must stay unread: a secret field, or text a person can type into. */
 const isPrivate = (el: Element): boolean => isSecretField(el) || isEditable(el);
 
-/** `textContent`, skipping what must stay unread. */
+/** `textContent`, skipping what must stay unread, including text slotted into an editable element. */
 function publicText(node: Node): string {
-  if (node.nodeType === 3) return node.nodeValue ?? "";
+  if (node.nodeType === 3) return insideEditable(node) ? "" : (node.nodeValue ?? "");
   if (node.nodeType !== 1 || isPrivate(node as Element)) return "";
   return Array.from(node.childNodes, publicText).join("");
 }
@@ -187,7 +187,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   const cs = (el: Element) => win.getComputedStyle(el);
   /** A slot with `display: contents` has no box and is replaced by what it shows; any other keeps its node. */
-  const keepSlot = (slot: Element) => cs(slot).display !== "contents";
+  const keepSlot = (slot: Element) => isEditable(slot) || cs(slot).display !== "contents";
   const childrenOf = (el: Element) => flatChildren(el, env, keepSlot);
   const pageBox = (r: { left: number; top: number; width: number; height: number }): Box => ({
     x: round2(r.left + scrollX),
@@ -825,7 +825,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const named = ids
       .map((id) => {
         const label = tree.getElementById?.(id);
-        return label && !insideEditable(label) ? publicText(label).trim() : "";
+        return label ? publicText(label).trim() : "";
       })
       .filter(Boolean)
       .join(" ");
@@ -907,6 +907,13 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   function warnEach(count: number, code: string, nodeId: string, detail: string) {
     for (let i = 0; i < count; i++) warn(code, nodeId, detail);
   }
+
+  const warnEditable = () =>
+    warn(
+      "editable-skipped",
+      undefined,
+      "Editable elements were left empty, so nothing typed into them is in the file"
+    );
 
   function placeholder(
     base: Omit<PlaceholderNode, "kind" | "placeholderKind" | "sourceUrl">,
@@ -1020,7 +1027,9 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     if (s.display === "none") return [];
     const inherited = inside(el, s, up);
     if (s.display === "contents") {
-      return isEditable(el) ? [] : visitChildren(el, depth - 1, inherited);
+      if (!isEditable(el)) return visitChildren(el, depth - 1, inherited);
+      warnEditable();
+      return [];
     }
 
     const box = boxOf(el, s);
@@ -1133,6 +1142,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const leafControl = tag === "input" || tag === "textarea" || tag === "select";
     if (isEditable(el)) {
       // What a person typed: the box and style stay, and nothing inside is read.
+      warnEditable();
     } else if (leafControl) {
       // A secret field keeps its box and style; nothing inside it is read.
       if (depth < MAX_DEPTH && !isSecretField(el)) {

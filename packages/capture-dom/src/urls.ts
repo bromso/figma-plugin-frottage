@@ -10,7 +10,7 @@ const URLS_IN_CSS = new RegExp(URL_IN_CSS.source, "g");
 // punctuation that ends a sentence stays out of the match.
 const BARE_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"']*[^\s"',.;:!?)]/gi;
 /** A word that starts like a path and has a query or fragment. "Why? Because" is not one. */
-const PATH_WITH_QUERY = /(?<![^\s"'(=,:])\.{0,2}\/[^\s"'?#]*[?#][^\s"']*[^\s"',.;:!?)]/g;
+const PATH_WITH_QUERY = /(?<![^\s"'(=,:[<{|])\.{0,2}\/[^\s"'?#]*[?#][^\s"']*[^\s"'|,.;:!?)\]>}]/g;
 
 const unescapeCss = (text: string) => text.replace(/\\(.)/g, "$1");
 

@@ -1286,6 +1286,37 @@ test('contenteditable="false" is read, and designMode does not blank the page', 
   expect(textOf(c)).toContain("Dear");
 });
 
+test("an editable slot shows nothing, inside a shadow root or out of one", async ({ page }) => {
+  const c = await capture(page, "secrets.html");
+  const json = JSON.stringify(c);
+  expect(json).not.toContain("SECRET-EDITABLE-SLOT");
+  expect(json).not.toContain("SECRET-EDITABLE-SLOTTED");
+});
+
+test("text slotted into an editable element stays out of SVG names and sprites", async ({
+  page,
+}) => {
+  const c = await capture(page, "secrets.html");
+  const named = svgs(c).find((n) => n.semantic.id === "flat-labelled");
+  expect(named?.semantic.ariaLabel).toBeUndefined();
+  expect(JSON.stringify(c)).not.toContain("SECRET-EDITABLE-FLAT");
+});
+
+test("editable elements are counted in one warning that holds none of their text", async ({
+  page,
+}) => {
+  const c = await capture(page, "secrets.html", { closedShadow: true });
+  const found = c.warnings.filter((w) => w.code === "editable-skipped");
+  expect(found).toHaveLength(1);
+  expect(found[0]?.detail).toMatch(/\(\d+ times\)$/);
+  expect(found[0]?.detail).not.toContain("SECRET");
+});
+
+test("a page with no editable element gets no such warning", async ({ page }) => {
+  const c = await capture(page, "form.html");
+  expect(c.warnings.map((w) => w.code)).not.toContain("editable-skipped");
+});
+
 test("the text of an editable element is not read at all", async ({ page }) => {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
   await page.goto("/secrets.html");
