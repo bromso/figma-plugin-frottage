@@ -681,17 +681,21 @@ export function mapCapture(
           layout.mode === "HORIZONTAL" || layout.mode === "VERTICAL"
             ? siblingsOf(node.children, layout.mode === "HORIZONTAL")
             : undefined;
-        const targets = children.map((child) => collapseTarget(child, repeated));
+        const targets = new Map(
+          node.children.map((child) => [child, collapseTarget(child, repeated)])
+        );
+        // Numbered in document order, as paint order is no order a reader sees.
+        const numbered = [...targets.values()];
         for (let i = children.length - 1; i >= 0; i--) {
           const child = children[i] as CaptureNode;
           stack.push({
-            node: targets[i] as CaptureNode,
+            node: targets.get(child) as CaptureNode,
             outer: child,
             parent: node,
             parentId: node.id,
             parentLayout: layout,
             siblings: around,
-            peers: targets,
+            peers: numbered,
             clip: childClip,
           });
         }

@@ -894,6 +894,39 @@ describe("stacking order", () => {
   });
 });
 
+describe("numbering in a list that paints out of order", () => {
+  const item = (id: string, over = {}) =>
+    el(id, [0, 0], [], { semantic: { tag: "li" }, ...over }, [50, 50]);
+  const rel = { layout: { ...el("x", [0, 0]).layout, position: "relative" } };
+  const names = (children: ReturnType<typeof el>[], parent = {}) =>
+    Object.fromEntries(
+      mapCapture(cap(el("root", [0, 0], [el("p", [0, 0], children, parent, [200, 200])])), inter)
+        .ops.filter((o) => o.parent === "p")
+        .map((o) => [o.id, o.name])
+    );
+
+  test("a positioned item keeps its number when it paints last", () => {
+    expect(names([item("a", rel), item("b"), item("c")])).toEqual({
+      a: "Item 1",
+      b: "Item 2",
+      c: "Item 3",
+    });
+  });
+  test("a reversed row numbers by document order", () => {
+    const row = {
+      layout: {
+        ...el("x", [0, 0]).layout,
+        display: "flex",
+        flexDirection: "row-reverse",
+        justifyContent: "flex-end",
+      },
+    };
+    const first = el("a", [50, 0], [], { semantic: { tag: "li" } }, [50, 50]);
+    const second = el("b", [0, 0], [], { semantic: { tag: "li" } }, [50, 50]);
+    expect(names([first, second], row)).toEqual({ a: "Item 1", b: "Item 2" });
+  });
+});
+
 describe("gradients", () => {
   type Grad = Extract<PlanPaint, { transform: unknown }>;
   const red = { r: 1, g: 0, b: 0, a: 1 };
