@@ -2193,6 +2193,56 @@ test.describe("hover on what merges into text", () => {
     expect(elements(c, "x-btn")[0]?.hover?.color).toEqual(redHover);
   });
 
+  test("text in a block beside the anchor keeps the hover off the parent", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-card { display: block } x-card a { color: inherit } x-card a:hover { color: red }</style>
+       <x-card><a href="https://e.test/1">Title</a><p>Description</p></x-card>
+       <x-card><a href="https://e.test/2">Other</a><p>More text</p></x-card>`
+    );
+    expect(elements(c, "x-card")[0]?.hover).toBeUndefined();
+    expect(c.warnings.find((w) => w.code === "hover-partial")?.detail).toContain("(2 times)");
+  });
+
+  test("links in a nested list do not recolour what holds them", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-nav { display: block } x-nav a { color: rgb(51, 51, 51) } x-nav a:hover { color: red }</style>
+       <x-nav><ul><li><a href="https://e.test/1">Top</a><ul><li><a href="https://e.test/2">Sub</a></li></ul></li></ul></x-nav>
+       <x-nav><ul><li><a href="https://e.test/3">Top</a><ul><li><a href="https://e.test/4">Sub</a></li></ul></li></ul></x-nav>`
+    );
+    const held = elements(c, "li").filter((li) => li.hover);
+    // Only the inner item has its link as all it holds.
+    expect(held.map((li) => li.hover?.color)).toEqual([redHover, redHover]);
+    expect(elements(c, "x-nav").every((n) => !n.hover)).toBe(true);
+    expect(elements(c, "ul").every((n) => !n.hover)).toBe(true);
+  });
+
+  test("only colour and decoration lift; box changes are counted", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-btn { display: block; padding: 8px } x-btn a { color: inherit }
+       x-btn a:hover { opacity: .5; background: #ff0; text-decoration: underline; color: red }</style>
+       <x-btn><a href="https://e.test/1">One</a></x-btn><x-btn><a href="https://e.test/2">Two</a></x-btn>`
+    );
+    const hover = elements(c, "x-btn")[0]?.hover;
+    expect(hover).toMatchObject({ color: redHover, decoration: "underline" });
+    expect(hover?.opacity).toBeUndefined();
+    expect(hover?.backgroundColor).toBeUndefined();
+    expect(c.warnings.find((w) => w.code === "hover-partial")?.detail).toContain("(2 times)");
+  });
+
+  test("a hover of box changes alone lifts nothing and is counted once each", async ({ page }) => {
+    const c = await plain(
+      page,
+      `<style>x-btn { display: block } x-btn a:hover { opacity: .5 }</style>
+       <x-btn><a href="https://e.test/1">One</a></x-btn><x-btn><a href="https://e.test/2">Two</a></x-btn>`
+    );
+    expect(elements(c, "x-btn")[0]?.hover).toBeUndefined();
+    expect(c.warnings.find((w) => w.code === "hover-partial")?.detail).toContain("(2 times)");
+    expect(parseCapture(c).ok).toBe(true);
+  });
+
   test("a hover in the middle of a sentence is counted, not lifted", async ({ page }) => {
     const c = await plain(
       page,

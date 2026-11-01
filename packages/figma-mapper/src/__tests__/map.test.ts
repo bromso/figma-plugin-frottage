@@ -805,6 +805,27 @@ describe("stacking order", () => {
         expect(order).toEqual(["backdrop", "content"]);
       }
     });
+    test("under auto layout the backdrop goes before the content, whatever comes after", () => {
+      const footer = el("footer", [0, 60], [], {}, [200, 40]);
+      for (const over of [rel(), { opacity: 0.9 }]) {
+        const hero = el("content", [0, 0], [], over, [200, 60]);
+        const { mode, order } = stacked([backdrop(), hero, footer]);
+        expect(mode).toBe("VERTICAL");
+        expect(order).toEqual(["backdrop", "content", "footer"]);
+      }
+    });
+    test("absolutes keep their stacked order, each before the first flow item above it", () => {
+      const hero = el("content", [0, 0], [], rel(), [200, 60]);
+      const footer = el("footer", [0, 60], [], {}, [200, 40]);
+      const { order } = stacked([
+        el("top", [0, 0], [], abs(3), [10, 10]),
+        backdrop(),
+        el("under", [0, 0], [], abs(-1), [10, 10]),
+        hero,
+        footer,
+      ]);
+      expect(order).toEqual(["under", "backdrop", "content", "footer", "top"]);
+    });
     test("a static child still goes under an absolute one, as CSS paints it", () => {
       expect(stacked([backdrop(), content()]).order).toEqual(["content", "backdrop"]);
     });

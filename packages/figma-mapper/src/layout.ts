@@ -202,8 +202,8 @@ function stackOrder(children: CaptureNode[]): CaptureNode[] {
 
 /**
  * Children in the order the applier should add them, which is the order they paint in. Under auto
- * layout that order also places them, so flow children keep CSS order in whatever slots the flow
- * got, and only absolute ones paint where CSS has them.
+ * layout that order also places them, so the flow stays in CSS order, and each absolute child goes
+ * in just before the first flow item that paints above it.
  */
 export function visualOrder(
   node: ElementNode,
@@ -213,9 +213,18 @@ export function visualOrder(
   const stacked = stackOrder(children);
   if (layout.mode !== "HORIZONTAL" && layout.mode !== "VERTICAL") return stacked;
   const inFlow = (c: CaptureNode) => renders(c) && !isAbsolute(c);
-  const flow = cssOrder(node, children.filter(inFlow));
-  let slot = 0;
-  return stacked.map((c) => (inFlow(c) ? (flow[slot++] as CaptureNode) : c));
+  const paintIndex = new Map(stacked.map((c, i) => [c, i]));
+  const rest = stacked.filter((c) => !inFlow(c));
+  const out: CaptureNode[] = [];
+  let next = 0;
+  for (const item of cssOrder(node, children.filter(inFlow))) {
+    const paintsAt = paintIndex.get(item) as number;
+    while (next < rest.length && (paintIndex.get(rest[next] as CaptureNode) as number) < paintsAt) {
+      out.push(rest[next++] as CaptureNode);
+    }
+    out.push(item);
+  }
+  return [...out, ...rest.slice(next)];
 }
 
 /**

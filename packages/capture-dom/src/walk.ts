@@ -595,9 +595,22 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return inlineItems(item as Element).some(showsText);
   }
 
-  /** The element that holds all of `el`'s text, if one does. */
+  /** Whether any text shows inside an item, however deep and whatever kind of box holds it. */
+  function holdsAnyText(item: Item): boolean {
+    if (isPseudoItem(item) || item.nodeType === 3) return holdsText(item);
+    if (item.nodeType !== 1) return false;
+    const e = item as Element;
+    if (IGNORED_TAGS.has(e.localName) || isPrivate(e) || cs(e).display === "none") return false;
+    return inlineItems(e).some(holdsAnyText);
+  }
+
+  /** The element that holds all of `el`'s text, if one does. A box with no text, like an icon, may sit beside it. */
   function soleTextElement(el: Element): Element | null {
-    const shown = inlineItems(el).filter(showsText);
+    const items = inlineItems(el);
+    const inBox = (item: Item) =>
+      !isPseudoItem(item) && item.nodeType === 1 && !isMergeable(item as Element);
+    if (items.some((item) => inBox(item) && holdsAnyText(item))) return null;
+    const shown = items.filter(showsText);
     const only = shown[0];
     return only && shown.length === 1 && !isPseudoItem(only) && only.nodeType === 1
       ? (only as Element)
@@ -610,18 +623,28 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   /**
    * A merged element has no node to keep a hover on, so one that is all of its parent's text hands
-   * its hover to the parent, with the colour its own text rests at. The elements it read go in
+   * its colour and decoration to the parent, with the colour its own text rests at. What it does to
+   * its own box would land on the parent's, so that is counted. The elements it read go in
    * `liftedHovers`; any other merged hover is lost, and counted.
    */
   function liftedHover(parent: Element): Hover | undefined {
     if (hovers.size === 0) return undefined;
     const merged = soleTextElement(parent);
     if (!merged || staysElement(merged, parent)) return undefined;
+    const lifted: Hover = {};
     const own = hovers.get(merged);
-    if (own) liftedHovers.add(merged);
-    const lifted = own?.color ? { ...own, restingColor: colorOf(cs(merged).color) } : own;
-    const below = liftedHover(merged);
-    return lifted || below ? { ...lifted, ...below } : undefined;
+    if (own) {
+      liftedHovers.add(merged);
+      const { color, decoration, restingColor: _rest, ...box } = own;
+      if (color) {
+        lifted.color = color;
+        lifted.restingColor = colorOf(cs(merged).color);
+      }
+      if (decoration !== undefined) lifted.decoration = decoration;
+      if (Object.keys(box).length > 0) reportHover("hover-partial", 1);
+    }
+    const all = { ...lifted, ...liftedHover(merged) };
+    return Object.keys(all).length > 0 ? all : undefined;
   }
 
   /**
