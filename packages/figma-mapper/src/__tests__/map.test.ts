@@ -1016,11 +1016,14 @@ describe("gradients", () => {
     const zero = planWith([{ type: "conic-gradient", css: "conic-gradient()", stops }])
       .fills[0] as Grad;
     expect(zero.type).toBe("GRADIENT_ANGULAR");
-    expect(zero.transform[0][0]).toBeCloseTo(1, 9);
+    // CSS starts at 12 o'clock and Figma's identity at 3, as measured.
+    expect(zero.transform[0][0]).toBeCloseTo(0, 9);
+    expect(zero.transform[0][1]).toBeCloseTo(-1, 9);
+    expect(zero.transform[0][2]).toBeCloseTo(1, 9);
     const quarter = planWith([
       { type: "conic-gradient", css: "conic-gradient()", angle: 90, stops },
     ]).fills[0] as Grad;
-    expect(quarter.transform[0][0]).toBeCloseTo(0, 9);
+    expect(quarter.transform[0][0]).toBeCloseTo(1, 9);
     // The centre stays put.
     const [r0, r1] = quarter.transform;
     expect(r0[0] * 0.5 + r0[1] * 0.5 + r0[2]).toBeCloseTo(0.5, 9);

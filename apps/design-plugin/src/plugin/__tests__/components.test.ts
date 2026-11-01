@@ -781,6 +781,7 @@ test("the section wraps at 1600 px and fits its contents", async () => {
     frame("root"),
   ]);
   const [section] = ofType(f, "SECTION") as [FakeNode];
+  expect(section.fills[0]?.type).toBe("SOLID");
   const spots = section.children.map((n: FakeNode) => [n.x, n.y]);
   expect(spots).toEqual([
     [40, 40],

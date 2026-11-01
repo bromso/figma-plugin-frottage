@@ -114,6 +114,8 @@ export function createComponentSet(api: PluginAPI, rootName: string, paint: Hove
       if (!section) {
         section = api.createSection();
         section.name = `${rootName} components`;
+        // A section takes the viewer's theme, and page components are mostly dark text on light.
+        section.fills = [{ type: "SOLID", color: { r: 0.9, g: 0.9, b: 0.9 } }];
         if (section.parent !== page) page.appendChild(section);
       }
       section.appendChild(node);

@@ -112,10 +112,10 @@ function isDefaultRadial(css: string): boolean {
   );
 }
 
-// A conic gradient's start direction is checked in real Figma (Task 11). The transform is the
-// inverse of a clockwise turn by `angle` about the box centre.
+// Measured in Figma: an angular gradient starts at 3 o'clock and CSS starts at 12, so the start
+// turns back a quarter. The transform is the inverse of that clockwise turn about the box centre.
 function angularTransform(angle: number): Transform {
-  const rad = (angle * Math.PI) / 180;
+  const rad = ((angle - 90) * Math.PI) / 180;
   const sin = Math.sin(rad);
   const cos = Math.cos(rad);
   return [
