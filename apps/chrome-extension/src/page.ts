@@ -1,4 +1,5 @@
 import type { Capture } from "@repo/capture-schema";
+import type { RunStatus } from "./capture-run";
 
 const RESTRICTED_SCHEMES = [
   "chrome:",
@@ -54,16 +55,22 @@ export function normaliseVersion(kind: unknown, label: unknown): CaptureVersion 
   return { label: trimmed, kind: found };
 }
 
+/** A window can't be resized below this, so a narrower width is captured through DevTools. */
+const NARROW_UNDER = 500;
+
 /**
  * The version a capture records, in the page. A viewport's label is the width the page was laid out
- * at, which only the page knows; anything else keeps the label it was given.
+ * at, which only the page knows; anything else keeps the label it was given. A plain capture of a
+ * page laid out under 500 is DevTools' device mode, so it is labelled with that width.
  */
 export function pageVersion(
   kind: unknown,
   label: unknown,
   innerWidth: number
 ): CaptureVersion | undefined {
-  return normaliseVersion(kind, kind === "viewport" ? String(innerWidth) : label);
+  const given = normaliseVersion(kind, kind === "viewport" ? String(innerWidth) : label);
+  if (given) return given;
+  return innerWidth < NARROW_UNDER ? normaliseVersion("viewport", String(innerWidth)) : undefined;
 }
 
 /** The origin of a tab's URL; null when Chrome did not give one, as after leaving an `activeTab`. */
@@ -184,4 +191,102 @@ export async function allowAccessAndRecapture(
   }
   if (granted) recapture();
   return granted;
+}
+
+/** Widths the popup offers, in order. */
+export const VIEWPORT_PRESETS = [1512, 1440, 834, 393, 390];
+/** Widths ticked the first time. */
+const DEFAULT_ON = new Set([1512, 1440, 834]);
+const WIDTH_MIN = 320;
+const WIDTH_MAX = 3840;
+
+/** One row of the width list: the number as typed, and whether it is ticked. */
+export type WidthChoice = { text: string; on: boolean };
+
+function defaultChoices(): WidthChoice[] {
+  return VIEWPORT_PRESETS.map((w) => ({ text: String(w), on: DEFAULT_ON.has(w) }));
+}
+
+/**
+ * The widths to capture from what was typed: whole numbers from 320 to 3840, anything else dropped,
+ * a repeat collapsed into its first place.
+ */
+export function parseWidths(text: string[]): number[] {
+  const widths: number[] = [];
+  for (const raw of text) {
+    const trimmed = raw.trim();
+    if (!/^\d{1,5}$/.test(trimmed)) continue;
+    const width = Number(trimmed);
+    if (width < WIDTH_MIN || width > WIDTH_MAX || widths.includes(width)) continue;
+    widths.push(width);
+  }
+  return widths;
+}
+
+/** The saved choices from `localStorage`, or the defaults when they are missing or malformed. */
+export function parseChoices(raw: string | null): WidthChoice[] {
+  try {
+    const value: unknown = raw ? JSON.parse(raw) : null;
+    if (
+      Array.isArray(value) &&
+      value.length === VIEWPORT_PRESETS.length &&
+      value.every(
+        (c) =>
+          c &&
+          typeof c === "object" &&
+          typeof (c as WidthChoice).text === "string" &&
+          typeof (c as WidthChoice).on === "boolean"
+      )
+    ) {
+      return value.map((c: WidthChoice) => ({ text: c.text.slice(0, 5), on: c.on }));
+    }
+  } catch {
+    // Fall through to the defaults.
+  }
+  return defaultChoices();
+}
+
+function joinNumbers(widths: number[]): string {
+  if (widths.length <= 1) return widths.join("");
+  return `${widths.slice(0, -1).join(", ")} and ${widths[widths.length - 1]}`;
+}
+
+/**
+ * The steps for widths under 500, which resizing the window can't reach; null when there are none.
+ * Capturing in device mode labels the file with its width by itself.
+ */
+export function devtoolsSteps(widths: number[]): string[] | null {
+  const narrow = widths.filter((w) => w < NARROW_UNDER);
+  if (narrow.length === 0) return null;
+  return [
+    `${joinNumbers(narrow)} can't be reached by resizing the window, so the run skips ${narrow.length === 1 ? "it" : "them"}. Capture ${narrow.length === 1 ? "it" : "each"} yourself:`,
+    "In Chrome, choose View, then Developer, then Developer Tools.",
+    "Click the device toolbar button (the phone and tablet icon).",
+    "Set the width to the one you want.",
+    "Press Capture this page.",
+  ];
+}
+
+/** The button text while a viewport run is on one of its widths. */
+export function viewportStatusLabel(status: RunStatus & { state: "viewport" }): string {
+  return `Capturing at ${status.label} (${status.index} of ${status.total})…`;
+}
+
+/** What the popup says about a finished viewport run. */
+export function viewportAdvice(status: RunStatus & { state: "viewport-done" }): {
+  saved: string[];
+  mismatches: string[];
+  stopped: string | null;
+  steps: string[] | null;
+  nodeWarning: string | null;
+  blockedImages: number;
+} {
+  return {
+    saved: status.saved.map((s) => s.label),
+    mismatches: status.mismatched.map((m) => `${m.requested} was captured at ${m.width}.`),
+    stopped: status.stopped ?? (status.cancelled ? "You stopped the run." : null),
+    steps: devtoolsSteps(status.narrow),
+    nodeWarning: nodeAdvice(0, status.nodeLimit).warning,
+    blockedImages: status.blockedImages,
+  };
 }

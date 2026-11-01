@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   allowAccessAndRecapture,
   captureFilename,
+  devtoolsSteps,
   friendlyError,
   imageAdvice,
   isRestrictedUrl,
@@ -9,6 +10,11 @@ import {
   normaliseVersion,
   pageOrigin,
   pageVersion,
+  parseChoices,
+  parseWidths,
+  VIEWPORT_PRESETS,
+  viewportAdvice,
+  viewportStatusLabel,
 } from "../page";
 
 describe("isRestrictedUrl", () => {
@@ -218,5 +224,113 @@ describe("pageOrigin", () => {
     expect(pageOrigin("https://example.com/a?b=c#d")).toBe("https://example.com");
     expect(pageOrigin(undefined)).toBeNull();
     expect(pageOrigin("not a url")).toBeNull();
+  });
+});
+
+describe("viewport widths", () => {
+  test("presets are 1512, 1440, 834, 393, 390", () => {
+    expect(VIEWPORT_PRESETS).toEqual([1512, 1440, 834, 393, 390]);
+  });
+
+  test("each preset is editable, and widths under 320 or over 3840 are refused", () => {
+    expect(parseWidths(["1600", " 900 ", "320", "3840"])).toEqual([1600, 900, 320, 3840]);
+    expect(parseWidths(["319", "3841", "0", "-5", "", "abc", "12.5", "1e3"])).toEqual([]);
+  });
+
+  test("duplicates collapse, keeping the first position", () => {
+    expect(parseWidths(["1440", "834", "1440", "0834"])).toEqual([1440, 834]);
+  });
+
+  test("saved choices come back, and anything malformed falls back to the defaults", () => {
+    const saved = JSON.stringify([
+      { text: "1600", on: false },
+      { text: "1440", on: true },
+      { text: "834", on: true },
+      { text: "393", on: false },
+      { text: "390", on: false },
+    ]);
+    expect(parseChoices(saved)[0]).toEqual({ text: "1600", on: false });
+    const defaults = parseChoices(null);
+    expect(defaults.map((c) => c.text)).toEqual(["1512", "1440", "834", "393", "390"]);
+    expect(defaults.map((c) => c.on)).toEqual([true, true, true, false, false]);
+    expect(parseChoices("not json")).toEqual(defaults);
+    expect(parseChoices('[{"text":1}]')).toEqual(defaults);
+  });
+});
+
+describe("devtoolsSteps", () => {
+  test("widths under 500 show the DevTools steps, naming the keys", () => {
+    const steps = devtoolsSteps([393, 1440, 390]);
+    expect(steps?.join(" ")).toContain("View");
+    expect(steps?.join(" ")).toContain("Developer Tools");
+    expect(steps?.join(" ")).toContain("393 and 390");
+    expect(steps?.join(" ")).toContain("Capture this page");
+  });
+  test("there are none when every width can be reached by resizing", () => {
+    expect(devtoolsSteps([1440, 500])).toBeNull();
+    expect(devtoolsSteps([])).toBeNull();
+  });
+});
+
+describe("viewportAdvice", () => {
+  const base = {
+    state: "viewport-done" as const,
+    saved: [
+      { label: "1440", width: 1440 },
+      { label: "834", width: 834 },
+    ],
+    narrow: [],
+    mismatched: [],
+    nodeLimit: false,
+    blockedImages: 0,
+  };
+
+  test("lists what was saved", () => {
+    const a = viewportAdvice(base);
+    expect(a.saved).toEqual(["1440", "834"]);
+    expect(a.stopped).toBeNull();
+    expect(a.mismatches).toEqual([]);
+  });
+
+  test("a run's real widths are listed when one differs", () => {
+    const a = viewportAdvice({ ...base, mismatched: [{ requested: 1512, width: 1497 }] });
+    expect(a.mismatches).toEqual(["1512 was captured at 1497."]);
+  });
+
+  test("a stopped run says why, and a cancelled one says so", () => {
+    expect(
+      viewportAdvice({ ...base, stopped: "The tab left the page, so the run stopped." }).stopped
+    ).toBe("The tab left the page, so the run stopped.");
+    expect(viewportAdvice({ ...base, cancelled: true }).stopped).toBe("You stopped the run.");
+  });
+
+  test("carries the narrow steps and the size and image flags", () => {
+    const a = viewportAdvice({ ...base, narrow: [390], nodeLimit: true, blockedImages: 3 });
+    expect(a.steps).not.toBeNull();
+    expect(a.nodeWarning).toContain("20,000");
+    expect(a.blockedImages).toBe(3);
+  });
+
+  test("nothing saved says so", () => {
+    expect(viewportAdvice({ ...base, saved: [] }).saved).toEqual([]);
+  });
+});
+
+describe("viewportStatusLabel", () => {
+  test("names the width and place in the run", () => {
+    expect(viewportStatusLabel({ state: "viewport", index: 2, total: 3, label: "1440" })).toBe(
+      "Capturing at 1440 (2 of 3)…"
+    );
+  });
+});
+
+describe("pageVersion under 500", () => {
+  test("a plain capture under 500 is labelled with its width", () => {
+    expect(pageVersion(undefined, undefined, 393)).toEqual({ label: "393", kind: "viewport" });
+    expect(pageVersion("theme", "  ", 390)).toEqual({ label: "390", kind: "viewport" });
+  });
+  test("500 and over stay plain, and a given label wins", () => {
+    expect(pageVersion(undefined, undefined, 500)).toBeUndefined();
+    expect(pageVersion("theme", "Dark", 393)).toEqual({ label: "Dark", kind: "theme" });
   });
 });

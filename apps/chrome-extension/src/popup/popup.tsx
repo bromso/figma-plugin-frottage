@@ -1,5 +1,6 @@
 import {
   Button,
+  Checkbox,
   Input,
   Label,
   Select,
@@ -16,12 +17,18 @@ import type { RunStatus } from "../capture-run";
 import type { PopupMessage, Reply } from "../messages";
 import {
   allowAccessAndRecapture,
+  devtoolsSteps,
   friendlyError,
   imageAdvice,
   isRestrictedUrl,
   LABEL_MAX,
   nodeAdvice,
   normaliseVersion,
+  parseChoices,
+  parseWidths,
+  viewportAdvice,
+  viewportStatusLabel,
+  type WidthChoice,
 } from "../page";
 
 const dark = window.matchMedia("(prefers-color-scheme: dark)");
@@ -29,14 +36,26 @@ const applyTheme = () => document.documentElement.classList.toggle("dark", dark.
 applyTheme();
 dark.addEventListener("change", applyTheme);
 
+// Stable keys for the width rows, which are positional.
+const VIEWPORT_ROWS = ["a", "b", "c", "d", "e"];
 const IMAGE_ORIGINS = { origins: ["<all_urls>"] };
 
-const BUSY = new Set(["capturing", "packing", "saving"]);
+const BUSY = new Set(["capturing", "packing", "saving", "viewport"]);
 const LABEL: Record<string, string> = {
   capturing: "Capturing the page…",
   packing: "Packing the file…",
   saving: "Saving the file…",
 };
+
+const CHOICES_KEY = "frottage-widths";
+
+function loadChoices(): WidthChoice[] {
+  try {
+    return parseChoices(localStorage.getItem(CHOICES_KEY));
+  } catch {
+    return parseChoices(null);
+  }
+}
 
 async function currentStatus(): Promise<RunStatus | null> {
   try {
@@ -59,12 +78,21 @@ function Popup() {
   const [versionKind, setVersionKind] = useState("theme");
   const [versionLabel, setVersionLabel] = useState("");
 
+  // The widths for a capture at several sizes, remembered between opens.
+  const [choices, setChoices] = useState<WidthChoice[]>(loadChoices);
+
   // Whether the optional image permission is held; read when a capture finishes with blocked images.
   const [declined, setDeclined] = useState(false);
   const [accessHeld, setAccessHeld] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (status.state !== "saved" || status.blockedImages <= 0) return;
+    const blocked =
+      status.state === "saved"
+        ? status.blockedImages
+        : status.state === "viewport-done"
+          ? status.blockedImages
+          : 0;
+    if (blocked <= 0) return;
     chrome.permissions.contains(IMAGE_ORIGINS).then(setAccessHeld, () => setAccessHeld(null));
   }, [status]);
 
@@ -114,6 +142,48 @@ function Popup() {
     }
   }
 
+  const wanted = parseWidths(choices.filter((c) => c.on).map((c) => c.text));
+  const steps = devtoolsSteps(wanted);
+
+  function editChoice(index: number, change: Partial<WidthChoice>) {
+    const next = choices.map((c, i) => (i === index ? { ...c, ...change } : c));
+    setChoices(next);
+    try {
+      localStorage.setItem(CHOICES_KEY, JSON.stringify(next));
+    } catch {
+      // Not remembered; the choices still work for this open.
+    }
+  }
+
+  async function captureWidths() {
+    if (tabId === null || wanted.length === 0) return;
+    setDeclined(false);
+    setStatus({
+      state: "viewport",
+      index: 1,
+      total: wanted.length,
+      label: String(wanted[0]),
+    });
+    try {
+      const reply: Reply | undefined = await chrome.runtime.sendMessage({
+        target: "sw",
+        type: "viewport-start",
+        tabId,
+        widths: wanted,
+      });
+      if (reply && !reply.ok) setStatus({ state: "error", message: reply.error });
+    } catch (error) {
+      setStatus({
+        state: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  function cancelRun() {
+    chrome.runtime.sendMessage({ target: "offscreen", type: "viewport-cancel" }).catch(() => {});
+  }
+
   // The request is the first thing the click does, so Chrome sees the user gesture.
   const allowImages = async () => {
     const granted = await allowAccessAndRecapture(
@@ -129,9 +199,11 @@ function Popup() {
   const busy = BUSY.has(status.state);
   const advice = status.state === "saved" ? nodeAdvice(status.nodes, status.nodeLimit) : null;
   const images =
-    status.state === "saved" && accessHeld !== null
+    (status.state === "saved" || status.state === "viewport-done") && accessHeld !== null
       ? imageAdvice(status.blockedImages, accessHeld)
       : null;
+  const run = status.state === "viewport-done" ? viewportAdvice(status) : null;
+  const runNodes = run?.nodeWarning ?? null;
 
   return (
     <main className="flex w-[320px] flex-col gap-3 bg-background p-4 text-foreground">
@@ -153,8 +225,72 @@ function Popup() {
             onClick={() => capture()}
             disabled={busy || restricted === null || tabId === null}
           >
-            {busy ? (LABEL[status.state] ?? "Working…") : "Capture this page"}
+            {status.state === "viewport"
+              ? viewportStatusLabel(status)
+              : busy
+                ? (LABEL[status.state] ?? "Working…")
+                : "Capture this page"}
           </Button>
+          {status.state === "viewport" && (
+            <Button variant="secondary" onClick={cancelRun}>
+              Cancel
+            </Button>
+          )}
+          <details className="flex flex-col gap-2">
+            <summary className="cursor-pointer">
+              <Type as="span">Capture at several widths</Type>
+            </summary>
+            <fieldset className="mt-2 flex flex-col gap-2" disabled={busy}>
+              <legend className="sr-only">Widths to capture</legend>
+              {choices.map((choice, index) => (
+                <div key={VIEWPORT_ROWS[index]} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`width-on-${index}`}
+                    checked={choice.on}
+                    onCheckedChange={(on) => editChoice(index, { on: on === true })}
+                    aria-label={`Capture at width ${choice.text}`}
+                  />
+                  <Input
+                    inputMode="numeric"
+                    className="w-[80px]"
+                    value={choice.text}
+                    maxLength={5}
+                    aria-label={`Width ${index + 1} in pixels`}
+                    aria-invalid={parseWidths([choice.text]).length === 0}
+                    onChange={(e) => editChoice(index, { text: e.target.value })}
+                  />
+                  <Label htmlFor={`width-on-${index}`} className="text-muted-foreground">
+                    px
+                  </Label>
+                </div>
+              ))}
+              <Type size="xsmall" className="text-muted-foreground">
+                Widths from 320 to 3840. The window is resized for each one and put back after.
+                Leave the window alone while it runs.
+              </Type>
+              {steps && (
+                <div className="flex flex-col gap-1">
+                  <Type size="xsmall">{steps[0]}</Type>
+                  <ol className="list-decimal pl-4">
+                    {steps.slice(1).map((step) => (
+                      <li key={step}>
+                        <Type size="xsmall" as="span">
+                          {step}
+                        </Type>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              <Button
+                variant="secondary"
+                onClick={captureWidths}
+                disabled={busy || tabId === null || wanted.length === 0}
+              >
+                Capture at these widths
+              </Button>
+            </fieldset>
+          </details>
           <fieldset className="flex flex-col gap-2" disabled={busy}>
             <legend className="sr-only">Label this capture (optional)</legend>
             <div className="flex gap-2">
@@ -190,6 +326,36 @@ function Popup() {
       )}
       <div aria-live="polite">
         {status.state === "saved" && <Type>Saved {status.filename} to your Downloads.</Type>}
+        {run && (
+          <div className="flex flex-col gap-1">
+            <Type>
+              {run.saved.length > 0
+                ? `Saved ${run.saved.length === 1 ? "1 file" : `${run.saved.length} files`} to your Downloads, at ${run.saved.join(", ")}.`
+                : "No files were saved."}
+            </Type>
+            {run.stopped && <Type className="text-destructive">{run.stopped}</Type>}
+            {run.mismatches.map((m) => (
+              <Type key={m} className="text-muted-foreground">
+                {m}
+              </Type>
+            ))}
+            {run.steps && (
+              <div className="flex flex-col gap-1">
+                <Type size="xsmall">{run.steps[0]}</Type>
+                <ol className="list-decimal pl-4">
+                  {run.steps.slice(1).map((step) => (
+                    <li key={step}>
+                      <Type size="xsmall" as="span">
+                        {step}
+                      </Type>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+            {runNodes && <Type className="text-muted-foreground">{runNodes}</Type>}
+          </div>
+        )}
         {advice?.warning && <Type className="text-muted-foreground">{advice.warning}</Type>}
         {images && <Type className="text-muted-foreground">{images.message}</Type>}
         {declined && <Type>Image access wasn't granted.</Type>}
