@@ -7,12 +7,15 @@ import {
   type ImportOptions,
   type ImportReport,
   mapCapture,
+  mergeVersions,
   missingFonts,
   type PlanOp,
   type PlanTokens,
+  type PlanVersionTokens,
+  stripTokens,
 } from "@repo/figma-mapper";
 import { messageForError } from "./messages";
-import { groupVersions, type LoadedFile } from "./versions";
+import { groupVersions, type LoadedFile, type VersionSet } from "./versions";
 
 export { messageForError };
 
@@ -46,6 +49,26 @@ export type VersionResult = {
 
 export type VersionReport = VersionResult & { name: string; label: string };
 
+/** What a set of versions shares, which no one version reports. */
+export type SetReport = {
+  /** The page's name. */
+  name: string;
+  modes: number;
+  /** Versions that asked for a mode and got none. */
+  modesDropped: number;
+  /** Frames that stayed, of those versions, which keep plain values and bind no tokens. */
+  plainFrames: number;
+  autoLineHeights: number;
+  stylesCreated: number;
+  stylesReused: number;
+  variablesCreated: number;
+  variablesReused: number;
+  tokenFailures: number;
+  layoutFailures: number;
+  /** The tokens that stayed plain values in one version, in words. */
+  notes: string[];
+};
+
 export type FileFailure = { name: string; message: string };
 
 export type ImportState =
@@ -66,8 +89,10 @@ export type ImportState =
       file: { index: number; total: number; name: string };
     }
   | ({ step: "done" } & VersionResult & {
-        /** One report per imported version, in import order. Task 7 adds the set around them. */
+        /** One report per imported version, in import order. */
         versions: VersionReport[];
+        /** One report per set of two or more versions that left anything. */
+        sets: SetReport[];
         /** Files that could not be imported, by name. */
         failures: FileFailure[];
       })
@@ -77,8 +102,20 @@ export type ImportPort = {
   getPrefs(key: string): Promise<unknown>;
   setPrefs(key: string, value: unknown): Promise<void>;
   listFonts(): Promise<FontRef[]>;
-  begin(meta: { name: string; fonts: FontRef[]; totalOps: number }): Promise<void>;
+  /** Opens a set of versions; only `endSet` or `cancel` closes it. */
+  beginSet(): Promise<void>;
+  begin(meta: {
+    name: string;
+    fonts: FontRef[];
+    totalOps: number;
+    version?: { index: number; label: string };
+  }): Promise<void>;
   tokens(tokens: PlanTokens, options: ImportOptions): Promise<void>;
+  /** A set's tokens. Gives the versions that got no mode, which must lose their tokens. */
+  importModes(
+    tokens: PlanVersionTokens,
+    options: ImportOptions
+  ): Promise<{ droppedVersions: number[] }>;
   image(hash: string, bytes: Uint8Array): Promise<{ ok: boolean }>;
   batch(ops: PlanOp[]): Promise<void>;
   end(): Promise<{
@@ -104,7 +141,22 @@ export type ImportPort = {
     variablesReused?: number;
     tokenFailures?: number;
   }>;
+  endSet(): Promise<SetResult>;
+  /** Takes back the import in hand: a whole set, when one is open. */
   cancel(): Promise<void>;
+};
+
+type SetResult = {
+  rootIds: string[];
+  layoutFailures: number;
+  stylesCreated: number;
+  stylesReused: number;
+  variablesCreated: number;
+  variablesReused: number;
+  tokenFailures: number;
+  modes: number;
+  modesDropped: number;
+  autoLineHeights: number;
 };
 
 /** What the user confirmed in the review step. `fonts` maps a missing family to a chosen one. */
@@ -228,6 +280,8 @@ export type PreparedVersion = {
   /** The root layer's name. */
   rootName: string;
   version: { name: string; label: string };
+  /** This version's index in its set, when it's in one of two or more. */
+  setIndex?: number;
 };
 
 type VersionContext = {
@@ -236,6 +290,8 @@ type VersionContext = {
   signal?: AbortSignal;
   options: ImportOptions;
   file: FileInfo;
+  /** A set counts all its versions' ops: those before this version's, and the whole. */
+  progress?: { done: number; total: number };
 };
 
 /** The sandbox's end() result and the plan's report, as the screen shows them. */
@@ -270,14 +326,18 @@ function versionResult(
 
 /**
  * Create one version in Figma, from a plan and its verified images. Returns null when the
- * user cancelled (the sandbox is already undone); throws on failure, after undoing what it made.
+ * user cancelled (the sandbox is already undone, the whole set with it); throws on failure, after
+ * undoing what it made. In a set, the sandbox clears a failed version once the next one begins or
+ * the set ends: cancelling would take the rest of the set too.
  */
 export async function importVersion(
   prepared: PreparedVersion,
   ctx: VersionContext
 ): Promise<VersionReport | null> {
   const { port, onState, signal, file } = ctx;
-  const { plan, assets, version } = prepared;
+  const { plan, assets, version, setIndex } = prepared;
+  const inSet = setIndex !== undefined;
+  const before = ctx.progress?.done ?? 0;
   let begun = false;
   const stop = async () => {
     if (begun) {
@@ -287,15 +347,21 @@ export async function importVersion(
     return null;
   };
   try {
-    const total = plan.ops.length;
-    onState({ step: "working", done: 0, total, file });
+    const total = ctx.progress?.total ?? plan.ops.length;
+    onState({ step: "working", done: before, total, file });
 
     // Set first: a begin that fails halfway may still have created state to cancel.
     begun = true;
-    await port.begin({ name: prepared.rootName, fonts: plan.fonts, totalOps: total });
+    await port.begin({
+      name: prepared.rootName,
+      fonts: plan.fonts,
+      totalOps: plan.ops.length,
+      ...(inSet ? { version: { index: setIndex, label: version.label } } : {}),
+    });
     // A Cancel pressed while begin ran waits for it to return, then undoes what it made.
     if (signal?.aborted) return await stop();
-    await port.tokens(plan.tokens, ctx.options);
+    // A set's tokens went ahead of its first version.
+    if (!inSet) await port.tokens(plan.tokens, ctx.options);
 
     for (const hash of plan.assetHashes) {
       if (signal?.aborted) return await stop();
@@ -304,7 +370,7 @@ export async function importVersion(
       if (data) await port.image(hash, data);
     }
 
-    let done = 0;
+    let done = before;
     for (const ops of batchOps(plan.ops)) {
       if (signal?.aborted) return await stop();
       await port.batch(ops);
@@ -316,10 +382,10 @@ export async function importVersion(
     const result = await port.end();
     if (!result.rootId) throw new Error("Nothing was created");
     begun = false;
-    onState({ step: "working", done: total, total, file });
+    onState({ step: "working", done: before + plan.ops.length, total, file });
     return { ...versionResult(plan.report, result), ...version };
   } catch (error) {
-    if (begun) {
+    if (begun && !inSet) {
       try {
         await port.cancel();
       } catch {
@@ -338,13 +404,134 @@ export function mergeMissing(
   for (const { family, nearest } of found) if (!into.has(family)) into.set(family, nearest);
 }
 
+type SetContext = Pick<VersionContext, "port" | "onState" | "signal" | "options"> & {
+  /** One plan per version. */
+  plans: Plan[];
+  /** The file number of the set's first version, from 1, and the files in the drop. */
+  firstFile: number;
+  totalFiles: number;
+  /** A version's images, read again. */
+  assetsOf(version: LoadedFile): Promise<Map<string, Uint8Array>>;
+  fail(name: string, error: unknown): void;
+};
+
+type SetOutcome = { versions: VersionReport[]; report: SetReport | null; cancelled: boolean };
+
 /**
- * Import the chosen files. Files of one page form a set, imported in order, each through the
- * single-file flow. The review step shows once, with the missing fonts of every file. A bad file
- * is reported by name and the others carry on.
+ * Create the versions of one page as one set: one token collection, a mode per version, one undo
+ * step. A version that fails is named and the others stay, and a set with none left is undone.
+ * Cancel takes back the whole set.
+ */
+async function importSet(set: VersionSet, ctx: SetContext): Promise<SetOutcome> {
+  const { port, onState, signal, options, plans, fail } = ctx;
+  const kept: VersionReport[] = [];
+  const failed = new Set<LoadedFile>();
+  let open = false;
+  const cancelled = { versions: [], report: null, cancelled: true };
+  const stop = async () => {
+    if (open) {
+      open = false;
+      await port.cancel();
+    }
+    return cancelled;
+  };
+
+  try {
+    const merged = mergeVersions(
+      set.versions.map((v, i) => ({
+        label: v.capture.version?.label ?? "",
+        plan: plans[i] as Plan,
+        cssValues: v.capture.tokens.cssCustomProperties,
+      }))
+    );
+    plans.length = 0;
+    const total = merged.plans.reduce((sum, plan) => sum + plan.ops.length, 0);
+
+    // Set first: a beginSet that fails halfway may still have created state to cancel.
+    open = true;
+    await port.beginSet();
+    if (signal?.aborted) return await stop();
+    const dropped = new Set((await port.importModes(merged.tokens, options)).droppedVersions);
+
+    let plainFrames = 0;
+    let done = 0;
+    for (const [i, version] of set.versions.entries()) {
+      if (signal?.aborted) return await stop();
+      const index = ctx.firstFile + i;
+      const file: FileInfo = { index, total: ctx.totalFiles, name: version.name };
+      onState({ step: "working", done, total, file });
+      const merging = merged.plans[i] as Plan;
+      const plan = dropped.has(i) ? stripTokens(merging) : merging;
+      try {
+        const report = await importVersion(
+          {
+            plan,
+            assets: await ctx.assetsOf(version),
+            rootName: importName(version.capture.source),
+            // Mode names are the labels made unique, so the frames are told apart the same way.
+            version: { name: version.name, label: merged.tokens.modes[i] ?? "" },
+            setIndex: i,
+          },
+          { port, onState, signal, options, file, progress: { done, total } }
+        );
+        if (!report) {
+          open = false;
+          return cancelled;
+        }
+        kept.push(report);
+        if (dropped.has(i)) plainFrames += 1;
+      } catch (error) {
+        failed.add(version);
+        fail(version.name, error);
+      }
+      done += plan.ops.length;
+      // Let this version's plan go before the next is made.
+      merged.plans[i] = undefined as unknown as Plan;
+    }
+
+    if (signal?.aborted) return await stop();
+    const result = await port.endSet();
+    open = false;
+    if (kept.length === 0) return { versions: [], report: null, cancelled: false };
+    return {
+      versions: kept,
+      cancelled: false,
+      report: {
+        name: importName((set.versions[0] as LoadedFile).capture.source),
+        modes: result.modes,
+        modesDropped: result.modesDropped,
+        plainFrames,
+        autoLineHeights: result.autoLineHeights,
+        stylesCreated: result.stylesCreated,
+        stylesReused: result.stylesReused,
+        variablesCreated: result.variablesCreated,
+        variablesReused: result.variablesReused,
+        tokenFailures: result.tokenFailures,
+        layoutFailures: result.layoutFailures,
+        notes: merged.report,
+      },
+    };
+  } catch (error) {
+    // Nothing of the set is left, so every version of it failed.
+    if (open) {
+      try {
+        await port.cancel();
+      } catch {
+        // The failures below are what matter.
+      }
+    }
+    for (const version of set.versions) if (!failed.has(version)) fail(version.name, error);
+    return { versions: [], report: null, cancelled: false };
+  }
+}
+
+/**
+ * Import the chosen files. Files of one page form a set: two or more import together, with a mode
+ * per version, and a page with one file takes the single-file flow. Sets import one after another,
+ * each its own undo step. The review step shows once, with the missing fonts of every file. A bad
+ * file is reported by name and the others carry on.
  *
- * Cancel stops the run and undoes the version in hand; versions already finished stay. Removing
- * a whole set is the sandbox's job (Task 7).
+ * Cancel stops the run and undoes the set or the file in hand; those already finished stay.
  */
 export async function runImports(
   files: File[],
@@ -452,52 +639,74 @@ export async function runImports(
       for (const [family, chosen] of changed) await writePref(port, `font:${family}`, chosen);
     }
 
-    // The set loop. A set's plans are built after the review and before its first begin, so
-    // Task 7 can merge their tokens first; each plan is dropped once its version is created.
+    // A set's plans are built after the review and before its first begin, so their tokens can be
+    // merged; each plan is dropped once its version is created.
     const versions: VersionReport[] = [];
+    const reports: SetReport[] = [];
+    const assetsOf = async (version: LoadedFile) => {
+      if (single) return version.assets;
+      const again = await loadFile(fileOf(version));
+      if (!sameKeys(again.assets, assetKeys.get(version.capture.source))) {
+        throw new FrottageFileError("invalid-capture");
+      }
+      return again.assets;
+    };
     let index = 0;
     for (const set of sets) {
+      const firstFile = index + 1;
+      index += set.versions.length;
+      if (signal?.aborted) return onState({ step: "idle" });
       const plans = set.versions.map(
         (v) => firstPlan ?? mapCapture(v.capture, available, options, overrides)
       );
-      // Task 7: mergeVersions(plans) goes here and replaces each plan's tokens with the set's.
-      for (const [i, version] of set.versions.entries()) {
-        index += 1;
-        if (signal?.aborted) return onState({ step: "idle" });
-        const info: FileInfo = { index, total: files.length, name: version.name };
-        onState(working(index, version.name));
-        const plan = plans[i] as Plan;
-        try {
-          let assets = version.assets;
-          if (!single) {
-            const again = await loadFile(fileOf(version));
-            if (!sameKeys(again.assets, assetKeys.get(version.capture.source))) {
-              throw new FrottageFileError("invalid-capture");
-            }
-            assets = again.assets;
+
+      if (set.versions.length > 1) {
+        onState(working(firstFile, set.versions[0]?.name ?? ""));
+        const outcome = await importSet(set, {
+          port,
+          onState,
+          signal,
+          options,
+          plans,
+          firstFile,
+          totalFiles: files.length,
+          assetsOf,
+          fail,
+        });
+        if (outcome.cancelled) return onState({ step: "idle" });
+        versions.push(...outcome.versions);
+        if (outcome.report) reports.push(outcome.report);
+        continue;
+      }
+
+      const version = set.versions[0] as LoadedFile;
+      onState(working(firstFile, version.name));
+      try {
+        const report = await importVersion(
+          {
+            plan: plans[0] as Plan,
+            assets: await assetsOf(version),
+            rootName: importName(version.capture.source),
+            version: { name: version.name, label: version.capture.version?.label ?? "" },
+          },
+          {
+            port,
+            onState,
+            signal,
+            options,
+            file: { index: firstFile, total: files.length, name: version.name },
           }
-          const report = await importVersion(
-            {
-              plan,
-              assets,
-              rootName: importName(version.capture.source),
-              version: { name: version.name, label: version.capture.version?.label ?? "" },
-            },
-            { port, onState, signal, options, file: info }
-          );
-          if (!report) return onState({ step: "idle" });
-          versions.push(report);
-        } catch (error) {
-          fail(version.name, error);
-        }
-        // Let this version's plan go before the next is made.
-        plans[i] = undefined as unknown as Plan;
+        );
+        if (!report) return onState({ step: "idle" });
+        versions.push(report);
+      } catch (error) {
+        fail(version.name, error);
       }
     }
 
     const first = versions[0];
     if (!first) return finishWithError();
-    onState({ ...first, step: "done", versions, failures });
+    onState({ ...first, step: "done", versions, sets: reports, failures });
   } catch (error) {
     onState({ step: "error", message: messageForError(error) });
   }

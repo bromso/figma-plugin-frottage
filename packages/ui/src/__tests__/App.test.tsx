@@ -1,13 +1,15 @@
 import { describe, expect, it } from "bun:test";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../app";
 import {
   downscaledFile,
+  type FakePort,
   fakePort,
   fontFile,
   frottageFile,
   repeatedFile,
+  versionFile,
 } from "../import/__tests__/helpers";
 
 describe("App (import screen)", () => {
@@ -427,5 +429,50 @@ describe("App (options and font table)", () => {
     await screen.findByText("Import complete");
     expect(screen.queryByText("Styles created")).toBeNull();
     expect(screen.queryByText(/could not be created/)).toBeNull();
+  });
+});
+
+describe("App (a set of versions)", () => {
+  const pair = () => [
+    versionFile({ name: "wide", width: 1512, label: "1512" }),
+    versionFile({ name: "narrow", width: 834, label: "834" }),
+  ];
+  async function imported(result: FakePort["setResult"], failVersion?: number) {
+    const user = userEvent.setup();
+    const port = fakePort();
+    port.setResult = result;
+    port.failVersion = failVersion;
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), pair());
+    await screen.findByText("Import complete");
+  }
+
+  it("shows the page's modes, and a row per version", async () => {
+    await imported({ modes: 2, variablesCreated: 3 });
+    expect(screen.getByText("Modes").nextSibling).toHaveTextContent("2");
+    expect(screen.getByText("Variables created").nextSibling).toHaveTextContent("3");
+    expect(screen.getByText("1512 · wide")).toBeInTheDocument();
+    expect(screen.getByText("834 · narrow")).toBeInTheDocument();
+  });
+
+  it("says plainly when modes ran out and how many frames kept plain values", async () => {
+    await imported({ modes: 1, modesDropped: 1 });
+    expect(screen.getByText(/Figma gave 1 version no mode/)).toHaveTextContent(
+      "1 version no mode, so 0 frames kept plain values"
+    );
+  });
+
+  it("names line heights that can't vary, only when there are some", async () => {
+    await imported({ modes: 2, autoLineHeights: 2 });
+    expect(screen.getByText(/2 text styles changed between automatic/)).toBeInTheDocument();
+    cleanup();
+    await imported({ modes: 2 });
+    expect(screen.queryByText(/automatic and fixed/)).toBeNull();
+  });
+
+  it("names a failed version beside the ones that stayed", async () => {
+    await imported({ modes: 2 }, 1);
+    expect(screen.getByRole("alert")).toHaveTextContent("narrow");
+    expect(screen.getByText("1512 · wide")).toBeInTheDocument();
   });
 });

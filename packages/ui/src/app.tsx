@@ -6,6 +6,7 @@ import {
   type ImportState,
   type ReviewDecision,
   runImports,
+  type SetReport,
   type VersionResult,
 } from "./import/import-flow";
 import { OptionsSheet } from "./import/options";
@@ -125,7 +126,67 @@ function Report({
   );
 }
 
-/** Several versions: a heading, the files that failed, then one report per version. */
+const plural = (count: number, one: string, many = `${one}s`) =>
+  `${count} ${count === 1 ? one : many}`;
+
+/** What the versions of a set share: its modes, and its tokens, which no one version owns. */
+function SetSummary({ set }: { set: SetReport }) {
+  const rows: [string, number][] = [];
+  if (set.modes > 0) rows.push(["Modes", set.modes]);
+  if (set.stylesCreated > 0) rows.push(["Styles created", set.stylesCreated]);
+  if (set.stylesReused > 0) rows.push(["Styles reused", set.stylesReused]);
+  if (set.variablesCreated > 0) rows.push(["Variables created", set.variablesCreated]);
+  if (set.variablesReused > 0) rows.push(["Variables reused", set.variablesReused]);
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="font-medium">{set.name}</p>
+      {rows.length > 0 && (
+        <dl className="flex flex-col">
+          {rows.map(([label, count]) => (
+            <div key={label} className="flex h-6 items-center justify-between">
+              <dt className="text-figma-text-secondary">{label}</dt>
+              <dd>{count}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {set.modesDropped > 0 && (
+        <p className="text-figma-text-danger">
+          Figma gave {plural(set.modesDropped, "version")} no mode, so{" "}
+          {plural(set.plainFrames, "frame")} kept plain values and{" "}
+          {set.plainFrames === 1 ? "uses" : "use"} no variables.
+        </p>
+      )}
+      {set.autoLineHeights > 0 && (
+        <p className="text-figma-text-secondary">
+          {plural(set.autoLineHeights, "text style")} changed between automatic and fixed line
+          height, so {set.autoLineHeights === 1 ? "its" : "their"} line height is the same in every
+          mode.
+        </p>
+      )}
+      {set.tokenFailures > 0 && (
+        <p className="text-figma-text-danger">
+          {plural(set.tokenFailures, "style or variable", "styles or variables")} could not be made
+          or applied and {set.tokenFailures === 1 ? "was" : "were"} left out.
+        </p>
+      )}
+      {set.layoutFailures > 0 && (
+        <p className="text-figma-text-danger">
+          The component sections could not be placed, so some may overlap.
+        </p>
+      )}
+      {set.notes.length > 0 && (
+        <ul className="text-figma-text-secondary">
+          {set.notes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Several versions: a heading, the files that failed, each set, then one report per version. */
 function VersionsReport({
   state,
   headingRef,
@@ -153,6 +214,10 @@ function VersionsReport({
           </ul>
         </div>
       )}
+      {state.sets.map((set, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: two sets can share a page name
+        <SetSummary key={`${i}:${set.name}`} set={set} />
+      ))}
       {state.versions.map((v, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: two versions can share a name and label
         <Report key={`${i}:${v.name}:${v.label}`} state={v} heading={`${v.label} · ${v.name}`} />

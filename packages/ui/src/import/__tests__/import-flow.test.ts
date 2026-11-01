@@ -677,7 +677,7 @@ describe("runImports with several files", () => {
     expect((states.at(-1) as { message: string }).message).toContain("600 MB");
   });
 
-  test("Cancel stops the run and undoes the version in hand", async () => {
+  test("Cancel stops the run and undoes the set in hand", async () => {
     const port = fakePort();
     const controller = new AbortController();
     const batch = port.batch.bind(port);
@@ -731,7 +731,7 @@ describe("runImports with several files", () => {
     if (done?.step !== "done") throw new Error("not done");
     expect(done.failures.map((f) => f.name)).toEqual(["wide"]);
     expect(done.versions.map((v) => v.name)).toEqual(["narrow"]);
-    expect(port.log).toContain("cancel");
+    expect(port.log).not.toContain("cancel");
   });
 
   test("in a multi-file drop each file is read again and its images are sent", async () => {
@@ -772,8 +772,8 @@ describe("runImports with several files", () => {
     const states: ImportState[] = [];
     await runImports(
       [
-        versionFile({ name: "a", width: 1512, label: "1512" }),
-        versionFile({ name: "b", width: 834, label: "834" }),
+        versionFile({ name: "a", url: "https://one.example/" }),
+        versionFile({ name: "b", url: "https://two.example/" }),
       ],
       port,
       (s) => states.push(s),
@@ -879,5 +879,274 @@ describe("mergeMissing", () => {
       ["Brand", "Inter"],
       ["Other", "Roboto"],
     ]);
+  });
+});
+
+describe("a set of versions", () => {
+  const wide = (over = {}) => versionFile({ name: "wide", width: 1512, label: "1512", ...over });
+  const mid = (over = {}) => versionFile({ name: "mid", width: 1000, label: "1000", ...over });
+  const narrow = (over = {}) => versionFile({ name: "narrow", width: 834, label: "834", ...over });
+
+  async function runSet(files: File[], port = fakePort(), controller = new AbortController()) {
+    const states: ImportState[] = [];
+    await runImports(files, port, (s) => states.push(s), undefined, controller.signal);
+    return { port, states, last: states.at(-1) as ImportState };
+  }
+  function doneOf(state: ImportState) {
+    if (state.step !== "done") throw new Error(`not done: ${state.step}`);
+    return state;
+  }
+  /** Aborts when the port makes the call, once its work is done. */
+  function abortOn(port: ReturnType<typeof fakePort>, name: "beginSet" | "importModes") {
+    const controller = new AbortController();
+    const call = port[name].bind(port) as () => Promise<never>;
+    (port[name] as unknown) = async (...args: []) => {
+      const result = await call(...args);
+      controller.abort();
+      return result;
+    };
+    return controller;
+  }
+
+  test("runs merge, begin set, modes, each version, end set, in that order", async () => {
+    const { port } = await runSet([narrow(), wide()]);
+    expect(port.log.filter((l) => !l.startsWith("getPrefs") && l !== "listFonts")).toEqual([
+      "beginSet",
+      "modes",
+      "begin",
+      "batch",
+      "end",
+      "begin",
+      "batch",
+      "end",
+      "endSet",
+    ]);
+    expect(port.modesSent?.modes).toEqual(["1512", "834"]);
+  });
+
+  test("port.tokens never runs: a set's plans have none of their own", async () => {
+    const { port } = await runSet([wide(), narrow()]);
+    expect(port.log).not.toContain("tokens");
+  });
+
+  test("a single file uses today's flow, with its own keys", async () => {
+    const { port, last } = await runSet([wide()]);
+    expect(port.log).toContain("tokens");
+    expect(port.log).not.toContain("beginSet");
+    expect(port.log).not.toContain("modes");
+    expect(port.log).not.toContain("endSet");
+    expect(port.beginMeta?.version).toBeUndefined();
+    expect(doneOf(last).sets).toEqual([]);
+  });
+
+  test("a lone file beside a set takes today's flow too", async () => {
+    const { port } = await runSet([
+      wide(),
+      narrow(),
+      versionFile({ name: "other", url: "https://other.example/", label: "1280" }),
+    ]);
+    expect(port.log.filter((l) => l === "beginSet")).toHaveLength(1);
+    expect(port.log.filter((l) => l === "tokens")).toHaveLength(1);
+    expect(port.begins.map((b) => b.version?.index)).toEqual([0, 1, undefined]);
+  });
+
+  test("each version begins with its index and its unique label", async () => {
+    const { port } = await runSet([wide(), wide({ name: "again" })]);
+    expect(port.begins.map((b) => b.version)).toEqual([
+      { index: 0, label: "1512" },
+      { index: 1, label: "1512 (2)" },
+    ]);
+    expect(port.begins.map((b) => b.name)).toEqual(["Example", "Example"]);
+  });
+
+  test("only dropped versions lose their tokens, before their batches", async () => {
+    const port = fakePort();
+    port.droppedVersions = [1];
+    await runSet([wide({ texts: 3 }), mid({ texts: 3 }), narrow({ texts: 3 })], port);
+    const keys = port.batches.map((ops) => JSON.stringify(ops).includes("colorKey"));
+    expect(keys).toEqual([true, false, true]);
+  });
+
+  test("progress counts all versions' ops and never goes back", async () => {
+    const { states } = await runSet([wide({ texts: 3 }), narrow({ texts: 2 })]);
+    const steps = states.flatMap((s) => (s.step === "working" && s.total > 0 ? [s] : []));
+    expect(new Set(steps.map((s) => s.total))).toEqual(new Set([7]));
+    const dones = steps.map((s) => s.done);
+    expect(dones).toEqual([...dones].sort((a, b) => a - b));
+    expect(dones.at(-1)).toBe(7);
+  });
+
+  test("Cancel on version 3 undoes the whole set, once", async () => {
+    const port = fakePort();
+    const controller = new AbortController();
+    const begin = port.begin.bind(port);
+    port.begin = async (meta) => {
+      await begin(meta);
+      if (meta.version?.index === 2) controller.abort();
+    };
+    const { last } = await runSet([wide(), mid(), narrow()], port, controller);
+    expect(port.log.filter((l) => l === "cancel")).toHaveLength(1);
+    expect(port.log).not.toContain("endSet");
+    expect(last).toEqual({ step: "idle" });
+  });
+
+  test("Cancel between versions undoes the whole set", async () => {
+    const port = fakePort();
+    const controller = new AbortController();
+    const end = port.end.bind(port);
+    port.end = async () => {
+      const result = await end();
+      controller.abort();
+      return result;
+    };
+    const { last } = await runSet([wide(), narrow()], port, controller);
+    expect(port.log.filter((l) => l === "cancel")).toHaveLength(1);
+    expect(port.log.filter((l) => l === "begin")).toHaveLength(1);
+    expect(last).toEqual({ step: "idle" });
+  });
+
+  test("Cancel after the last version undoes the set", async () => {
+    const port = fakePort();
+    const controller = new AbortController();
+    const end = port.end.bind(port);
+    port.end = async () => {
+      const result = await end();
+      if (port.begins.length === 2) controller.abort();
+      return result;
+    };
+    await runSet([wide(), narrow()], port, controller);
+    expect(port.log).toContain("cancel");
+    expect(port.log).not.toContain("endSet");
+  });
+
+  test.each(["beginSet", "importModes"] as const)("Cancel during %s undoes it", async (name) => {
+    const port = fakePort();
+    const { last } = await runSet([wide(), narrow()], port, abortOn(port, name));
+    expect(port.log.at(-1)).toBe("cancel");
+    expect(port.log).not.toContain("begin");
+    expect(last).toEqual({ step: "idle" });
+  });
+
+  test("Cancel in a later set leaves the first one", async () => {
+    const port = fakePort();
+    const controller = new AbortController();
+    const endSet = port.endSet.bind(port);
+    port.endSet = async () => {
+      const result = await endSet();
+      controller.abort();
+      return result;
+    };
+    const other = { url: "https://other.example/" };
+    await runSet([wide(), narrow(), wide(other), narrow(other)], port, controller);
+    expect(port.log.filter((l) => l === "beginSet")).toHaveLength(1);
+    expect(port.log).not.toContain("cancel");
+  });
+
+  test("a failed version is named, the others stay, and nothing is cancelled", async () => {
+    const port = fakePort();
+    port.failVersion = 1;
+    const { last } = await runSet([wide(), mid(), narrow()], port);
+    const done = doneOf(last);
+    expect(done.failures.map((f) => f.name)).toEqual(["mid"]);
+    expect(done.versions.map((v) => v.name)).toEqual(["wide", "narrow"]);
+    expect(port.log).not.toContain("cancel");
+    expect(port.log.at(-1)).toBe("endSet");
+  });
+
+  test("a version whose file can't be read again fails the same way", async () => {
+    const file = mid();
+    const original = file.arrayBuffer.bind(file);
+    let reads = 0;
+    file.arrayBuffer = () => {
+      reads += 1;
+      return reads === 1 ? original() : Promise.reject(new Error("gone"));
+    };
+    const { last } = await runSet([wide(), file, narrow()]);
+    const done = doneOf(last);
+    expect(done.failures.map((f) => f.name)).toEqual(["mid"]);
+    expect(done.versions).toHaveLength(2);
+  });
+
+  test("a failed version's ops still count, so progress reaches the end", async () => {
+    const port = fakePort();
+    port.failVersion = 0;
+    const { states } = await runSet([wide(), narrow()], port);
+    const steps = states.flatMap((s) => (s.step === "working" && s.total > 0 ? [s] : []));
+    expect(steps.at(-1)?.done).toBe(steps.at(-1)?.total);
+  });
+
+  test("when every version fails it reads as a failed import", async () => {
+    const port = fakePort();
+    port.failOn = "batch";
+    const { last } = await runSet([wide(), narrow()], port);
+    expect(last.step).toBe("error");
+    expect((last as { message: string }).message).toContain("wide");
+    expect((last as { message: string }).message).toContain("narrow");
+    expect(port.log.at(-1)).toBe("endSet");
+  });
+
+  test("a set that can't open fails all its versions and the next set runs", async () => {
+    const port = fakePort();
+    const beginSet = port.beginSet.bind(port);
+    let calls = 0;
+    port.beginSet = async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("boom");
+      await beginSet();
+    };
+    const other = { url: "https://other.example/" };
+    const { last } = await runSet(
+      [wide(), narrow(), wide({ ...other, name: "w2" }), narrow({ ...other, name: "n2" })],
+      port
+    );
+    const done = doneOf(last);
+    expect(done.failures.map((f) => f.name)).toEqual(["wide", "narrow"]);
+    expect(done.versions.map((v) => v.name)).toEqual(["w2", "n2"]);
+    expect(port.log.filter((l) => l === "cancel")).toHaveLength(1);
+  });
+
+  test("a set that can't close takes its versions back and names them", async () => {
+    const port = fakePort();
+    port.failOn = "endSet";
+    const { last } = await runSet([wide(), narrow()], port);
+    expect(last.step).toBe("error");
+    expect(port.log.at(-1)).toBe("cancel");
+  });
+
+  test("a set that can't close names each version once", async () => {
+    const port = fakePort();
+    port.failOn = "endSet";
+    port.failVersion = 1;
+    const { last } = await runSet([wide(), mid(), narrow()], port);
+    const lines = (last as { message: string }).message.split("\n");
+    expect(lines.slice(1).map((l) => l.split(":")[0])).toEqual(["mid", "wide", "narrow"]);
+  });
+
+  test("two sets run one after another, each opened and closed", async () => {
+    const other = { url: "https://other.example/" };
+    const { port, last } = await runSet([wide(), narrow(), wide(other), narrow(other)]);
+    expect(port.log.filter((l) => /^(beginSet|endSet)$/.test(l))).toEqual([
+      "beginSet",
+      "endSet",
+      "beginSet",
+      "endSet",
+    ]);
+    expect(doneOf(last).sets).toHaveLength(2);
+  });
+
+  test("the set's report carries its modes and what fell back", async () => {
+    const port = fakePort();
+    port.droppedVersions = [1, 2];
+    port.failVersion = 2;
+    port.setResult = { modes: 1, modesDropped: 2, autoLineHeights: 3, variablesCreated: 4 };
+    const { last } = await runSet([wide(), mid(), narrow()], port);
+    expect(doneOf(last).sets[0]).toMatchObject({
+      name: "Example",
+      modes: 1,
+      modesDropped: 2,
+      plainFrames: 1,
+      autoLineHeights: 3,
+      variablesCreated: 4,
+    });
   });
 });

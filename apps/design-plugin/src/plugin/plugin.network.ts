@@ -39,6 +39,8 @@ PLUGIN_CHANNEL.registerMessageHandler("setPrefs", (key, value) =>
   figma.clientStorage.setAsync(key, value)
 );
 
+PLUGIN_CHANNEL.registerMessageHandler("importBeginSet", () => applier.beginSet());
+
 PLUGIN_CHANNEL.registerMessageHandler("importBegin", async (meta) => {
   batchTotal = meta.totalOps;
   batchDone = 0;
@@ -64,6 +66,8 @@ PLUGIN_CHANNEL.registerMessageHandler("importBatch", async (ops) => {
 });
 
 PLUGIN_CHANNEL.registerMessageHandler("importEnd", () => applier.end());
+
+PLUGIN_CHANNEL.registerMessageHandler("importEndSet", () => applier.endSet());
 
 PLUGIN_CHANNEL.registerMessageHandler("importCancel", () => applier.cancel());
 

@@ -37,6 +37,8 @@ type Options = LayoutOptions &
     swappedResizeThrows?: boolean;
     /** Setting this layout property throws, as for a value Figma refuses. */
     failLayout?: string;
+    /** `setExplicitVariableModeForCollection` throws. */
+    failExplicitMode?: boolean;
   };
 
 const AUTO_LAYOUT_FIELDS = [
@@ -150,6 +152,15 @@ export function fakeFigma(opts: Options = {}) {
           if (!Number.isFinite(e.radius)) throw new Error("an effect needs a finite radius");
         }
         effects = v;
+      },
+      /** Collection id to mode id. A clone doesn't copy this, the worst case. */
+      explicitModes: {},
+      setExplicitVariableModeForCollection(collection: FakeNode | string, modeId: string) {
+        calls.push("setExplicitMode");
+        // Measured: an id throws under `dynamic-page`.
+        if (typeof collection === "string") throw new Error("needs the collection node");
+        if (opts.failExplicitMode) throw new Error("mode refused");
+        node.explicitModes[collection.id] = modeId;
       },
       appendChild(child: FakeNode) {
         calls.push("appendChild");
