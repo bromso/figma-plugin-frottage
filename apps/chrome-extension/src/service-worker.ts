@@ -10,15 +10,29 @@ import {
   type SwMessage,
 } from "./messages";
 import { pageOrigin } from "./page";
-import { resizeWindow, restoreWindow, type WindowsApi } from "./viewport-run";
+import { type HoldApi, holdTab, releaseTab } from "./tab-hold";
+import { resizeWindow, type WindowsApi } from "./viewport-run";
 
 const OFFSCREEN_URL = "offscreen.html";
+const RUN_PAGE = "run.html";
 const DOWNLOAD_POLL_MS = 250;
 const DOWNLOAD_MAX_POLLS = 240;
 
 const WINDOWS: WindowsApi = {
   get: (windowId) => chrome.windows.get(windowId),
   update: (windowId, info) => chrome.windows.update(windowId, info),
+};
+
+const HOLD: HoldApi = {
+  tabs: {
+    get: (tabId) => chrome.tabs.get(tabId),
+    create: (info) => chrome.tabs.create(info),
+    group: (info) => chrome.tabs.group(info as chrome.tabs.GroupOptions),
+    move: (tabId, info) => chrome.tabs.move(tabId, info),
+    update: (tabId, info) => chrome.tabs.update(tabId, info),
+    remove: (tabId) => chrome.tabs.remove(tabId),
+  },
+  windows: { create: async (info) => (await chrome.windows.create(info)) ?? {} },
 };
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -184,17 +198,25 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
       return { ok: true, width: frame?.result };
     }, sendResponse);
   }
-  if (message.type === "window-state") {
+  if (message.type === "hold-tab") {
+    return answer(
+      async () => ({
+        ok: true,
+        held: await holdTab(HOLD, message.tabId, chrome.runtime.getURL(RUN_PAGE)),
+      }),
+      sendResponse
+    );
+  }
+  if (message.type === "release-tab") {
     return answer(async () => {
-      const { windowId } = await chrome.tabs.get(message.tabId);
-      const { state, width, height, left, top } = await chrome.windows.get(windowId);
-      return { ok: true, window: { windowId, state, width, height, left, top } };
+      await releaseTab(HOLD, message.held);
+      return { ok: true };
     }, sendResponse);
   }
   if (message.type === "window-open") {
     return answer(
       () =>
-        chrome.windows.get(message.windowId).then(
+        chrome.windows.get(message.runWindowId).then(
           () => ({ ok: true, open: true }),
           () => ({ ok: true, open: false })
         ),
@@ -205,16 +227,10 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
     return answer(
       async () => ({
         ok: true,
-        width: await resizeWindow(WINDOWS, message.windowId, message.width, message.left),
+        width: await resizeWindow(WINDOWS, message.runWindowId, message.width, message.left),
       }),
       sendResponse
     );
-  }
-  if (message.type === "restore-window") {
-    return answer(async () => {
-      await restoreWindow(WINDOWS, message.window);
-      return { ok: true };
-    }, sendResponse);
   }
   if (message.type === "close-offscreen") {
     chrome.offscreen.closeDocument().catch(() => {});

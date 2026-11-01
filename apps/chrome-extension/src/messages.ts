@@ -1,6 +1,6 @@
 import type { RunStatus } from "./capture-run";
 import type { ChunkMessage } from "./chunks";
-import type { WindowState } from "./viewport-run";
+import type { HeldTab } from "./tab-hold";
 
 /** Prefix of the port the page script opens to the service worker. */
 export const CAPTURE_PORT = "frottage-capture:";
@@ -41,10 +41,12 @@ export type SwMessage =
   | { target: "sw"; type: "download"; url: string; filename: string }
   | { target: "sw"; type: "tab-origin"; tabId: number }
   | { target: "sw"; type: "page-width"; tabId: number }
-  | { target: "sw"; type: "window-state"; tabId: number }
-  | { target: "sw"; type: "window-open"; windowId: number }
-  | { target: "sw"; type: "resize-window"; windowId: number; width: number; left?: number }
-  | { target: "sw"; type: "restore-window"; window: WindowState }
+  /** Moves the tab to a small window and holds its place with the run page. */
+  | { target: "sw"; type: "hold-tab"; tabId: number }
+  /** Gives the tab back where it was. */
+  | { target: "sw"; type: "release-tab"; held: HeldTab }
+  | { target: "sw"; type: "window-open"; runWindowId: number }
+  | { target: "sw"; type: "resize-window"; runWindowId: number; width: number; left?: number }
   | { target: "sw"; type: "close-offscreen" };
 
 /** Worker and popup messages to the offscreen document. */
@@ -61,15 +63,15 @@ export type OffscreenMessage =
 export type PopupMessage = { target: "popup"; type: "status"; status: RunStatus };
 
 /**
- * `filename` is the saved basename, set by the worker for downloads. `origin`, `window`, `open` and
- * `width` answer `tab-origin`, `window-state`, `window-open`, and `resize-window` or `page-width`.
+ * `filename` is the saved basename, set by the worker for downloads. `origin`, `held`, `open` and
+ * `width` answer `tab-origin`, `hold-tab`, `window-open`, and `resize-window` or `page-width`.
  */
 export type Reply =
   | {
       ok: true;
       filename?: string;
       origin?: string | null;
-      window?: WindowState;
+      held?: HeldTab;
       open?: boolean;
       width?: number;
     }

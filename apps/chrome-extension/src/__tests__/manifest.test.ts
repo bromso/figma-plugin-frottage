@@ -20,6 +20,10 @@ describe("manifest", () => {
     expect(manifest.permissions).not.toContain("<all_urls>");
   });
 
+  test("needs Chrome 127, which can move a tab into a popup window", () => {
+    expect(manifest.minimum_chrome_version).toBe("127");
+  });
+
   test("version comes from package.json", () => {
     expect(manifest.version).toBe(pkg.version);
   });
