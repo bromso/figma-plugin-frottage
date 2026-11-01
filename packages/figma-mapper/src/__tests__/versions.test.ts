@@ -12,7 +12,7 @@ import type {
   PlanRun,
   PlanTextStyle,
 } from "../plan";
-import { mergeVersions } from "../versions";
+import { mergeVersions, stripTokens } from "../versions";
 import { cap, el, inter, run, textNode } from "./fixtures";
 
 const rgb = (hex: string) => ({
@@ -990,6 +990,21 @@ describe("ops", () => {
     expect(JSON.stringify(input)).toBe(before);
     const runOf = (plan: LayerPlan) => (plan.ops[1] as TextOp).runs[0] as PlanRun;
     expect(runOf(r.plans[0] as LayerPlan)).not.toBe(runOf(input[0]?.plan as LayerPlan));
+  });
+
+  test("stripTokens removes every key, and leaves the plain values", () => {
+    const input = planOf({ colors: [ink, stray], styles: [h1] }, everywhere(ink, h1));
+    const before = JSON.stringify(input);
+    const out = stripTokens(input);
+    expect(JSON.stringify(input)).toBe(before);
+    expect(keysIn(out.ops)).toEqual({ colors: [], styles: [] });
+    expect(out.tokens).toEqual({ colors: [], textStyles: [], collection: "example.com" });
+    const strip = (ops: PlanOp[]) =>
+      JSON.stringify(ops, (field, value) =>
+        field === "colorKey" || field === "styleKey" ? undefined : value
+      );
+    expect(JSON.stringify(out.ops)).toBe(strip(input.ops));
+    expect(out.fonts).toEqual(input.fonts);
   });
 
   test("the rest of a plan passes through", () => {

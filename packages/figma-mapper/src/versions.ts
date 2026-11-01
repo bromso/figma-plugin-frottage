@@ -237,6 +237,12 @@ function withRenames(plan: LayerPlan, renames: Renames): LayerPlan {
   };
 }
 
+/** A plan with no tokens: every key goes, as an unmatched token's does, and plain values stay. */
+export function stripTokens(plan: LayerPlan): LayerPlan {
+  const none = { colors: new Map<string, string>(), styles: new Map<string, string>() };
+  return withRenames(plan, none);
+}
+
 const counted = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
 function plainReport(mode: string, colors: number, styles: number): string[] {

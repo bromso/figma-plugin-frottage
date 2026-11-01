@@ -27,4 +27,4 @@ export type {
   PlanTrack,
   PlanVersionTokens,
 } from "./plan";
-export { mergeVersions, type TokenVersion } from "./versions";
+export { mergeVersions, stripTokens, type TokenVersion } from "./versions";
