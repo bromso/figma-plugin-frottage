@@ -1340,4 +1340,14 @@ describe("a file holding several captures", () => {
     expect(done.failures.map((f) => f.name)).toEqual(["bad.frottage"]);
     expect(done.versions.map((v) => v.name)).toEqual(["ok"]);
   });
+
+  test("a lone good-looking file beside a failed one still has its images checked", async () => {
+    const { port, last } = await runAll([
+      new File([new Uint8Array([1, 2, 3])], "junk.txt"),
+      await imageFile(false),
+    ]);
+    expect(last.step).toBe("error");
+    expect(port.log).not.toContain("image");
+    expect(port.log).not.toContain("batch");
+  });
 });

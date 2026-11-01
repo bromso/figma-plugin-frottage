@@ -667,7 +667,8 @@ export async function runImports(
     /** A Cancel takes back the set in hand. Sets finished before it stay, so they're reported. */
     const cancelled = () => onState(doneState() ?? { step: "idle" });
     const assetsOf = async (version: LoadedFile) => {
-      if (single) return version.assets;
+      // The first read checked the images only for a drop of one file; any other is read again.
+      if (single && files.length === 1) return version.assets;
       const { file, index } = sourceOf(version);
       const again = (await loadFile(file))[index];
       if (!again || !sameKeys(again.assets, assetKeys.get(version.capture.source))) {
