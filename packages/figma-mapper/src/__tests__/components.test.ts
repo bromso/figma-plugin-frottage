@@ -856,10 +856,10 @@ describe("the plan around them", () => {
 });
 
 describe("options", () => {
-  test("components stay off by default until the applier can build them", () => {
-    expect(DEFAULT_IMPORT_OPTIONS.components).toBe(false);
+  test("components are on by default", () => {
+    expect(DEFAULT_IMPORT_OPTIONS.components).toBe(true);
     const p = mapCapture(cap(el("root", [0, 0], links(2))), inter);
-    expect(instances(p)).toEqual([]);
+    expect(instances(p)).toHaveLength(2);
   });
 
   test("hover components start off", () => {

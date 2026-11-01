@@ -37,6 +37,16 @@ type Options = LayoutOptions &
     failLayout?: string;
   };
 
+const AUTO_LAYOUT_FIELDS = [
+  "primaryAxisAlignItems",
+  "counterAxisAlignItems",
+  "itemSpacing",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+];
+
 const fontId = (f: { family: string; style: string }) => `${f.family}|${f.style}`;
 
 export function fakeFigma(opts: Options = {}) {
@@ -91,6 +101,14 @@ export function fakeFigma(opts: Options = {}) {
   for (const b of opts.existingBounds ?? []) {
     page.kids.push({ id: `old${seq++}`, type: "FRAME", children: [], ...b });
   }
+
+  /** Whether `node` is a component or an instance, or sits inside one. */
+  const insideComponent = (node: FakeNode | undefined): boolean => {
+    for (let n = node; n; n = n.parent) {
+      if (n.type === "COMPONENT" || n.type === "INSTANCE") return true;
+    }
+    return false;
+  };
 
   function makeNode(type: string): FakeNode {
     const id = `n${++seq}`;
@@ -158,6 +176,9 @@ export function fakeFigma(opts: Options = {}) {
       },
     };
     const join = (child: FakeNode, cell: [number, number] | null) => {
+      if (child.type === "COMPONENT" && insideComponent(node)) {
+        throw new Error("a component cannot go inside a component or an instance");
+      }
       const old = child.parent;
       detach(child);
       if (model.isLaidOut(old)) model.reflow(old);
@@ -190,7 +211,7 @@ export function fakeFigma(opts: Options = {}) {
       },
     });
     tokens.installNode(node);
-    if (type === "FRAME") {
+    if (type === "FRAME" || type === "COMPONENT" || type === "INSTANCE") {
       model.installFrame(node, () => calls.push("layoutMode"));
       if (opts.failLayout) {
         const { get } = Object.getOwnPropertyDescriptor(
@@ -209,6 +230,91 @@ export function fakeFigma(opts: Options = {}) {
     nodes.set(id, node);
     created.push(node);
     return node;
+  }
+
+  /** An instance's frame part takes its source's layout, sizing and size. */
+  function copyLayout(from: FakeNode, to: FakeNode) {
+    if (from.layoutMode !== "NONE") {
+      to.layoutMode = from.layoutMode;
+      to.layoutSizingHorizontal = "FIXED";
+      to.layoutSizingVertical = "FIXED";
+      for (const key of AUTO_LAYOUT_FIELDS) to[key] = from[key];
+    }
+    to.width = from.width;
+    to.height = from.height;
+    if (from.layoutMode !== "NONE") {
+      to.layoutSizingHorizontal = from.layoutSizingHorizontal;
+      to.layoutSizingVertical = from.layoutSizingVertical;
+    }
+  }
+
+  function copyText(from: FakeNode): FakeNode {
+    const t = figma.createText() as FakeNode;
+    t.fontName = from.fontName;
+    t.characters = from.characters;
+    t.ranges = [...(from.ranges ?? [])];
+    t.decorations = [...from.decorations];
+    t.width = from.width;
+    t.height = from.height;
+    t.textAutoResize = from.textAutoResize;
+    return t;
+  }
+
+  /** A copy of a main's or an instance's child, as an instance holds it. */
+  function copyChild(from: FakeNode): FakeNode {
+    if (from.type === "TEXT") return copyText(from);
+    if (from.type === "INSTANCE") return copyBody(from, instanceShell(from.main));
+    const n = makeNode(from.type);
+    n.fills = from.fills;
+    return from.type === "FRAME" ? copyBody(from, n) : Object.assign(n, sizeOf(from));
+  }
+
+  const sizeOf = ({ width, height }: FakeNode) => ({ width, height });
+
+  function copyBody(from: FakeNode, to: FakeNode): FakeNode {
+    for (const kid of to.children) kid.remove();
+    to.fills = from.fills;
+    to.clipsContent = from.clipsContent;
+    copyLayout(from, to);
+    for (const kid of from.kids as FakeNode[]) {
+      const copy = copyChild(kid);
+      to.kids.push(copy);
+      detachFromPage(copy);
+      copy.parent = to;
+      copy.moveTo("x", kid.x);
+      copy.moveTo("y", kid.y);
+      if (kid.layoutPositioning === "ABSOLUTE") copy.layoutPositioning = "ABSOLUTE";
+    }
+    model.reflow(to);
+    return to;
+  }
+
+  const detachFromPage = (n: FakeNode) => {
+    page.kids.splice(page.kids.indexOf(n), 1);
+  };
+
+  function instanceShell(main: FakeNode): FakeNode {
+    const n = makeNode("INSTANCE");
+    n.main = main;
+    // Reading this under `dynamic-page` throws in Figma.
+    Object.defineProperty(n, "mainComponent", {
+      get() {
+        throw new Error("mainComponent needs getMainComponentAsync");
+      },
+    });
+    const resize = n.resize;
+    n.resize = (w: number, h: number) => {
+      calls.push("instance.resize");
+      resize(w, h);
+    };
+    n.swapComponent = (next: FakeNode) => {
+      calls.push("swapComponent");
+      if (next?.type !== "COMPONENT") throw new Error("swapComponent needs a component");
+      n.main = next;
+      copyBody(next, n);
+      if (model.isLaidOut(n.parent)) model.reflow(n.parent);
+    };
+    return n;
   }
 
   const figma = {
@@ -235,6 +341,30 @@ export function fakeFigma(opts: Options = {}) {
       const n = makeNode("FRAME");
       n.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 }, opacity: 1 }];
       n.clipsContent = true;
+      return n;
+    },
+    createComponent() {
+      calls.push("createComponent");
+      // Unlike a frame: no fill, and it does not clip.
+      const n = makeNode("COMPONENT");
+      n.fills = [];
+      n.clipsContent = false;
+      n.createInstance = () => {
+        calls.push("createInstance");
+        return copyBody(n, instanceShell(n));
+      };
+      return n;
+    },
+    createSection() {
+      calls.push("createSection");
+      const n = makeNode("SECTION");
+      // A section has only this: `resize` is not on it.
+      delete n.resize;
+      n.resizeWithoutConstraints = (w: number, h: number) => {
+        calls.push("resizeWithoutConstraints");
+        n.width = w;
+        n.height = h;
+      };
       return n;
     },
     createNodeFromSvg(svg: string) {
@@ -387,6 +517,10 @@ export function fakeFigma(opts: Options = {}) {
           if (m === "setRangeLineHeight") layout();
         };
       }
+      Object.defineProperty(t, "hyperlink", {
+        get: () =>
+          [...(t.ranges ?? [])].reverse().find((x: any) => x.m === "setRangeHyperlink")?.v ?? null,
+      });
       return t;
     },
     ...tokens.api,

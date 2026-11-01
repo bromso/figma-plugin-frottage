@@ -2,7 +2,13 @@ import { describe, expect, it } from "bun:test";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../app";
-import { downscaledFile, fakePort, fontFile, frottageFile } from "../import/__tests__/helpers";
+import {
+  downscaledFile,
+  fakePort,
+  fontFile,
+  frottageFile,
+  repeatedFile,
+} from "../import/__tests__/helpers";
 
 describe("App (import screen)", () => {
   it("has a labelled file input with no accept filter", () => {
@@ -291,6 +297,32 @@ describe("App (options and font table)", () => {
     expect(row("Variables created")).toHaveTextContent("5");
     expect(row("Variables reused")).toHaveTextContent("6");
     expect(screen.getByText(/2 styles or variables could not be created/)).toBeInTheDocument();
+  });
+
+  it("reports components, instances on the canvas, and failed overrides", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, componentsCreated: 1, overrideFailures: 2 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(screen.getByText("Components").nextSibling).toHaveTextContent("1");
+    expect(screen.getByText("Instances").nextSibling).toHaveTextContent("3");
+    expect(
+      screen.getByText(
+        "2 instance layers could not be changed and show the component's own content."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("leaves component rows out when nothing repeats", async () => {
+    const user = userEvent.setup();
+    render(<App port={fakePort(fonts)} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await screen.findByText("Import complete");
+    expect(screen.queryByText("Components")).toBeNull();
+    expect(screen.queryByText("Instances")).toBeNull();
+    expect(screen.queryByText(/could not be changed/)).toBeNull();
   });
 
   it("leaves token rows out when nothing happened", async () => {

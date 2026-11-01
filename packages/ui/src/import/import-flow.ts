@@ -38,6 +38,8 @@ export type ImportState =
       textDriftCount: number;
       autoLayoutFrames: number;
       fallbackFrames: number;
+      componentsCreated: number;
+      overrideFailures: number;
       stylesCreated: number;
       stylesReused: number;
       variablesCreated: number;
@@ -62,6 +64,9 @@ export type ImportPort = {
     textDriftCount?: number;
     autoLayoutFrames?: number;
     fallbackFrames?: number;
+    componentsCreated?: number;
+    instancesCreated?: number;
+    overrideFailures?: number;
     stylesCreated?: number;
     stylesReused?: number;
     variablesCreated?: number;
@@ -247,6 +252,8 @@ export async function runImport(
       textDriftCount: result.textDriftCount ?? 0,
       autoLayoutFrames: result.autoLayoutFrames ?? 0,
       fallbackFrames: result.fallbackFrames ?? 0,
+      componentsCreated: result.componentsCreated ?? 0,
+      overrideFailures: result.overrideFailures ?? 0,
       stylesCreated: result.stylesCreated ?? 0,
       stylesReused: result.stylesReused ?? 0,
       variablesCreated: result.variablesCreated ?? 0,

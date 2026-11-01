@@ -11,7 +11,7 @@ type FrameOp = Extract<PlanOp, { op: "frame" }>;
 type Sizing = PlanChildLayout["sizingH"];
 
 /** The kinds of node an op makes. */
-export type Built = FrameNode | TextNode | RectangleNode;
+export type Built = FrameNode | ComponentNode | InstanceNode | TextNode | RectangleNode;
 
 /** What wrapped text must fit: the captured width, and the height that means its line count. */
 /** `max` is the widest the text may go, where a clipping parent would cut its line ends off. */
@@ -103,6 +103,8 @@ export function createLayoutTracker() {
   let open = new Map<string, LaidFrame>();
   /** Finished frames to verify, children before parents. */
   let ready: LaidFrame[] = [];
+  /** Definitions in auto layout, by key, which say whether an instance of one holds text. */
+  const mains = new Map<string, LaidFrame>();
 
   function noteReason(reason: string) {
     fallbackReasons[reason] = (fallbackReasons[reason] ?? 0) + 1;
@@ -256,8 +258,15 @@ export function createLayoutTracker() {
       const parent = op.parent === null ? undefined : open.get(op.parent);
       const auto = op.op === "frame" && (node as FrameNode).layoutMode !== "NONE";
       const own = auto && op.layout.mode !== "NONE" && op.layout.mode !== "GRID" ? op.layout : null;
-      const sizing = (axis: "sizingH" | "sizingV"): Sizing =>
-        op.childLayout?.[axis] === "FILL" ? "FILL" : (own?.[axis] ?? "FIXED");
+      const sizing = (axis: "sizingH" | "sizingV"): Sizing => {
+        if (op.childLayout?.[axis] === "FILL") return "FILL";
+        // A leaf, which sizes itself as its main does, or as the applier left it.
+        if (op.op === "instance") {
+          const { layoutSizingHorizontal: h, layoutSizingVertical: v } = node as InstanceNode;
+          return axis === "sizingH" ? h : v;
+        }
+        return own?.[axis] ?? "FIXED";
+      };
       const sizingH = sizing("sizingH");
       const sizingV = sizing("sizingV");
       let child: Child | null = null;
@@ -271,13 +280,13 @@ export function createLayoutTracker() {
           absolute: op.childLayout?.positioning === "ABSOLUTE",
           rotated: "rotation" in op && Boolean(op.rotation),
           text: op.op === "text",
-          containsText: false,
+          containsText: op.op === "instance" && mains.get(op.key)?.containsText === true,
           sizingH,
           sizingV,
           align: op.op === "text" ? op.align : "LEFT",
         };
         parent.children.push(child);
-        if (op.op === "text") parent.containsText = true;
+        if (op.op === "text" || child.containsText) parent.containsText = true;
         if (fit) {
           child.fit = fit;
           parent.fillTexts.push(child);
@@ -301,6 +310,7 @@ export function createLayoutTracker() {
           deferred: [],
         };
         open.set(op.id, frame);
+        if (op.component) mains.set(op.component.key, frame);
         if (op.childCount <= 0) finish(frame);
       } else if (parent && arrived(parent)) {
         finish(parent);

@@ -108,6 +108,14 @@ describe("runImport", () => {
     });
   });
 
+  test("the done state carries the component counts", async () => {
+    const port = fakePort();
+    port.endResult = { ...port.endResult, componentsCreated: 2, overrideFailures: 3 };
+    const states: ImportState[] = [];
+    await runImport(frottageFile(1), port, (s) => states.push(s));
+    expect(states.at(-1)).toMatchObject({ componentsCreated: 2, overrideFailures: 3 });
+  });
+
   test("sends each image before the first batch", async () => {
     const { port } = await run(await imageFile(true));
     expect(port.log.indexOf("image")).toBeGreaterThan(-1);
@@ -289,7 +297,12 @@ async function runWith(file: File, port: ReturnType<typeof fakePort>, session: R
 
 describe("DEFAULT_IMPORT_OPTIONS", () => {
   test("defaults match the design", () => {
-    expect(DEFAULT_IMPORT_OPTIONS).toMatchObject({ autoLayout: true, htmlNames: false });
+    expect(DEFAULT_IMPORT_OPTIONS).toMatchObject({
+      autoLayout: true,
+      htmlNames: false,
+      components: true,
+      hoverComponents: false,
+    });
   });
 });
 

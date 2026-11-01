@@ -30,7 +30,9 @@ function Report({
   if (report.downscaledImages > 0) rows.push(["Images downscaled", report.downscaledImages]);
   if (failedOps > 0) rows.push(["Failed layers", failedOps]);
   if (missingImages > 0) rows.push(["Missing images", missingImages]);
-  const { autoLayoutFrames, fallbackFrames, tokenFailures } = state;
+  const { autoLayoutFrames, fallbackFrames, overrideFailures, tokenFailures } = state;
+  if (state.componentsCreated > 0) rows.push(["Components", state.componentsCreated]);
+  if (report.instances > 0) rows.push(["Instances", report.instances]);
   if (autoLayoutFrames > 0) rows.push(["Auto layout frames", autoLayoutFrames]);
   if (fallbackFrames > 0) rows.push(["Frames without auto layout", fallbackFrames]);
   if (state.stylesCreated > 0) rows.push(["Styles created", state.stylesCreated]);
@@ -53,6 +55,12 @@ function Report({
           </div>
         ))}
       </dl>
+      {overrideFailures > 0 && (
+        <p className="text-figma-text-danger">
+          {overrideFailures} instance {overrideFailures === 1 ? "layer" : "layers"} could not be
+          changed and {overrideFailures === 1 ? "shows" : "show"} the component's own content.
+        </p>
+      )}
       {tokenFailures > 0 && (
         <p className="text-figma-text-danger">
           {tokenFailures} {tokenFailures === 1 ? "style or variable" : "styles or variables"} could

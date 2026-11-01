@@ -3,6 +3,7 @@ import type {
   ImportOptions,
   PlanEffect,
   PlanOp,
+  PlanOverride,
   PlanPaint,
   PlanRgb,
   PlanRun,
@@ -10,6 +11,7 @@ import type {
   PlanTokens,
   PlanTrack,
 } from "@repo/figma-mapper";
+import { type ComponentSet, childAt, createComponentSet } from "./components";
 import {
   alignedX,
   type Built,
@@ -39,11 +41,16 @@ export type EndResult = TokenCounts & {
   /** Frames that were proposed auto layout and went back to absolute. */
   fallbackFrames: number;
   fallbackReasons: Record<string, number>;
+  componentsCreated: number;
+  instancesCreated: number;
+  /** Overrides that did not apply, so those layers show the component's own content. */
+  overrideFailures: number;
 };
 
 type Corners = [number, number, number, number];
 type FrameOp = Extract<PlanOp, { op: "frame" }>;
 type TextOp = Extract<PlanOp, { op: "text" }>;
+type InstanceOp = Extract<PlanOp, { op: "instance" }>;
 
 const FALLBACK: FontRef = { family: "Inter", style: "Regular" };
 const GAP = 100;
@@ -65,6 +72,9 @@ const CANCELLED: EndResult = {
   autoLayoutFrames: 0,
   fallbackFrames: 0,
   fallbackReasons: {},
+  componentsCreated: 0,
+  instancesCreated: 0,
+  overrideFailures: 0,
   ...NO_TOKENS,
 };
 
@@ -85,6 +95,8 @@ function utf8Bytes(text: string): number {
   return n;
 }
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const shortestFirst = (a: PlanOverride, b: PlanOverride) => a.path.length - b.path.length;
+const startsWith = (path: number[], prefix: number[]) => prefix.every((n, i) => path[i] === n);
 
 export function createApplier(api: PluginAPI) {
   let active = false;
@@ -113,6 +125,15 @@ export function createApplier(api: PluginAPI) {
   let cleaning: Promise<unknown> = Promise.resolve();
   /** Style links for the op being built, which need the node finished and in the tree. */
   let styleLinks: (() => Promise<void>)[] = [];
+  /** This import's mains, from `begin` until they are kept or taken back. */
+  let components: ComponentSet | null = null;
+  /** The definition whose ops are arriving, until the page root's do. */
+  let definition: string | null = null;
+  /** Definitions short of a child. Overrides go by index, so they would land on the wrong layer. */
+  let broken = new Set<string>();
+  let componentsCreated = 0;
+  let instancesCreated = 0;
+  let overrideFailures = 0;
 
   function reset() {
     generation++;
@@ -123,6 +144,9 @@ export function createApplier(api: PluginAPI) {
         // already gone
       }
     }
+    // Before the tokens: a main would keep what it uses in use.
+    components?.discard();
+    components = null;
     if (tokens) cleaning = Promise.all([cleaning, tokens.discard()]);
     tokens = null;
     root = null;
@@ -141,6 +165,11 @@ export function createApplier(api: PluginAPI) {
     tracker = createLayoutTracker();
     fillFit = null;
     styleLinks = [];
+    definition = null;
+    broken = new Set();
+    componentsCreated = 0;
+    instancesCreated = 0;
+    overrideFailures = 0;
   }
 
   async function loadFont(f: FontRef): Promise<void> {
@@ -159,6 +188,7 @@ export function createApplier(api: PluginAPI) {
     active = true;
     rootName = meta.name;
     page = api.currentPage;
+    components = createComponentSet(api, meta.name);
     await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
     fallbackOk = loadedFonts.has(fontKey(FALLBACK));
 
@@ -259,15 +289,17 @@ export function createApplier(api: PluginAPI) {
   }
 
   /** Adds a node to its parent, into its cell if it has one. A grid has no other way to place it. */
-  function join(parent: FrameNode, node: Built, op: PlanOp) {
+  function join(parent: FrameNode, node: Built | FrameNode, op: PlanOp) {
     const cell = op.childLayout?.cell;
     if (cell && parent.layoutMode === "GRID") parent.appendChildAt(node, cell.row, cell.column);
     else parent.appendChild(node);
   }
 
-  /** Creates a frame under `parent`, or as the import root when `parent` is null. */
+  /** Creates a frame under `parent`, or at the top of the page when `parent` is null. */
   function createFrame(parent: FrameNode | null, op: PlanOp, name: string): FrameNode {
-    const node = api.createFrame();
+    // Takes a frame's properties, which `buildFrame` sets whatever a main's defaults are.
+    const isMain = op.op === "frame" && op.component;
+    const node = isMain ? (api.createComponent() as unknown as FrameNode) : api.createFrame();
     pending = node;
     if (parent) join(parent, node, op);
     else if (page && node.parent !== page) page.appendChild(node);
@@ -461,14 +493,14 @@ export function createApplier(api: PluginAPI) {
     node.strokeLeftWeight = s.weights.left;
   }
 
-  function fillParent(node: FrameNode, parent: FrameNode | null, op: PlanOp) {
+  function fillParent(node: FrameNode | InstanceNode, parent: FrameNode | null, op: PlanOp) {
     if (!inLayout(parent)) return;
     if (op.childLayout?.sizingH === "FILL") node.layoutSizingHorizontal = "FILL";
     if (op.childLayout?.sizingV === "FILL") node.layoutSizingVertical = "FILL";
   }
 
   function buildFrame(op: FrameOp, parent: FrameNode | null) {
-    const name = parent ? op.name : rootName || op.name;
+    const name = parent || op.component ? op.name : rootName || op.name;
     const node = createFrame(parent, op, name);
     setLayout(node, op);
     node.clipsContent = op.clips;
@@ -482,12 +514,12 @@ export function createApplier(api: PluginAPI) {
     setStroke(node, op.strokes);
     node.effects = effects(op.effects);
     node.opacity = op.opacity;
-    // The import root is placed by the applier, not at its captured offset.
+    // The import root is placed by the applier, not at its captured offset, and a main by `layOut`.
     // A frame in auto layout is turned by the tracker once its size is final.
     if (parent) {
       const placed = place(node, parent, op);
       if (node.layoutMode === "NONE") rotate(node, op, placed);
-    } else place(node, null, op, rootX, 0);
+    } else if (!op.component) place(node, null, op, rootX, 0);
     if (op.layout.mode === "NONE" && op.layout.reason) tracker.countFallback(op.layout.reason);
     fillParent(node, parent, op);
     return node;
@@ -533,11 +565,18 @@ export function createApplier(api: PluginAPI) {
     return node;
   }
 
-  /** Sets the characters and every run, which can take several trips to Figma. */
-  async function setText(node: TextNode, op: TextOp, font: FontRef) {
+  /**
+   * Sets the characters and every run, which can take several trips to Figma. Style links are made
+   * here, so the node must be in the tree by now.
+   */
+  async function setText(node: TextNode, op: Pick<TextOp, "text" | "runs">, font: FontRef) {
     const run = generation;
     node.fontName = font;
     node.characters = op.text;
+    // New text in an instance keeps its main's link. A run puts back any link of its own below.
+    if (node.hyperlink !== null && op.text.length > 0) {
+      node.setRangeHyperlink(0, op.text.length, null);
+    }
     for (const planned of op.runs) {
       const start = Math.max(planned.start, 0);
       const end = Math.min(planned.end, op.text.length);
@@ -547,10 +586,102 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
+  /** Changes the image alone: its fit and the rest are the main's, and a look never differs there. */
+  function setImage(node: SceneNode, hash: string) {
+    if (node.type !== "RECTANGLE" && node.type !== "FRAME") throw new Error("not an image");
+    const imageHash = images.get(hash);
+    if (!imageHash) {
+      missingImages++;
+      throw new Error("image unavailable");
+    }
+    const current = (node.fills as readonly Paint[]).find((p) => p.type === "IMAGE");
+    node.fills = [
+      { ...(current ?? { type: "IMAGE", scaleMode: "FILL" }), imageHash } as ImagePaint,
+    ];
+  }
+
+  async function applyOverride(instance: InstanceNode, override: PlanOverride) {
+    const node = childAt(instance, override.path);
+    if (override.kind === "image") {
+      setImage(node, override.hash);
+    } else if (override.kind === "swap") {
+      const main = components?.main(override.key);
+      if (!main || node.type !== "INSTANCE") throw new Error("nothing to swap");
+      node.swapComponent(main);
+    } else {
+      if (node.type !== "TEXT") throw new Error("not text");
+      await setText(node, override, usableFont(override.runs[0]?.fontName ?? FALLBACK));
+    }
+  }
+
+  /**
+   * Shortest path first: after a swap, a longer path goes on into the swapped component, so what
+   * is below a swap that failed has nowhere to go. A failure leaves that layer as the main has it.
+   */
+  async function applyOverrides(instance: InstanceNode, overrides: PlanOverride[]) {
+    const run = generation;
+    const lost: number[][] = [];
+    for (const override of [...overrides].sort(shortestFirst)) {
+      if (overBudget() && !(await breathe(run))) throw new Error("import ended");
+      try {
+        if (lost.some((path) => startsWith(override.path, path))) throw new Error("swap failed");
+        await applyOverride(instance, override);
+        if (run !== generation) throw new Error("import ended");
+      } catch (e) {
+        if (run !== generation) throw e;
+        overrideFailures++;
+        if (override.kind === "swap") lost.push(override.path);
+      }
+    }
+  }
+
+  /**
+   * An instance hugs by itself, and `resize` would fix it. It needs resizing only if the plan says
+   * so or if its main lost the auto layout the plan counted on.
+   */
+  function sizeInstance(node: InstanceNode, main: ComponentNode, op: InstanceOp) {
+    const lostHug = main.layoutMode === "NONE" && (main.width !== op.w || main.height !== op.h);
+    if (!op.resize && !lostHug) return;
+    node.resize(clampSize(op.w), clampSize(op.h));
+    if (main.layoutSizingHorizontal === "HUG") node.layoutSizingHorizontal = "HUG";
+    if (main.layoutSizingVertical === "HUG") node.layoutSizingVertical = "HUG";
+  }
+
+  async function buildInstance(op: InstanceOp, parent: FrameNode): Promise<InstanceNode> {
+    const main = components?.main(op.key);
+    if (!main) throw new Error(`no component ${op.key}`);
+    const node = main.createInstance();
+    pending = node;
+    join(parent, node, op);
+    node.name = op.name;
+    const swapsBroken = op.overrides.some((o) => o.kind === "swap" && broken.has(o.key));
+    if (broken.has(op.key) || swapsBroken) {
+      overrideFailures += op.overrides.length;
+      if (definition) broken.add(definition);
+    } else {
+      await applyOverrides(node, op.overrides);
+    }
+    sizeInstance(node, main, op);
+    place(node, parent, op);
+    fillParent(node, parent, op);
+    instancesCreated++;
+    return node;
+  }
+
+  function buildMain(op: FrameOp, key: string): Built {
+    definition = key;
+    const node = buildFrame(op, null);
+    (components as ComponentSet).adopt(key, node as unknown as ComponentNode);
+    componentsCreated++;
+    return node;
+  }
+
   function build(op: PlanOp): Built | Promise<Built> {
+    if (op.op === "frame" && op.component) return buildMain(op, op.component.key);
     if (op.op === "frame" && op.parent === null) {
       if (rootAttempted) throw new Error("more than one root op");
       rootAttempted = true;
+      definition = null;
       const node = buildFrame(op, null);
       root = node;
       return node;
@@ -629,7 +760,7 @@ export function createApplier(api: PluginAPI) {
         return node;
       }
       case "instance":
-        throw new Error("instance ops arrive in Task 6");
+        return buildInstance(op, parent);
     }
   }
 
@@ -647,6 +778,7 @@ export function createApplier(api: PluginAPI) {
       styleLinks = [];
       failed.add(op.id);
       failedOps++;
+      if (definition) broken.add(definition);
       const partial = pending as SceneNode | null;
       if (partial && root === partial) root = null;
       try {
@@ -684,6 +816,8 @@ export function createApplier(api: PluginAPI) {
     sliceStart = Date.now();
     for (const op of ops) {
       if (overBudget() && !(await breathe(run))) return;
+      // Verification can still change a main, and an instance reads what it ends up as.
+      if (op.op === "instance" && !(await tracker.drain(overBudget, () => breathe(run)))) return;
       await applyOp(op);
       if (run !== generation) return;
     }
@@ -691,6 +825,7 @@ export function createApplier(api: PluginAPI) {
   }
 
   const tokenCounts = () => tokens?.counts() ?? NO_TOKENS;
+  const componentCounts = () => ({ componentsCreated, instancesCreated, overrideFailures });
 
   async function end(): Promise<EndResult> {
     if (!active) throw new Error("import not started");
@@ -701,11 +836,23 @@ export function createApplier(api: PluginAPI) {
         // The root op failed (already counted) or never arrived (count it now).
         if (!rootAttempted) failedOps++;
         api.commitUndo();
-        return { rootId: "", failedOps, missingImages, ...tracker.counts(), ...tokenCounts() };
+        return {
+          rootId: "",
+          failedOps,
+          missingImages,
+          ...tracker.counts(),
+          ...componentCounts(),
+          ...tokenCounts(),
+        };
       }
       tracker.closeOpen();
       sliceStart = Date.now();
       if (!(await tracker.drain(overBudget, () => breathe(run)))) return CANCELLED;
+      try {
+        components?.layOut(done);
+      } catch {
+        // a user removed a main meanwhile; only the tidying is lost
+      }
       api.commitUndo();
       try {
         (page ?? api.currentPage).selection = [done];
@@ -718,9 +865,11 @@ export function createApplier(api: PluginAPI) {
         failedOps,
         missingImages,
         ...tracker.counts(),
+        ...componentCounts(),
         ...tokenCounts(),
       };
       root = null; // keep the layers; reset() would remove them
+      components = null; // and the mains
       tokens = null; // and the tokens they use
       return result;
     } finally {
@@ -728,7 +877,7 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
-  /** Abandon the import: remove the partial root and restore the undo point. */
+  /** Abandon the import: remove the partial root and mains, and restore the undo point. */
   async function cancel(): Promise<void> {
     if (!active) return;
     const hadTokens = tokens !== null;

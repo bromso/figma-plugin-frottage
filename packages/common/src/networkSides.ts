@@ -30,6 +30,9 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     autoLayoutFrames: number;
     fallbackFrames: number;
     fallbackReasons: Record<string, number>;
+    componentsCreated: number;
+    instancesCreated: number;
+    overrideFailures: number;
     stylesCreated: number;
     stylesReused: number;
     variablesCreated: number;
