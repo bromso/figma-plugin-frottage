@@ -863,3 +863,30 @@ test("a link running past the text is clamped", async () => {
     t.ranges.filter((r: any) => r.m === "setRangeHyperlink").map((r: any) => [r.s, r.e])
   ).toEqual([[2, 5]]);
 });
+
+test("gradient fills become gradient paints with their transform and stops", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const transform: [[number, number, number], [number, number, number]] = [
+    [1, 0, 0],
+    [0, 1, 0],
+  ];
+  const stops = [
+    { position: 0, color: { r: 1, g: 0, b: 0, a: 1 } },
+    { position: 1, color: { r: 0, g: 0, b: 1, a: 0.5 } },
+  ];
+  await a.applyBatch([
+    frame("a", null, {
+      fills: [
+        { type: "SOLID", color: { r: 0, g: 1, b: 0 }, opacity: 1 },
+        { type: "GRADIENT_LINEAR", transform, stops },
+      ],
+    }),
+  ]);
+  expect((await a.end()).failedOps).toBe(0);
+  expect(f.lastFrame().fills).toEqual([
+    { type: "SOLID", color: { r: 0, g: 1, b: 0 }, opacity: 1 },
+    { type: "GRADIENT_LINEAR", gradientTransform: transform, gradientStops: stops },
+  ]);
+});

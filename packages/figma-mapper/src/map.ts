@@ -57,20 +57,129 @@ function backgroundFit(size: string | undefined, repeat: string | undefined): Fi
   return "FILL";
 }
 
-function mapFills(style: ElementNode["style"], hashes: Set<string>): PlanPaint[] {
+type Background = ElementNode["style"]["backgroundImages"][number];
+type GradientPaint = Extract<PlanPaint, { transform: unknown }>;
+type Transform = GradientPaint["transform"];
+
+const GRADIENT_TYPES = {
+  "linear-gradient": "GRADIENT_LINEAR",
+  "radial-gradient": "GRADIENT_RADIAL",
+  "conic-gradient": "GRADIENT_ANGULAR",
+} as const;
+
+// CSS angles run clockwise from "up"; Figma's gradient space is the unit square, so the line's
+// length is the box's extent along it (`L`), which makes 0% and 100% touch the corners.
+function linearTransform(angle: number, w: number, h: number): Transform {
+  const rad = (angle * Math.PI) / 180;
+  const sin = Math.sin(rad);
+  const cos = Math.cos(rad);
+  const length = Math.abs(w * sin) + Math.abs(h * cos);
+  if (!(length > 0)) {
+    return [
+      [1, 0, 0],
+      [0, 1, 0],
+    ];
+  }
+  const a = (w * sin) / length;
+  const b = (-h * cos) / length;
+  return [
+    [a, b, 0.5 - a / 2 - b / 2],
+    [-b, a, 0.5 + b / 2 - a / 2],
+  ];
+}
+
+const RADIAL_FARTHEST_CORNER: Transform = (() => {
+  const s = 1 / Math.SQRT2;
+  return [
+    [s, 0, 0.5 - s / 2],
+    [0, s, 0.5 - s / 2],
+  ];
+})();
+
+// Only a centred ellipse sized to the farthest corner, which is CSS's default, is exact.
+function isDefaultRadial(css: string): boolean {
+  const head = css.slice(css.indexOf("(") + 1).trimStart();
+  // A colour first means the browser wrote no shape, size or position.
+  if (!/^(ellipse|circle|closest|farthest|at\b|[\d.])/i.test(head)) return true;
+  const spec = head.split(/,(?![^(]*\))/)[0]?.trim() ?? "";
+  return /^(ellipse|farthest-corner|ellipse farthest-corner)(\s+at\s+(center|50%\s+50%))?$/i.test(
+    spec
+  );
+}
+
+// A conic gradient's start direction is checked in real Figma (Task 11). The transform is the
+// inverse of a clockwise turn by `angle` about the box centre.
+function angularTransform(angle: number): Transform {
+  const rad = (angle * Math.PI) / 180;
+  const sin = Math.sin(rad);
+  const cos = Math.cos(rad);
+  return [
+    [cos, sin, 0.5 - 0.5 * cos - 0.5 * sin],
+    [-sin, cos, 0.5 + 0.5 * sin - 0.5 * cos],
+  ];
+}
+
+function mapGradient(
+  img: Background,
+  w: number,
+  h: number,
+  warn: (message: string) => void
+): GradientPaint | null {
+  const kind = img.type as keyof typeof GRADIENT_TYPES;
+  if (!img.stops || img.stops.length === 0) {
+    warn(`A ${kind} with no readable colour stops was left out.`);
+    return null;
+  }
+  let stops = img.stops.map((s) => ({
+    position: Math.min(1, Math.max(0, s.position)),
+    color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a },
+  }));
+  if (/^repeating-/.test(img.css)) {
+    // Positions are 0 to 1 of the gradient line; the first cycle ends at the last stop.
+    const end = stops[stops.length - 1]?.position ?? 0;
+    if (end > 0) stops = stops.map((s) => ({ ...s, position: s.position / end }));
+    warn(`A repeating ${kind} was imported as its first cycle only.`);
+  }
+  let transform: Transform;
+  if (kind === "linear-gradient") {
+    transform = linearTransform(img.angle ?? 180, w, h);
+  } else if (kind === "radial-gradient") {
+    transform = RADIAL_FARTHEST_CORNER;
+    if (!isDefaultRadial(img.css)) {
+      warn(
+        "A radial-gradient with its own shape, size or position was imported as approximate: centred, farthest corner."
+      );
+    }
+  } else {
+    transform = angularTransform(img.angle ?? 0);
+  }
+  return { type: GRADIENT_TYPES[kind], transform, stops };
+}
+
+function mapFills(
+  style: ElementNode["style"],
+  box: { w: number; h: number },
+  hashes: Set<string>,
+  warn: (message: string) => void
+): PlanPaint[] {
   const fills: PlanPaint[] = [];
   const bg = style.backgroundColor;
   if (bg.a > 0) fills.push({ type: "SOLID", color: rgb(bg), opacity: bg.a });
   // CSS lists the top layer first and Figma lists it last.
   for (let i = style.backgroundImages.length - 1; i >= 0; i--) {
     const img = style.backgroundImages[i];
-    if (img?.type === "image" && img.assetHash) {
+    if (!img) continue;
+    if (img.type === "image") {
+      if (!img.assetHash) continue;
       hashes.add(img.assetHash);
       fills.push({
         type: "IMAGE",
         hash: img.assetHash,
         fit: backgroundFit(img.size, img.repeat),
       });
+    } else {
+      const paint = mapGradient(img, box.w, box.h, warn);
+      if (paint) fills.push(paint);
     }
   }
   return fills;
@@ -185,6 +294,13 @@ export function mapCapture(
     downscaledImages: capture.assets.filter((a) => a.downscaledFrom).length,
     substitutedFonts: [] as { from: string; to: string }[],
     warnings: capture.warnings.map((w) => w.detail),
+  };
+
+  const warned = new Set<string>();
+  const warn = (message: string) => {
+    if (warned.has(message)) return;
+    warned.add(message);
+    report.warnings.push(message);
   };
 
   const font = (family: string, weight: number, style: string): FontRef => {
@@ -385,7 +501,7 @@ export function mapCapture(
           y,
           w: node.box.w,
           h: node.box.h,
-          fills: hidden ? [] : mapFills(s, hashes),
+          fills: hidden ? [] : mapFills(s, node.box, hashes, warn),
           strokes: hidden ? null : mapStroke(s.borders),
           // [topLeft, topRight, bottomRight, bottomLeft], as the walker emits.
           radius: [...s.borderRadius] as [number, number, number, number],

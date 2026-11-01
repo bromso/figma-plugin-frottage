@@ -222,13 +222,19 @@ export function createApplier(api: PluginAPI) {
     for (const p of list) {
       if (p.type === "SOLID") {
         out.push(solidPaint(p.color, p.opacity, p.colorKey));
-      } else {
+      } else if (p.type === "IMAGE") {
         const imageHash = images.get(p.hash);
         if (!imageHash) {
           missingImages++;
           continue;
         }
         out.push({ type: "IMAGE", imageHash, scaleMode: p.fit === "CROP" ? "FILL" : p.fit });
+      } else {
+        out.push({
+          type: p.type,
+          gradientTransform: p.transform,
+          gradientStops: p.stops.map((s) => ({ position: s.position, color: s.color })),
+        });
       }
     }
     return out;

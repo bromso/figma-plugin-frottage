@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { batchOps, DEFAULT_IMPORT_OPTIONS, mapCapture, missingFonts, type PlanOp } from "../index";
+import type { ElementNode } from "@repo/capture-schema";
+import {
+  batchOps,
+  DEFAULT_IMPORT_OPTIONS,
+  mapCapture,
+  missingFonts,
+  type PlanOp,
+  type PlanPaint,
+} from "../index";
 import {
   anyOp,
   cap,
@@ -756,5 +764,146 @@ describe("stacking order", () => {
     );
     expect(order.filter((id) => id !== "badge")).toEqual(["a", "b"]);
     expect(order[0]).toBe("badge");
+  });
+});
+
+describe("gradients", () => {
+  type Grad = Extract<PlanPaint, { transform: unknown }>;
+  const red = { r: 1, g: 0, b: 0, a: 1 };
+  const blue = { r: 0, g: 0, b: 1, a: 0.5 };
+  const stops = [
+    { color: red, position: 0 },
+    { color: blue, position: 1 },
+  ];
+  function planWith(
+    backgroundImages: ElementNode["style"]["backgroundImages"],
+    size: [number, number] = [100, 100],
+    backgroundColor = { r: 0, g: 0, b: 0, a: 0 }
+  ) {
+    const base = el("x", [0, 0]).style;
+    const c = cap(
+      el("root", [0, 0], [], { style: { ...base, backgroundColor, backgroundImages } }, size)
+    );
+    const plan = mapCapture(c, inter);
+    return { fills: (plan.ops[0] as FramePlanOp).fills, plan };
+  }
+  const linear = (angle: number, css = "linear-gradient()") => ({
+    type: "linear-gradient" as const,
+    css,
+    angle,
+    stops,
+  });
+  // The t a point has along the gradient, from the first row of the transform.
+  const t = (g: Grad, x: number, y: number) =>
+    g.transform[0][0] * x + g.transform[0][1] * y + g.transform[0][2];
+
+  test("to right on any box is the identity row", () => {
+    for (const size of [
+      [100, 100],
+      [200, 50],
+    ] as [number, number][]) {
+      const g = planWith([linear(90)], size).fills[0] as Grad;
+      expect(g.type).toBe("GRADIENT_LINEAR");
+      const want = [
+        [1, 0, 0],
+        [0, 1, 0],
+      ];
+      for (const [i, row] of g.transform.entries()) {
+        for (const [j, v] of row.entries()) {
+          expect(Math.abs(v - (want[i]?.[j] ?? 0))).toBeLessThan(1e-9);
+        }
+      }
+    }
+  });
+  test("to bottom", () => {
+    const g = planWith([linear(180)], [80, 120]).fills[0] as Grad;
+    expect(g.transform[0][0]).toBeCloseTo(0, 9);
+    expect(g.transform[0][1]).toBeCloseTo(1, 9);
+    expect(g.transform[0][2]).toBeCloseTo(0, 9);
+  });
+  test("45deg on a 200 by 100 box reaches the corners", () => {
+    const g = planWith([linear(45)], [200, 100]).fills[0] as Grad;
+    expect(t(g, 0, 1)).toBeCloseTo(0, 6);
+    expect(t(g, 1, 0)).toBeCloseTo(1, 6);
+  });
+  test("stops carry their colour, alpha and position", () => {
+    const g = planWith([linear(90)]).fills[0] as Grad;
+    expect(g.stops).toEqual(stops);
+  });
+  test("radial farthest-corner is centred", () => {
+    const { fills, plan } = planWith([
+      { type: "radial-gradient", css: "radial-gradient(rgb(255, 0, 0), rgb(0, 0, 255))", stops },
+    ]);
+    const s = 1 / Math.SQRT2;
+    expect(fills[0]).toMatchObject({ type: "GRADIENT_RADIAL" });
+    const g = fills[0] as Grad;
+    expect(g.transform[0][0]).toBeCloseTo(s, 9);
+    expect(g.transform[1][2]).toBeCloseTo(0.5 - s / 2, 9);
+    expect(plan.report.warnings).toEqual([]);
+  });
+  test("a radial with another position is drawn centred and reported", () => {
+    const { fills, plan } = planWith([
+      {
+        type: "radial-gradient",
+        css: "radial-gradient(circle at 10% 20%, rgb(255, 0, 0), rgb(0, 0, 255))",
+        stops,
+      },
+    ]);
+    expect(fills[0]).toMatchObject({ type: "GRADIENT_RADIAL" });
+    expect(plan.report.warnings.join(" ")).toMatch(/approximate/i);
+  });
+  test("conic becomes angular and the angle rotates it about the centre", () => {
+    const zero = planWith([{ type: "conic-gradient", css: "conic-gradient()", stops }])
+      .fills[0] as Grad;
+    expect(zero.type).toBe("GRADIENT_ANGULAR");
+    expect(zero.transform[0][0]).toBeCloseTo(1, 9);
+    const quarter = planWith([
+      { type: "conic-gradient", css: "conic-gradient()", angle: 90, stops },
+    ]).fills[0] as Grad;
+    expect(quarter.transform[0][0]).toBeCloseTo(0, 9);
+    // The centre stays put.
+    const [r0, r1] = quarter.transform;
+    expect(r0[0] * 0.5 + r0[1] * 0.5 + r0[2]).toBeCloseTo(0.5, 9);
+    expect(r1[0] * 0.5 + r1[1] * 0.5 + r1[2]).toBeCloseTo(0.5, 9);
+  });
+  test("layers stay in order with images and colour", () => {
+    const { fills } = planWith(
+      [
+        linear(90, "top"),
+        { type: "image", css: "", assetHash: "h1" },
+        { type: "radial-gradient", css: "radial-gradient()", stops },
+      ],
+      [100, 100],
+      { r: 0, g: 0, b: 1, a: 1 }
+    );
+    // CSS lists the top layer first; Figma lists it last.
+    expect(fills.map((f) => f.type)).toEqual([
+      "SOLID",
+      "GRADIENT_RADIAL",
+      "IMAGE",
+      "GRADIENT_LINEAR",
+    ]);
+  });
+  test("repeating gradient uses the first cycle and is reported", () => {
+    const { fills, plan } = planWith([
+      {
+        type: "linear-gradient",
+        css: "repeating-linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255) 20%)",
+        angle: 180,
+        stops: [
+          { color: red, position: 0 },
+          { color: blue, position: 0.2 },
+        ],
+      },
+    ]);
+    expect((fills[0] as Grad).stops.map((s) => s.position)).toEqual([0, 1]);
+    expect(plan.report.warnings.join(" ")).toMatch(/repeating/i);
+  });
+  test("a gradient without stops is left out and reported", () => {
+    const { fills, plan } = planWith([
+      { type: "linear-gradient", css: "linear-gradient(var(--x))" },
+    ]);
+    expect(fills).toEqual([]);
+    expect(plan.report.warnings.join(" ")).toMatch(/gradient/i);
   });
 });

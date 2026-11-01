@@ -12,7 +12,14 @@ export type PlanPaint =
       /** The colour token to bind, when this colour became one. */
       colorKey?: string;
     }
-  | { type: "IMAGE"; hash: string; fit: "FILL" | "FIT" | "CROP" | "TILE" };
+  | { type: "IMAGE"; hash: string; fit: "FILL" | "FIT" | "CROP" | "TILE" }
+  | {
+      type: "GRADIENT_LINEAR" | "GRADIENT_RADIAL" | "GRADIENT_ANGULAR";
+      /** Figma's `gradientTransform`: the node's unit square to gradient space. */
+      transform: [[number, number, number], [number, number, number]];
+      /** Positions run 0 to 1 along the gradient. */
+      stops: { position: number; color: PlanRgb & { a: number } }[];
+    };
 
 /** Per-side weights; one colour (the most common among drawn sides). */
 export type PlanStroke = {
