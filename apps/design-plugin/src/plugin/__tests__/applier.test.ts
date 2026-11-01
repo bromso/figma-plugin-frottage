@@ -308,6 +308,53 @@ test("root sits 100px right of existing content", async () => {
   expect(f.node(r.rootId).y).toBe(0);
 });
 
+test("effects Figma refuses leave the frame and its children, and are counted", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const huge = [{ type: "LAYER_BLUR", radius: Number.POSITIVE_INFINITY }];
+  await a.applyBatch([
+    frame("a", null, { childCount: 1 }),
+    frame("blurred", "a", { effects: huge, name: "blurred", childCount: 1 }),
+    frame("inner", "blurred"),
+  ]);
+  const r = await a.end();
+  expect(r).toMatchObject({ failedOps: 0, paintFailures: 1 });
+  const blurred = f.created.find((n) => n.name === "blurred");
+  expect(blurred?.fills).toEqual([{ type: "SOLID", color: { r: 1, g: 0, b: 0 }, opacity: 1 }]);
+  expect(blurred?.effects).toEqual([]);
+  expect(blurred?.children).toHaveLength(1);
+  expect(blurred?.opacity).toBe(1);
+});
+
+test("fills Figma refuses leave the frame and its children, and are counted", async () => {
+  const f = fakeFigma();
+  const create = f.figma.createFrame.bind(f.figma);
+  f.figma.createFrame = () => {
+    const node = create();
+    let held: unknown[] = [];
+    Object.defineProperty(node, "fills", {
+      get: () => held,
+      set(v: { opacity?: number }[]) {
+        if (v.some((p) => p.opacity === 0.25)) throw new Error("refused paint");
+        held = v;
+      },
+    });
+    return node;
+  };
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const refused = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.25 }];
+  await a.applyBatch([
+    frame("a", null, { childCount: 1 }),
+    frame("painted", "a", { fills: refused, name: "painted", childCount: 1 }),
+    frame("inner", "painted"),
+  ]);
+  const r = await a.end();
+  expect(r).toMatchObject({ failedOps: 0, paintFailures: 1 });
+  expect(f.created.find((n) => n.name === "painted")?.children).toHaveLength(1);
+});
+
 test("a second begin removes the partial root", async () => {
   const f = fakeFigma();
   const a = createApplier(f.figma);
@@ -350,6 +397,7 @@ test("an import with no root op returns an empty rootId and counts a failure", a
     layoutFailures: 0,
     hoverVariants: 0,
     hoverFailures: 0,
+    paintFailures: 0,
     stylesCreated: 0,
     stylesReused: 0,
     variablesCreated: 0,

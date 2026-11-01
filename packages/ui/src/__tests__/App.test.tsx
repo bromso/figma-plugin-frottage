@@ -400,6 +400,16 @@ describe("App (options and font table)", () => {
     expect(screen.getByText(/2 components could not get a Hover variant/)).toBeInTheDocument();
   });
 
+  it("says how many layers lost a paint Figma refused", async () => {
+    const user = userEvent.setup();
+    const port = fakePort(fonts);
+    port.endResult = { ...port.endResult, paintFailures: 3 };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await screen.findByText("Import complete");
+    expect(screen.getByText(/refused the fills or effects of 3 layers/)).toBeInTheDocument();
+  });
+
   it("leaves component rows out when nothing repeats", async () => {
     const user = userEvent.setup();
     render(<App port={fakePort(fonts)} />);

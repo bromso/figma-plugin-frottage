@@ -45,6 +45,7 @@ export type ImportState =
       layoutFailures: number;
       hoverVariants: number;
       hoverFailures: number;
+      paintFailures: number;
       stylesCreated: number;
       stylesReused: number;
       variablesCreated: number;
@@ -76,6 +77,7 @@ export type ImportPort = {
     layoutFailures?: number;
     hoverVariants?: number;
     hoverFailures?: number;
+    paintFailures?: number;
     stylesCreated?: number;
     stylesReused?: number;
     variablesCreated?: number;
@@ -284,6 +286,7 @@ export async function runImport(
       layoutFailures: result.layoutFailures ?? 0,
       hoverVariants: result.hoverVariants ?? 0,
       hoverFailures: result.hoverFailures ?? 0,
+      paintFailures: result.paintFailures ?? 0,
       stylesCreated: result.stylesCreated ?? 0,
       stylesReused: result.stylesReused ?? 0,
       variablesCreated: result.variablesCreated ?? 0,

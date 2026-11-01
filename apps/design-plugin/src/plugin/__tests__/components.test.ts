@@ -1195,6 +1195,19 @@ test("a component whose hover patches are all empty makes no variant", async () 
   expect(ofType(f, "COMPONENT_SET")).toHaveLength(0);
 });
 
+test("a main that lost a layer gets no hover, and that is counted", async () => {
+  const f = fakeFigma({ failOn: "Bad layer" });
+  const [card, label, ...rest] = hovered(1);
+  const lost = { ...(label as PlanOp), id: "x-card/bad", name: "Bad layer" } as PlanOp;
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([card as PlanOp, lost, label as PlanOp, ...rest]);
+  const r = await a.end();
+  expect(r).toMatchObject({ failedOps: 1, hoverVariants: 0, hoverFailures: 1 });
+  expect(setsOf(f)).toHaveLength(0);
+  expect(ofType(f, "COMPONENT").map((m) => m.name)).toEqual(["x-card"]);
+});
+
 test("a failed variant leaves the main in place and is counted", async () => {
   const { f, r } = await imported(hovered(1, [{ path: [4], textColor: { ...BLUE, a: 1 } }]));
   expect(r).toMatchObject({ hoverVariants: 0, hoverFailures: 1, layoutFailures: 0 });

@@ -147,6 +147,7 @@ export function fakeFigma(opts: Options = {}) {
             throw new Error("effect needs visible and blendMode");
           }
           if (blur && e.blurType !== "NORMAL") throw new Error("a blur needs blurType NORMAL");
+          if (!Number.isFinite(e.radius)) throw new Error("an effect needs a finite radius");
         }
         effects = v;
       },

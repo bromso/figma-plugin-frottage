@@ -135,6 +135,7 @@ export type FakePort = ImportPort & {
     layoutFailures?: number;
     hoverVariants?: number;
     hoverFailures?: number;
+    paintFailures?: number;
     stylesCreated?: number;
     stylesReused?: number;
     variablesCreated?: number;

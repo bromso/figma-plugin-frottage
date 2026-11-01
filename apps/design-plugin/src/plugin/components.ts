@@ -125,15 +125,17 @@ export function createComponentSet(api: PluginAPI, rootName: string, paint: Hove
 
     /**
      * Makes the hover variants, then places the mains, or the sets they became, in rows, then the
-     * section around them, to the right of `root`.
+     * section around them, to the right of `root`. A `broken` main lost layers, so its patches would
+     * land on the wrong ones.
      */
-    layOut(root: { x: number; y: number; width: number }) {
+    layOut(root: { x: number; y: number; width: number }, broken: ReadonlySet<string>) {
       if (!section) return;
       let failed = false;
       const placed: (ComponentNode | ComponentSetNode)[] = [];
       for (const [key, node] of mains) {
         const patches = hovers.get(key);
-        const made = patches ? addHover(node, patches) : null;
+        if (patches && broken.has(key)) hoverFailures++;
+        const made = patches && !broken.has(key) ? addHover(node, patches) : null;
         placed.push(made?.set ?? node);
         if (!made) continue;
         // One component that cannot be sized does not stop the rest.

@@ -53,6 +53,8 @@ export type EndResult = TokenCounts & {
   hoverVariants: number;
   /** Components whose Hover variant could not be made, which stay as they were. */
   hoverFailures: number;
+  /** Frames that lost their fills or effects to a paint Figma refused; the layers stay. */
+  paintFailures: number;
 };
 
 type Corners = [number, number, number, number];
@@ -87,6 +89,7 @@ const CANCELLED: EndResult = {
   layoutFailures: 0,
   hoverVariants: 0,
   hoverFailures: 0,
+  paintFailures: 0,
   ...NO_TOKENS,
 };
 
@@ -148,6 +151,7 @@ export function createApplier(api: PluginAPI) {
   let overrideFailures = 0;
   let overrideFailuresInMains = 0;
   let layoutFailures = 0;
+  let paintFailures = 0;
 
   function reset() {
     generation++;
@@ -186,6 +190,7 @@ export function createApplier(api: PluginAPI) {
     overrideFailures = 0;
     overrideFailuresInMains = 0;
     layoutFailures = 0;
+    paintFailures = 0;
   }
 
   async function loadFont(f: FontRef): Promise<void> {
@@ -525,15 +530,25 @@ export function createApplier(api: PluginAPI) {
     const node = createFrame(parent, op, name);
     setLayout(node, op);
     node.clipsContent = op.clips;
-    node.fills = paints(op.fills);
-    // A fill style replaces the whole list, so it needs the solid to be the only fill.
-    const [only] = op.fills;
-    const fillStyle =
-      op.fills.length === 1 && only?.type === "SOLID" ? paintStyleId(only.colorKey) : undefined;
-    if (fillStyle) styleLinks.push(() => node.setFillStyleIdAsync(fillStyle));
+    // A refused paint costs that paint, not the frame and all that is under it.
+    try {
+      node.fills = paints(op.fills);
+      // A fill style replaces the whole list, so it needs the solid to be the only fill.
+      const [only] = op.fills;
+      const fillStyle =
+        op.fills.length === 1 && only?.type === "SOLID" ? paintStyleId(only.colorKey) : undefined;
+      if (fillStyle) styleLinks.push(() => node.setFillStyleIdAsync(fillStyle));
+    } catch {
+      paintFailures++;
+      node.fills = [];
+    }
     setRadius(node, op.radius);
     setStroke(node, op.strokes);
-    node.effects = effects(op.effects);
+    try {
+      node.effects = effects(op.effects);
+    } catch {
+      paintFailures++;
+    }
     node.opacity = op.opacity;
     // The import root is placed by the applier, not at its captured offset, and a main by `layOut`.
     // A frame in auto layout is turned by the tracker once its size is final.
@@ -886,6 +901,7 @@ export function createApplier(api: PluginAPI) {
     overrideFailures,
     overrideFailuresInMains,
     layoutFailures,
+    paintFailures,
     ...(components?.hoverCounts() ?? { hoverVariants: 0, hoverFailures: 0 }),
   });
 
@@ -914,7 +930,7 @@ export function createApplier(api: PluginAPI) {
       sliceStart = Date.now();
       if (!(await tracker.drain(overBudget, () => breathe(run)))) return CANCELLED;
       try {
-        components?.layOut(done);
+        components?.layOut(done, broken);
       } catch {
         layoutFailures++;
       }

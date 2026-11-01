@@ -76,6 +76,13 @@ function Report({
           get a Hover variant and {state.hoverFailures === 1 ? "stays" : "stay"} as imported.
         </p>
       )}
+      {state.paintFailures > 0 && (
+        <p className="text-figma-text-danger">
+          Figma refused the fills or effects of {state.paintFailures}{" "}
+          {state.paintFailures === 1 ? "layer" : "layers"}, which{" "}
+          {state.paintFailures === 1 ? "stays" : "stay"} without them.
+        </p>
+      )}
       {tokenFailures > 0 && (
         <p className="text-figma-text-danger">
           {tokenFailures} {tokenFailures === 1 ? "style or variable" : "styles or variables"} could
