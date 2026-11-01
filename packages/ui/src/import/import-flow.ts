@@ -640,6 +640,13 @@ export async function runImports(
     // merged; each plan is dropped once its version is created.
     const versions: VersionReport[] = [];
     const reports: SetReport[] = [];
+    /** What stayed, or null with nothing to show. */
+    const doneState = (): ImportState | null => {
+      const first = versions[0];
+      return first ? { ...first, step: "done", versions, sets: reports, failures } : null;
+    };
+    /** A Cancel takes back the set in hand. Sets finished before it stay, so they're reported. */
+    const cancelled = () => onState(doneState() ?? { step: "idle" });
     const assetsOf = async (version: LoadedFile) => {
       if (single) return version.assets;
       const again = await loadFile(fileOf(version));
@@ -652,7 +659,7 @@ export async function runImports(
     for (const set of sets) {
       const firstFile = index + 1;
       index += set.versions.length;
-      if (signal?.aborted) return onState({ step: "idle" });
+      if (signal?.aborted) return cancelled();
       // A set counts uses across its versions, in `mergeVersions`, so each plan proposes them all.
       const planOptions = set.versions.length > 1 ? { ...options, tokenFloor: 1 } : options;
       const plans = set.versions.map(
@@ -672,7 +679,7 @@ export async function runImports(
           assetsOf,
           fail,
         });
-        if (outcome.cancelled) return onState({ step: "idle" });
+        if (outcome.cancelled) return cancelled();
         versions.push(...outcome.versions);
         if (outcome.report) reports.push(outcome.report);
         continue;
@@ -696,16 +703,16 @@ export async function runImports(
             file: { index: firstFile, total: files.length, name: version.name },
           }
         );
-        if (!report) return onState({ step: "idle" });
+        if (!report) return cancelled();
         versions.push(report);
       } catch (error) {
         fail(version.name, error);
       }
     }
 
-    const first = versions[0];
-    if (!first) return finishWithError();
-    onState({ ...first, step: "done", versions, sets: reports, failures });
+    const done = doneState();
+    if (!done) return finishWithError();
+    onState(done);
   } catch (error) {
     onState({ step: "error", message: messageForError(error) });
   }

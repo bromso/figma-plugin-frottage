@@ -760,7 +760,7 @@ describe("runImports with several files", () => {
     expect(done.versions.map((v) => v.name)).toEqual(["ok"]);
   });
 
-  test("Cancel between files stops before the next begin", async () => {
+  test("Cancel between files stops before the next begin and reports what stayed", async () => {
     const port = fakePort();
     const controller = new AbortController();
     const end = port.end.bind(port);
@@ -782,7 +782,7 @@ describe("runImports with several files", () => {
     );
     expect(port.log.filter((l) => l === "begin")).toHaveLength(1);
     expect(port.log).not.toContain("cancel");
-    expect(states.at(-1)).toEqual({ step: "idle" });
+    expect(states.at(-1)?.step).toBe("done");
   });
 
   test("file.index counts the versions through pass 2, of the dropped total", async () => {
@@ -998,6 +998,65 @@ describe("a set of versions", () => {
     const dones = steps.map((s) => s.done);
     expect(dones).toEqual([...dones].sort((a, b) => a - b));
     expect(dones.at(-1)).toBe(7);
+  });
+
+  test("Cancel inside set 2 keeps set 1 and reports it", async () => {
+    const other = { url: "https://other.example/" };
+    const port = fakePort();
+    const controller = new AbortController();
+    const begin = port.begin;
+    port.begin = async (meta) => {
+      await begin(meta);
+      if (port.begins.length === 4) controller.abort();
+    };
+    const files = [wide(), narrow(), wide(other), narrow(other)];
+    const { last } = await runSet(files, port, controller);
+    const done = doneOf(last);
+    expect(done.versions.map((v) => v.name)).toEqual(["wide", "narrow"]);
+    expect(done.sets).toHaveLength(1);
+    expect(port.log.filter((l) => l === "cancel")).toHaveLength(1);
+    expect(port.log.filter((l) => l === "endSet")).toHaveLength(1);
+  });
+
+  test("Cancel before set 2 opens reports set 1", async () => {
+    const other = { url: "https://other.example/" };
+    const port = fakePort();
+    const controller = new AbortController();
+    const endSet = port.endSet;
+    port.endSet = async () => {
+      const result = await endSet();
+      controller.abort();
+      return result;
+    };
+    const files = [wide(), narrow(), wide(other), narrow(other)];
+    const { last } = await runSet(files, port, controller);
+    expect(doneOf(last).versions.map((v) => v.name)).toEqual(["wide", "narrow"]);
+    expect(port.log).not.toContain("cancel");
+  });
+
+  test("Cancel inside a file after a set reports the set", async () => {
+    const port = fakePort();
+    const controller = new AbortController();
+    const begin = port.begin;
+    port.begin = async (meta) => {
+      await begin(meta);
+      if (port.begins.length === 3) controller.abort();
+    };
+    const other = { url: "https://other.example/", label: "" };
+    const { last } = await runSet([wide(), narrow(), wide(other)], port, controller);
+    expect(doneOf(last).versions.map((v) => v.name)).toEqual(["wide", "narrow"]);
+  });
+
+  test("Cancel inside the first set, with nothing kept, goes idle", async () => {
+    const port = fakePort();
+    const controller = new AbortController();
+    const begin = port.begin;
+    port.begin = async (meta) => {
+      await begin(meta);
+      controller.abort();
+    };
+    const { last } = await runSet([wide(), narrow()], port, controller);
+    expect(last.step).toBe("idle");
   });
 
   test("Cancel on version 3 undoes the whole set, once", async () => {
