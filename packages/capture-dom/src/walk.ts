@@ -21,6 +21,7 @@ import {
   type Which,
 } from "./pseudo";
 import {
+  clipsToText,
   colorOf,
   isTokenValue,
   parseFilters,
@@ -246,8 +247,13 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     measure: (text, style) => measure(text, style),
     isSecret: isPrivate,
     text: (value, style, box, tag, up) => {
-      const node = boxedText(value, style, box, tag);
-      const inside = { link: up.link, decoration: decorationInside(style, up.decoration) };
+      const clipped = up.clipped || clipsToText(style);
+      const node = boxedText(value, style, box, tag, false, clipped);
+      const inside = {
+        link: up.link,
+        decoration: decorationInside(style, up.decoration),
+        clipped,
+      };
       if (node) for (const run of node.runs) inherit(run, inside);
       return node;
     },
@@ -331,7 +337,28 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   // ---------- Text
 
-  function runOf(style: CSSStyleDeclaration, start: number, end: number): Run {
+  /**
+   * The colour text is painted in: `-webkit-text-fill-color` wins over `color` and defaults to it.
+   * A clear fill shows only its outline, or the background of a clip, and Figma text has one colour.
+   */
+  function paintedColor(style: CSSStyleDeclaration, clipped: boolean): Rgba {
+    const fill = colorOf(style.getPropertyValue("-webkit-text-fill-color") || style.color);
+    if (fill.a > 0 || clipped) return fill;
+    const stroked = px(style.getPropertyValue("-webkit-text-stroke-width")) > 0;
+    const shown = colorOf(
+      stroked ? style.getPropertyValue("-webkit-text-stroke-color") : style.color
+    );
+    if (shown.a > 0) {
+      warn(
+        "text-fill-transparent",
+        undefined,
+        "Text with a transparent fill was imported filled with its stroke or text colour"
+      );
+    }
+    return shown;
+  }
+
+  function runOf(style: CSSStyleDeclaration, start: number, end: number, clipped: boolean): Run {
     const weight = Number.parseInt(style.fontWeight, 10) || 400;
     const align = style.textAlign;
     return {
@@ -343,8 +370,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       size: px(style.fontSize),
       lineHeight: style.lineHeight === "normal" ? null : px(style.lineHeight),
       letterSpacing: style.letterSpacing === "normal" ? 0 : px(style.letterSpacing),
-      // What is painted: `-webkit-text-fill-color` wins over `color` and defaults to it.
-      color: colorOf(style.getPropertyValue("-webkit-text-fill-color") || style.color),
+      color: paintedColor(style, clipped),
       decoration: style.textDecorationLine || "none",
       transform: style.textTransform,
       align: align === "start" ? "left" : align === "end" ? "right" : align,
@@ -421,6 +447,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   const inside = (el: Element, s: CSSStyleDeclaration, up: Inherited): Inherited => ({
     link: linkInside(el, up.link),
     decoration: decorationInside(s, up.decoration),
+    clipped: up.clipped || clipsToText(s),
   });
 
   const inherit = (run: Run, up: Inherited): Run => {
@@ -688,7 +715,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         rects.push(pageBox(r));
       }
       if (!any) return;
-      append(piece, inherit(runOf(s, 0, 0), up));
+      append(piece, inherit(runOf(s, 0, 0, up.clipped), up));
     };
 
     const addPseudo = (p: Pseudo, up: Inherited) => {
@@ -704,7 +731,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       if (!piece) return;
       const lineH = px(s.lineHeight) || px(s.fontSize) * 1.2;
       rects.push({ x: 0, y: 0, w: measure(piece, s), h: round2(lineH), gen: p.which });
-      append(piece, inherit(runOf(s, 0, 0), up));
+      append(piece, inherit(runOf(s, 0, 0, up.clipped || clipsToText(s)), up));
     };
 
     const addNodes = (nodes: Iterable<Item>, styleEl: Element, up: Inherited) => {
@@ -727,7 +754,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
                 break;
               }
             }
-            append("\n", inherit(runOf(cs(e), 0, 0), up));
+            append("\n", inherit(runOf(cs(e), 0, 0, up.clipped), up));
           } else {
             addNodes(inlineItems(e), e, inside(e, cs(e), up));
           }
@@ -831,9 +858,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     s: CSSStyleDeclaration,
     inner: Box,
     tag: string,
-    dim = false
+    dim = false,
+    clipped = false
   ): TextNode | null {
-    const run = runOf(s, 0, value.length);
+    const run = runOf(s, 0, value.length, clipped);
     if (dim) run.color = { ...run.color, a: round2(run.color.a * 0.5) } as Rgba;
     const line =
       tag === "textarea" && run.lineHeight !== null ? { ...inner, h: run.lineHeight } : inner;
@@ -1302,7 +1330,11 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     warn("hover-unreadable", undefined, "Hover styles could not be read");
   }
 
-  const [tree] = visit(root, 1, true, { link: undefined, decoration: "none" });
+  const [tree] = visit(root, 1, true, {
+    link: undefined,
+    decoration: "none",
+    clipped: false,
+  });
   if (tree?.kind !== "element") throw new Error("The document has no root element");
 
   // ---------- Tokens

@@ -11,6 +11,8 @@ export type Inherited = {
   link: string | undefined;
   /** The `text-decoration-line` in effect. */
   decoration: string;
+  /** Whether an element around it shows its background through its text. */
+  clipped: boolean;
 };
 
 /** What a pseudo-element needs from the walker; kept narrow so this file does not import it. */

@@ -225,13 +225,33 @@ function mapGradient(
 const clipsToText = (style: ElementNode["style"]): boolean =>
   (style.backgroundClip ?? "").split(/[\s,]+/).includes("text");
 
-/** The colour clipped text takes: the first stop of the top gradient, which is all Figma text can hold. */
-function clippedTextColor(style: ElementNode["style"]): PlanRgb | undefined {
+/**
+ * The one colour clipped text takes, which is all Figma text can hold, and what the report says of
+ * it: the first stop that shows, then the background colour, then black for an image.
+ */
+function clippedTextColor(
+  style: ElementNode["style"]
+): { color: PlanRgb; warning: string } | undefined {
   for (const layer of style.backgroundImages) {
-    const first = layer.stops?.[0];
-    if (layer.type !== "image" && first) return rgb(first.color);
+    const stop = layer.type === "image" ? undefined : layer.stops?.find((s) => s.color.a > 0);
+    if (stop) {
+      return {
+        color: rgb(stop.color),
+        warning: "Text with a background clip was imported with the first colour of its gradient.",
+      };
+    }
   }
-  return undefined;
+  if (style.backgroundColor.a > 0) {
+    return {
+      color: rgb(style.backgroundColor),
+      warning: "Text with a background clip was imported with its background colour.",
+    };
+  }
+  if (!style.backgroundImages.some((layer) => layer.type === "image")) return undefined;
+  return {
+    color: { r: 0, g: 0, b: 0 },
+    warning: "Text clipped to a background image was imported black.",
+  };
 }
 
 function mapFills(
@@ -485,7 +505,7 @@ export function mapCapture(
         fontSize: r.size,
         lineHeight: r.lineHeight,
         letterSpacing: r.letterSpacing,
-        // Text clipped to a background is transparent; it takes the gradient's first colour.
+        // Text clipped to a background is transparent; it takes the background's one colour.
         color: clip && r.color.a === 0 ? clip : rgb(r.color),
         opacity: clip && r.color.a === 0 ? 1 : r.color.a,
         decoration: mapDecoration(r.decoration),
@@ -609,8 +629,11 @@ export function mapCapture(
         const s = node.style;
         let childClip = clip;
         if (clipsToText(s)) {
-          childClip = clippedTextColor(s) ?? clip;
-          warn("Text with a background clip was imported with the first colour of its gradient.");
+          const clipped = clippedTextColor(s);
+          if (clipped) {
+            childClip = clipped.color;
+            warn(clipped.warning);
+          }
         }
         const inferred = inferLayout(
           node,

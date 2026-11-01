@@ -1775,6 +1775,36 @@ test("a pseudo-element keeps its z-index, so an underlay stays under the text", 
   expect(under[0]).toBe(pseudo("zq-pill")?.id);
 });
 
+test("transparent text fill outside a clip takes the stroke colour, else the text colour", async ({
+  page,
+}) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/layout.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      [
+        '<p style="-webkit-text-fill-color:transparent;-webkit-text-stroke:1px rgb(0,0,255);color:red">Outlined</p>',
+        '<p style="color:transparent;-webkit-text-stroke:2px rgb(0,128,0)">Stroke only</p>',
+        '<p style="-webkit-text-fill-color:transparent;color:rgb(255,0,0)">Filled away</p>',
+        '<p style="color:transparent">Hidden fully</p>',
+        '<p style="background:linear-gradient(90deg,red,blue);background-clip:text;-webkit-text-fill-color:transparent;-webkit-text-stroke:1px rgb(0,0,255)"><span>Clipped span</span></p>',
+      ].join("")
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const color = (text: string) => findText(c, text)?.runs[0]?.color;
+  expect(color("Outlined")).toEqual({ r: 0, g: 0, b: 1, a: 1 });
+  expect(color("Stroke only")).toEqual({ r: 0, g: 128 / 255, b: 0, a: 1 });
+  expect(color("Filled away")).toEqual({ r: 1, g: 0, b: 0, a: 1 });
+  expect(color("Hidden fully")?.a).toBe(0);
+  expect(color("Clipped span")?.a).toBe(0);
+  const warned = c.warnings.filter((w) => w.code === "text-fill-transparent");
+  expect(warned).toHaveLength(1);
+  expect(warned[0]?.detail).toContain("(3 times)");
+});
+
 test("background-clip: text is captured and the text paints with the first gradient colour", async ({
   page,
 }) => {

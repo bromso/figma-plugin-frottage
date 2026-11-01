@@ -367,3 +367,10 @@ export function readZIndex(s: CSSStyleDeclaration, parentDisplay: string): { zIn
   if (!Number.isFinite(z)) return {};
   return s.position !== "static" || /flex|grid/.test(parentDisplay) ? { zIndex: z } : {};
 }
+
+/** Whether a box paints its background through its text. */
+export function clipsToText(s: CSSStyleDeclaration): boolean {
+  const clip =
+    s.getPropertyValue("background-clip") || s.getPropertyValue("-webkit-background-clip");
+  return clip.split(/[\s,]+/).includes("text");
+}

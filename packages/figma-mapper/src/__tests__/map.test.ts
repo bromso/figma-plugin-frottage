@@ -1028,6 +1028,58 @@ describe("gradients", () => {
     expect(text.runs[0]).toMatchObject({ color: { r: 1, g: 0, b: 0 }, opacity: 1 });
     expect(plan.report.warnings.filter((w) => /clip/i.test(w))).toHaveLength(1);
   });
+  describe("transparent text clipped to a background", () => {
+    type Background = ElementNode["style"]["backgroundImages"][number];
+    const clear = { r: 0, g: 0, b: 0, a: 0 };
+    const clippedRun = (style: Partial<ElementNode["style"]>) => {
+      const base = el("x", [0, 0]).style;
+      const text = textNode("t", { runs: [run({ color: clear })] });
+      const root = el("root", [0, 0], [text], {
+        style: { ...base, backgroundClip: "text", ...style },
+      });
+      const plan = mapCapture(cap(root), inter);
+      const op = plan.ops.find((o) => o.op === "text") as TextPlanOp;
+      return { paint: op.runs[0], warnings: plan.report.warnings.filter((w) => /clip/i.test(w)) };
+    };
+
+    test("takes the first stop that shows, not a clear one", () => {
+      const fade: Background = {
+        type: "linear-gradient",
+        css: "linear-gradient()",
+        angle: 90,
+        stops: [
+          { color: clear, position: 0 },
+          { color: red, position: 1 },
+        ],
+      };
+      const { paint, warnings } = clippedRun({ backgroundImages: [fade] });
+      expect(paint).toMatchObject({ color: { r: 1, g: 0, b: 0 }, opacity: 1 });
+      expect(warnings).toHaveLength(1);
+    });
+    test("takes the next layer when the top gradient is clear throughout", () => {
+      const none: Background = {
+        type: "linear-gradient",
+        css: "linear-gradient()",
+        stops: [{ color: clear, position: 0 }],
+      };
+      const { paint } = clippedRun({ backgroundImages: [none, linear(90)] });
+      expect(paint).toMatchObject({ color: { r: 1, g: 0, b: 0 }, opacity: 1 });
+    });
+    test("takes the background colour when no gradient shows", () => {
+      const { paint, warnings } = clippedRun({ backgroundColor: { r: 0, g: 1, b: 0, a: 1 } });
+      expect(paint).toMatchObject({ color: { r: 0, g: 1, b: 0 }, opacity: 1 });
+      expect(warnings.join(" ")).toMatch(/background colour/);
+    });
+    test("comes out black on an image, with a warning", () => {
+      const image: Background = { type: "image", css: "url()", assetHash: "h" };
+      const { paint, warnings } = clippedRun({ backgroundImages: [image] });
+      expect(paint).toMatchObject({ color: { r: 0, g: 0, b: 0 }, opacity: 1 });
+      expect(warnings.join(" ")).toMatch(/image.*black/);
+    });
+    test("stays clear with no background at all, as CSS shows nothing", () => {
+      expect(clippedRun({}).paint).toMatchObject({ opacity: 0 });
+    });
+  });
   test("opaque text under a clipped element keeps its colour", () => {
     const base = el("x", [0, 0]).style;
     const c = cap(
