@@ -1030,6 +1030,91 @@ describe("hover patches", () => {
     expect(hoverOf(p)?.map((h) => h.path)).toEqual([[]]);
   });
 
+  describe("hover read from a later occurrence", () => {
+    const two = (id: string, text: string, split: number) =>
+      textNode(id, {
+        text,
+        runs: [run({ start: 0, end: split }), run({ start: split, end: text.length, color: red })],
+      });
+
+    test("ranges are the main's text, not the longer or shorter one it came from", () => {
+      const long = painted(tagged("x-btn", "a", [label("t1", "Hello there")]), red);
+      const short = hovering(painted(tagged("x-btn", "b", [label("t2", "Hi")]), red), {
+        color: blue,
+        restingColor: black,
+      });
+      expect(hoverOf(plan([long, short], hoverOn))).toEqual([
+        { path: [0], textColor: blue, ranges: [[0, 11]] },
+      ]);
+    });
+    test("runs that inherit are found again in the main", () => {
+      const first = painted(tagged("x-btn", "a", [two("t1", "Buy now", 3)]), red);
+      const later = hovering(painted(tagged("x-btn", "b", [two("t2", "Hello world", 5)]), red), {
+        color: blue,
+        restingColor: black,
+      });
+      expect(hoverOf(plan([first, later], hoverOn))).toEqual([
+        { path: [0], textColor: blue, ranges: [[0, 3]] },
+      ]);
+    });
+    test("text the main already shows in that colour takes no colour patch", () => {
+      const same = (id: string, color: typeof blue) => {
+        const text = textNode(`t${id}`, {
+          text: "Mix",
+          runs: [run({ start: 0, end: 3, color })],
+        });
+        return painted(tagged("x-btn", id, [text]), red);
+      };
+      const hovered = hovering(same("b", blue), { color: blue, backgroundColor: blue });
+      expect(hoverOf(plan([same("a", blue), hovered], hoverOn))).toEqual([
+        { path: [], fills: [{ type: "SOLID", color: { r: 0, g: 0, b: 1 }, opacity: 1 }] },
+      ]);
+    });
+    describe("with a nested swap", () => {
+      const yellow = { ...red, g: 1 };
+      const glyph = (id: string, fill: typeof red, hover?: ElementNode["hover"]) => {
+        const node = painted(tagged("x-icon", id, [label(`g${id}`, "i")]), fill);
+        return hover ? hovering(node, hover) : node;
+      };
+      const card = (id: string, icon: ElementNode, hover?: ElementNode["hover"]) => {
+        const node = painted(tagged("x-card", id, [icon]), red);
+        return hover ? hovering(node, hover) : node;
+      };
+      const mainOf = (p: LayerPlan) =>
+        definitions(p).find((d) => d.component?.name.startsWith("x-card"));
+
+      test("a patch on or below the swap is dropped and counted", () => {
+        const p = plan(
+          [
+            card("c1", glyph("i1", blue)),
+            card("c2", glyph("i2", yellow, { color: red, backgroundColor: blue })),
+            card("c3", glyph("i3", blue)),
+            card("c4", glyph("i4", yellow)),
+          ],
+          hoverOn
+        );
+        expect(mainOf(p)).toBeDefined();
+        expect(mainOf(p)?.component?.hover).toBeUndefined();
+        expect(p.report.warnings.filter((w) => /swapped/.test(w))).toEqual([
+          "Hover changes on 2 layers inside a swapped component were left out.",
+        ]);
+      });
+      test("a patch beside the swap stays", () => {
+        const p = plan(
+          [
+            card("c1", glyph("i1", blue)),
+            card("c2", glyph("i2", yellow), { backgroundColor: blue }),
+            card("c3", glyph("i3", blue)),
+            card("c4", glyph("i4", yellow)),
+          ],
+          hoverOn
+        );
+        expect(mainOf(p)?.component?.hover?.map((h) => h.path)).toEqual([[]]);
+        expect(p.report.warnings.filter((w) => /swapped/.test(w))).toHaveLength(0);
+      });
+    });
+  });
+
   test("patches are cut off at 200 a component and reported once", () => {
     const row = (id: string, hover: boolean) =>
       painted(

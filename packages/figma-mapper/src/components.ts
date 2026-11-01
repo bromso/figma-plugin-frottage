@@ -1,4 +1,4 @@
-import type { HoverPatch } from "./hover";
+import { type HoverPatch, inheritedRanges } from "./hover";
 import type { PlanHoverPatch, PlanLayout, PlanOp, PlanOverride, PlanRun } from "./plan";
 
 type Component = { key: string; name: string; tag: string; occurrences: Tree[] };
@@ -252,30 +252,69 @@ function flatten(top: Tree, rename: (id: string) => string): PlanOp[] {
 /** The most patches one component carries; a page with more is cut off there. */
 export const MAX_HOVER_PATCHES = 200;
 
-/** The hover patches of one occurrence, by index down the expanded tree, parents first. */
-function hoverOf(
-  top: Tree,
-  hovers: Map<string, HoverPatch>
-): { patches: PlanHoverPatch[]; capped: boolean } {
-  const patches: PlanHoverPatch[] = [];
-  const stack = [{ node: top, path: [] as number[] }];
+/**
+ * A patch as the main takes it. Text can differ between occurrences, so its ranges are found again
+ * in the main's. Null when that leaves nothing to change.
+ */
+function forMain(patch: HoverPatch, path: number[], base: Tree): PlanHoverPatch | null {
+  const { resting, ...rest } = patch;
+  if (!rest.textColor || base.op.op !== "text") return { path, ...rest };
+  const { textColor, ranges: _theirs, ...others } = rest;
+  const ranges = inheritedRanges(base.op.runs, textColor, resting);
+  if (ranges.length > 0) return { path, ...others, textColor, ranges };
+  return Object.keys(others).length > 0 ? { path, ...others } : null;
+}
+
+type OccurrenceHover = { patches: PlanHoverPatch[]; capped: boolean; swapped: number };
+
+/**
+ * The hover patches of one occurrence, by index down the expanded tree, parents first, walked
+ * beside the main. At a nested swap the main holds another component, so nothing there carries over.
+ */
+function hoverOf(top: Tree, hovers: Map<string, HoverPatch>): OccurrenceHover {
+  const first = top.component?.occurrences[0] as Tree;
+  const out: OccurrenceHover = { patches: [], capped: false, swapped: 0 };
+  const stack = [{ node: top, base: first, path: [] as number[] }];
   for (let at = stack.pop(); at; at = stack.pop()) {
-    const patch = hovers.get(at.node.op.id);
-    if (patch) {
-      if (patches.length >= MAX_HOVER_PATCHES) return { patches, capped: true };
-      patches.push({ path: at.path, ...patch });
+    const { node, base, path } = at;
+    if (node.component && base.component !== node.component) {
+      out.swapped += hoversBelow(node, hovers);
+      continue;
     }
-    for (let i = at.node.children.length - 1; i >= 0; i--) {
-      stack.push({ node: childAt(at.node.children, i), path: [...at.path, i] });
+    const hover = hovers.get(node.op.id);
+    const patch = hover && forMain(hover, path, base);
+    if (patch) {
+      if (out.patches.length >= MAX_HOVER_PATCHES) return { ...out, capped: true };
+      out.patches.push(patch);
+    }
+    for (let i = node.children.length - 1; i >= 0; i--) {
+      stack.push({
+        node: childAt(node.children, i),
+        base: childAt(base.children, i),
+        path: [...path, i],
+      });
     }
   }
-  return { patches, capped: false };
+  return out;
 }
+
+/** How many layers of a subtree change on hover. */
+function hoversBelow(top: Tree, hovers: Map<string, HoverPatch>): number {
+  let count = 0;
+  const stack = [top];
+  for (let node = stack.pop(); node; node = stack.pop()) {
+    if (hovers.has(node.op.id)) count++;
+    stack.push(...node.children);
+  }
+  return count;
+}
+
+type HoverNotes = { capped: number; swapped: number };
 
 function definition(
   component: Component,
   hovers: Map<string, HoverPatch>,
-  onCapped: () => void
+  notes: HoverNotes
 ): PlanOp[] {
   const { key, name } = component;
   const first = component.occurrences[0] as Tree;
@@ -286,7 +325,8 @@ function definition(
     // The first occurrence that changes on hover; the others share its structure.
     for (const occurrence of component.occurrences) {
       const found = hoverOf(occurrence, hovers);
-      if (found.capped) onCapped();
+      if (found.capped) notes.capped++;
+      notes.swapped += found.swapped;
       if (found.patches.length > 0) {
         hover = found.patches;
         break;
@@ -325,28 +365,31 @@ function canvasInstances(found: Component[], definitions: PlanOp[][], page: Plan
  * occurrence, the first too, into an `instance` op. A component is one tag and one signature used
  * at least twice. `tags` maps a node id to its tag. `instances` counts them on the canvas, so it
  * can exceed the `instance` ops. `hovers` maps a node id to what `:hover` changes there; a
- * definition carries those of its first occurrence.
+ * definition carries those of the first occurrence that has any.
  */
 export function extractComponents(
   ops: PlanOp[],
   tags: Map<string, string>,
   hovers: Map<string, HoverPatch> = new Map()
-): { ops: PlanOp[]; components: number; instances: number; hoverCapped?: number } {
+): {
+  ops: PlanOp[];
+  components: number;
+  instances: number;
+  hoverCapped?: number;
+  hoverSwapped?: number;
+} {
   const nodes = buildForest(ops);
   const found = findComponents(nodes, tags);
   if (found.length === 0) return { ops, components: 0, instances: 0 };
   const roots = nodes.filter((n) => n.parent === null);
-  let hoverCapped = 0;
-  const definitions = found.map((c) =>
-    definition(c, hovers, () => {
-      hoverCapped++;
-    })
-  );
+  const notes: HoverNotes = { capped: 0, swapped: 0 };
+  const definitions = found.map((c) => definition(c, hovers, notes));
   const page = roots.flatMap((r) => flatten(r, (id) => id));
   return {
     ops: [...definitions.flat(), ...page],
     components: found.length,
     instances: canvasInstances(found, definitions, page),
-    ...(hoverCapped > 0 ? { hoverCapped } : {}),
+    ...(notes.capped > 0 ? { hoverCapped: notes.capped } : {}),
+    ...(notes.swapped > 0 ? { hoverSwapped: notes.swapped } : {}),
   };
 }

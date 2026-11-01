@@ -12,6 +12,8 @@ export type HoverPatch = {
   effects?: PlanEffect[];
   textColor?: Color;
   ranges?: [number, number][];
+  /** The colour text inherits at rest, so `ranges` can be found again in another text. */
+  resting?: Color;
   decoration?: PlanRun["decoration"];
 };
 
@@ -66,7 +68,7 @@ function boxPatch(node: ElementNode, hover: Hover, op: PlanOp): HoverPatch {
 type Inherited = { color?: Color; resting?: Color; decoration?: string };
 
 /** The ranges of runs coloured `resting`, or all runs when it is unknown, that are not `color` yet. */
-function inheritedRanges(
+export function inheritedRanges(
   runs: Extract<PlanOp, { op: "text" }>["runs"],
   color: Color,
   resting: Color | undefined
@@ -116,6 +118,7 @@ export function hoverPatches(root: CaptureNode, ops: PlanOp[]): Map<string, Hove
         if (ranges.length > 0) {
           patch.textColor = color;
           patch.ranges = ranges;
+          if (inherited.resting) patch.resting = inherited.resting;
         }
       }
       if (inherited.decoration !== undefined) {

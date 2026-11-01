@@ -797,6 +797,11 @@ export function mapCapture(
         `Hover changes on ${found.hoverCapped} component${found.hoverCapped === 1 ? "" : "s"} were cut off at ${MAX_HOVER_PATCHES} layers each.`
       );
     }
+    if (found.hoverSwapped) {
+      warn(
+        `Hover changes on ${found.hoverSwapped} layer${found.hoverSwapped === 1 ? "" : "s"} inside a swapped component were left out.`
+      );
+    }
   }
   return { ops: finished, tokens, fonts: [...fonts.values()], assetHashes: [...hashes], report };
 }
