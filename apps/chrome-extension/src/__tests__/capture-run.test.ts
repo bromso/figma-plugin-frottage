@@ -457,3 +457,15 @@ describe("CaptureRun", () => {
     expect(() => t.run.start("r2")).toThrow(/already/i);
   });
 });
+
+describe("a labelled capture", () => {
+  test("the popup's label reaches the file and the filename", async () => {
+    const t = setup();
+    t.run.start("r1");
+    const labelled = { ...CAPTURE, version: { label: "Dark", kind: "theme" } };
+    sendCapture(t.run, "r1", JSON.stringify(labelled));
+    t.run.onEnd("r1");
+    await tick();
+    expect(t.downloads[0]?.filename).toBe("example.com-2026-10-31-Dark.frottage");
+  });
+});

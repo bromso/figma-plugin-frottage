@@ -6,6 +6,7 @@ import {
   imageAdvice,
   isRestrictedUrl,
   nodeAdvice,
+  normaliseVersion,
 } from "../page";
 
 describe("isRestrictedUrl", () => {
@@ -147,5 +148,54 @@ describe("allowAccessAndRecapture", () => {
     };
     expect(await allowAccessAndRecapture(request, () => runs++)).toBe(false);
     expect(runs).toBe(0);
+  });
+});
+
+describe("captureFilename with a version", () => {
+  const day = new Date(2026, 9, 31, 12);
+  test("adds the label to the name", () => {
+    expect(captureFilename("https://example.com/", day, { label: "Dark", kind: "theme" })).toBe(
+      "example.com-2026-10-31-Dark.frottage"
+    );
+    expect(
+      captureFilename("https://example.com/", day, { label: "Svenska", kind: "language" })
+    ).toBe("example.com-2026-10-31-Svenska.frottage");
+  });
+  test("a filename stays safe with / and .. in a label", () => {
+    const name = captureFilename("https://example.com/", day, {
+      label: "../../etc/passwd\\x\u0000\n",
+      kind: "theme",
+    });
+    expect(name).not.toMatch(/[/\\]/);
+    expect([...name].some((c) => (c.codePointAt(0) ?? 0) < 0x20)).toBe(false);
+    expect(name).not.toContain("..");
+    expect(name.startsWith("example.com-2026-10-31-")).toBe(true);
+    expect(name.endsWith(".frottage")).toBe(true);
+  });
+  test("a label with nothing usable leaves the name as it was", () => {
+    expect(captureFilename("https://example.com/", day, { label: "///", kind: "theme" })).toBe(
+      "example.com-2026-10-31.frottage"
+    );
+    expect(captureFilename("https://example.com/", day, { label: "...", kind: "theme" })).toBe(
+      "example.com-2026-10-31.frottage"
+    );
+  });
+});
+
+describe("normaliseVersion", () => {
+  test("label is trimmed, and blank means no version", () => {
+    expect(normaliseVersion("theme", "  Dark  ")).toEqual({ label: "Dark", kind: "theme" });
+    expect(normaliseVersion("theme", "   ")).toBeUndefined();
+    expect(normaliseVersion("theme", "")).toBeUndefined();
+    expect(normaliseVersion("theme", undefined)).toBeUndefined();
+  });
+  test("an unknown kind means no version", () => {
+    expect(normaliseVersion("mood", "Dark")).toBeUndefined();
+    expect(normaliseVersion(undefined, "Dark")).toBeUndefined();
+  });
+  test("a label is cut to 40 characters, keeping the text as typed", () => {
+    expect(normaliseVersion("language", "a/b".repeat(20))?.label).toBe(
+      "a/b".repeat(20).slice(0, 40)
+    );
   });
 });

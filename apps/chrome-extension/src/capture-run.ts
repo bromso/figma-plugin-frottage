@@ -228,7 +228,7 @@ export class CaptureRun {
       }
       const bytes = this.deps.pack(capture, listed);
       url = this.deps.makeBlobUrl(bytes);
-      const filename = captureFilename(capture.source.url, this.deps.now());
+      const filename = captureFilename(capture.source.url, this.deps.now(), capture.version);
       const nodes = capture.root ? countNodes(capture.root) : 0;
       const nodeLimit = (capture.warnings ?? []).some((w) => w.code === "node-limit");
       const blocked = blockedImages(capture);

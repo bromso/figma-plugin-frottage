@@ -64,7 +64,12 @@ async function runIsLive(runId: string): Promise<boolean> {
 const hasImageAccess = (): Promise<boolean> =>
   chrome.permissions.contains({ origins: ["<all_urls>"] }).catch(() => false);
 
-async function startCapture(tabId: number, collapseWrappers: boolean): Promise<Reply> {
+async function startCapture(
+  tabId: number,
+  collapseWrappers: boolean,
+  versionKind: string,
+  versionLabel: string
+): Promise<Reply> {
   const runId = crypto.randomUUID();
   const started = await toOffscreen({ target: "offscreen", type: "run-start", runId });
   if (!started?.ok) return started ?? { ok: false, error: "The capture could not start" };
@@ -72,17 +77,21 @@ async function startCapture(tabId: number, collapseWrappers: boolean): Promise<R
     await chrome.scripting.executeScript({
       target: { tabId },
       // The run's settings travel with its id; the worker keeps nothing between messages.
-      func: (id: string, collapse: boolean, imageAccess: boolean) => {
+      func: (id: string, collapse: boolean, imageAccess: boolean, kind: string, label: string) => {
         const win = window as unknown as {
           __frottageRunId?: string;
           __frottageCollapse?: boolean;
           __frottageImageAccess?: boolean;
+          __frottageVersionKind?: string;
+          __frottageVersionLabel?: string;
         };
         win.__frottageRunId = id;
         win.__frottageCollapse = collapse;
         win.__frottageImageAccess = imageAccess;
+        win.__frottageVersionKind = kind;
+        win.__frottageVersionLabel = label;
       },
-      args: [runId, collapseWrappers, await hasImageAccess()],
+      args: [runId, collapseWrappers, await hasImageAccess(), versionKind, versionLabel],
     });
     await chrome.scripting.executeScript({ target: { tabId }, files: ["capture-entry.js"] });
     return { ok: true };
@@ -118,9 +127,12 @@ async function saveFile(url: string, filename: string): Promise<Reply> {
 chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse) => {
   if (message?.target !== "sw") return;
   if (message.type === "start") {
-    startCapture(message.tabId, message.collapseWrappers === true).then(sendResponse, (e) =>
-      sendResponse({ ok: false, error: errorText(e) })
-    );
+    startCapture(
+      message.tabId,
+      message.collapseWrappers === true,
+      message.versionKind ?? "",
+      message.versionLabel ?? ""
+    ).then(sendResponse, (e) => sendResponse({ ok: false, error: errorText(e) }));
     return true;
   }
   if (message.type === "download") {

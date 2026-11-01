@@ -1,3 +1,5 @@
+import type { Capture } from "@repo/capture-schema";
+
 const RESTRICTED_SCHEMES = [
   "chrome:",
   "chrome-extension:",
@@ -34,8 +36,44 @@ function sanitiseHostname(hostname: string): string {
     .replace(/^[.-]+|[.-]+$/g, "");
 }
 
-/** `<hostname>-<YYYY-MM-DD>.frottage`; `page` when there is no hostname (file: URLs). */
-export function captureFilename(url: string, date: Date): string {
+export type CaptureVersion = Capture["version"] & {};
+
+/** Longest label the file format accepts. */
+export const LABEL_MAX = 40;
+const VERSION_KINDS = ["viewport", "theme", "language"] as const;
+
+/**
+ * The version a popup's kind and label make, or undefined when the label is blank or the kind
+ * unknown. The label is kept as typed, trimmed and cut to the format's limit.
+ */
+export function normaliseVersion(kind: unknown, label: unknown): CaptureVersion | undefined {
+  if (typeof label !== "string") return undefined;
+  const found = VERSION_KINDS.find((k) => k === kind);
+  const trimmed = label.trim().slice(0, LABEL_MAX).trim();
+  if (!found || !trimmed) return undefined;
+  return { label: trimmed, kind: found };
+}
+
+/** A label as part of a filename: no path separators, control characters or leading dots. */
+function sanitiseLabel(label: string): string {
+  // Control characters go by code point, not by a regex range.
+  const printable = Array.from(label, (c) => {
+    const code = c.codePointAt(0) ?? 0;
+    return code < 0x20 || code === 0x7f ? " " : c;
+  }).join("");
+  return printable
+    .replace(/[/\\:*?"<>|%]+/g, " ")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/\.{2,}/g, ".")
+    .replace(/^[.-]+|[.-]+$/g, "");
+}
+
+/**
+ * `<hostname>-<YYYY-MM-DD>.frottage`, with `-<label>` before the extension for a labelled capture;
+ * `page` when there is no hostname (file: URLs).
+ */
+export function captureFilename(url: string, date: Date, version?: CaptureVersion): string {
   let host = "";
   try {
     const u = new URL(url);
@@ -46,7 +84,8 @@ export function captureFilename(url: string, date: Date): string {
   }
   const pad = (n: number) => String(n).padStart(2, "0");
   const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-  return `${host || "page"}-${day}.frottage`;
+  const label = version ? sanitiseLabel(version.label) : "";
+  return `${host || "page"}-${day}${label ? `-${label}` : ""}.frottage`;
 }
 
 const RESTRICTED_MESSAGE = "This page can't be captured.";

@@ -1,4 +1,14 @@
-import { Button, Type } from "@repo/ui";
+import {
+  Button,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Type,
+} from "@repo/ui";
 import "@repo/ui/styles.css";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -9,7 +19,9 @@ import {
   friendlyError,
   imageAdvice,
   isRestrictedUrl,
+  LABEL_MAX,
   nodeAdvice,
+  normaliseVersion,
 } from "../page";
 
 const dark = window.matchMedia("(prefers-color-scheme: dark)");
@@ -42,6 +54,10 @@ function Popup() {
   const [status, setStatus] = useState<RunStatus>({ state: "idle" });
   // Set once a capture was made without wrappers, so it is not offered a second time.
   const [collapsed, setCollapsed] = useState(false);
+
+  // The optional label that says which version of the page this file is.
+  const [versionKind, setVersionKind] = useState("theme");
+  const [versionLabel, setVersionLabel] = useState("");
 
   // Whether the optional image permission is held; read when a capture finishes with blocked images.
   const [declined, setDeclined] = useState(false);
@@ -80,12 +96,14 @@ function Popup() {
     setCollapsed(collapseWrappers);
     setDeclined(false);
     setStatus({ state: "capturing" });
+    const version = normaliseVersion(versionKind, versionLabel);
     try {
       const reply: Reply | undefined = await chrome.runtime.sendMessage({
         target: "sw",
         type: "start",
         tabId,
         ...(collapseWrappers ? { collapseWrappers: true } : {}),
+        ...(version ? { versionKind: version.kind, versionLabel: version.label } : {}),
       });
       if (reply && !reply.ok) setStatus({ state: "error", message: reply.error });
     } catch (error) {
@@ -137,6 +155,37 @@ function Popup() {
           >
             {busy ? (LABEL[status.state] ?? "Working…") : "Capture this page"}
           </Button>
+          <fieldset className="flex flex-col gap-2" disabled={busy}>
+            <legend className="sr-only">Label this capture (optional)</legend>
+            <div className="flex gap-2">
+              <div className="flex w-[110px] shrink-0 flex-col gap-1">
+                <Label htmlFor="version-kind">Version</Label>
+                <Select value={versionKind} onValueChange={setVersionKind}>
+                  <SelectTrigger id="version-kind" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="theme">Theme</SelectItem>
+                    <SelectItem value="language">Language</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <Label htmlFor="version-label">Label</Label>
+                <Input
+                  id="version-label"
+                  value={versionLabel}
+                  maxLength={LABEL_MAX}
+                  placeholder={versionKind === "language" ? "Svenska" : "Dark"}
+                  onChange={(e) => setVersionLabel(e.target.value)}
+                />
+              </div>
+            </div>
+            <Type size="xsmall" className="text-muted-foreground">
+              Optional. Switch the site to that theme or language first, then capture. Leave the
+              label empty for a plain capture.
+            </Type>
+          </fieldset>
         </>
       )}
       <div aria-live="polite">

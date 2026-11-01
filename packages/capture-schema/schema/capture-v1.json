@@ -68,6 +68,22 @@
       "required": ["url", "title", "viewport", "scrollSize", "devicePixelRatio", "colorScheme"],
       "additionalProperties": false
     },
+    "version": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["viewport", "theme", "language"]
+        }
+      },
+      "required": ["label", "kind"],
+      "additionalProperties": false
+    },
     "tokens": {
       "type": "object",
       "properties": {
