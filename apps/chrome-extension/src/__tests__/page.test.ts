@@ -15,6 +15,7 @@ import {
   parseChoices,
   parseWidths,
   popupView,
+  rerunRequest,
   viewportAdvice,
   viewportStatusLabel,
 } from "../page";
@@ -354,6 +355,7 @@ describe("viewportAdvice", () => {
       { label: "834", width: 834 },
     ],
     filename: "www.volvogroup.com-2026-11-01.frottage" as string | undefined,
+    request: { widths: [1440, 834], collapseWrappers: false, versionLabel: "" },
     mismatched: [],
     skipped: [] as number[],
     nodes: 0,
@@ -421,6 +423,33 @@ describe("viewportAdvice", () => {
     });
     expect(partial.summary).toStartWith("Saved www.volvogroup.com-2026-11-01.frottage");
     expect(partial.stopped).toBe("The page changed address, so the run stopped.");
+  });
+});
+
+describe("rerunRequest", () => {
+  const done = {
+    state: "viewport-done" as const,
+    saved: [],
+    mismatched: [],
+    skipped: [] as number[],
+    nodes: 0,
+    nodeLimit: false,
+    blockedImages: 0,
+    request: { widths: [1512, 390], collapseWrappers: true, versionLabel: "Dark" },
+  };
+
+  test("a re-run sends the widths, label and wrappers setting the run was asked", () => {
+    expect(rerunRequest(done)).toEqual({
+      widths: [1512, 390],
+      collapseWrappers: true,
+      versionLabel: "Dark",
+    });
+  });
+
+  test("a re-run can turn wrappers off or on without losing the rest", () => {
+    expect(
+      rerunRequest({ ...done, request: { ...done.request, collapseWrappers: false } }, true)
+    ).toEqual({ widths: [1512, 390], collapseWrappers: true, versionLabel: "Dark" });
   });
 });
 

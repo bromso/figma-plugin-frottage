@@ -323,6 +323,17 @@ export function viewportStatusLabel(status: RunStatus & { state: "viewport" }): 
   return `Capturing ${status.label} (${status.index} of ${status.total})…`;
 }
 
+/**
+ * What a re-run of a finished run sends: what the run was asked, with the wrappers setting changed
+ * only when `collapseWrappers` says so.
+ */
+export function rerunRequest(
+  status: RunStatus & { state: "viewport-done" },
+  collapseWrappers: boolean = status.request.collapseWrappers
+): { widths: number[]; collapseWrappers: boolean; versionLabel: string } {
+  return { ...status.request, widths: [...status.request.widths], collapseWrappers };
+}
+
 /** What the popup says about a finished viewport run. */
 export function viewportAdvice(status: RunStatus & { state: "viewport-done" }): {
   saved: string[];

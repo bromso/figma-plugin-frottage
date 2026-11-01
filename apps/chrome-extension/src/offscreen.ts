@@ -177,7 +177,10 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
         typedLabel = message.versionLabel ?? "";
         heldTab = null;
         captured = new CaptureSet();
-        void viewport.start(message.widths);
+        void viewport.start(message.widths, {
+          collapseWrappers,
+          versionLabel: typedLabel,
+        });
         sendResponse({ ok: true } satisfies Reply);
       } catch (error) {
         sendResponse({

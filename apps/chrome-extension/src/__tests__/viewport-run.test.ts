@@ -556,6 +556,23 @@ describe("ViewportRun", () => {
     });
   });
 
+  test("the final status carries what the run was asked", async () => {
+    const t = setup();
+    await t.run.start([1512, 390], { collapseWrappers: true, versionLabel: "Dark" });
+    expect(t.final().request).toEqual({
+      widths: [1512, 390],
+      collapseWrappers: true,
+      versionLabel: "Dark",
+    });
+    const plain = setup();
+    await plain.run.start([834]);
+    expect(plain.final().request).toEqual({
+      widths: [834],
+      collapseWrappers: false,
+      versionLabel: "",
+    });
+  });
+
   test("a tab whose origin can no longer be read counts as navigated", async () => {
     let origin: string | null = ORIGIN;
     const t = setup({

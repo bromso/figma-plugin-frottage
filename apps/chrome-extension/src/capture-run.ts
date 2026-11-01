@@ -37,6 +37,8 @@ export type RunStatus =
       blockedImages: number;
       stopped?: string;
       cancelled?: boolean;
+      /** What the run was asked, so a re-run from a fresh popup repeats it. */
+      request: { widths: number[]; collapseWrappers: boolean; versionLabel: string };
     };
 
 export type RunDeps = {

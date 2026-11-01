@@ -29,6 +29,7 @@ import {
   parseChoices,
   parseWidths,
   popupView,
+  rerunRequest,
   viewportAdvice,
   viewportStatusLabel,
   type WidthChoice,
@@ -65,8 +66,9 @@ function Popup() {
   const [tabId, setTabId] = useState<number | null>(null);
   const [restricted, setRestricted] = useState<boolean | null>(null);
   const [status, setStatus] = useState<RunStatus>({ state: "idle" });
-  // Set once a run was made without wrappers, so it is not offered a second time.
-  const [collapsed, setCollapsed] = useState(false);
+  // Set once both the tab and the run's status have been read, so no list flashes before a run.
+  const [tabRead, setTabRead] = useState(false);
+  const [statusRead, setStatusRead] = useState(false);
 
   // The optional label that says which version of the page this file is.
   const [versionKind, setVersionKind] = useState("theme");
@@ -87,14 +89,19 @@ function Popup() {
   useEffect(() => {
     // The badge says a run ended; opening the popup is the look it asked for.
     chrome.action.setBadgeText({ text: "" }).catch(() => {});
-    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-      setTabId(tab?.id ?? null);
-      setRestricted(isRestrictedUrl(tab?.url));
-    });
+    chrome.tabs.query({ active: true, currentWindow: true }).then(
+      ([tab]) => {
+        setTabId(tab?.id ?? null);
+        setRestricted(isRestrictedUrl(tab?.url));
+        setTabRead(true);
+      },
+      () => setTabRead(true)
+    );
     // A run that is going, or that finished while the popup was closed, is shown; the offscreen
     // document clears a finished one when read.
     currentStatus().then((s) => {
       if (s && s.state !== "idle") setStatus(s);
+      setStatusRead(true);
     });
     const onMessage = (
       message: PopupMessage,
@@ -109,9 +116,8 @@ function Popup() {
     return () => chrome.runtime.onMessage.removeListener(onMessage);
   }, []);
 
-  // Whether Cancel was clicked, and the widths of the last run, for a re-run.
+  // Whether Cancel was clicked.
   const [stopping, setStopping] = useState(false);
-  const runWidths = useRef<number[] | null>(null);
   const results = useRef<HTMLDivElement>(null);
 
   const wanted = parseWidths(choices.filter((c) => c.on).map((c) => c.text));
@@ -126,10 +132,22 @@ function Popup() {
     }
   }
 
-  async function captureWidths(widths: number[] = wanted, collapseWrappers = false) {
+  async function captureWidths(request?: {
+    widths: number[];
+    collapseWrappers: boolean;
+    versionLabel: string;
+  }) {
+    const version = normaliseVersion(versionKind, versionLabel);
+    const {
+      widths,
+      collapseWrappers,
+      versionLabel: label,
+    } = request ?? {
+      widths: wanted,
+      collapseWrappers: false,
+      versionLabel: version?.label ?? "",
+    };
     if (tabId === null || widths.length === 0) return;
-    runWidths.current = widths;
-    setCollapsed(collapseWrappers);
     setStopping(false);
     setDeclined(false);
     setStatus({
@@ -138,7 +156,6 @@ function Popup() {
       total: widths.length,
       label: String(widths[0]),
     });
-    const version = normaliseVersion(versionKind, versionLabel);
     try {
       const reply: Reply | undefined = await chrome.runtime.sendMessage({
         target: "sw",
@@ -146,7 +163,7 @@ function Popup() {
         tabId,
         widths,
         ...(collapseWrappers ? { collapseWrappers: true } : {}),
-        ...(version ? { versionLabel: version.label } : {}),
+        ...(label ? { versionLabel: label } : {}),
       });
       if (reply && !reply.ok) setStatus({ state: "error", message: reply.error });
     } catch (error) {
@@ -168,14 +185,15 @@ function Popup() {
       () => chrome.permissions.request(IMAGE_ORIGINS),
       () => {
         setAccessHeld(true);
-        // The same sizes run again, so the file gets its images.
-        void captureWidths(runWidths.current ?? wanted, collapsed);
+        // The run is asked again as it was, so the file gets its images.
+        if (status.state === "viewport-done") void captureWidths(rerunRequest(status));
       }
     );
     setDeclined(!granted);
   };
 
   const view = popupView(status, restricted);
+  const ready = tabRead && statusRead;
   const finishedRun = status.state === "viewport-done";
   const offerShown = finishedRun && accessHeld === false && status.blockedImages > 0;
   useEffect(() => {
@@ -183,7 +201,9 @@ function Popup() {
   }, [finishedRun, offerShown]);
   const run = status.state === "viewport-done" ? viewportAdvice(status) : null;
   const offerCollapse =
-    status.state === "viewport-done" && nodeAdvice(status.nodes, status.nodeLimit).offerCollapse;
+    status.state === "viewport-done" &&
+    nodeAdvice(status.nodes, status.nodeLimit).offerCollapse &&
+    !status.request.collapseWrappers;
   const images =
     status.state === "viewport-done" && accessHeld !== null
       ? imageAdvice(status.blockedImages, accessHeld)
@@ -231,11 +251,19 @@ function Popup() {
         {heading}
         <Type role="status">{viewportStatusLabel(status)}</Type>
         <Type size="xsmall" className="text-muted-foreground">
-          Leave the window alone while it runs. It is put back after.
+          Leave the small window open.
         </Type>
         <Button variant="secondary" disabled={stopping} onClick={cancelRun}>
           {stopping ? "Stopping…" : "Cancel"}
         </Button>
+      </main>
+    );
+  }
+
+  if (!ready) {
+    return (
+      <main className="flex w-[320px] flex-col gap-3 bg-background p-4 text-foreground">
+        {heading}
       </main>
     );
   }
@@ -353,10 +381,12 @@ function Popup() {
             </Type>
           </div>
         )}
-        {offerCollapse && !collapsed && (
+        {offerCollapse && (
           <Button
             variant="secondary"
-            onClick={() => captureWidths(runWidths.current ?? wanted, true)}
+            onClick={() =>
+              status.state === "viewport-done" && captureWidths(rerunRequest(status, true))
+            }
           >
             Capture again without wrappers
           </Button>

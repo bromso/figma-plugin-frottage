@@ -139,12 +139,19 @@ export class ViewportRun {
   constructor(private deps: ViewportDeps) {}
 
   /** Resolves when the run has finished, the tab is back and the file is saved. */
-  start(widths: number[]): Promise<void> {
+  start(
+    widths: number[],
+    options: { collapseWrappers?: boolean; versionLabel?: string } = {}
+  ): Promise<void> {
     if (this.running) throw new Error(RUN_BUSY);
     this.running = true;
     this.cancelled = false;
     this.status = { state: "idle" };
-    return this.drive(widths);
+    return this.drive(widths, {
+      widths: [...widths],
+      collapseWrappers: options.collapseWrappers === true,
+      versionLabel: options.versionLabel ?? "",
+    });
   }
 
   /** Takes effect between widths: a capture in progress finishes and is kept. */
@@ -169,7 +176,7 @@ export class ViewportRun {
     this.deps.onStatus(status);
   }
 
-  private async drive(widths: number[]): Promise<void> {
+  private async drive(widths: number[], request: Final["request"]): Promise<void> {
     const asked = [...widths].sort((a, b) => b - a);
     const done: Final = {
       state: "viewport-done",
@@ -179,6 +186,7 @@ export class ViewportRun {
       nodes: 0,
       nodeLimit: false,
       blockedImages: 0,
+      request,
     };
     try {
       if (asked.length > 0) await this.withTab(asked, done);

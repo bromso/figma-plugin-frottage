@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 // no references to api.iconify.design, no fetch, no XMLHttpRequest.
 //
 // Body strings are copied verbatim from
-// node_modules/@iconify-json/lucide/icons.json (v1.2.102) keys plus/info/star/ellipsis/tv/monitor/laptop/tablet/smartphone/watch.
+// node_modules/@iconify-json/lucide/icons.json (v1.2.149) keys plus/info/star/ellipsis/tv/monitor/laptop/tablet/smartphone/watch.
 const lucideSubset: IconifyJSON = {
   prefix: "lucide",
   icons: {
