@@ -245,14 +245,20 @@ function boundOnPage(page: PageNode, ids: Set<string>): Set<string> {
 const flatten = <T>(wants: Map<string, T>, first: T) =>
   new Map([...wants.keys()].map((modeId) => [modeId, first]));
 
-/** A role's size and line height, which is the first version's: a style has only one of each. */
-function firstLook(role: PlanModeType, fontSize: number, lineHeight: number | null): PlanTextStyle {
-  const { key, name, fontName, letterSpacing, decoration, textCase } = role;
+/** A role's look as the first version has it: a style holds only one of each value. */
+function firstLook(
+  role: PlanModeType,
+  fontSize: number,
+  lineHeight: number | null,
+  letterSpacing: number
+): PlanTextStyle {
+  const { key, name, fontName, decoration, textCase } = role;
   return { key, name, fontName, fontSize, lineHeight, letterSpacing, decoration, textCase };
 }
 
 function boundFields(style: TextStyle): boolean {
-  return Boolean(style.boundVariables?.fontSize ?? style.boundVariables?.lineHeight);
+  const bound = style.boundVariables;
+  return Boolean(bound?.fontSize ?? bound?.lineHeight ?? bound?.letterSpacing);
 }
 
 /** Marks a collection as Frottage's. Failing costs little: its variables' keys still say so. */
@@ -661,7 +667,7 @@ export function createTokenSet(api: PluginAPI) {
     /** Binds a float variable to a style just made. A refused binding leaves the first value. */
     const bindType = async (
       style: TextStyle,
-      field: "fontSize" | "lineHeight",
+      field: "fontSize" | "lineHeight" | "letterSpacing",
       name: string,
       key: string,
       first: number,
@@ -691,7 +697,8 @@ export function createTokenSet(api: PluginAPI) {
       const firstSize = role.fontSize[0]?.value;
       if (firstSize === undefined) throw new Error("no value");
       const firstLine = role.lineHeight[0]?.value ?? null;
-      const look = firstLook(role, firstSize, firstLine);
+      const firstTracking = role.letterSpacing[0]?.value ?? 0;
+      const look = firstLook(role, firstSize, firstLine, firstTracking);
       const sizes = valuesFor(role.fontSize, firstSize, modeIds);
       // AUTO has no number, so a role that starts on it stays on it in every mode.
       const lines =
@@ -700,8 +707,10 @@ export function createTokenSet(api: PluginAPI) {
           : valuesFor(role.lineHeight, firstLine, modeIds);
       const sizeVaries = varies(sizes, firstSize, FLOAT);
       const lineVaries = firstLine !== null && varies(lines, firstLine, FLOAT);
+      const trackings = valuesFor(role.letterSpacing, firstTracking, modeIds);
+      const trackingVaries = varies(trackings, firstTracking, FLOAT);
 
-      if (!sizeVaries && !lineVaries) {
+      if (!sizeVaries && !lineVaries && !trackingVaries) {
         // A style of Frottage's bound to modes reads differently in them, whatever it says here.
         const fits = (s: TextStyle) =>
           sameTextStyle(s, look) &&
@@ -726,13 +735,15 @@ export function createTokenSet(api: PluginAPI) {
       if (closed) return;
       const sizeKey = `${role.key}/size`;
       const lineKey = `${role.key}/line-height`;
+      const trackingKey = `${role.key}/tracking`;
       const found = ownStyles
         .get(role.key)
         ?.find(
           (s) =>
             sameTextStyle(s, look) &&
             (!sizeVaries || s.boundVariables?.fontSize) &&
-            (!lineVaries || s.boundVariables?.lineHeight)
+            (!lineVaries || s.boundVariables?.lineHeight) &&
+            (!trackingVaries || s.boundVariables?.letterSpacing)
         );
       if (found) {
         styleIds.set(role.key, found.id);
@@ -740,6 +751,7 @@ export function createTokenSet(api: PluginAPI) {
         for (const [isVaried, key, wants] of [
           [sizeVaries, sizeKey, sizes],
           [lineVaries, lineKey, lines],
+          [trackingVaries, trackingKey, trackings],
         ] as const) {
           if (!isVaried) continue;
           const reused = await reuseOwn(key, wants, FLOAT, target);
@@ -760,12 +772,21 @@ export function createTokenSet(api: PluginAPI) {
         const name = `${prefix}/line-height`;
         await bindType(style, "lineHeight", name, lineKey, firstLine, lines, target);
       }
+      if (trackingVaries && !closed) {
+        const name = `${prefix}/tracking`;
+        await bindType(style, "letterSpacing", name, trackingKey, firstTracking, trackings, target);
+      }
     };
 
     try {
       const different =
         plan.colors.some((t) => differs(t.values, COLOR)) ||
-        plan.textStyles.some((t) => differs(t.fontSize, FLOAT) || differs(t.lineHeight, FLOAT));
+        plan.textStyles.some(
+          (t) =>
+            differs(t.fontSize, FLOAT) ||
+            differs(t.lineHeight, FLOAT) ||
+            differs(t.letterSpacing, FLOAT)
+        );
       if (existing || different) {
         try {
           await homeOf();

@@ -88,13 +88,13 @@ const frame = (
   childCount: 0,
   ...over,
 });
-const text = (id: string, runs: PlanRun[]): PlanOp => ({
+const text = (id: string, runs: PlanRun[], words = "x"): PlanOp => ({
   op: "text",
   id,
   parent: "f",
   name: id,
   ...box,
-  text: "x",
+  text: words,
   runs,
   align: "LEFT",
   wrap: false,
@@ -179,7 +179,7 @@ describe("one version", () => {
       {
         name: "heading/1",
         fontName: h1.fontName,
-        letterSpacing: 0,
+        letterSpacing: [{ mode: 0, value: 0 }],
         decoration: "NONE",
         textCase: "ORIGINAL",
         fontSize: [{ mode: 0, value: 32 }],
@@ -369,7 +369,7 @@ describe("matching text styles", () => {
   test("heading/1 matches heading/1 by role, with size per mode", () => {
     const r = mergeVersions([
       version("1440", planOf({ styles: [style("heading/1", { fontSize: 48, lineHeight: 56 })] })),
-      version("390", planOf({ styles: [style("heading/1", { fontSize: 28, lineHeight: null })] })),
+      version("390", planOf({ styles: [style("heading/1", { fontSize: 28, lineHeight: 32 })] })),
     ]);
     expect(r.tokens.textStyles).toHaveLength(1);
     expect(r.tokens.textStyles[0]).toMatchObject({
@@ -380,8 +380,272 @@ describe("matching text styles", () => {
       ],
       lineHeight: [
         { mode: 0, value: 56 },
-        { mode: 1, value: null },
+        { mode: 1, value: 32 },
       ],
+    });
+  });
+
+  test("AUTO line height joins AUTO", () => {
+    const r = mergeVersions([
+      version("a", planOf({ styles: [style("body/1", { lineHeight: null })] })),
+      version("b", planOf({ styles: [style("body/1", { lineHeight: null, fontSize: 20 })] })),
+    ]);
+    expect(r.tokens.textStyles[0]?.lineHeight).toEqual([
+      { mode: 0, value: null },
+      { mode: 1, value: null },
+    ]);
+  });
+
+  test("AUTO and a number don't join: a float variable can't be AUTO", () => {
+    const r = mergeVersions([
+      version("a", planOf({ styles: [style("body/1", { lineHeight: 40 })] })),
+      version("b", planOf({ styles: [style("body/1", { lineHeight: null, fontSize: 20 })] })),
+    ]);
+    expect(r.tokens.textStyles[0]?.from[1]).toBeNull();
+    expect(r.report).toEqual(["b: 1 text style stayed a plain value."]);
+  });
+
+  test("letter spacing in proportion to size joins, with a value per mode", () => {
+    const r = mergeVersions([
+      version("a", planOf({ styles: [style("body/1", { fontSize: 32, letterSpacing: -0.64 })] })),
+      version("b", planOf({ styles: [style("body/1", { fontSize: 16, letterSpacing: -0.32 })] })),
+    ]);
+    expect(r.tokens.textStyles[0]?.letterSpacing).toEqual([
+      { mode: 0, value: -0.64 },
+      { mode: 1, value: -0.32 },
+    ]);
+  });
+
+  test("letter spacing out of proportion doesn't join", () => {
+    const r = mergeVersions([
+      version("a", planOf({ styles: [style("body/1", { fontSize: 32, letterSpacing: -0.64 })] })),
+      version("b", planOf({ styles: [style("body/1", { fontSize: 16, letterSpacing: -0.64 })] })),
+    ]);
+    expect(r.tokens.textStyles[0]?.from[1]).toBeNull();
+  });
+
+  describe("by shared text", () => {
+    const said = (id: string, words: string, s: PlanTextStyle) =>
+      text(id, [{ ...textRun(s.key), end: words.length }], words);
+
+    test("h2 and h3 that collapse into one style both take its value", () => {
+      const h2 = style("heading/2", { fontSize: 32 });
+      const h3 = style("heading/3", { fontSize: 24 });
+      const small = style("heading/1", { fontSize: 20 });
+      const r = mergeVersions([
+        version(
+          "1440",
+          planOf({ styles: [h2, h3] }, [said("a", "A longer heading", h2), said("b", "Short", h3)])
+        ),
+        version(
+          "390",
+          planOf({ styles: [small] }, [
+            said("a", "A longer heading", small),
+            said("b", "Short", small),
+          ])
+        ),
+      ]);
+      const second = styleNamed(r, "heading/2");
+      const third = styleNamed(r, "heading/3");
+      expect(second?.from).toEqual([h2.key, small.key]);
+      expect(third?.from).toEqual([h3.key, null]);
+      expect(second?.fontSize[1]).toEqual({ mode: 1, value: 20 });
+      expect(third?.fontSize[1]).toEqual({ mode: 1, value: 20 });
+      expect(keysIn(r.plans[1]?.ops ?? []).styles).toEqual([
+        second?.key as string,
+        second?.key as string,
+      ]);
+      expect(r.report).toEqual([]);
+    });
+
+    test("a title that falls under the heading ratio keeps its role by its text", () => {
+      const title = style("heading/1", { fontSize: 48 });
+      const smallTitle = style("body/2", { fontSize: 20 });
+      const other = style("heading/1", { fontSize: 30 });
+      const r = mergeVersions([
+        version("1440", planOf({ styles: [title] }, [said("t", "The page title", title)])),
+        version(
+          "390",
+          planOf({ styles: [other, smallTitle] }, [
+            said("o", "Something else", other),
+            said("t", "The page title", smallTitle),
+          ])
+        ),
+      ]);
+      expect(r.tokens.textStyles[0]?.from).toEqual([title.key, smallTitle.key]);
+      expect(r.tokens.textStyles[0]?.fontSize[1]).toEqual({ mode: 1, value: 20 });
+      expect(r.report).toEqual(["390: 1 text style stayed a plain value."]);
+    });
+
+    test("a language pair shares no text and falls back to roles", () => {
+      const h1 = style("heading/1", { fontSize: 48 });
+      const body = style("body/1", { fontSize: 16 });
+      const svH1 = style("heading/1", { fontSize: 44 });
+      const svBody = style("body/1", { fontSize: 15 });
+      const r = mergeVersions([
+        version(
+          "English",
+          planOf({ styles: [h1, body] }, [said("a", "Welcome", h1), said("b", "Read on", body)])
+        ),
+        version(
+          "Svenska",
+          planOf({ styles: [svH1, svBody] }, [
+            said("a", "Välkommen", svH1),
+            said("b", "Läs vidare", svBody),
+          ])
+        ),
+      ]);
+      expect(styleNamed(r, "heading/1")?.from).toEqual([h1.key, svH1.key]);
+      expect(styleNamed(r, "body/1")?.from).toEqual([body.key, svBody.key]);
+    });
+
+    test("more shared characters win, and a tie goes to the first seed", () => {
+      const a = style("heading/1", { fontSize: 40 });
+      const b = style("heading/2", { fontSize: 30 });
+      const token = style("heading/1", { fontSize: 20 });
+      const ops = [said("a", "same", a), said("b", "size", b)];
+      const later = [said("a", "same", token), said("b", "size", token)];
+      const r = mergeVersions([
+        version("a", planOf({ styles: [a, b] }, ops)),
+        version("b", planOf({ styles: [token] }, later)),
+      ]);
+      expect(styleNamed(r, "heading/1")?.from[1]).toBe(token.key);
+      expect(styleNamed(r, "heading/2")?.from[1]).toBeNull();
+    });
+
+    test("the seed with more text in common takes the token, whichever comes first", () => {
+      const few = style("heading/1", { fontSize: 40 });
+      const many = style("heading/2", { fontSize: 30 });
+      const token = style("heading/1", { fontSize: 20 });
+      const r = mergeVersions([
+        version(
+          "a",
+          planOf({ styles: [few, many] }, [
+            said("a", "Short", few),
+            said("b", "Rather longer", many),
+          ])
+        ),
+        version(
+          "b",
+          planOf({ styles: [token] }, [
+            said("a", "Short", token),
+            said("b", "Rather longer", token),
+          ])
+        ),
+      ]);
+      expect(styleNamed(r, "heading/2")?.from[1]).toBe(token.key);
+      expect(styleNamed(r, "heading/1")?.from[1]).toBeNull();
+    });
+
+    test("a string repeated more in one version counts only as often as both have it", () => {
+      const seed = style("heading/1", { fontSize: 40 });
+      const repeated = style("body/1", { fontSize: 20 });
+      const once = style("body/2", { fontSize: 18 });
+      const r = mergeVersions([
+        version(
+          "a",
+          planOf({ styles: [seed] }, [said("a", "Go", seed), said("b", "Menu title", seed)])
+        ),
+        version(
+          "b",
+          planOf({ styles: [repeated, once] }, [
+            ...Array.from({ length: 10 }, (_, i) => said(`g${i}`, "Go", repeated)),
+            said("m", "Menu title", once),
+          ])
+        ),
+      ]);
+      expect(r.tokens.textStyles[0]?.from[1]).toBe(once.key);
+    });
+
+    test("shared text doesn't join a different look", () => {
+      const seed = style("heading/1");
+      const other = style("heading/2", { fontName: { family: "Inter", style: "Light" } });
+      const r = mergeVersions([
+        version("a", planOf({ styles: [seed] }, [said("t", "Title", seed)])),
+        version("b", planOf({ styles: [other] }, [said("t", "Title", other)])),
+      ]);
+      expect(r.tokens.textStyles[0]?.from[1]).toBeNull();
+    });
+
+    test("a seed with no shared text doesn't take a token another seed joined by text", () => {
+      const first = style("heading/1", { fontSize: 40 });
+      const second = style("heading/2", { fontSize: 30 });
+      const token = style("heading/2", { fontSize: 20 });
+      const r = mergeVersions([
+        version("a", planOf({ styles: [first, second] }, [said("t", "Title", first)])),
+        version("b", planOf({ styles: [token] }, [said("t", "Title", token)])),
+      ]);
+      expect(styleNamed(r, "heading/1")?.from[1]).toBe(token.key);
+      expect(styleNamed(r, "heading/2")?.from[1]).toBeNull();
+      expect(styleNamed(r, "heading/2")?.fontSize).toHaveLength(1);
+    });
+
+    test("text in an instance's override counts", () => {
+      const seed = style("heading/2", { fontSize: 40 });
+      const token = style("body/1", { fontSize: 20 });
+      const copy = (s: PlanTextStyle) => {
+        const runs = [{ ...textRun(s.key), end: 5 }];
+        return instance("i", [{ path: [0], kind: "text", text: "Title", runs }]);
+      };
+      const r = mergeVersions([
+        version("a", planOf({ styles: [seed] }, [copy(seed)])),
+        version("b", planOf({ styles: [token] }, [copy(token)])),
+      ]);
+      expect(r.tokens.textStyles[0]?.from[1]).toBe(token.key);
+    });
+
+    test("only a run's own slice of the text counts", () => {
+      const seed = style("heading/1", { fontSize: 40 });
+      const near = style("body/1", { fontSize: 20 });
+      const rest = style("body/2", { fontSize: 18 });
+      const r = mergeVersions([
+        version("a", planOf({ styles: [seed] }, [said("t", "Title", seed)])),
+        version(
+          "b",
+          planOf({ styles: [near, rest] }, [
+            text(
+              "t",
+              [
+                { ...textRun(rest.key), end: 6 },
+                { ...textRun(near.key), start: 6, end: 11 },
+              ],
+              "Intro Title"
+            ),
+          ])
+        ),
+      ]);
+      expect(r.tokens.textStyles[0]?.from[1]).toBe(near.key);
+    });
+
+    test("whitespace alone shares nothing", () => {
+      const seed = style("heading/1", { fontSize: 40 });
+      const named = style("heading/1", { fontSize: 30 });
+      const blank = style("body/1", { fontSize: 20 });
+      const r = mergeVersions([
+        version("a", planOf({ styles: [seed] }, [said("t", "   ", seed)])),
+        version(
+          "b",
+          planOf({ styles: [blank, named] }, [said("t", "   ", blank), said("u", "x", named)])
+        ),
+      ]);
+      expect(r.tokens.textStyles[0]?.from[1]).toBe(named.key);
+    });
+
+    test("four versions of 20,000 text nodes stay linear", () => {
+      const styles = Array.from({ length: 200 }, (_, i) =>
+        style(`body/${i}`, { fontSize: 8 + i, key: `k${i}` })
+      );
+      const big = planOf(
+        { styles },
+        Array.from({ length: 20_000 }, (_, i) =>
+          said(`t${i}`, `text ${i}`, styles[i % 200] as PlanTextStyle)
+        )
+      );
+      const started = performance.now();
+      const r = mergeVersions(["a", "b", "c", "d"].map((label) => version(label, big)));
+      expect(performance.now() - started).toBeLessThan(2000);
+      expect(r.tokens.textStyles).toHaveLength(200);
+      expect(r.report).toEqual([]);
     });
   });
 
@@ -716,7 +980,7 @@ describe("ops", () => {
     expect(keysIn(r.plans[0]?.ops ?? []).colors).toEqual([]);
   });
 
-  test("the input plans aren't changed, and share nothing with the output", () => {
+  test("the input plans aren't changed, and output ops are copies", () => {
     const input = [
       version("Light", planOf({ colors: [ink], styles: [h1] }, everywhere(ink, h1))),
       version("Dark", planOf({ colors: [inkDark, stray] }, everywhere(inkDark, h1Small))),

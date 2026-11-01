@@ -45,7 +45,7 @@ function role(
     key: [name, ...sizes.map((s, i) => `${s}/${lines[i]}`)].join("|"),
     name,
     fontName: inter,
-    letterSpacing: 0,
+    letterSpacing: perMode(sizes.map(() => 0)),
     decoration: "NONE",
     textCase: "ORIGINAL",
     fontSize: perMode(sizes),
@@ -235,11 +235,33 @@ describe("text styles", () => {
     expect(tokens.counts()).toMatchObject({ stylesCreated: 1, variablesCreated: 2 });
   });
 
+  test("letter spacing that varies binds to a tracking variable", async () => {
+    const f = fakeFigma();
+    const body = role("body/1", [16, 14], [24, 20], { letterSpacing: perMode([-0.32, -0.28]) });
+    await settle(f, set({ colors: [], textStyles: [body] }));
+    const [collection] = collectionsIn(f);
+    const [style] = stylesIn(f);
+    const tracking = variableNamed(f, "type/body/1/tracking");
+    expect(tracking.resolvedType).toBe("FLOAT");
+    expect(style.boundVariables.letterSpacing.id).toBe(tracking.id);
+    expect(style.letterSpacing.value).toBeCloseTo(-0.32, 5);
+    expect(f.tokens.valueIn(tracking, modeId(collection, "Dark"))).toBeCloseTo(-0.28, 5);
+  });
+
+  test("a repeat import reuses the tracking variable", async () => {
+    const f = fakeFigma();
+    const body = role("body/1", [16, 14], [24, 20], { letterSpacing: perMode([-0.32, -0.28]) });
+    await settle(f, set({ colors: [], textStyles: [body] }));
+    const again = await settle(f, set({ colors: [], textStyles: [body] }));
+    expect(again.counts()).toMatchObject({ stylesCreated: 0, variablesCreated: 0 });
+  });
+
   test("only what varies gets a variable", async () => {
     const f = fakeFigma();
     await settle(f, set({ colors: [], textStyles: [role("body/1", [16, 14], [24, 24])] }));
     expect(variablesIn(f).map((v) => v.name)).toEqual(["type/body/1/size"]);
     expect(stylesIn(f)[0].boundVariables.lineHeight).toBeUndefined();
+    expect(stylesIn(f)[0].boundVariables.letterSpacing).toBeUndefined();
   });
 
   test("a version with no line height leaves the variable at the first mode's", async () => {

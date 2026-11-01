@@ -120,7 +120,8 @@ export function tokenModel(
       called("textStyle.setBoundVariable");
       writes.push(`${state.name}: bound ${field}`);
       if (typeof variable === "string") throw new Error("dynamic-page needs the variable");
-      if (!["fontSize", "lineHeight"].includes(field)) throw new Error(`can't bind ${field}`);
+      if (!["fontSize", "lineHeight", "letterSpacing"].includes(field))
+        throw new Error(`can't bind ${field}`);
       if (!variables.has(variable?.id)) throw new Error("unknown variable");
       if (variable.resolvedType !== "FLOAT") throw new Error("needs a number variable");
       if (!loaded.has(fontId(state.fontName))) throw new Error("font not loaded");

@@ -292,16 +292,17 @@ export type PlanModeColor = {
   from: (string | null)[];
 };
 
-/** A type treatment across versions: only its size and line height vary by mode. */
+/** A type treatment across versions: its size, line height and letter spacing vary by mode. */
 export type PlanModeType = {
   key: string;
   /** From the first version that has it. A proposal, as on `PlanTextStyle`. */
   name: string;
   fontName: FontRef;
-  letterSpacing: number;
   decoration: PlanRun["decoration"];
   textCase: PlanRun["textCase"];
+  letterSpacing: ModeValue<number>[];
   fontSize: ModeValue<number>[];
+  /** Null means AUTO, in every mode or none: a float variable can't hold it. */
   lineHeight: ModeValue<number | null>[];
   /** Per version, the single-version token key this replaces. */
   from: (string | null)[];
