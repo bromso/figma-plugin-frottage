@@ -292,6 +292,159 @@ describe("modes", () => {
     expect(result.tokenFailures).toBeGreaterThan(0);
   });
 
+  describe("refused on a version", () => {
+    const BODY = "body/1|m";
+    const GAP = "spacing:--gap|m";
+    const run = {
+      start: 0,
+      end: 2,
+      fontName: inter,
+      fontSize: 16,
+      lineHeight: null,
+      letterSpacing: 0,
+      color: BLACK,
+      opacity: 1,
+      decoration: "NONE",
+      textCase: "ORIGINAL",
+      styleKey: BODY,
+      colorKey: INK_KEY,
+    };
+    const row = {
+      mode: "HORIZONTAL",
+      wrap: false,
+      itemSpacing: 8,
+      counterSpacing: null,
+      padding: [0, 0, 0, 0],
+      primaryAlign: "MIN",
+      counterAlign: "MIN",
+      sizingH: "FIXED",
+      sizingV: "FIXED",
+      spacingKeys: { itemSpacing: GAP },
+    };
+    const text: PlanOp = {
+      op: "text",
+      id: "t",
+      parent: "root",
+      name: "t",
+      x: 0,
+      y: 0,
+      w: 50,
+      h: 20,
+      text: "Hi",
+      runs: [run],
+      align: "LEFT",
+      wrap: false,
+      lineCount: 1,
+    } as PlanOp;
+    /** Every kind of binding a version can make, and a main ahead of the root. */
+    const ops: PlanOp[] = [
+      main("x-card", { layout: row }),
+      frame("root", null, { layout: row, childCount: 2 }),
+      instance("a", "root", "x-card"),
+      text,
+    ];
+    const all: PlanVersionTokens = {
+      ...tokensFor(["a", "b"]),
+      textStyles: [
+        {
+          key: BODY,
+          name: "body/1",
+          fontName: inter,
+          decoration: "NONE",
+          textCase: "ORIGINAL",
+          letterSpacing: [
+            { mode: 0, value: 0 },
+            { mode: 1, value: 0 },
+          ],
+          fontSize: [
+            { mode: 0, value: 16 },
+            { mode: 1, value: 14 },
+          ],
+          lineHeight: [
+            { mode: 0, value: null },
+            { mode: 1, value: null },
+          ],
+          from: ["a", "b"],
+        },
+      ],
+      spacing: [
+        {
+          key: GAP,
+          name: "spacing/gap",
+          cssVar: "--gap",
+          values: [
+            { mode: 0, value: 8 },
+            { mode: 1, value: 4 },
+          ],
+          from: ["a", "b"],
+        },
+      ],
+    };
+    const importAll = async (f: Fake, a: Applier) => {
+      await a.beginSet();
+      await a.importModes(all, options);
+      for (const [i, label] of ["a", "b"].entries()) {
+        await a.begin(meta(i, label));
+        await a.applyBatch(ops);
+        await a.end();
+      }
+      return a.endSet();
+    };
+    const boundIn = (nodes: FakeNode[]) =>
+      nodes
+        .filter(
+          (n) =>
+            n.boundVariables?.itemSpacing ||
+            n.fills?.some?.((p: { boundVariables?: object }) => p.boundVariables) ||
+            (n.textStyleIds?.size ?? 0) > 0
+        )
+        .map((n) => n.name);
+    const under = (node: FakeNode): FakeNode[] => [node, ...(node.children ?? []).flatMap(under)];
+
+    test("a main refused first keeps the whole version plain, and the other bound", async () => {
+      // Each version sets its main, then its root: the third call is version b's main.
+      const f = fakeFigma({ failExplicitMode: 3 });
+      const result = await importAll(f, createApplier(f.figma));
+      const [firstRoot, secondRoot] = framesOf(f) as [FakeNode, FakeNode];
+      const [firstSection, secondSection] = sectionsOf(f) as [FakeNode, FakeNode];
+      expect(boundIn(under(firstRoot)).length).toBeGreaterThan(0);
+      expect(boundIn(under(firstSection)).length).toBeGreaterThan(0);
+      expect(boundIn(under(secondRoot))).toEqual([]);
+      expect(boundIn(under(secondSection))).toEqual([]);
+      expect(result.tokenFailures).toBe(1);
+    });
+
+    test("the root is refused with no main ahead of it: nothing in it binds", async () => {
+      const f = fakeFigma({ failExplicitMode: true });
+      const a = createApplier(f.figma);
+      await a.beginSet();
+      await a.importModes(all, options);
+      await a.begin(meta(0, "a"));
+      await a.applyBatch(ops.slice(1).filter((op) => op.op !== "instance"));
+      await a.end();
+      const result = await a.endSet();
+      expect(boundIn(under(framesOf(f)[0] as FakeNode))).toEqual([]);
+      expect(result.tokenFailures).toBe(1);
+    });
+
+    test("a main made before the refusal stays as it is, and the rest go plain", async () => {
+      const f = fakeFigma({ failExplicitMode: 2 });
+      const a = createApplier(f.figma);
+      await a.beginSet();
+      await a.importModes(all, options);
+      await a.begin(meta(0, "a"));
+      await a.applyBatch(ops);
+      await a.end();
+      await a.endSet();
+      const section = sectionsOf(f)[0] as FakeNode;
+      expect(boundIn(under(section)).length).toBeGreaterThan(0);
+      // An instance shows its main, which stays as it was made.
+      const root = framesOf(f)[0] as FakeNode;
+      const own = root.children.filter((n: FakeNode) => n.type !== "INSTANCE");
+      expect(boundIn([root, ...own])).toEqual([]);
+    });
+  });
+
   test("the set reports its token counts once, at the end, and not per version", async () => {
     const f = fakeFigma();
     const a = createApplier(f.figma);

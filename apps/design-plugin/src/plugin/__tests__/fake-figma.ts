@@ -37,8 +37,8 @@ type Options = LayoutOptions &
     swappedResizeThrows?: boolean;
     /** Setting this layout property throws, as for a value Figma refuses. */
     failLayout?: string;
-    /** `setExplicitVariableModeForCollection` throws. */
-    failExplicitMode?: boolean;
+    /** `setExplicitVariableModeForCollection` throws, or does from this call on, counting from 1. */
+    failExplicitMode?: boolean | number;
   };
 
 const AUTO_LAYOUT_FIELDS = [
@@ -159,7 +159,11 @@ export function fakeFigma(opts: Options = {}) {
         calls.push("setExplicitMode");
         // Measured: an id throws under `dynamic-page`.
         if (typeof collection === "string") throw new Error("needs the collection node");
-        if (opts.failExplicitMode) throw new Error("mode refused");
+        const limit = opts.failExplicitMode;
+        const calledSoFar = calls.filter((c: string) => c === "setExplicitMode").length;
+        if (limit === true || (typeof limit === "number" && calledSoFar >= limit)) {
+          throw new Error("mode refused");
+        }
         node.explicitModes[collection.id] = modeId;
       },
       appendChild(child: FakeNode) {

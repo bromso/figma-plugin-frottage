@@ -194,6 +194,8 @@ export function createApplier(api: PluginAPI) {
   let held: HeldSet | null = null;
   /** This version's place in its set. */
   let versionIndex: number | null = null;
+  /** Figma refused this version's mode, so its values wouldn't be what its frames should read. */
+  let modeRefused = false;
 
   /** Clears the version in hand and removes what it left. The set around it, if any, stays. */
   function clearVersion() {
@@ -233,6 +235,7 @@ export function createApplier(api: PluginAPI) {
     paintFailures = 0;
     resizedFallbacks = 0;
     versionIndex = null;
+    modeRefused = false;
   }
 
   function reset() {
@@ -316,24 +319,24 @@ export function createApplier(api: PluginAPI) {
   }
 
   /**
-   * Puts a root or a main on its version's mode. A refused mode leaves it on the first. Returns
-   * false in that case only: a version with no mode of its own has nothing to be true to.
+   * Puts a root or a main on its version's mode. Once one is refused the version has no mode it can
+   * be true to, and what it builds from then on stays plain. A version's mains are built first, so
+   * that catches it before anything binds, or leaves a main already made as it is.
    */
-  function setMode(node: FrameNode | ComponentNode): boolean {
-    if (versionIndex === null) return true;
+  function setMode(node: FrameNode | ComponentNode): void {
+    if (versionIndex === null || modeRefused) return;
     const mode = tokens?.modeOf(versionIndex);
-    if (!mode) return true;
+    if (!mode) return;
     try {
       node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
-      return true;
     } catch {
+      modeRefused = true;
       tokens?.failed();
-      return false;
     }
   }
 
-  /** Frames whose subtree sits on a mode other than its version's: bound lengths would be wrong. */
-  const offMode = new WeakSet<FrameNode>();
+  /** The tokens this version may bind to: none once its mode was refused. */
+  const bindable = () => (modeRefused ? undefined : tokens);
 
   /** Settles the plan's tokens against the file. Comes before any batch that uses them. */
   async function importTokens(plan: PlanTokens, options: ImportOptions): Promise<void> {
@@ -385,7 +388,7 @@ export function createApplier(api: PluginAPI) {
   /** A plain paint, bound to its variable if it has one. A refused binding stays plain. */
   function solidPaint(color: PlanRgb, opacity: number, colorKey?: string): SolidPaint {
     const paint: SolidPaint = { type: "SOLID", color, opacity };
-    const binding = tokens?.color(colorKey);
+    const binding = bindable()?.color(colorKey);
     if (!binding || !("variable" in binding)) return paint;
     try {
       return api.variables.setBoundVariableForPaint(paint, "color", binding.variable);
@@ -396,7 +399,7 @@ export function createApplier(api: PluginAPI) {
   }
 
   function paintStyleId(colorKey?: string): string | undefined {
-    const binding = tokens?.color(colorKey);
+    const binding = bindable()?.color(colorKey);
     return binding && "paintStyleId" in binding ? binding.paintStyleId : undefined;
   }
 
@@ -505,9 +508,9 @@ export function createApplier(api: PluginAPI) {
    * after its mode. Both axes start FIXED, as SPACE_* alignment and FLEX tracks need, so HUG comes
    * last. Refused settings leave the frame absolute: losing it would lose its subtree.
    */
-  function setLayout(node: FrameNode, op: FrameOp, bind: boolean) {
+  function setLayout(node: FrameNode, op: FrameOp) {
     applyLayout(node, op);
-    if (bind && node.layoutMode !== "NONE") bindLengths(node, op.layout);
+    if (node.layoutMode !== "NONE") bindLengths(node, op.layout);
   }
 
   /**
@@ -517,7 +520,7 @@ export function createApplier(api: PluginAPI) {
   function bindLengths(node: FrameNode, layout: PlanLayout) {
     if (layout.mode === "NONE") return;
     const keys = layout.spacingKeys;
-    const set = tokens;
+    const set = bindable();
     if (!keys || !set) return;
     let refused = false;
     const bind = (field: VariableBindableNodeField, key: string | null | undefined) => {
@@ -631,7 +634,7 @@ export function createApplier(api: PluginAPI) {
 
   /** The style goes first, as linking one overrides the range's own type fields. */
   async function runProps(node: TextNode, run: PlanRun, start: number, end: number) {
-    const styleId = tokens?.textStyleId(run.styleKey);
+    const styleId = bindable()?.textStyleId(run.styleKey);
     const styled = styleId !== undefined && (await linkTextStyle(node, styleId, start, end));
     if (!styled) {
       node.setRangeFontName(start, end, usableFont(run.fontName));
@@ -692,10 +695,8 @@ export function createApplier(api: PluginAPI) {
   function buildFrame(op: FrameOp, parent: FrameNode | null) {
     const name = parent || op.component ? op.name : rootName || op.name;
     const node = createFrame(parent, op, name);
-    // A subtree is true to its mode only while its root is on it.
-    const onMode = parent ? !offMode.has(parent) : setMode(node);
-    if (!onMode) offMode.add(node);
-    setLayout(node, op, onMode);
+    if (!parent) setMode(node);
+    setLayout(node, op);
     node.clipsContent = op.clips;
     // A refused paint costs that paint, not the frame and all that is under it.
     try {
