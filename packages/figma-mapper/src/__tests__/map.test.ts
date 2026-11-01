@@ -899,6 +899,102 @@ describe("gradients", () => {
     expect((fills[0] as Grad).stops.map((s) => s.position)).toEqual([0, 1]);
     expect(plan.report.warnings.join(" ")).toMatch(/repeating/i);
   });
+  test("background-clip: text puts no background on the frame and colours transparent text", () => {
+    const base = el("x", [0, 0]).style;
+    const c = cap(
+      el(
+        "root",
+        [0, 0],
+        [
+          el("h", [0, 0], [textNode("t", { runs: [run({ color: { r: 0, g: 0, b: 0, a: 0 } })] })], {
+            style: {
+              ...base,
+              backgroundClip: "text",
+              backgroundImages: [linear(90)],
+            },
+          }),
+        ]
+      )
+    );
+    const plan = mapCapture(c, inter);
+    expect((plan.ops.find((o) => o.id === "h") as FramePlanOp).fills).toEqual([]);
+    const text = plan.ops.find((o) => o.op === "text") as TextPlanOp;
+    expect(text.runs[0]).toMatchObject({ color: { r: 1, g: 0, b: 0 }, opacity: 1 });
+    expect(plan.report.warnings.filter((w) => /clip/i.test(w))).toHaveLength(1);
+  });
+  test("opaque text under a clipped element keeps its colour", () => {
+    const base = el("x", [0, 0]).style;
+    const c = cap(
+      el("root", [0, 0], [textNode("t", { runs: [run()] })], {
+        style: { ...base, backgroundClip: "text", backgroundImages: [linear(90)] },
+      })
+    );
+    const text = mapCapture(c, inter).ops.find((o) => o.op === "text") as TextPlanOp;
+    expect(text.runs[0]).toMatchObject({ color: { r: 0, g: 0, b: 0 }, opacity: 1 });
+  });
+  test("a transparent stop takes its neighbour's colour, so it does not fade through black", () => {
+    const clear = { r: 0, g: 0, b: 0, a: 0 };
+    const g = planWith([
+      {
+        type: "linear-gradient",
+        css: "linear-gradient()",
+        angle: 90,
+        stops: [
+          { color: red, position: 0 },
+          { color: clear, position: 0.5 },
+          { color: { r: 0, g: 0, b: 1, a: 1 }, position: 1 },
+        ],
+      },
+    ]).fills[0] as Grad;
+    expect(g.stops).toEqual([
+      { position: 0, color: red },
+      { position: 0.5, color: { r: 1, g: 0, b: 0, a: 0 } },
+      { position: 0.5, color: { r: 0, g: 0, b: 1, a: 0 } },
+      { position: 1, color: { r: 0, g: 0, b: 1, a: 1 } },
+    ]);
+    const tail = planWith([
+      {
+        type: "linear-gradient",
+        css: "linear-gradient()",
+        angle: 90,
+        stops: [
+          { color: red, position: 0 },
+          { color: clear, position: 1 },
+        ],
+      },
+    ]).fills[0] as Grad;
+    expect(tail.stops[1]).toEqual({ position: 1, color: { r: 1, g: 0, b: 0, a: 0 } });
+  });
+  test("a sized layer smaller than the box is a pattern: left out and reported", () => {
+    const { fills, plan } = planWith([{ ...linear(90), size: "20px 20px" }], [100, 100], {
+      r: 0,
+      g: 0,
+      b: 1,
+      a: 1,
+    });
+    expect(fills.map((f) => f.type)).toEqual(["SOLID"]);
+    expect(plan.report.warnings.join(" ")).toMatch(/pattern/i);
+    for (const size of ["auto", "cover", "contain", "100% 100%", "100px 100px", "auto auto"]) {
+      expect(planWith([{ ...linear(90), size }]).fills).toHaveLength(1);
+    }
+    expect(planWith([{ ...linear(90), size: "50%" }]).fills).toEqual([]);
+  });
+  test("stops are sorted and a stop outside the line is clamped and reported", () => {
+    const { fills, plan } = planWith([
+      {
+        type: "linear-gradient",
+        css: "linear-gradient()",
+        angle: 90,
+        stops: [
+          { color: blue, position: 1.5 },
+          { color: red, position: 0 },
+        ],
+      },
+    ]);
+    expect((fills[0] as Grad).stops.map((s) => s.position)).toEqual([0, 1]);
+    expect((fills[0] as Grad).stops[0]?.color).toEqual(red);
+    expect(plan.report.warnings.filter((w) => /outside/.test(w))).toHaveLength(1);
+  });
   test("a gradient without stops is left out and reported", () => {
     const { fills, plan } = planWith([
       { type: "linear-gradient", css: "linear-gradient(var(--x))" },

@@ -1714,3 +1714,32 @@ test("zIndex is stored for a positioned box and left out for auto", async ({ pag
   expect(byId.get("zq-d")?.zIndex).toBe(2);
   expect(parseCapture(c).ok).toBe(true);
 });
+
+test("background-clip: text is captured and the text paints with the first gradient colour", async ({
+  page,
+}) => {
+  const c = await capture(page, "gradient-text.html");
+  const heading = (tag: string) => {
+    let hit: ElementNode | undefined;
+    each(c, (n) => {
+      if (n.kind === "element" && n.semantic.tag === tag) hit = n;
+    });
+    if (!hit) throw new Error(`no ${tag}`);
+    return hit;
+  };
+  expect(heading("h1").style.backgroundClip).toBe("text");
+  expect(heading("h2").style.backgroundClip).toBe("text");
+  expect(heading("p").style.backgroundClip).toBeUndefined();
+  const plan = mapCapture(c, [{ family: "Arial", style: "Regular" }]);
+  const fillsOf = (id: string) => {
+    const op = plan.ops.find((o) => o.id === id);
+    return op?.op === "frame" ? op.fills : undefined;
+  };
+  expect(fillsOf(heading("h1").id)).toEqual([]);
+  expect(fillsOf(heading("p").id)).toHaveLength(1);
+  const colours = plan.ops.flatMap((o) =>
+    o.op === "text" ? [o.runs[0]?.color, o.runs[0]?.opacity] : []
+  );
+  // h1: -webkit-text-fill-color transparent over a red-to-blue gradient; h2: color transparent over green.
+  expect(colours.slice(0, 4)).toEqual([{ r: 1, g: 0, b: 0 }, 1, { r: 0, g: 128 / 255, b: 0 }, 1]);
+});

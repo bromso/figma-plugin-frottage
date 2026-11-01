@@ -306,7 +306,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       size: px(style.fontSize),
       lineHeight: style.lineHeight === "normal" ? null : px(style.lineHeight),
       letterSpacing: style.letterSpacing === "normal" ? 0 : px(style.letterSpacing),
-      color: colorOf(style.color),
+      // What is painted: `-webkit-text-fill-color` wins over `color` and defaults to it.
+      color: colorOf(style.getPropertyValue("-webkit-text-fill-color") || style.color),
       decoration: style.textDecorationLine || "none",
       transform: style.textTransform,
       align: align === "start" ? "left" : align === "end" ? "right" : align,

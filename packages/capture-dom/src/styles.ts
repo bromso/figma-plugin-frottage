@@ -243,6 +243,9 @@ export function readStyle(cs: CSSStyleDeclaration, w: number, h: number): Style 
   };
   const backdrop = cs.getPropertyValue("backdrop-filter");
   if (backdrop && backdrop !== "none") style.backdropFilter = cleanCss(backdrop);
+  const clip =
+    cs.getPropertyValue("background-clip") || cs.getPropertyValue("-webkit-background-clip");
+  if (clip && clip.trim() !== "border-box") style.backgroundClip = clip.trim();
   return style;
 }
 

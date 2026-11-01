@@ -55,6 +55,8 @@ const style = z.object({
   boxShadows: z.array(boxShadow),
   filters: z.array(z.string()),
   backdropFilter: z.string().optional(),
+  /** `background-clip`, only when it is not `border-box`. */
+  backgroundClip: z.string().optional(),
   overflow: z.string(),
   clip: box.optional(),
 });

@@ -119,6 +119,55 @@ function angularTransform(angle: number): Transform {
   ];
 }
 
+type Stop = GradientPaint["stops"][number];
+
+/** Whether a `background-size` makes the layer smaller than the box, so it is a pattern. */
+function isPattern(size: string | undefined, w: number, h: number): boolean {
+  const tokens = (size ?? "").trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0 || tokens[0] === "cover" || tokens[0] === "contain") return false;
+  return tokens.slice(0, 2).some((t, i) => {
+    const n = Number.parseFloat(t);
+    if (Number.isNaN(n)) return false; // auto
+    if (t.endsWith("%")) return n < 100;
+    return n < (i === 0 ? w : h) - 0.5;
+  });
+}
+
+/**
+ * CSS blends premultiplied and Figma straight, so a clear stop would fade through black. A clear
+ * stop takes the colour of its nearest visible neighbour; between two different colours it takes
+ * the previous one and a twin at the same position takes the next.
+ */
+function unpremultiply(stops: Stop[]): Stop[] {
+  const out: Stop[] = [];
+  stops.forEach((stop, i) => {
+    if (stop.color.a > 0) {
+      out.push(stop);
+      return;
+    }
+    const before = stops
+      .slice(0, i)
+      .reverse()
+      .find((o) => o.color.a > 0);
+    const after = stops.slice(i + 1).find((o) => o.color.a > 0);
+    const from = before ?? after;
+    if (!from) {
+      out.push(stop);
+      return;
+    }
+    out.push({ position: stop.position, color: { ...from.color, a: 0 } });
+    const same =
+      after &&
+      after.color.r === from.color.r &&
+      after.color.g === from.color.g &&
+      after.color.b === from.color.b;
+    if (before && after && !same) {
+      out.push({ position: stop.position, color: { ...after.color, a: 0 } });
+    }
+  });
+  return out;
+}
+
 function mapGradient(
   img: Background,
   w: number,
@@ -130,16 +179,27 @@ function mapGradient(
     warn(`A ${kind} with no readable colour stops was left out.`);
     return null;
   }
-  let stops = img.stops.map((s) => ({
-    position: Math.min(1, Math.max(0, s.position)),
-    color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a },
-  }));
+  if (isPattern(img.size, w, h)) {
+    warn(`A ${kind} sized as a repeating pattern (background-size) was left out.`);
+    return null;
+  }
+  let stops: Stop[] = img.stops
+    .map((s) => ({
+      position: s.position,
+      color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a },
+    }))
+    .sort((p, q) => p.position - q.position);
   if (/^repeating-/.test(img.css)) {
     // Positions are 0 to 1 of the gradient line; the first cycle ends at the last stop.
     const end = stops[stops.length - 1]?.position ?? 0;
     if (end > 0) stops = stops.map((s) => ({ ...s, position: s.position / end }));
     warn(`A repeating ${kind} was imported as its first cycle only.`);
   }
+  if (stops.some((s) => s.position < 0 || s.position > 1)) {
+    warn(`A ${kind} had colour stops outside 0% to 100%; they were moved to the edge.`);
+    stops = stops.map((s) => ({ ...s, position: Math.min(1, Math.max(0, s.position)) }));
+  }
+  stops = unpremultiply(stops);
   let transform: Transform;
   if (kind === "linear-gradient") {
     transform = linearTransform(img.angle ?? 180, w, h);
@@ -156,6 +216,19 @@ function mapGradient(
   return { type: GRADIENT_TYPES[kind], transform, stops };
 }
 
+/** `background-clip: text` paints the background through the glyphs, not on the box. */
+const clipsToText = (style: ElementNode["style"]): boolean =>
+  (style.backgroundClip ?? "").split(/[\s,]+/).includes("text");
+
+/** The colour clipped text takes: the first stop of the top gradient, which is all Figma text can hold. */
+function clippedTextColor(style: ElementNode["style"]): PlanRgb | undefined {
+  for (const layer of style.backgroundImages) {
+    const first = layer.stops?.[0];
+    if (layer.type !== "image" && first) return rgb(first.color);
+  }
+  return undefined;
+}
+
 function mapFills(
   style: ElementNode["style"],
   box: { w: number; h: number },
@@ -163,6 +236,7 @@ function mapFills(
   warn: (message: string) => void
 ): PlanPaint[] {
   const fills: PlanPaint[] = [];
+  if (clipsToText(style)) return fills;
   const bg = style.backgroundColor;
   if (bg.a > 0) fills.push({ type: "SOLID", color: rgb(bg), opacity: bg.a });
   // CSS lists the top layer first and Figma lists it last.
@@ -349,7 +423,8 @@ export function mapCapture(
     parent: string,
     x: number,
     y: number,
-    peers: CaptureNode[]
+    peers: CaptureNode[],
+    clip?: PlanRgb
   ): PlanOp | null => {
     const len = node.text.length;
     if (len === 0) return null;
@@ -366,8 +441,9 @@ export function mapCapture(
         fontSize: r.size,
         lineHeight: r.lineHeight,
         letterSpacing: r.letterSpacing,
-        color: rgb(r.color),
-        opacity: r.color.a,
+        // Text clipped to a background is transparent; it takes the gradient's first colour.
+        color: clip && r.color.a === 0 ? clip : rgb(r.color),
+        opacity: clip && r.color.a === 0 ? 1 : r.color.a,
         decoration: mapDecoration(r.decoration),
         textCase: mapCase(r.transform),
         ...(href ? { href } : {}),
@@ -384,8 +460,8 @@ export function mapCapture(
       fontSize: seed?.size ?? 16,
       lineHeight: seed?.lineHeight ?? null,
       letterSpacing: seed?.letterSpacing ?? 0,
-      color: seed ? rgb(seed.color) : { r: 0, g: 0, b: 0 },
-      opacity: seed?.color.a ?? 1,
+      color: seed ? (clip && seed.color.a === 0 ? clip : rgb(seed.color)) : { r: 0, g: 0, b: 0 },
+      opacity: seed ? (clip && seed.color.a === 0 ? 1 : seed.color.a) : 1,
       decoration: seed ? mapDecoration(seed.decoration) : "NONE",
       textCase: seed ? mapCase(seed.transform) : "ORIGINAL",
     });
@@ -455,6 +531,8 @@ export function mapCapture(
     siblings: Siblings | undefined;
     /** What the parent's children turned into, for numbering repeated items. */
     peers: CaptureNode[];
+    /** The colour for transparent text, from an ancestor with `background-clip: text`. */
+    clip?: PlanRgb;
   };
   const stack: Item[] = [
     {
@@ -468,7 +546,8 @@ export function mapCapture(
     },
   ];
   while (stack.length > 0) {
-    const { node, outer, parent, parentId, parentLayout, siblings, peers } = stack.pop() as Item;
+    const { node, outer, parent, parentId, parentLayout, siblings, peers, clip } =
+      stack.pop() as Item;
     // visibility:hidden on a parent does not hide visible children, so an
     // invisible element with children stays as an unpainted frame.
     const hidden = !node.visible;
@@ -484,6 +563,11 @@ export function mapCapture(
     switch (node.kind) {
       case "element": {
         const s = node.style;
+        let childClip = clip;
+        if (clipsToText(s)) {
+          childClip = clippedTextColor(s) ?? clip;
+          warn("Text with a background clip was imported with the first colour of its gradient.");
+        }
         const inferred = inferLayout(
           node,
           node.children,
@@ -528,12 +612,13 @@ export function mapCapture(
             parentLayout: layout,
             siblings: around,
             peers: targets,
+            clip: childClip,
           });
         }
         break;
       }
       case "text":
-        op = mapText(node, parentId as string, x, y, peers);
+        op = mapText(node, parentId as string, x, y, peers, clip);
         break;
       case "image":
         if (node.assetHash) {

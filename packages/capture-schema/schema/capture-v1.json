@@ -644,6 +644,9 @@
                 "backdropFilter": {
                   "type": "string"
                 },
+                "backgroundClip": {
+                  "type": "string"
+                },
                 "overflow": {
                   "type": "string"
                 },

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gradient text</title>
+<style>
+body { margin: 0; font: 32px/1.2 Arial, sans-serif; }
+.fill { background: linear-gradient(90deg, rgb(255, 0, 0), rgb(0, 0, 255)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: rgb(0, 0, 0); }
+.clear { background: linear-gradient(90deg, rgb(0, 128, 0), rgb(0, 0, 255)); background-clip: text; color: transparent; }
+.plain { background: rgb(200, 200, 200); color: rgb(0, 0, 0); }
+</style>
+</head>
+<body>
+<h1 class="fill">Fill transparent</h1>
+<h2 class="clear">Colour transparent</h2>
+<p class="plain">Plain</p>
+</body>
+</html>
