@@ -21,17 +21,30 @@ export type WindowsApi = {
   update: (windowId: number, info: Record<string, unknown>) => Promise<unknown>;
 };
 
-/** Sets a window's width, leaving any other state for normal, and returns the width Chrome gave. */
+/**
+ * Sets a window's width, leaving any other state for normal, and returns the width Chrome gave.
+ * `left` moves it too, for a width Chrome would refuse where the window stands.
+ */
 export async function resizeWindow(
   api: WindowsApi,
   windowId: number,
-  width: number
+  width: number,
+  left?: number
 ): Promise<number> {
-  await api.update(windowId, { state: "normal", width });
+  await api.update(windowId, { state: "normal", width, ...(left === undefined ? {} : { left }) });
   return (await api.get(windowId)).width ?? width;
 }
 
-/** Bounds first: Chrome refuses them on a window that is maximised, minimised or full screen. */
+/** The `left` that keeps a window of `width` on a screen `screenWidth` wide. */
+export function fittedLeft(width: number, screenWidth: number): number {
+  return Math.max(0, screenWidth - width);
+}
+
+/**
+ * Bounds first: Chrome refuses them on a window that is maximised, minimised or full screen. For a
+ * maximised window these are the maximised bounds, the only ones Chrome exposes, so the size it had
+ * before it was maximised can't be given back; un-maximising it later keeps the maximised size.
+ */
 export async function restoreWindow(api: WindowsApi, saved: WindowState): Promise<void> {
   const { windowId, state, ...bounds } = saved;
   const known = Object.entries(bounds).filter(([, value]) => value !== undefined);
@@ -82,13 +95,36 @@ export class CaptureGate {
   }
 }
 
+type Busy = { capturing: boolean; viewportRunning: boolean };
+
+const RUN_BUSY = "A capture at several widths is already running";
+const CAPTURE_BUSY = "A capture is already running";
+
+/**
+ * Why a start must be refused, or null. `capture` is a plain capture, `width` one of a viewport
+ * run's own, and `viewport` a new run. Check before changing anything: a refused run must not
+ * touch the live one.
+ */
+export function startRefusal(
+  request: "capture" | "width" | "viewport",
+  { capturing, viewportRunning }: Busy
+): string | null {
+  if (request === "width") return null;
+  if (viewportRunning) return RUN_BUSY;
+  return request === "viewport" && capturing ? CAPTURE_BUSY : null;
+}
+
 export type ViewportDeps = {
-  /** The origin of the tab's URL; null when the tab is gone or its URL can't be read. */
+  /** The tab's page, from `pageOrigin`; null when the tab is gone or its URL can't be read. */
   origin: () => Promise<string | null>;
   /** Stores the window's state for `restore`. */
   remember: () => Promise<void>;
-  /** Resizes the window and returns the width Chrome gave. Throws when the window has gone. */
-  resize: (width: number) => Promise<number>;
+  /** Sets the width, and `left` if given; returns the width Chrome gave. Throws when refused. */
+  resize: (width: number, left?: number) => Promise<number>;
+  /** Tells a closed window from a refused call. */
+  windowOpen: () => Promise<boolean>;
+  /** The screen's available width. */
+  screenWidth: () => number;
   restore: () => Promise<void>;
   /** One capture, start to saved file. `label` is what the window says; the page has the last word. */
   capture: (label: string) => Promise<CaptureResult>;
@@ -101,7 +137,9 @@ type Final = RunStatus & { state: "viewport-done" };
 
 const WINDOW_CLOSED = "The window was closed, so the run stopped.";
 const LEFT_PAGE = "The tab left the page, so the run stopped.";
+const NOT_RESIZED = "The window couldn't be resized, so the run stopped.";
 const NOT_RESTORED = "The window could not be put back as it was.";
+const WENT_WRONG = "Something went wrong, so the run stopped.";
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -118,7 +156,7 @@ export class ViewportRun {
 
   /** Resolves when the run has finished and the window is back. */
   start(widths: number[]): Promise<void> {
-    if (this.running) throw new Error("A capture at several widths is already running");
+    if (this.running) throw new Error(RUN_BUSY);
     this.running = true;
     this.cancelled = false;
     this.status = { state: "idle" };
@@ -157,9 +195,16 @@ export class ViewportRun {
       blockedImages: 0,
     };
     const reachable = widths.filter((width) => width >= MIN_WINDOW_WIDTH);
-    if (reachable.length > 0) await this.withWindow(reachable, done);
-    this.running = false;
-    this.set(done);
+    try {
+      if (reachable.length > 0) await this.withWindow(reachable, done);
+    } finally {
+      this.running = false;
+      try {
+        this.set(done);
+      } catch {
+        // The status is already held for the popup's next open.
+      }
+    }
   }
 
   /** Every way out of the sweep passes through here, so the window always goes back. */
@@ -175,12 +220,31 @@ export class ViewportRun {
       done.stopped = WINDOW_CLOSED;
       return;
     }
-    const stopped = await this.sweep(widths, home, done);
-    if (stopped) done.stopped = stopped;
     try {
-      await this.deps.restore();
+      const stopped = await this.sweep(widths, home, done);
+      if (stopped) done.stopped = stopped;
     } catch {
-      done.stopped ??= NOT_RESTORED;
+      done.stopped = WENT_WRONG;
+    } finally {
+      try {
+        await this.deps.restore();
+      } catch {
+        done.stopped ??= NOT_RESTORED;
+      }
+    }
+  }
+
+  /** The width Chrome gave, or why it gave none. A refused width gets one more try, moved to fit. */
+  private async resized(width: number): Promise<number | { stopped: string }> {
+    try {
+      return await this.deps.resize(width);
+    } catch {
+      if (!(await this.windowOpen())) return { stopped: WINDOW_CLOSED };
+    }
+    try {
+      return await this.deps.resize(width, fittedLeft(width, this.deps.screenWidth()));
+    } catch {
+      return { stopped: NOT_RESIZED };
     }
   }
 
@@ -190,12 +254,8 @@ export class ViewportRun {
     const seen = new Map<number, number>();
     for (const [index, requested] of widths.entries()) {
       if (this.stopping(done)) return undefined;
-      let given: number;
-      try {
-        given = await this.deps.resize(requested);
-      } catch {
-        return WINDOW_CLOSED;
-      }
+      const given = await this.resized(requested);
+      if (typeof given !== "number") return given.stopped;
       const repeat = seen.get(given);
       if (repeat !== undefined) {
         if (repeat !== requested) done.mismatched.push({ requested, width: repeat });
@@ -209,12 +269,12 @@ export class ViewportRun {
       });
       await this.deps.settle();
       if (this.stopping(done)) return undefined;
-      if ((await this.origin()) !== home) return LEFT_PAGE;
+      if ((await this.origin()) !== home) return this.whyGone();
       const result = await this.deps
         .capture(String(given))
         .catch((error): CaptureResult => ({ ok: false, message: messageOf(error) }));
       if (!result.ok) {
-        return (await this.origin()) === home ? friendlyError(result.message) : LEFT_PAGE;
+        return (await this.origin()) === home ? friendlyError(result.message) : this.whyGone();
       }
       const label = result.label ?? String(result.width);
       // The label is the laid-out width, scrollbar included, so a scrollbar is not a mismatch.
@@ -231,6 +291,15 @@ export class ViewportRun {
   private stopping(done: Final): boolean {
     if (this.cancelled) done.cancelled = true;
     return this.cancelled;
+  }
+
+  /** The tab is not where it was, which also happens when its window closes. */
+  private async whyGone(): Promise<string> {
+    return (await this.windowOpen()) ? LEFT_PAGE : WINDOW_CLOSED;
+  }
+
+  private windowOpen(): Promise<boolean> {
+    return this.deps.windowOpen().catch(() => false);
   }
 
   private origin(): Promise<string | null> {

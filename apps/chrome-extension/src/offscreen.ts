@@ -10,7 +10,7 @@ import {
   type Reply,
   type SwMessage,
 } from "./messages";
-import { CaptureGate, ViewportRun, type WindowState } from "./viewport-run";
+import { CaptureGate, startRefusal, ViewportRun, type WindowState } from "./viewport-run";
 
 /** Pages re-lay out on resize. */
 const SETTLE_MS = 800;
@@ -98,11 +98,17 @@ const viewport: ViewportRun = new ViewportRun({
     const reply = await askWorker({ target: "sw", type: "window-state", tabId: viewportTab });
     home = reply.window ?? null;
   },
-  resize: async (width) => {
+  resize: async (width, left) => {
     const { windowId } = savedWindow();
-    const reply = await askWorker({ target: "sw", type: "resize-window", windowId, width });
+    const reply = await askWorker({ target: "sw", type: "resize-window", windowId, width, left });
     return reply.width ?? width;
   },
+  windowOpen: async () => {
+    const { windowId } = savedWindow();
+    const reply = await askWorker({ target: "sw", type: "window-open", windowId });
+    return reply.open === true;
+  },
+  screenWidth: () => screen.availWidth,
   restore: async () => {
     await askWorker({ target: "sw", type: "restore-window", window: savedWindow() });
   },
@@ -114,20 +120,24 @@ const viewport: ViewportRun = new ViewportRun({
         tabId: viewportTab,
         versionKind: "viewport",
         versionLabel: label,
+        viewport: true,
       } satisfies SwMessage)
     ),
   settle: () => new Promise((resolve) => setTimeout(resolve, SETTLE_MS)),
   onStatus: (status) => toPopup(status, (s) => viewport.acknowledge(s)),
 });
 
+function refuseIfBusy(request: Parameters<typeof startRefusal>[0]): void {
+  const refused = startRefusal(request, { capturing: run.busy, viewportRunning: viewport.running });
+  if (refused) throw new Error(refused);
+}
+
 chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendResponse) => {
   if (message?.target !== "offscreen") return;
   switch (message.type) {
     case "run-start":
       try {
-        if (viewport.running && !message.viewport) {
-          throw new Error("A capture at several widths is already running");
-        }
+        refuseIfBusy(message.viewport ? "width" : "capture");
         run.start(message.runId);
         sendResponse({ ok: true } satisfies Reply);
       } catch (error) {
@@ -139,7 +149,7 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
       return;
     case "viewport-start":
       try {
-        if (run.busy) throw new Error("A capture is already running");
+        refuseIfBusy("viewport");
         viewportTab = message.tabId;
         void viewport.start(message.widths);
         sendResponse({ ok: true } satisfies Reply);

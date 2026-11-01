@@ -73,10 +73,16 @@ export function pageVersion(
   return innerWidth < NARROW_UNDER ? normaliseVersion("viewport", String(innerWidth)) : undefined;
 }
 
-/** The origin of a tab's URL; null when Chrome did not give one, as after leaving an `activeTab`. */
+/**
+ * What says a tab is still on its page: the origin and path, without query or fragment, so that
+ * sites on one origin and `file:` URLs, which all share one, still differ. Null when Chrome gave no
+ * URL, as after leaving an `activeTab`.
+ */
 export function pageOrigin(url: string | undefined): string | null {
   try {
-    return url ? new URL(url).origin : null;
+    if (!url) return null;
+    const { origin, pathname } = new URL(url);
+    return `${origin}${pathname}`;
   } catch {
     return null;
   }

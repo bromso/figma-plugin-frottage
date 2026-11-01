@@ -34,12 +34,15 @@ export type SwMessage =
       collapseWrappers?: boolean;
       versionKind?: string;
       versionLabel?: string;
+      /** This capture is one of a viewport run's. A plain capture can be labelled viewport too. */
+      viewport?: boolean;
     }
   | { target: "sw"; type: "viewport-start"; tabId: number; widths: number[] }
   | { target: "sw"; type: "download"; url: string; filename: string }
   | { target: "sw"; type: "tab-origin"; tabId: number }
   | { target: "sw"; type: "window-state"; tabId: number }
-  | { target: "sw"; type: "resize-window"; windowId: number; width: number }
+  | { target: "sw"; type: "window-open"; windowId: number }
+  | { target: "sw"; type: "resize-window"; windowId: number; width: number; left?: number }
   | { target: "sw"; type: "restore-window"; window: WindowState }
   | { target: "sw"; type: "close-offscreen" };
 
@@ -57,9 +60,16 @@ export type OffscreenMessage =
 export type PopupMessage = { target: "popup"; type: "status"; status: RunStatus };
 
 /**
- * `filename` is the saved basename, set by the worker for downloads. `origin`, `window` and `width`
- * answer `tab-origin`, `window-state` and `resize-window`.
+ * `filename` is the saved basename, set by the worker for downloads. `origin`, `window`, `open` and
+ * `width` answer `tab-origin`, `window-state`, `window-open` and `resize-window`.
  */
 export type Reply =
-  | { ok: true; filename?: string; origin?: string | null; window?: WindowState; width?: number }
+  | {
+      ok: true;
+      filename?: string;
+      origin?: string | null;
+      window?: WindowState;
+      open?: boolean;
+      width?: number;
+    }
   | { ok: false; error: string };

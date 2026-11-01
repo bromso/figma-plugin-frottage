@@ -75,14 +75,15 @@ async function startCapture(
   tabId: number,
   collapseWrappers: boolean,
   versionKind: string,
-  versionLabel: string
+  versionLabel: string,
+  viewport: boolean
 ): Promise<Reply> {
   const runId = crypto.randomUUID();
   const started = await toOffscreen({
     target: "offscreen",
     type: "run-start",
     runId,
-    viewport: versionKind === "viewport",
+    viewport,
   });
   if (!started?.ok) return started ?? { ok: false, error: "The capture could not start" };
   try {
@@ -149,7 +150,8 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
       message.tabId,
       message.collapseWrappers === true,
       message.versionKind ?? "",
-      message.versionLabel ?? ""
+      message.versionLabel ?? "",
+      message.viewport === true
     ).then(sendResponse, (e) => sendResponse({ ok: false, error: errorText(e) }));
     return true;
   }
@@ -180,11 +182,21 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
       return { ok: true, window: { windowId, state, width, height, left, top } };
     }, sendResponse);
   }
+  if (message.type === "window-open") {
+    return answer(
+      () =>
+        chrome.windows.get(message.windowId).then(
+          () => ({ ok: true, open: true }),
+          () => ({ ok: true, open: false })
+        ),
+      sendResponse
+    );
+  }
   if (message.type === "resize-window") {
     return answer(
       async () => ({
         ok: true,
-        width: await resizeWindow(WINDOWS, message.windowId, message.width),
+        width: await resizeWindow(WINDOWS, message.windowId, message.width, message.left),
       }),
       sendResponse
     );

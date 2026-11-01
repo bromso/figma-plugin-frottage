@@ -220,8 +220,18 @@ describe("pageVersion", () => {
 });
 
 describe("pageOrigin", () => {
-  test("is the URL's origin, and null when there is no readable URL", () => {
-    expect(pageOrigin("https://example.com/a?b=c#d")).toBe("https://example.com");
+  test("is the URL's origin and path, without query or fragment", () => {
+    expect(pageOrigin("https://example.com/a?b=c#d")).toBe("https://example.com/a");
+    expect(pageOrigin("https://example.com/a?z=1")).toBe(pageOrigin("https://example.com/a#y"));
+    expect(pageOrigin("https://example.com/a")).not.toBe(pageOrigin("https://example.com/b"));
+  });
+
+  test("two local files differ, though every file: URL has the same origin", () => {
+    expect(pageOrigin("file:///a.html")).not.toBe(pageOrigin("file:///b.html"));
+    expect(pageOrigin("file:///a.html")).toBe(pageOrigin("file:///a.html"));
+  });
+
+  test("is null when there is no readable URL", () => {
     expect(pageOrigin(undefined)).toBeNull();
     expect(pageOrigin("not a url")).toBeNull();
   });

@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { RunStatus } from "../capture-run";
+import { pageOrigin } from "../page";
 import {
   CaptureGate,
   type CaptureResult,
+  fittedLeft,
   MIN_WINDOW_WIDTH,
   resizeWindow,
   restoreWindow,
+  startRefusal,
   ViewportRun,
   type WindowState,
   type WindowsApi,
@@ -14,11 +17,15 @@ import {
 const ORIGIN = "https://example.com";
 
 /** A stand-in for `chrome.windows`, narrowing at 500 px as Chrome does on macOS. */
-function fakeWindows(start: Omit<WindowState, "windowId"> & { maxWidth?: number }) {
+function fakeWindows(
+  start: Omit<WindowState, "windowId"> & { maxWidth?: number; screen?: number }
+) {
   const win = { ...start };
   const updates: Record<string, unknown>[] = [];
   const state = {
     closed: false,
+    /** Refuses every resize while the window stays open, whatever its bounds. */
+    refuseAll: false,
     updates,
     win,
     api: {
@@ -28,6 +35,13 @@ function fakeWindows(start: Omit<WindowState, "windowId"> & { maxWidth?: number 
       },
       update: async (_id, info) => {
         if (state.closed) throw new Error("No window with id: 1.");
+        const left = (info.left as number | undefined) ?? win.left ?? 0;
+        const width = (info.width as number | undefined) ?? win.width ?? 0;
+        const onScreen = (start.screen ?? 9999) - left;
+        const restoring = info.height !== undefined;
+        if ((state.refuseAll && !restoring) || onScreen < width / 2) {
+          throw new Error("Invalid value for bounds. Bounds must be at least 50% within screen.");
+        }
         updates.push(info);
         Object.assign(win, info);
         win.width = Math.min(Math.max(win.width ?? 0, 500), start.maxWidth ?? 9999);
@@ -40,6 +54,11 @@ function fakeWindows(start: Omit<WindowState, "windowId"> & { maxWidth?: number 
 type Over = {
   state?: string;
   maxWidth?: number;
+  /** The screen's available width, with the window's own left and width in it. */
+  screen?: number;
+  left?: number;
+  width?: number;
+  settle?: () => Promise<void>;
   origin?: () => string | null;
   capture?: (label: string, run: ViewportRun, count: number) => Promise<CaptureResult> | null;
   /** Width lost to something beside the page, such as a classic scrollbar. */
@@ -50,11 +69,12 @@ type Over = {
 function setup(over: Over = {}) {
   const fake = fakeWindows({
     state: over.state ?? "normal",
-    width: 1728,
+    width: over.width ?? 1728,
     height: 1000,
-    left: 10,
+    left: over.left ?? 10,
     top: 25,
     maxWidth: over.maxWidth,
+    screen: over.screen,
   });
   const statuses: RunStatus[] = [];
   const captures: string[] = [];
@@ -65,10 +85,12 @@ function setup(over: Over = {}) {
     remember: async () => {
       saved = await fake.api.get();
     },
-    resize: async (width) => {
+    resize: async (width, left) => {
       events.push(`resize ${width}`);
-      return resizeWindow(fake.api, 1, width);
+      return resizeWindow(fake.api, 1, width, left);
     },
+    windowOpen: () => fake.api.get().then(() => true),
+    screenWidth: () => over.screen ?? 1728,
     restore: async () => {
       events.push("restore");
       if (saved) await restoreWindow(fake.api, saved);
@@ -87,6 +109,7 @@ function setup(over: Over = {}) {
     },
     settle: async () => {
       events.push("settle");
+      await over.settle?.();
     },
     onStatus: (status) => {
       statuses.push(status);
@@ -267,6 +290,108 @@ describe("ViewportRun", () => {
     expect(t.fake.win.width).toBe(1728);
   });
 
+  test("moving to another page of the same site stops the run", async () => {
+    let page = pageOrigin("https://example.com/a?one=1");
+    const t = setup({
+      origin: () => page,
+      capture: () => {
+        page = pageOrigin("https://example.com/b?one=1");
+        return null;
+      },
+    });
+    await t.run.start([1512, 1440]);
+    expect(t.captures).toEqual(["1512"]);
+    expect(t.final().stopped).toBe("The tab left the page, so the run stopped.");
+  });
+
+  test("a window closed during a capture says so, not that the tab left", async () => {
+    let origin: string | null = ORIGIN;
+    const t = setup({
+      origin: () => origin,
+      capture: () => {
+        t.fake.closed = true;
+        origin = null;
+        return Promise.resolve({ ok: false, message: "The page closed" });
+      },
+    });
+    await t.run.start([1512]);
+    expect(t.final().stopped).toBe("The window was closed, so the run stopped.");
+  });
+
+  test("a window closed while the page settles says so too", async () => {
+    let origin: string | null = ORIGIN;
+    const t = setup({
+      origin: () => origin,
+      settle: async () => {
+        t.fake.closed = true;
+        origin = null;
+      },
+    });
+    await t.run.start([1512]);
+    expect(t.captures).toEqual([]);
+    expect(t.final().stopped).toBe("The window was closed, so the run stopped.");
+  });
+
+  test("a resize refused for its bounds moves the window to fit, then puts it back", async () => {
+    const t = setup({ screen: 1728, left: 1000, width: 800 });
+    await t.run.start([1512]);
+    expect(t.fake.updates[0]).toEqual({ state: "normal", width: 1512, left: 216 });
+    expect(t.captures).toEqual(["1512"]);
+    expect(t.final().stopped).toBeUndefined();
+    expect(t.fake.win).toMatchObject({ left: 1000, width: 800 });
+  });
+
+  test("a resize refused twice stops plainly, and the window goes back", async () => {
+    const t = setup({
+      capture: () => {
+        t.fake.refuseAll = true;
+        return null;
+      },
+    });
+    await t.run.start([1512, 1440]);
+    expect(t.final().saved).toEqual([put("1512")]);
+    expect(t.final().stopped).toBe("The window couldn't be resized, so the run stopped.");
+    expect(t.events.filter((e) => e === "resize 1440")).toHaveLength(2);
+    expect(t.fake.win.width).toBe(1728);
+  });
+
+  test("a resize failing because the window closed is not retried", async () => {
+    const t = setup({
+      capture: () => {
+        t.fake.closed = true;
+        return null;
+      },
+    });
+    await t.run.start([1512, 1440]);
+    expect(t.events.filter((e) => e === "resize 1440")).toHaveLength(1);
+    expect(t.final().stopped).toBe("The window was closed, so the run stopped.");
+  });
+
+  test("a settle that rejects still restores, ends the run and reports", async () => {
+    const t = setup({ settle: () => Promise.reject(new Error("timer gone")) });
+    await t.run.start([1512, 1440]);
+    expect(t.events.at(-1)).toBe("restore");
+    expect(t.fake.win.width).toBe(1728);
+    expect(t.run.running).toBe(false);
+    expect(t.final().stopped).toBe("Something went wrong, so the run stopped.");
+  });
+
+  test("an onStatus that throws still restores, ends the run and holds the status", async () => {
+    const t = setup({
+      onStatus: () => {
+        throw new Error("no popup");
+      },
+    });
+    await t.run.start([1512]);
+    expect(t.events.at(-1)).toBe("restore");
+    expect(t.fake.win.width).toBe(1728);
+    expect(t.run.running).toBe(false);
+    expect(t.run.take()).toMatchObject({
+      state: "viewport-done",
+      stopped: "Something went wrong, so the run stopped.",
+    });
+  });
+
   test("a tab whose origin can no longer be read counts as navigated", async () => {
     let origin: string | null = ORIGIN;
     const t = setup({
@@ -395,6 +520,42 @@ describe("ViewportRun", () => {
     t.statuses.length = 0;
     await t.run.start([1440]);
     expect(t.final().saved).toEqual([put("1440")]);
+  });
+});
+
+describe("startRefusal", () => {
+  const idle = { capturing: false, viewportRunning: false };
+
+  test("a second run is refused while one is going, so it can't retarget the first", () => {
+    expect(startRefusal("viewport", { ...idle, viewportRunning: true })).toBe(
+      "A capture at several widths is already running"
+    );
+  });
+
+  test("a run is refused during a plain capture", () => {
+    expect(startRefusal("viewport", { ...idle, capturing: true })).toBe(
+      "A capture is already running"
+    );
+  });
+
+  test("a plain capture is refused during a run, the run's own captures are not", () => {
+    const running = { ...idle, viewportRunning: true };
+    expect(startRefusal("capture", running)).toBe("A capture at several widths is already running");
+    expect(startRefusal("width", running)).toBeNull();
+  });
+
+  test("nothing is refused when nothing is running", () => {
+    expect(startRefusal("capture", idle)).toBeNull();
+    expect(startRefusal("viewport", idle)).toBeNull();
+  });
+});
+
+describe("fittedLeft", () => {
+  test("puts the window's right edge at the screen's", () => {
+    expect(fittedLeft(1512, 1728)).toBe(216);
+  });
+  test("a window wider than the screen starts at its left edge", () => {
+    expect(fittedLeft(2000, 1728)).toBe(0);
   });
 });
 
