@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { batchOps, DEFAULT_IMPORT_OPTIONS, mapCapture, type PlanOp } from "../index";
+import { batchOps, DEFAULT_IMPORT_OPTIONS, mapCapture, missingFonts, type PlanOp } from "../index";
 import {
   anyOp,
   cap,
@@ -57,6 +57,25 @@ describe("mapCapture", () => {
     const plan = mapCapture(usingFont("Nimbus Sans"), inter);
     expect(plan.report.substitutedFonts).toEqual([{ from: "Nimbus Sans", to: "Inter Regular" }]);
     expect(plan.fonts).toEqual([{ family: "Inter", style: "Regular" }]);
+  });
+  test("a font override replaces a missing family with the chosen one", () => {
+    const available = [...inter, { family: "Roboto", style: "Regular" }];
+    const plan = mapCapture(usingFont("Nimbus Sans"), available, DEFAULT_IMPORT_OPTIONS, {
+      "Nimbus Sans": "Roboto",
+    });
+    expect(plan.fonts).toEqual([{ family: "Roboto", style: "Regular" }]);
+    expect(plan.report.substitutedFonts).toEqual([{ from: "Nimbus Sans", to: "Roboto Regular" }]);
+  });
+  test("an override naming a family that is not available falls back as before", () => {
+    const plan = mapCapture(usingFont("Nimbus Sans"), inter, DEFAULT_IMPORT_OPTIONS, {
+      "Nimbus Sans": "Gone",
+    });
+    expect(plan.fonts).toEqual([{ family: "Inter", style: "Regular" }]);
+  });
+  test("missingFonts lists each substituted family with its nearest match", () => {
+    const plan = mapCapture(usingFont("Nimbus Sans"), inter);
+    expect(missingFonts(plan.report, inter)).toEqual([{ family: "Nimbus Sans", nearest: "Inter" }]);
+    expect(missingFonts(mapCapture(usingFont("Inter"), inter).report, inter)).toEqual([]);
   });
   test("a run with no text produces no empty range", () => {
     const runs = textOp(withText(emptyRun())).runs;

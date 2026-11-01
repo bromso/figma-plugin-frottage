@@ -1,6 +1,6 @@
 import { type Capture, type CaptureNode, packFrottage } from "@repo/capture-schema";
 import { sha256Hex } from "@repo/capture-schema/hash";
-import type { FontRef, PlanOp, PlanTokens } from "@repo/figma-mapper";
+import type { FontRef, ImportOptions, PlanOp, PlanTokens } from "@repo/figma-mapper";
 import type { ImportPort } from "../import-flow";
 
 const box = { x: 0, y: 0, w: 100, h: 50 };
@@ -43,7 +43,7 @@ function element(id: string, children: CaptureNode[]): CaptureNode {
   } as CaptureNode;
 }
 
-function text(id: string): CaptureNode {
+function text(id: string, family = "Inter"): CaptureNode {
   return {
     ...common,
     id,
@@ -54,7 +54,7 @@ function text(id: string): CaptureNode {
       {
         start: 0,
         end: 2,
-        family: "Inter",
+        family,
         weight: 400,
         style: "normal",
         size: 16,
@@ -69,7 +69,7 @@ function text(id: string): CaptureNode {
   } as CaptureNode;
 }
 
-export function captureWithTexts(count: number, version = 1): Capture {
+export function captureWithTexts(count: number, version = 1, family = "Inter"): Capture {
   return {
     schemaVersion: version,
     capturedAt: "2026-10-31T00:00:00.000Z",
@@ -88,9 +88,16 @@ export function captureWithTexts(count: number, version = 1): Capture {
     warnings: [],
     root: element(
       "root",
-      Array.from({ length: count }, (_, i) => text(`t${i}`))
+      Array.from({ length: count }, (_, i) => text(`t${i}`, family))
     ),
   } as Capture;
+}
+
+/** A File of one text layer set in `family`, which the fake port may not list. */
+export function fontFile(family: string, url = "https://example.com/"): File {
+  const capture = captureWithTexts(1, 1, family);
+  capture.source.url = url;
+  return new File([packFrottage(capture, new Map()) as BlobPart], "page.frottage");
 }
 
 /** A File of a packed capture: the root frame plus `texts` text layers. */
@@ -117,6 +124,9 @@ export type FakePort = ImportPort & {
     tokenFailures?: number;
   };
   failOn?: "batch" | "end";
+  /** In-memory stand-in for figma.clientStorage. */
+  prefs: Map<string, unknown>;
+  tokensOptions?: ImportOptions;
   beginMeta?: Parameters<ImportPort["begin"]>[0];
   tokensSent?: PlanTokens;
 };
@@ -124,7 +134,16 @@ export type FakePort = ImportPort & {
 export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular" }]): FakePort {
   const port: FakePort = {
     log: [],
+    prefs: new Map(),
     batchSizes: [],
+    async getPrefs(key) {
+      port.log.push(`getPrefs ${key}`);
+      return port.prefs.get(key);
+    },
+    async setPrefs(key, value) {
+      port.log.push(`setPrefs ${key}`);
+      port.prefs.set(key, value);
+    },
     endResult: { rootId: "1:2", failedOps: 0, missingImages: 0 },
     async listFonts() {
       port.log.push("listFonts");
@@ -134,9 +153,10 @@ export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular"
       port.log.push("begin");
       port.beginMeta = meta;
     },
-    async tokens(tokens) {
+    async tokens(tokens, options) {
       port.log.push("tokens");
       port.tokensSent = tokens;
+      port.tokensOptions = options;
     },
     async image() {
       port.log.push("image");

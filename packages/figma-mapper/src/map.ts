@@ -14,6 +14,7 @@ import { layerName } from "./names";
 import { DEFAULT_IMPORT_OPTIONS, type ImportOptions } from "./options";
 import type {
   FontRef,
+  ImportReport,
   LayerPlan,
   PlanChildLayout,
   PlanEffect,
@@ -165,7 +166,9 @@ function settle(layout: PlanLayout, childLayout: PlanChildLayout | undefined): P
 export function mapCapture(
   capture: Capture,
   available: FontRef[],
-  options: ImportOptions = DEFAULT_IMPORT_OPTIONS
+  options: ImportOptions = DEFAULT_IMPORT_OPTIONS,
+  /** Missing family to the available family the user chose for it. */
+  fontOverrides: Readonly<Record<string, string>> = {}
 ): LayerPlan {
   const ops: PlanOp[] = [];
   const fonts = new Map<string, FontRef>();
@@ -188,10 +191,16 @@ export function mapCapture(
     let m = matches.get(key);
     if (!m) {
       m = matchFont(family, weight, italic, available);
+      const chosen = Object.hasOwn(fontOverrides, family) ? fontOverrides[family] : undefined;
+      if (m.substituted && chosen) {
+        const o = matchFont(chosen, weight, italic, available);
+        if (!o.substituted) m = o;
+      }
       matches.set(key, m);
     }
     fonts.set(`${m.font.family}\u0000${m.font.style}`, m.font);
-    if (m.substituted && !substituted.has(family)) {
+    const replaced = m.font.family.trim().toLowerCase() !== family.trim().toLowerCase();
+    if ((m.substituted || replaced) && !substituted.has(family)) {
       substituted.set(family, `${m.font.family} ${m.font.style}`);
     }
     return m.font;
@@ -492,4 +501,14 @@ export function batchOps(ops: PlanOp[], size = 50): PlanOp[][] {
   const out: PlanOp[][] = [];
   for (let i = 0; i < ops.length; i += n) out.push(ops.slice(i, i + n));
   return out;
+}
+
+export type MissingFont = { family: string; nearest: string };
+
+/** The families a plan had to replace, each with the family it was replaced by. */
+export function missingFonts(report: ImportReport, available: FontRef[]): MissingFont[] {
+  return report.substitutedFonts.map(({ from, to }) => ({
+    family: from,
+    nearest: available.find((f) => `${f.family} ${f.style}` === to)?.family ?? to,
+  }));
 }

@@ -1,6 +1,6 @@
 export { matchFont } from "./fonts";
 export { inferChildLayout, inferLayout } from "./layout";
-export { batchOps, mapCapture } from "./map";
+export { batchOps, type MissingFont, mapCapture, missingFonts } from "./map";
 export { isReadableName, layerName } from "./names";
 export { DEFAULT_IMPORT_OPTIONS, type ImportOptions } from "./options";
 export type {

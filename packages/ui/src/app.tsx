@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { type ImportPort, type ImportState, runImport } from "./import/import-flow";
+import { FontTable } from "./import/font-table";
+import {
+  type ImportPort,
+  type ImportState,
+  type ReviewDecision,
+  runImport,
+} from "./import/import-flow";
+import { OptionsSheet } from "./import/options";
 import { Button, Progress, SectionTitle } from "./index";
 
 const MORE_THAN_ONE = "You dropped more than one file. Frottage imported the first one.";
@@ -23,6 +30,13 @@ function Report({
   if (report.downscaledImages > 0) rows.push(["Images downscaled", report.downscaledImages]);
   if (failedOps > 0) rows.push(["Failed layers", failedOps]);
   if (missingImages > 0) rows.push(["Missing images", missingImages]);
+  const { autoLayoutFrames, fallbackFrames, tokenFailures } = state;
+  if (autoLayoutFrames > 0) rows.push(["Auto layout frames", autoLayoutFrames]);
+  if (fallbackFrames > 0) rows.push(["Frames without auto layout", fallbackFrames]);
+  if (state.stylesCreated > 0) rows.push(["Styles created", state.stylesCreated]);
+  if (state.stylesReused > 0) rows.push(["Styles reused", state.stylesReused]);
+  if (state.variablesCreated > 0) rows.push(["Variables created", state.variablesCreated]);
+  if (state.variablesReused > 0) rows.push(["Variables reused", state.variablesReused]);
   if (rewrappedTexts > 0) rows.push(["Text blocks that wrap differently", rewrappedTexts]);
   return (
     <div className="flex flex-col gap-2">
@@ -38,6 +52,12 @@ function Report({
           </div>
         ))}
       </dl>
+      {tokenFailures > 0 && (
+        <p className="text-figma-text-danger">
+          {tokenFailures} {tokenFailures === 1 ? "style or variable" : "styles or variables"} could
+          not be created and {tokenFailures === 1 ? "was" : "were"} left out.
+        </p>
+      )}
       {report.substitutedFonts.length > 0 && (
         <div>
           <p className="font-medium">Substituted fonts</p>
@@ -65,6 +85,56 @@ function Report({
   );
 }
 
+/** Options and missing fonts, before anything is created. Import always works as it stands. */
+function Review({
+  state,
+  onDecide,
+}: {
+  state: Extract<ImportState, { step: "review" }>;
+  onDecide: (decision: ReviewDecision | null) => void;
+}) {
+  const [options, setOptions] = useState(state.options);
+  const [choices, setChoices] = useState<Record<string, string>>({});
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div
+        data-testid="review-scroll"
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto"
+      >
+        {state.hostname && (
+          <p className="text-figma-text-secondary">Settings for {state.hostname}</p>
+        )}
+        <OptionsSheet options={options} onChange={setOptions} />
+        {state.missing.length > 0 && (
+          <FontTable
+            fonts={state.missing}
+            families={state.families}
+            choices={choices}
+            onChoose={(family, choice) => setChoices((c) => ({ ...c, [family]: choice }))}
+          />
+        )}
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" onClick={() => onDecide(null)}>
+          Cancel
+        </Button>
+        <Button
+          onClick={() =>
+            onDecide({
+              options,
+              fonts: Object.fromEntries(
+                state.missing.map((m) => [m.family, choices[m.family] ?? m.choice])
+              ),
+            })
+          }
+        >
+          Import
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** The one screen: choose a .frottage file, watch it import, read the report. */
 function App({ port }: { port?: ImportPort }) {
   const [state, setState] = useState<ImportState>({ step: "idle" });
@@ -72,6 +142,8 @@ function App({ port }: { port?: ImportPort }) {
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const decide = useRef<((d: ReviewDecision | null) => void) | null>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const headingRef = useRef<HTMLParagraphElement>(null);
   const working = state.step === "working";
@@ -100,7 +172,15 @@ function App({ port }: { port?: ImportPort }) {
     try {
       setNotice(files.length > 1 ? MORE_THAN_ONE : "");
       const target = port ?? (await import("./app.network")).channelImportPort;
-      await runImport(file, target, setState);
+      const forceReview = optionsOpen;
+      setOptionsOpen(false);
+      await runImport(file, target, setState, {
+        forceReview,
+        decide: () =>
+          new Promise<ReviewDecision | null>((resolve) => {
+            decide.current = resolve;
+          }),
+      });
     } finally {
       busy.current = false;
     }
@@ -153,6 +233,16 @@ function App({ port }: { port?: ImportPort }) {
         >
           <p className="text-figma-text-secondary">Drop a .frottage file here, or</p>
           <Button onClick={() => input.current?.click()}>Choose a file…</Button>
+          <Button
+            variant="secondary"
+            aria-pressed={optionsOpen}
+            onClick={() => setOptionsOpen((open) => !open)}
+          >
+            Options
+          </Button>
+          {optionsOpen && (
+            <p className="text-figma-text-secondary">The options open when you choose a file.</p>
+          )}
         </fieldset>
       )}
 
@@ -182,6 +272,16 @@ function App({ port }: { port?: ImportPort }) {
           </p>
           <Progress value={percent} aria-label="Import progress" />
         </div>
+      )}
+
+      {state.step === "review" && (
+        <Review
+          state={state}
+          onDecide={(decision) => {
+            decide.current?.(decision);
+            decide.current = null;
+          }}
+        />
       )}
 
       {state.step === "done" && (

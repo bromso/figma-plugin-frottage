@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { FrottageFileError } from "@repo/capture-schema";
-import { type ImportState, messageForError, runImport, yieldToPaint } from "../import-flow";
-import { fakePort, frottageFile, imageFile, namedFile } from "./helpers";
+import { DEFAULT_IMPORT_OPTIONS } from "@repo/figma-mapper";
+import {
+  type ImportState,
+  messageForError,
+  type ReviewDecision,
+  type ReviewSession,
+  runImport,
+  yieldToPaint,
+} from "../import-flow";
+import { fakePort, fontFile, frottageFile, imageFile, namedFile } from "./helpers";
 
 async function run(file: File, port = fakePort()) {
   const states: ImportState[] = [];
@@ -233,5 +241,160 @@ describe("messageForError", () => {
     expect(messageForError(new Error("secret"))).toBe(
       "Something went wrong importing this file. Nothing was added to your file."
     );
+  });
+});
+
+const fonts = [
+  { family: "Inter", style: "Regular" },
+  { family: "Roboto", style: "Regular" },
+];
+
+function confirm(decision: ReviewDecision | null, forceReview = false) {
+  const session: ReviewSession & { asked: number } = {
+    forceReview,
+    asked: 0,
+    async decide() {
+      session.asked += 1;
+      return decision;
+    },
+  };
+  return session;
+}
+
+async function runWith(file: File, port: ReturnType<typeof fakePort>, session: ReviewSession) {
+  const states: ImportState[] = [];
+  await runImport(file, port, (s) => states.push(s), session);
+  return states;
+}
+
+describe("DEFAULT_IMPORT_OPTIONS", () => {
+  test("defaults match the design", () => {
+    expect(DEFAULT_IMPORT_OPTIONS).toMatchObject({ autoLayout: true, htmlNames: false });
+  });
+});
+
+describe("the review step", () => {
+  test("no missing fonts means no review step", async () => {
+    const port = fakePort(fonts);
+    const session = confirm(null);
+    const states = await runWith(frottageFile(1), port, session);
+    expect(session.asked).toBe(0);
+    expect(states.some((s) => s.step === "review")).toBe(false);
+    expect(states.at(-1)?.step).toBe("done");
+    expect(port.tokensOptions).toEqual(DEFAULT_IMPORT_OPTIONS);
+  });
+
+  test("missing fonts show the nearest match pre-filled", async () => {
+    const port = fakePort(fonts);
+    const states = await runWith(fontFile("Nimbus Sans"), port, confirm(null));
+    const review = states.find((s) => s.step === "review");
+    expect(review).toMatchObject({
+      step: "review",
+      hostname: "example.com",
+      missing: [{ family: "Nimbus Sans", choice: "Inter" }],
+      families: ["Inter", "Roboto"],
+      options: DEFAULT_IMPORT_OPTIONS,
+    });
+  });
+
+  test("Import works with the pre-filled choice and never blocks", async () => {
+    const port = fakePort(fonts);
+    const states = await runWith(
+      fontFile("Nimbus Sans"),
+      port,
+      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: {} })
+    );
+    expect(states.at(-1)?.step).toBe("done");
+    expect(port.beginMeta?.fonts).toEqual([{ family: "Inter", style: "Regular" }]);
+  });
+
+  test("a chosen font flows into the plan", async () => {
+    const port = fakePort(fonts);
+    await runWith(
+      fontFile("Nimbus Sans"),
+      port,
+      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: { "Nimbus Sans": "Roboto" } })
+    );
+    expect(port.beginMeta?.fonts).toEqual([{ family: "Roboto", style: "Regular" }]);
+  });
+
+  test("a font choice is remembered per family", async () => {
+    const port = fakePort(fonts);
+    await runWith(
+      fontFile("Nimbus Sans"),
+      port,
+      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: { "Nimbus Sans": "Roboto" } })
+    );
+    expect(port.prefs.get("font:Nimbus Sans")).toBe("Roboto");
+    const states = await runWith(fontFile("Nimbus Sans"), port, confirm(null));
+    expect(states.find((s) => s.step === "review")).toMatchObject({
+      missing: [{ family: "Nimbus Sans", choice: "Roboto" }],
+    });
+  });
+
+  test("a stored font that is no longer available is ignored", async () => {
+    const port = fakePort(fonts);
+    port.prefs.set("font:Nimbus Sans", "Gone");
+    port.prefs.set("font:Other", 42);
+    const states = await runWith(fontFile("Nimbus Sans"), port, confirm(null));
+    expect(states.find((s) => s.step === "review")).toMatchObject({
+      missing: [{ family: "Nimbus Sans", choice: "Inter" }],
+    });
+  });
+
+  test("options are remembered per domain", async () => {
+    const port = fakePort(fonts);
+    const chosen = { ...DEFAULT_IMPORT_OPTIONS, autoLayout: false, htmlNames: true };
+    await runWith(frottageFile(1), port, confirm({ options: chosen, fonts: {} }, true));
+    expect(port.prefs.get("options:example.com")).toEqual(chosen);
+    expect(port.tokensOptions).toEqual(chosen);
+    // A plain drop uses them without asking.
+    const session = confirm(null);
+    await runWith(frottageFile(1), port, session);
+    expect(session.asked).toBe(0);
+    expect(port.tokensOptions).toEqual(chosen);
+    // Another domain keeps the defaults.
+    await runWith(fontFile("Inter", "https://other.example/"), port, confirm(null));
+    expect(port.tokensOptions).toEqual(DEFAULT_IMPORT_OPTIONS);
+  });
+
+  test("malformed stored options are ignored field by field", async () => {
+    const port = fakePort(fonts);
+    port.prefs.set("options:example.com", { autoLayout: "no", htmlNames: true, extra: 1 });
+    await runWith(frottageFile(1), port, confirm(null));
+    expect(port.tokensOptions).toEqual({ ...DEFAULT_IMPORT_OPTIONS, htmlNames: true });
+    port.prefs.set("options:example.com", "garbage");
+    await runWith(frottageFile(1), port, confirm(null));
+    expect(port.tokensOptions).toEqual(DEFAULT_IMPORT_OPTIONS);
+  });
+
+  test("failing prefs never block an import", async () => {
+    const port = fakePort(fonts);
+    port.getPrefs = async () => {
+      throw new Error("no storage");
+    };
+    port.setPrefs = async () => {
+      throw new Error("no storage");
+    };
+    const states = await runWith(
+      fontFile("Nimbus Sans"),
+      port,
+      confirm({ options: DEFAULT_IMPORT_OPTIONS, fonts: {} })
+    );
+    expect(states.at(-1)?.step).toBe("done");
+  });
+
+  test("opening options reviews even with no missing fonts", async () => {
+    const port = fakePort(fonts);
+    const states = await runWith(frottageFile(1), port, confirm(null, true));
+    expect(states.find((s) => s.step === "review")).toMatchObject({ missing: [] });
+  });
+
+  test("cancel returns to idle and creates nothing", async () => {
+    const port = fakePort(fonts);
+    const states = await runWith(fontFile("Nimbus Sans"), port, confirm(null));
+    expect(states.at(-1)).toEqual({ step: "idle" });
+    expect(port.log).not.toContain("begin");
+    expect(port.log.some((l) => l.startsWith("setPrefs"))).toBe(false);
   });
 });

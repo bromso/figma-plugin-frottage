@@ -33,6 +33,12 @@ PLUGIN_CHANNEL.registerMessageHandler("listFonts", async () => {
   return fonts.map((f) => ({ family: f.fontName.family, style: f.fontName.style }));
 });
 
+PLUGIN_CHANNEL.registerMessageHandler("getPrefs", (key) => figma.clientStorage.getAsync(key));
+
+PLUGIN_CHANNEL.registerMessageHandler("setPrefs", (key, value) =>
+  figma.clientStorage.setAsync(key, value)
+);
+
 PLUGIN_CHANNEL.registerMessageHandler("importBegin", async (meta) => {
   batchTotal = meta.totalOps;
   batchDone = 0;

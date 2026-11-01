@@ -7,6 +7,7 @@ import {
   type ImportOptions,
   type ImportReport,
   mapCapture,
+  missingFonts,
   type PlanOp,
   type PlanTokens,
 } from "@repo/figma-mapper";
@@ -14,8 +15,19 @@ import { messageForError } from "./messages";
 
 export { messageForError };
 
+/** A font the file uses that the user does not have, with the available family chosen for it. */
+export type ReviewFont = { family: string; choice: string };
+
 export type ImportState =
   | { step: "idle" }
+  | {
+      step: "review";
+      missing: ReviewFont[];
+      /** Every available family, for the choices. */
+      families: string[];
+      options: ImportOptions;
+      hostname: string;
+    }
   | { step: "working"; done: number; total: number }
   | {
       step: "done";
@@ -35,6 +47,8 @@ export type ImportState =
   | { step: "error"; message: string };
 
 export type ImportPort = {
+  getPrefs(key: string): Promise<unknown>;
+  setPrefs(key: string, value: unknown): Promise<void>;
   listFonts(): Promise<FontRef[]>;
   begin(meta: { name: string; fonts: FontRef[]; totalOps: number }): Promise<void>;
   tokens(tokens: PlanTokens, options: ImportOptions): Promise<void>;
@@ -56,6 +70,52 @@ export type ImportPort = {
   }>;
   cancel(): Promise<void>;
 };
+
+/** What the user confirmed in the review step. `fonts` maps a missing family to a chosen one. */
+export type ReviewDecision = { options: ImportOptions; fonts: Record<string, string> };
+
+export type ReviewSession = {
+  /** Review even when no font is missing. */
+  forceReview: boolean;
+  /** Resolves when the user confirms, or with null when they cancel. */
+  decide(): Promise<ReviewDecision | null>;
+};
+
+/** Stored options are untrusted: take each boolean field that is one, and keep the default for the rest. */
+export function sanitizeOptions(raw: unknown): ImportOptions {
+  const options = { ...DEFAULT_IMPORT_OPTIONS };
+  if (typeof raw !== "object" || raw === null) return options;
+  for (const key of Object.keys(options) as (keyof ImportOptions)[]) {
+    const value = (raw as Record<string, unknown>)[key];
+    if (typeof value === "boolean") options[key] = value;
+  }
+  return options;
+}
+
+/** Prefs never block an import: a failing read is as good as nothing stored. */
+async function readPref(port: ImportPort, key: string): Promise<unknown> {
+  try {
+    return await port.getPrefs(key);
+  } catch {
+    return undefined;
+  }
+}
+
+async function writePref(port: ImportPort, key: string, value: unknown): Promise<void> {
+  try {
+    await port.setPrefs(key, value);
+  } catch {
+    // Not remembering is the only cost.
+  }
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
 
 /** Files above this are refused before reading; the container enforces the real limits. */
 export const MAX_FILE_BYTES = 300 * 1024 * 1024;
@@ -102,7 +162,8 @@ async function verifyAssets(assets: Map<string, Uint8Array>): Promise<void> {
 export async function runImport(
   file: File,
   port: ImportPort,
-  onState: (s: ImportState) => void
+  onState: (s: ImportState) => void,
+  session?: ReviewSession
 ): Promise<void> {
   let begun = false;
   try {
@@ -114,8 +175,44 @@ export async function runImport(
     await verifyAssets(assets);
 
     await yieldToPaint();
-    const options = DEFAULT_IMPORT_OPTIONS;
-    const plan = mapCapture(capture, await port.listFonts(), options);
+    const available = await port.listFonts();
+    const hostname = hostnameOf(capture.source.url);
+    let options = sanitizeOptions(
+      hostname ? await readPref(port, `options:${hostname}`) : undefined
+    );
+    let plan = mapCapture(capture, available, options);
+
+    const missing = missingFonts(plan.report, available);
+    if (session && (missing.length > 0 || session.forceReview)) {
+      const families = [...new Set(available.map((f) => f.family))];
+      const reviewFonts: ReviewFont[] = [];
+      for (const { family, nearest } of missing) {
+        const stored = await readPref(port, `font:${family}`);
+        const choice = typeof stored === "string" && families.includes(stored) ? stored : nearest;
+        reviewFonts.push({ family, choice });
+      }
+      onState({ step: "review", missing: reviewFonts, families, options, hostname });
+      const decision = await session.decide();
+      if (!decision) {
+        onState({ step: "idle" });
+        return;
+      }
+      options = sanitizeOptions(decision.options);
+      const overrides: Record<string, string> = {};
+      for (const { family } of reviewFonts) {
+        const chosen = decision.fonts[family];
+        if (typeof chosen === "string" && families.includes(chosen)) overrides[family] = chosen;
+      }
+      // Prefilled choices not touched by the user are still the answer the user accepted.
+      for (const { family, choice } of reviewFonts) overrides[family] ??= choice;
+      onState({ step: "working", done: 0, total: 0 });
+      await yieldToPaint();
+      plan = mapCapture(capture, available, options, overrides);
+      if (hostname) await writePref(port, `options:${hostname}`, options);
+      for (const [family, chosen] of Object.entries(overrides)) {
+        await writePref(port, `font:${family}`, chosen);
+      }
+    }
     const total = plan.ops.length;
     onState({ step: "working", done: 0, total });
 
