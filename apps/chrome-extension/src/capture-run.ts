@@ -22,14 +22,17 @@ export type RunStatus =
   | { state: "viewport"; index: number; total: number; label: string }
   /**
    * A viewport run's end. `saved` lists each capture in the one file, whose `filename` is set only
-   * when a file was saved; `mismatched` the widths Chrome gave instead of the one requested. `stopped` says what ended the run early, and `nodeLimit` and `blockedImages` are the
-   * worst of any file.
+   * when a file was saved; `mismatched` the widths Chrome gave instead of the one requested and
+   * `skipped` the widths Chrome refused. `stopped` says what ended the run early, and `nodes`,
+   * `nodeLimit` and `blockedImages` are the worst of any capture.
    */
   | {
       state: "viewport-done";
       saved: { label: string; width: number }[];
       filename?: string;
       mismatched: { requested: number; width: number }[];
+      skipped: number[];
+      nodes: number;
       nodeLimit: boolean;
       blockedImages: number;
       stopped?: string;

@@ -258,7 +258,7 @@ describe("holdTab", () => {
     const c = fakeChrome();
     const held = await holdTab(c.api, 5, RUN_PAGE);
     expect(c.calls.windowsCreate).toEqual([
-      { tabId: 5, type: "popup", focused: false, height: 900, incognito: false },
+      { tabId: 5, type: "popup", focused: false, height: 900, left: 0, top: 0, incognito: false },
     ]);
     expect(c.tab()?.windowId).toBe(held.runWindowId);
     const holder = c.infoOf(held.holderId);

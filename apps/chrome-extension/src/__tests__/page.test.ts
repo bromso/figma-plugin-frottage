@@ -321,6 +321,8 @@ describe("viewportAdvice", () => {
       { label: "834", width: 834 },
     ],
     mismatched: [],
+    skipped: [] as number[],
+    nodes: 0,
     nodeLimit: false,
     blockedImages: 0,
   };
@@ -342,6 +344,16 @@ describe("viewportAdvice", () => {
       viewportAdvice({ ...base, stopped: "The page changed address, so the run stopped." }).stopped
     ).toBe("The page changed address, so the run stopped.");
     expect(viewportAdvice({ ...base, cancelled: true }).stopped).toBe("You stopped the run.");
+  });
+
+  test("a large page gets the layer-count warning as before", () => {
+    expect(viewportAdvice({ ...base, nodes: 12_000 }).nodeWarning).toContain("12,000");
+  });
+
+  test("a skipped width is named", () => {
+    expect(viewportAdvice({ ...base, skipped: [3840] }).skipped).toEqual([
+      "3840 couldn't be reached, so it was skipped.",
+    ]);
   });
 
   test("carries the size and image flags", () => {

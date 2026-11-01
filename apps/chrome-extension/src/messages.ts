@@ -52,7 +52,7 @@ export type SwMessage =
   /** Gives the tab back where it was. */
   | { target: "sw"; type: "release-tab"; held: HeldTab }
   | { target: "sw"; type: "window-open"; runWindowId: number }
-  | { target: "sw"; type: "resize-window"; runWindowId: number; width: number; left?: number }
+  | { target: "sw"; type: "resize-window"; runWindowId: number; width: number }
   /** The run is over: the worker badges the icon and opens the popup in the user's window. */
   | { target: "sw"; type: "run-finished"; failed: boolean; windowId?: number }
   | { target: "sw"; type: "close-offscreen" };

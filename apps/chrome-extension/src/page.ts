@@ -286,6 +286,7 @@ export function viewportAdvice(status: RunStatus & { state: "viewport-done" }): 
   saved: string[];
   mismatches: string[];
   stopped: string | null;
+  skipped: string[];
   nodeWarning: string | null;
   blockedImages: number;
 } {
@@ -293,7 +294,8 @@ export function viewportAdvice(status: RunStatus & { state: "viewport-done" }): 
     saved: status.saved.map((s) => s.label),
     mismatches: status.mismatched.map((m) => `${m.requested} was captured at ${m.width}.`),
     stopped: status.stopped ?? (status.cancelled ? "You stopped the run." : null),
-    nodeWarning: nodeAdvice(0, status.nodeLimit).warning,
+    skipped: status.skipped.map((w) => `${w} couldn't be reached, so it was skipped.`),
+    nodeWarning: nodeAdvice(status.nodes, status.nodeLimit).warning,
     blockedImages: status.blockedImages,
   };
 }

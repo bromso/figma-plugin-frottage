@@ -33,13 +33,19 @@ function RunPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background p-6 text-center text-foreground">
-      <Type>
-        {status.state === "viewport" ? viewportStatusLabel(status) : "Capturing the page…"}
-      </Type>
-      <Type className="text-muted-foreground">Leave the small window open.</Type>
-      <Button variant="secondary" disabled={stopping} onClick={cancel}>
-        {stopping ? "Stopping…" : "Cancel"}
-      </Button>
+      {status.state === "viewport-done" ? (
+        <Type>{status.stopped ?? "The run is done."}</Type>
+      ) : (
+        <>
+          <Type>
+            {status.state === "viewport" ? viewportStatusLabel(status) : "Capturing the page…"}
+          </Type>
+          <Type className="text-muted-foreground">Leave the small window open.</Type>
+          <Button variant="secondary" disabled={stopping} onClick={cancel}>
+            {stopping ? "Stopping…" : "Cancel"}
+          </Button>
+        </>
+      )}
     </main>
   );
 }

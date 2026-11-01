@@ -356,6 +356,11 @@ function Popup() {
                 : "No files were saved."}
             </Type>
             {run.stopped && <Type className="text-destructive">{run.stopped}</Type>}
+            {run.skipped.map((line) => (
+              <Type key={line} className="text-muted-foreground">
+                {line}
+              </Type>
+            ))}
             {run.mismatches.map((m) => (
               <Type key={m} className="text-muted-foreground">
                 {m}

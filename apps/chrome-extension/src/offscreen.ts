@@ -118,6 +118,8 @@ const viewport: ViewportRun = new ViewportRun({
       return reply.filename ?? filename;
     } finally {
       URL.revokeObjectURL(url);
+      // Whatever happened, the run's captures are not kept in memory after it.
+      captured = new CaptureSet();
     }
   },
   announce: (failed) => {

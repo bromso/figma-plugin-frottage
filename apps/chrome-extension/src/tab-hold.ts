@@ -51,6 +51,8 @@ export type HoldWindowsApi = {
     incognito?: boolean;
     focused?: boolean;
     height?: number;
+    left?: number;
+    top?: number;
   }) => Promise<{ id?: number }>;
   get: (windowId: number) => Promise<unknown>;
 };
@@ -95,6 +97,9 @@ export async function holdTab(api: HoldApi, tabId: number, runPageUrl: string): 
       type: "popup",
       focused: false,
       height: RUN_WINDOW_HEIGHT,
+      // At the screen's corner, so no width up to the screen's own is refused for its bounds.
+      left: 0,
+      top: 0,
       // The extension runs in spanning mode, so a tab in Incognito must stay in Incognito.
       incognito: tab.incognito,
     });

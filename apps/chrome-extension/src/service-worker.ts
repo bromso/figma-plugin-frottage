@@ -225,7 +225,7 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
     return answer(
       async () => ({
         ok: true,
-        width: await resizeWindow(WINDOWS, message.runWindowId, message.width, message.left),
+        width: await resizeWindow(WINDOWS, message.runWindowId, message.width),
       }),
       sendResponse
     );

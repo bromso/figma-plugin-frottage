@@ -9,22 +9,25 @@ export type WindowsApi = {
   update: (windowId: number, info: Record<string, unknown>) => Promise<unknown>;
 };
 
-/**
- * Sets a window's width and returns the width Chrome gave. `left` moves it too, for a width Chrome
- * would refuse where the window stands.
- */
+/** Sets a window's width and returns the width Chrome gave. */
 export async function resizeWindow(
   api: WindowsApi,
   windowId: number,
-  width: number,
-  left?: number
+  width: number
 ): Promise<number> {
-  await api.update(windowId, { width, ...(left === undefined ? {} : { left }) });
+  await api.update(windowId, { width });
   return (await api.get(windowId)).width ?? width;
 }
 
 export type CaptureResult =
-  | { ok: true; label?: string; width: number; nodeLimit: boolean; blockedImages: number }
+  | {
+      ok: true;
+      label?: string;
+      width: number;
+      nodes: number;
+      nodeLimit: boolean;
+      blockedImages: number;
+    }
   | { ok: false; message: string };
 
 /**
@@ -57,8 +60,8 @@ export class CaptureGate {
     const waiting = this.waiting;
     if (!waiting) return false;
     if (status.state === "saved") {
-      const { width, label, nodeLimit, blockedImages } = status;
-      waiting({ ok: true, width, nodeLimit, blockedImages, ...(label ? { label } : {}) });
+      const { width, label, nodes, nodeLimit, blockedImages } = status;
+      waiting({ ok: true, width, nodes, nodeLimit, blockedImages, ...(label ? { label } : {}) });
     } else if (status.state === "error") {
       waiting({ ok: false, message: status.message });
     }
@@ -100,8 +103,8 @@ export type ViewportDeps = {
   save: () => Promise<string>;
   /** Tells the user the run is over. `failed` is true when it saved less than was asked. */
   announce: (failed: boolean) => void;
-  /** One capture. `label` is what the window says; the page has the last word. */
-  capture: (label: string) => Promise<CaptureResult>;
+  /** One capture, kept in the run's set. The page has the last word on its width. */
+  capture: () => Promise<CaptureResult>;
   /** The width the page is laid out at; null when it can't be read. */
   pageWidth: () => Promise<number | null>;
   /** Pages re-lay out on resize: this gives them time. */
@@ -113,10 +116,9 @@ type Final = RunStatus & { state: "viewport-done" };
 
 const WINDOW_CLOSED = "The window was closed, so the run stopped.";
 const LEFT_PAGE = "The page changed address, so the run stopped.";
-const NOT_RESIZED = "The window couldn't be resized, so the run stopped.";
 const NOT_MOVED = "The tab couldn't be moved, so the run stopped.";
 const STRANDED = "Your tab couldn't be moved back. It's in the small window.";
-const NOT_SAVED = "The file couldn't be saved.";
+const notSaved = (reason: string) => `The file couldn't be saved: ${friendlyError(reason)}`;
 const WENT_WRONG = "Something went wrong, so the run stopped.";
 const held = (width: number) =>
   `The page stayed at ${width} when the window was resized, so the run stopped. Turn off the device toolbar in Developer Tools and capture again.`;
@@ -141,7 +143,7 @@ export class ViewportRun {
 
   constructor(private deps: ViewportDeps) {}
 
-  /** Resolves when the run has finished and the window is back. */
+  /** Resolves when the run has finished, the tab is back and the file is saved. */
   start(widths: number[]): Promise<void> {
     if (this.running) throw new Error(RUN_BUSY);
     this.running = true;
@@ -150,7 +152,7 @@ export class ViewportRun {
     return this.drive(widths);
   }
 
-  /** Takes effect between widths: a capture in progress finishes and its file is kept. */
+  /** Takes effect between widths: a capture in progress finishes and is kept. */
   cancel(): void {
     this.cancelled = true;
   }
@@ -178,11 +180,13 @@ export class ViewportRun {
       state: "viewport-done",
       saved: [],
       mismatched: [],
+      skipped: [],
+      nodes: 0,
       nodeLimit: false,
       blockedImages: 0,
     };
     try {
-      await this.withTab(asked, done);
+      if (asked.length > 0) await this.withTab(asked, done);
     } finally {
       this.running = false;
       try {
@@ -191,7 +195,7 @@ export class ViewportRun {
         // The status is already held for the popup's next open.
       }
       try {
-        this.deps.announce(done.saved.length < asked.length);
+        this.deps.announce(done.saved.length < asked.length || done.stopped === STRANDED);
       } catch {
         // The status is the record; a missed announcement loses nothing.
       }
@@ -228,20 +232,25 @@ export class ViewportRun {
     if (done.saved.length > 0) {
       try {
         done.filename = await this.deps.save();
-      } catch {
+      } catch (error) {
+        // Nothing was saved, so nothing about the file is left to advise on.
         done.saved = [];
-        done.stopped = NOT_SAVED;
+        done.mismatched = [];
+        done.nodes = 0;
+        done.nodeLimit = false;
+        done.blockedImages = 0;
+        done.stopped = notSaved(messageOf(error));
       }
     }
     if (stranded) done.stopped = STRANDED;
   }
 
-  /** The width Chrome gave, or why it gave none. */
-  private async resized(width: number): Promise<number | { stopped: string }> {
+  /** The width Chrome gave; "closed" when the window is gone, "refused" when it won't take it. */
+  private async resized(width: number): Promise<number | "closed" | "refused"> {
     try {
       return await this.deps.resize(width);
     } catch {
-      return { stopped: (await this.windowOpen()) ? NOT_RESIZED : WINDOW_CLOSED };
+      return (await this.windowOpen()) ? "refused" : "closed";
     }
   }
 
@@ -252,7 +261,11 @@ export class ViewportRun {
     for (const [index, requested] of widths.entries()) {
       if (this.stopping(done)) return undefined;
       const given = await this.resized(requested);
-      if (typeof given !== "number") return given.stopped;
+      if (given === "closed") return WINDOW_CLOSED;
+      if (given === "refused") {
+        done.skipped.push(requested);
+        continue;
+      }
       const repeat = seen.get(given);
       if (repeat !== undefined) {
         if (repeat !== requested) done.mismatched.push({ requested, width: repeat });
@@ -268,9 +281,10 @@ export class ViewportRun {
       if (this.stopping(done)) return undefined;
       if ((await this.origin()) !== home) return this.whyGone();
       const stuck = await this.heldAt(given);
-      if (stuck !== null) return held(stuck);
+      if (typeof stuck === "string") return stuck;
+      if (stuck !== null) return held(stuck.at);
       const result = await this.deps
-        .capture(String(given))
+        .capture()
         .catch((error): CaptureResult => ({ ok: false, message: messageOf(error) }));
       if (!result.ok) {
         if ((await this.origin()) !== home) return this.whyGone();
@@ -282,6 +296,7 @@ export class ViewportRun {
       seen.set(given, real);
       if (real !== requested) done.mismatched.push({ requested, width: real });
       done.saved.push({ label, width: result.width });
+      done.nodes = Math.max(done.nodes, result.nodes);
       done.nodeLimit ||= result.nodeLimit;
       done.blockedImages = Math.max(done.blockedImages, result.blockedImages);
     }
@@ -289,20 +304,23 @@ export class ViewportRun {
   }
 
   /**
-   * The width the page is held at, or null. Device mode keeps a page at its own width whatever the
-   * window does, and then every width would save the same file. A page narrower than its window
-   * can also just share it with docked Developer Tools, so moving the window tells them apart.
+   * Whether the page is held at one width, or why the run must stop; null when it follows the window.
+   * Device mode keeps a page at its own width whatever the window does, and then every width would
+   * save the same file. A page narrower than its window can also just share it with docked
+   * Developer Tools, so moving the window tells them apart.
    */
-  private async heldAt(windowWidth: number): Promise<number | null> {
+  private async heldAt(windowWidth: number): Promise<{ at: number } | string | null> {
     const width = await this.pageWidth();
     if (width === null || width === windowWidth) return null;
     const probe =
       windowWidth - PROBE_PX >= MIN_WIDTH ? windowWidth - PROBE_PX : windowWidth + PROBE_PX;
-    await this.deps.resize(probe);
+    const moved = await this.resized(probe);
+    if (moved === "closed") return WINDOW_CLOSED;
+    // A probe Chrome refuses can't tell the cases apart, so the capture goes ahead.
+    if (moved === "refused") return null;
     await this.deps.settle();
-    const moved = await this.pageWidth();
-    if (moved === width) return width;
-    await this.deps.resize(windowWidth);
+    if ((await this.pageWidth()) === width) return { at: width };
+    if ((await this.resized(windowWidth)) === "closed") return WINDOW_CLOSED;
     await this.deps.settle();
     return null;
   }

@@ -20,6 +20,8 @@ function fakeWindows(start: { width: number; maxWidth?: number }) {
     closed: false,
     /** Refuses every resize while the window stays open. */
     refuseAll: false,
+    /** Refuses just these widths, as Chrome does for one it can't give. */
+    refuse: new Set<number>(),
     win,
     api: {
       get: async () => {
@@ -28,7 +30,8 @@ function fakeWindows(start: { width: number; maxWidth?: number }) {
       },
       update: async (_id, info) => {
         if (state.closed) throw new Error("No window with id: 1.");
-        if (state.refuseAll) throw new Error("Invalid value for bounds.");
+        if (state.refuseAll || state.refuse.has(info.width as number))
+          throw new Error("Invalid value for bounds.");
         win.width = Math.min(Math.max(info.width as number, 120), start.maxWidth ?? 9999);
       },
     } satisfies WindowsApi,
@@ -47,6 +50,9 @@ type Over = {
   /** The page's width for a window width; by default the page fills the window. */
   pageWidth?: (windowWidth: number) => number | null;
   onStatus?: (status: RunStatus) => void;
+  /** The widths Chrome refuses, with the window still open. */
+  refuse?: number[];
+  nodes?: (count: number) => number;
   hold?: () => Promise<void>;
   release?: ReleaseOutcome | (() => Promise<ReleaseOutcome>);
   save?: () => Promise<string>;
@@ -58,6 +64,7 @@ function setup(over: Over = {}) {
   const captures: string[] = [];
   const events: string[] = [];
   const announced: boolean[] = [];
+  for (const width of over.refuse ?? []) fake.refuse.add(width);
   const run: ViewportRun = new ViewportRun({
     origin: async () => (over.origin ? over.origin() : ORIGIN),
     hold: async () => {
@@ -82,7 +89,8 @@ function setup(over: Over = {}) {
       events.push("announce");
       announced.push(failed);
     },
-    capture: async (label) => {
+    capture: async () => {
+      const label = String(fake.win.width);
       captures.push(label);
       const scripted = over.capture?.(label, run, captures.length);
       if (scripted) return scripted;
@@ -90,6 +98,7 @@ function setup(over: Over = {}) {
         ok: true,
         label,
         width: Number(label) - (over.scrollbar ?? 0),
+        nodes: over.nodes?.(captures.length) ?? 0,
         nodeLimit: false,
         blockedImages: 0,
       };
@@ -200,13 +209,32 @@ describe("ViewportRun", () => {
     expect(t.final().stopped).toBe("834 didn't fit in the file, so the run stopped there.");
   });
 
-  test("a failed save is reported and the tab is still back", async () => {
-    const t = setup({ save: () => Promise.reject(new Error("disk full")) });
+  test("a failed save is reported with its cause, the tab is still back, and nothing is advised about the file", async () => {
+    const t = setup({
+      maxWidth: 1400,
+      save: () => Promise.reject(new Error("disk full")),
+      nodes: () => 12_000,
+      capture: (label) =>
+        Promise.resolve({
+          ok: true,
+          label,
+          width: Number(label),
+          nodes: 12_000,
+          nodeLimit: true,
+          blockedImages: 4,
+        }),
+    });
     await t.run.start([1512]);
     expect(t.events.slice(-3)).toEqual(["release", "save", "announce"]);
-    expect(t.final().stopped).toBe("The file couldn't be saved.");
+    expect(t.final().stopped).toBe("The file couldn't be saved: disk full");
     expect(t.final().filename).toBeUndefined();
-    expect(t.final().saved).toEqual([]);
+    expect(t.final()).toMatchObject({
+      saved: [],
+      mismatched: [],
+      blockedImages: 0,
+      nodes: 0,
+      nodeLimit: false,
+    });
     expect(t.announced).toEqual([true]);
   });
 
@@ -231,6 +259,38 @@ describe("ViewportRun", () => {
     expect(t.announced).toEqual([true]);
   });
 
+  test("a stranded tab is a failure even when every size was saved", async () => {
+    const t = setup({ release: "stranded" });
+    await t.run.start([1512, 1440]);
+    expect(t.final().saved).toHaveLength(2);
+    expect(t.announced).toEqual([true]);
+  });
+
+  test("a window closed during the page-width probe gives the closed-window message", async () => {
+    const t = setup({
+      pageWidth: () => {
+        t.fake.closed = true;
+        return 390;
+      },
+    });
+    await t.run.start([1512]);
+    expect(t.final().stopped).toBe("The window was closed, so the run stopped.");
+  });
+
+  test("no widths ends at once and moves nothing", async () => {
+    const t = setup();
+    await t.run.start([]);
+    expect(t.events).toEqual(["announce"]);
+    expect(t.final().saved).toEqual([]);
+    expect(t.run.running).toBe(false);
+  });
+
+  test("the largest layer count of any capture reaches the final status", async () => {
+    const t = setup({ nodes: (count) => (count === 1 ? 12_000 : 3_000) });
+    await t.run.start([1512, 1440]);
+    expect(t.final().nodes).toBe(12_000);
+  });
+
   test("a typed label's width is read from the label", async () => {
     const t = setup({
       capture: (label) =>
@@ -238,6 +298,7 @@ describe("ViewportRun", () => {
           ok: true,
           label: `${label} Dark`,
           width: 1512,
+          nodes: 0,
           nodeLimit: false,
           blockedImages: 0,
         }),
@@ -275,6 +336,7 @@ describe("ViewportRun", () => {
           ok: true,
           label: "1200",
           width: 1200,
+          nodes: 0,
           nodeLimit: false,
           blockedImages: 0,
         }),
@@ -439,18 +501,24 @@ describe("ViewportRun", () => {
     expect(t.final().stopped).toBe("The window was closed, so the run stopped.");
   });
 
-  test("a refused resize stops plainly, with no second try, and the tab goes back", async () => {
-    const t = setup({
-      capture: () => {
-        t.fake.refuseAll = true;
-        return null;
-      },
-    });
+  test("a refused width is skipped and the rest still capture", async () => {
+    const t = setup({ refuse: [1512] });
+    await t.run.start([1512, 1440, 834]);
+    expect(t.captures).toEqual(["1440", "834"]);
+    expect(t.final().skipped).toEqual([1512]);
+    expect(t.final().stopped).toBeUndefined();
+    expect(t.final().saved).toEqual([put("1440"), put("834")]);
+    expect(t.announced).toEqual([true]);
+  });
+
+  test("every width refused saves nothing and says so", async () => {
+    const t = setup({ refuse: [1512, 1440] });
     await t.run.start([1512, 1440]);
-    expect(t.final().saved).toEqual([put("1512")]);
-    expect(t.final().stopped).toBe("The window couldn't be resized, so the run stopped.");
-    expect(t.events.filter((e) => e === "resize 1440")).toHaveLength(1);
+    expect(t.events).not.toContain("save");
+    expect(t.final().skipped).toEqual([1512, 1440]);
+    expect(t.final().saved).toEqual([]);
     expect(t.events).toContain("release");
+    expect(t.announced).toEqual([true]);
   });
 
   test("a resize failing because the window closed is not retried", async () => {
@@ -526,7 +594,7 @@ describe("ViewportRun", () => {
     expect(t.final().stopped).toBe("This page can't be captured.");
   });
 
-  test("Cancel between widths gives the tab back the window", async () => {
+  test("Cancel between widths stops the sweep, gives the tab back and saves", async () => {
     const t = setup({
       capture: (_label, run, count) => {
         if (count === 1) run.cancel();
@@ -538,6 +606,7 @@ describe("ViewportRun", () => {
     expect(t.final().saved).toEqual([put("1512")]);
     expect(t.final().cancelled).toBe(true);
     expect(t.final().stopped).toBeUndefined();
+    expect(t.events).toContain("release");
   });
 
   test("Cancel while the page settles captures nothing more", async () => {
@@ -558,6 +627,7 @@ describe("ViewportRun", () => {
           ok: true,
           label,
           width: Number(label),
+          nodes: 0,
           nodeLimit: count === 1,
           blockedImages: count === 1 ? 2 : 3,
         }),
@@ -666,6 +736,7 @@ describe("CaptureGate", () => {
       ok: true,
       width: 1425,
       label: "1440",
+      nodes: 3,
       nodeLimit: true,
       blockedImages: 1,
     });
