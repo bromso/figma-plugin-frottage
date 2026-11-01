@@ -237,7 +237,6 @@ export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular"
         tokenFailures: 0,
         modes: 0,
         modesDropped: 0,
-        autoLineHeights: 0,
         ...port.setResult,
       };
     },

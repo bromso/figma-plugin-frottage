@@ -60,7 +60,6 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     modes: number;
     modesDropped: number;
     droppedVersions: number[];
-    autoLineHeights: number;
   };
   importEndSet(): {
     rootIds: string[];
@@ -73,6 +72,5 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     modes: number;
     modesDropped: number;
     droppedVersions: number[];
-    autoLineHeights: number;
   };
 }>();

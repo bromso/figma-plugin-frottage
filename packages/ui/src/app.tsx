@@ -157,13 +157,6 @@ function SetSummary({ set }: { set: SetReport }) {
           {set.plainFrames === 1 ? "uses" : "use"} no variables.
         </p>
       )}
-      {set.autoLineHeights > 0 && (
-        <p className="text-figma-text-secondary">
-          {plural(set.autoLineHeights, "text style")} changed between automatic and fixed line
-          height, so {set.autoLineHeights === 1 ? "its" : "their"} line height is the same in every
-          mode.
-        </p>
-      )}
       {set.tokenFailures > 0 && (
         <p className="text-figma-text-danger">
           {plural(set.tokenFailures, "style or variable", "styles or variables")} could not be made

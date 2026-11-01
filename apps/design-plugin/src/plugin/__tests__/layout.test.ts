@@ -946,7 +946,6 @@ describe("when to verify", () => {
       modes: 0,
       modesDropped: 0,
       droppedVersions: [],
-      autoLineHeights: 0,
     });
   });
 });

@@ -1190,31 +1190,11 @@ describe("an edited variable", () => {
 });
 
 describe("what the report gets", () => {
-  test("a line height that loses AUTO counts", async () => {
+  test("a role that's AUTO in every version stays AUTO", async () => {
     const f = fakeFigma();
-    const tokens = await settle(
-      f,
-      set({ colors: [], textStyles: [role("body/1", [16, 14], [24, null])] })
-    );
-    expect(tokens.counts().autoLineHeights).toBe(1);
-  });
-
-  test("a role that stays AUTO over a number counts", async () => {
-    const f = fakeFigma();
-    const tokens = await settle(
-      f,
-      set({ colors: [], textStyles: [role("body/1", [16, 14], [null, 20])] })
-    );
-    expect(tokens.counts().autoLineHeights).toBe(1);
-  });
-
-  test("all AUTO doesn't count", async () => {
-    const f = fakeFigma();
-    const tokens = await settle(
-      f,
-      set({ colors: [], textStyles: [role("body/1", [16, 14], [null, null])] })
-    );
-    expect(tokens.counts().autoLineHeights).toBe(0);
+    await settle(f, set({ colors: [], textStyles: [role("body/1", [16, 14], [null, null])] }));
+    expect(stylesIn(f)[0].lineHeight).toEqual({ unit: "AUTO" });
+    expect(variablesIn(f).map((v) => v.name)).toEqual(["type/body/1/size"]);
   });
 
   test("reading the file failing still reports the versions without a mode", async () => {

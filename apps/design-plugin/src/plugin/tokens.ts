@@ -47,8 +47,6 @@ export type TokenCounts = {
    * can also mean nothing needed a mode.
    */
   droppedVersions: number[];
-  /** Roles with AUTO and a number across modes, which a float variable can't hold, so one stays. */
-  autoLineHeights: number;
 };
 
 export const NO_TOKENS: TokenCounts = {
@@ -60,7 +58,6 @@ export const NO_TOKENS: TokenCounts = {
   modes: 0,
   modesDropped: 0,
   droppedVersions: [],
-  autoLineHeights: 0,
 };
 
 /** What the applier lends for one run: its time budget and its fonts. */
@@ -1057,17 +1054,11 @@ export function createTokenSet(api: PluginAPI) {
 
       const sizes = valuesFor(role.fontSize, firstSize, modeIds);
       const trackings = valuesFor(role.letterSpacing, firstTracking, modeIds);
-      const heldLines = [...modeIds.keys()].flatMap((version) =>
-        role.lineHeight.filter((v) => v.mode === version).map((v) => v.value)
-      );
-      if (heldLines.includes(null) && heldLines.some((v) => v !== null)) counts.autoLineHeights++;
-      // AUTO has no number: a role that starts on it stays on it, and a later AUTO takes the number.
-      const leadLine = heldLines.length > 0 ? (heldLines[0] ?? null) : firstLine;
-      const lineFirst = firstLine ?? leadLine;
+      // A role is AUTO in every version or a number in every one: `fixedLook` keeps them apart.
       const lines =
-        lineFirst === null || leadLine === null
+        firstLine === null
           ? new Map<string, number>()
-          : valuesFor(role.lineHeight, lineFirst, modeIds);
+          : valuesFor(role.lineHeight, firstLine, modeIds);
 
       const sizeVaries = varies(sizes, FLOAT);
       const lineVaries = varies(lines, FLOAT);
@@ -1075,7 +1066,7 @@ export function createTokenSet(api: PluginAPI) {
       const look = styleLook(
         role,
         sizeVaries ? firstSize : leadOf(sizes, firstSize),
-        lineVaries ? lineFirst : leadLine,
+        firstLine === null || lineVaries ? firstLine : leadOf(lines, firstLine),
         trackingVaries ? firstTracking : leadOf(trackings, firstTracking)
       );
       if (!sizeVaries && !lineVaries && !trackingVaries) return settleFlatRole(role, look);
@@ -1099,7 +1090,7 @@ export function createTokenSet(api: PluginAPI) {
       });
       await settleVaryingRole(role, look, [
         field("fontSize", "size", firstSize, sizes, sizeVaries),
-        field("lineHeight", "line-height", lineFirst ?? 0, lines, lineVaries),
+        field("lineHeight", "line-height", firstLine ?? 0, lines, lineVaries),
         field("letterSpacing", "tracking", firstTracking, trackings, trackingVaries),
       ]);
     };

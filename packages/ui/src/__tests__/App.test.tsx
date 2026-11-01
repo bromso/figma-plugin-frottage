@@ -462,14 +462,6 @@ describe("App (a set of versions)", () => {
     );
   });
 
-  it("names line heights that can't vary, only when there are some", async () => {
-    await imported({ modes: 2, autoLineHeights: 2 });
-    expect(screen.getByText(/2 text styles changed between automatic/)).toBeInTheDocument();
-    cleanup();
-    await imported({ modes: 2 });
-    expect(screen.queryByText(/automatic and fixed/)).toBeNull();
-  });
-
   it("names a failed version beside the ones that stayed", async () => {
     await imported({ modes: 2 }, 1);
     expect(screen.getByRole("alert")).toHaveTextContent("narrow");

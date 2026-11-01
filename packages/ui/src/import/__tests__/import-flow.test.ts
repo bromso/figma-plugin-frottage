@@ -1162,14 +1162,13 @@ describe("a set of versions", () => {
     const port = fakePort();
     port.droppedVersions = [1, 2];
     port.failVersion = 2;
-    port.setResult = { modes: 1, modesDropped: 2, autoLineHeights: 3, variablesCreated: 4 };
+    port.setResult = { modes: 1, modesDropped: 2, variablesCreated: 4 };
     const { last } = await runSet([wide(), mid(), narrow()], port);
     expect(doneOf(last).sets[0]).toMatchObject({
       name: "Example",
       modes: 1,
       modesDropped: 2,
       plainFrames: 1,
-      autoLineHeights: 3,
       variablesCreated: 4,
     });
   });

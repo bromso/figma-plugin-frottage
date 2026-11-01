@@ -58,7 +58,6 @@ export type SetReport = {
   modesDropped: number;
   /** Frames that stayed, of those versions, which keep plain values and bind no tokens. */
   plainFrames: number;
-  autoLineHeights: number;
   stylesCreated: number;
   stylesReused: number;
   variablesCreated: number;
@@ -156,7 +155,6 @@ type SetResult = {
   tokenFailures: number;
   modes: number;
   modesDropped: number;
-  autoLineHeights: number;
 };
 
 /** What the user confirmed in the review step. `fonts` maps a missing family to a chosen one. */
@@ -501,7 +499,6 @@ async function importSet(set: VersionSet, ctx: SetContext): Promise<SetOutcome> 
         modes: result.modes,
         modesDropped: result.modesDropped,
         plainFrames,
-        autoLineHeights: result.autoLineHeights,
         stylesCreated: result.stylesCreated,
         stylesReused: result.stylesReused,
         variablesCreated: result.variablesCreated,
