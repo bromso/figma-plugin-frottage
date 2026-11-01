@@ -99,6 +99,12 @@ export type PlanChildLayout = {
   cell?: { row: number; column: number };
 };
 
+/** A difference from the component, on the child at `path`, by index down the expanded tree. */
+export type PlanOverride =
+  | { path: number[]; kind: "text"; text: string; runs: PlanRun[] }
+  | { path: number[]; kind: "image"; hash: string }
+  | { path: number[]; kind: "swap"; key: string };
+
 export type PlanOp = (
   | {
       op: "frame";
@@ -121,6 +127,8 @@ export type PlanOp = (
       rotation?: number;
       /** Direct child ops that follow, so the applier knows when this frame is complete. */
       childCount: number;
+      /** Set on the root of a definition, whose `parent` is null. */
+      component?: { key: string; name: string };
     }
   | {
       op: "text";
@@ -189,6 +197,21 @@ export type PlanOp = (
       opacity: number;
       label: string;
     }
+  | {
+      op: "instance";
+      id: string;
+      parent: string;
+      name: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      /** The `component.key` of a definition earlier in `ops`. */
+      key: string;
+      /** Whether the instance must be set to its own size: the definition's root will not follow. */
+      resize: boolean;
+      overrides: PlanOverride[];
+    }
 ) & {
   /** How the node sits in an auto layout parent; absent under a parent with mode NONE. */
   childLayout?: PlanChildLayout;
@@ -203,6 +226,8 @@ export type ImportReport = {
   downscaledImages: number;
   substitutedFonts: { from: string; to: string }[];
   warnings: string[];
+  components: number;
+  instances: number;
 };
 
 /** A value worth a variable. `key` is the value, so it stays the same across imports. */

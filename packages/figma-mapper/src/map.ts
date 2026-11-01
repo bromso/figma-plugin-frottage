@@ -1,4 +1,5 @@
 import type { Capture, CaptureNode, ElementNode, TextNode } from "@repo/capture-schema";
+import { extractComponents } from "./components";
 import { mapFilters } from "./filters";
 import { matchFont } from "./fonts";
 import {
@@ -357,6 +358,17 @@ function settle(layout: PlanLayout, childLayout: PlanChildLayout | undefined): P
   };
 }
 
+/** Each element's tag by node id; iterative, like the walk, so depth is no limit. */
+function tagsOf(root: CaptureNode): Map<string, string> {
+  const tags = new Map<string, string>();
+  const stack = [root];
+  for (let node = stack.pop(); node; node = stack.pop()) {
+    tags.set(node.id, node.semantic.tag);
+    if (node.kind === "element") stack.push(...node.children);
+  }
+  return tags;
+}
+
 export function mapCapture(
   capture: Capture,
   available: FontRef[],
@@ -377,6 +389,8 @@ export function mapCapture(
     downscaledImages: capture.assets.filter((a) => a.downscaledFrom).length,
     substitutedFonts: [] as { from: string; to: string }[],
     warnings: capture.warnings.map((w) => w.detail),
+    components: 0,
+    instances: 0,
   };
 
   const warned = new Set<string>();
@@ -735,7 +749,14 @@ export function mapCapture(
       `Skew in a CSS transform was left out on ${skewedLayers} layer${skewedLayers === 1 ? "" : "s"}; any rotation was kept.`
     );
   }
-  return { ops, tokens, fonts: [...fonts.values()], assetHashes: [...hashes], report };
+  let finished = ops;
+  if (options.components) {
+    const found = extractComponents(ops, tagsOf(pageRoot));
+    finished = found.ops;
+    report.components = found.components;
+    report.instances = found.instances;
+  }
+  return { ops: finished, tokens, fonts: [...fonts.values()], assetHashes: [...hashes], report };
 }
 
 export function batchOps(ops: PlanOp[], size = 50): PlanOp[][] {

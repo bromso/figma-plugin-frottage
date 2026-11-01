@@ -1,0 +1,710 @@
+import { describe, expect, test } from "bun:test";
+import type { CaptureNode, ElementNode, TextNode } from "@repo/capture-schema";
+import { extractComponents } from "../components";
+import { mapCapture } from "../map";
+import { DEFAULT_IMPORT_OPTIONS } from "../options";
+import type { FontRef, LayerPlan, PlanOp, PlanOverride } from "../plan";
+import { cap, el, imageStyle, inter, run, textNode } from "./fixtures";
+
+type FrameOp = Extract<PlanOp, { op: "frame" }>;
+type InstanceOp = Extract<PlanOp, { op: "instance" }>;
+type TextOp = Extract<PlanOp, { op: "text" }>;
+
+const on = { ...DEFAULT_IMPORT_OPTIONS, components: true };
+const off = { ...DEFAULT_IMPORT_OPTIONS, components: false };
+
+const red = { r: 1, g: 0, b: 0, a: 1 };
+const blue = { r: 0, g: 0, b: 1, a: 1 };
+
+const label = (id: string, text = "Hello", over: Partial<TextNode["runs"][number]> = {}) =>
+  textNode(id, { text, runs: [run({ end: text.length, ...over })] });
+
+/** An element with a tag; children sit in a block, as a custom element's content usually does. */
+const tagged = (
+  tag: string,
+  id: string,
+  children: CaptureNode[] = [],
+  over: Partial<ElementNode> = {},
+  size: [number, number] = [100, 100]
+) => el(id, [0, 0], children, { semantic: { tag }, ...over }, size);
+
+/** Layout for a row: a flex container whose children sit side by side. */
+const flexRow = (over: Partial<ElementNode["layout"]> = {}): Pick<ElementNode, "layout"> => ({
+  layout: {
+    display: "flex",
+    flexDirection: "row",
+    flexWrap: "nowrap",
+    justifyContent: "normal",
+    alignItems: "flex-start",
+    gap: [0, 0],
+    position: "static",
+    padding: [0, 0, 0, 0],
+    margin: [0, 0, 0, 0],
+    order: 0,
+    grow: 0,
+    shrink: 1,
+    ...over,
+  },
+});
+
+const turn = (deg: number): ElementNode["transform"] => {
+  const rad = (deg * Math.PI) / 180;
+  return [Math.cos(rad), Math.sin(rad), -Math.sin(rad), Math.cos(rad), 0, 0];
+};
+
+const painted = (node: ElementNode, color: typeof red): ElementNode => ({
+  ...node,
+  style: { ...node.style, backgroundColor: color },
+});
+
+const svg = (id: string, markup: string): CaptureNode => ({
+  id,
+  kind: "svg",
+  box: { x: 0, y: 0, w: 16, h: 16 },
+  paintOrder: 0,
+  visible: true,
+  opacity: 1,
+  blendMode: "normal",
+  semantic: { tag: "svg" },
+  markup,
+});
+
+const image = (id: string, assetHash: string): CaptureNode => ({
+  id,
+  kind: "image",
+  box: { x: 0, y: 0, w: 50, h: 50 },
+  paintOrder: 0,
+  visible: true,
+  opacity: 1,
+  blendMode: "normal",
+  semantic: { tag: "img" },
+  assetHash,
+  fit: "cover",
+  objectPosition: "50% 50%",
+  ...imageStyle,
+});
+
+const plan = (children: CaptureNode[], options = on, fonts: FontRef[] = inter): LayerPlan =>
+  mapCapture(cap(el("root", [0, 0], children)), fonts, options);
+
+const definitions = (p: LayerPlan) =>
+  p.ops.filter((o): o is FrameOp => o.op === "frame" && o.component !== undefined);
+const instances = (p: LayerPlan) => p.ops.filter((o): o is InstanceOp => o.op === "instance");
+const keys = (p: LayerPlan) => definitions(p).map((d) => d.component?.key);
+const componentNames = (p: LayerPlan) => definitions(p).map((d) => d.component?.name);
+const pageRoot = (p: LayerPlan) => p.ops.find((o) => o.parent === null && !isDefinition(o));
+const isDefinition = (o: PlanOp) => o.op === "frame" && o.component !== undefined;
+const instance = (p: LayerPlan, id: string) => instances(p).find((o) => o.id === id);
+const descendantsOf = (p: LayerPlan, id: string): PlanOp[] => {
+  const kids = p.ops.filter((o) => o.parent === id);
+  return [...kids, ...kids.flatMap((k) => descendantsOf(p, k.id))];
+};
+
+/** What every plan must hold: unique ids, parents first, and a child count for each frame. */
+function expectWellFormed(p: LayerPlan) {
+  const seen = new Set<string>();
+  for (const op of p.ops) {
+    expect(seen.has(op.id)).toBe(false);
+    if (op.parent !== null) expect(seen.has(op.parent)).toBe(true);
+    seen.add(op.id);
+  }
+  for (const op of p.ops) {
+    if (op.op === "frame") {
+      expect(op.childCount).toBe(p.ops.filter((o) => o.parent === op.id).length);
+    }
+  }
+}
+
+/** Every key is defined once, and before anything uses it, which also rules out a cycle. */
+function expectInnerFirst(p: LayerPlan) {
+  const defined = new Set<string>();
+  const roots = new Map(definitions(p).map((d) => [d.id, d.component?.key as string]));
+  const ownerOf = (op: PlanOp): string | undefined => {
+    let at: PlanOp | undefined = op;
+    while (at && !roots.has(at.id)) {
+      const parent: string | null = at.parent;
+      at = parent === null ? undefined : p.ops.find((o) => o.id === parent);
+    }
+    return at ? roots.get(at.id) : undefined;
+  };
+  for (const op of p.ops) {
+    if (op.op === "frame" && op.component) {
+      expect(defined.has(op.component.key)).toBe(false);
+      defined.add(op.component.key);
+    }
+    if (op.op === "instance") {
+      expect(defined.has(op.key)).toBe(true);
+      expect(ownerOf(op)).not.toBe(op.key);
+    }
+  }
+}
+
+const links = (n: number, text: (i: number) => string = (i) => `Link ${i}`) =>
+  Array.from({ length: n }, (_, i) => tagged("x-link", `l${i}`, [label(`t${i}`, text(i))]));
+
+describe("which elements become components", () => {
+  test("one occurrence stays plain frames", () => {
+    const p = plan([tagged("x-link", "only", [label("t")])]);
+    expect(definitions(p)).toEqual([]);
+    expect(instances(p)).toEqual([]);
+    expect(p.ops.map((o) => o.id)).toEqual(["root", "only", "t"]);
+    expect(p.report).toMatchObject({ components: 0, instances: 0 });
+  });
+
+  test("twelve links with different text give one component and twelve instances", () => {
+    const p = plan(links(12));
+    expectWellFormed(p);
+    expect(keys(p)).toEqual(["x-link#1"]);
+    expect(instances(p).map((o) => o.id)).toEqual(Array.from({ length: 12 }, (_, i) => `l${i}`));
+    expect(new Set(instances(p).map((o) => o.key))).toEqual(new Set(["x-link#1"]));
+    expect(p.report).toMatchObject({ components: 1, instances: 12 });
+    expect(p.ops.filter((o) => o.op === "text")).toHaveLength(1);
+  });
+
+  test("names follow the tag, and tag / 1, tag / 2 for two signatures", () => {
+    const one = plan(links(2));
+    expect(componentNames(one)).toEqual(["x-link"]);
+    expect(definitions(one)[0]?.name).toBe("x-link");
+
+    const two = plan([
+      ...links(2),
+      ...[0, 1].map((i) =>
+        tagged("x-link", `b${i}`, [label(`u${i}`, "Same", { size: 40 }), label(`v${i}`)])
+      ),
+    ]);
+    expect(componentNames(two)).toEqual(["x-link / 1", "x-link / 2"]);
+    expect(keys(two)).toEqual(["x-link#1", "x-link#2"]);
+  });
+
+  test("elements without a hyphen in the tag are never components", () => {
+    const p = plan(
+      Array.from({ length: 5 }, (_, i) => tagged("section", `s${i}`, [label(`t${i}`)]))
+    );
+    expect(definitions(p)).toEqual([]);
+    expect(instances(p)).toEqual([]);
+  });
+
+  test("the page root is never hoisted, even as a custom element", () => {
+    const capture = cap(tagged("x-app", "root", [tagged("x-app", "inner")]));
+    const p = mapCapture(capture, inter, on);
+    expect(p.ops[0]?.id).toBe("root");
+    expect(definitions(p)).toEqual([]);
+  });
+
+  test("an occurrence with rotation on its root stays plain frames", () => {
+    const p = plan([
+      ...links(2),
+      tagged("x-link", "turned", [label("tt")], { transform: turn(10) }),
+    ]);
+    expect(instances(p).map((o) => o.id)).toEqual(["l0", "l1"]);
+    expect(p.ops.find((o) => o.id === "turned")?.op).toBe("frame");
+    expect(p.ops.find((o) => o.id === "tt")?.parent).toBe("turned");
+  });
+
+  test("an occurrence with rotation deep in its subtree stays plain frames", () => {
+    const turned = (id: string) =>
+      tagged("x-card", id, [
+        painted(
+          tagged("div", `${id}a`, [tagged("div", `${id}b`, [], { transform: turn(10) })]),
+          red
+        ),
+      ]);
+    const p = plan([turned("c0"), turned("c1")]);
+    expect(definitions(p)).toEqual([]);
+    expect(instances(p)).toEqual([]);
+  });
+
+  test("two rotated occurrences do not make the third a component", () => {
+    const p = plan([
+      tagged("x-link", "a", [label("ta")]),
+      tagged("x-link", "b", [label("tb")], { transform: turn(10) }),
+      tagged("x-link", "c", [label("tc")], { transform: turn(10) }),
+    ]);
+    expect(definitions(p)).toEqual([]);
+  });
+});
+
+describe("the signature", () => {
+  test("a primary and a secondary button stay separate", () => {
+    const button = (id: string, color: typeof red) =>
+      painted(tagged("x-button", id, [label(`${id}t`)]), color);
+    const p = plan([button("p0", red), button("p1", red), button("s0", blue), button("s1", blue)]);
+    expectWellFormed(p);
+    expect(keys(p)).toEqual(["x-button#1", "x-button#2"]);
+    expect(instance(p, "p1")?.key).toBe("x-button#1");
+    expect(instance(p, "s1")?.key).toBe("x-button#2");
+    const fills = definitions(p).map((d) => d.fills);
+    expect(fills[0]).not.toEqual(fills[1]);
+  });
+
+  test("paint on a descendant counts as well", () => {
+    const button = (id: string, color: typeof red) =>
+      tagged("x-button", id, [painted(tagged("div", `${id}i`, [], {}, [10, 10]), color)]);
+    const p = plan([button("a", red), button("b", blue)]);
+    expect(definitions(p)).toEqual([]);
+  });
+
+  test("different text style means a different signature", () => {
+    const p = plan(
+      ["size", "colour"].flatMap((_, n) =>
+        [0, 1].map((i) =>
+          tagged("x-tag", `e${n}${i}`, [
+            label(`t${n}${i}`, "Same", n === 0 ? { size: 12 } : { size: 12, color: red }),
+          ])
+        )
+      )
+    );
+    expect(keys(p)).toEqual(["x-tag#1", "x-tag#2"]);
+  });
+
+  test("alignment and wrapping count", () => {
+    const line = { x: 0, y: 0, w: 100, h: 20 };
+    const p = plan([
+      tagged("x-a", "a", [textNode("ta", { lines: [line] })]),
+      tagged("x-a", "b", [textNode("tb", { lines: [line, line] })]),
+      tagged("x-a", "c", [textNode("tc", { runs: [run({ align: "center" })], lines: [line] })]),
+    ]);
+    expect(definitions(p)).toEqual([]);
+  });
+
+  test("the width of text that does not wrap does not count", () => {
+    const short = textNode("ta", { box: { x: 0, y: 0, w: 30, h: 20 } });
+    const long = textNode("tb", { box: { x: 0, y: 0, w: 90, h: 20 } });
+    const p = plan([tagged("x-a", "a", [short]), tagged("x-a", "b", [long])]);
+    expect(keys(p)).toEqual(["x-a#1"]);
+  });
+
+  test("the name of a layer does not count", () => {
+    const p = plan([
+      tagged("x-a", "a", [tagged("div", "ai", [], { semantic: { tag: "div", ariaLabel: "One" } })]),
+      tagged("x-a", "b", [tagged("div", "bi", [], { semantic: { tag: "div", ariaLabel: "Two" } })]),
+    ]);
+    expect(keys(p)).toEqual(["x-a#1"]);
+  });
+
+  test("radius, effects, clipping, opacity and svg markup all count", () => {
+    const base = tagged("div", "x");
+    const looks: Partial<ElementNode>[] = [
+      { style: { ...base.style, borderRadius: [4, 4, 4, 4] } },
+      { style: { ...base.style, filters: ["blur(3px)"] } },
+      { style: { ...base.style, overflow: "hidden" } },
+      { opacity: 0.5 },
+    ];
+    for (const look of looks) {
+      const p = plan([
+        tagged("x-a", "a", [tagged("div", "ai", [], look)]),
+        tagged("x-a", "b", [tagged("div", "bi")]),
+      ]);
+      expect(definitions(p)).toEqual([]);
+    }
+    const p = plan([
+      tagged("x-a", "a", [svg("s1", "<svg>1</svg>")]),
+      tagged("x-a", "b", [svg("s2", "<svg>2</svg>")]),
+    ]);
+    expect(definitions(p)).toEqual([]);
+  });
+
+  test("a new op field compares without anyone listing it", () => {
+    const frame = (id: string, parent: string | null, extra: object = {}): PlanOp =>
+      ({
+        op: "frame",
+        id,
+        parent,
+        name: id,
+        x: 0,
+        y: 0,
+        w: 10,
+        h: 10,
+        fills: [],
+        strokes: null,
+        radius: [0, 0, 0, 0],
+        opacity: 1,
+        effects: [],
+        clips: false,
+        layout: { mode: "NONE" },
+        childCount: 0,
+        ...extra,
+      }) as PlanOp;
+    const out = extractComponents(
+      [
+        frame("root", null, { childCount: 2 }),
+        frame("a", "root", { future: 1 }),
+        frame("b", "root"),
+      ],
+      new Map([
+        ["a", "x-a"],
+        ["b", "x-a"],
+      ])
+    );
+    expect(out.components).toBe(0);
+  });
+
+  test("a root that hugs does not compare its size", () => {
+    const row = (id: string, w: number) =>
+      tagged("x-chip", id, [label(`${id}t`)], flexRow(), [w, 20]);
+    const a = row("a", 60);
+    const b = row("b", 90);
+    (a.children[0] as TextNode).box.w = 60;
+    (b.children[0] as TextNode).box.w = 90;
+    const p = plan([a, b]);
+    const root = definitions(p)[0];
+    expect(root?.layout).toMatchObject({ sizingH: "HUG" });
+    expect(instance(p, "b")).toMatchObject({ w: 90, resize: false });
+  });
+});
+
+describe("hug sizes", () => {
+  /** A link around a painted button, each as wide as its label. */
+  const link = (id: string, text: string, w: number) => {
+    const words = textNode(`${id}t`, {
+      text,
+      box: { x: 0, y: 0, w, h: 20 },
+      runs: [run({ end: text.length })],
+    });
+    const shrink = flexRow({ display: "inline-flex" });
+    const button = painted(tagged("button", `${id}b`, [words], shrink, [w, 20]), red);
+    return tagged("x-link", id, [button], shrink, [w, 20]);
+  };
+
+  test("two links with painted inner buttons and different labels are one component", () => {
+    const p = plan([link("a", "Short", 40), link("b", "Rather longer", 110)]);
+    expectWellFormed(p);
+    expect(keys(p)).toEqual(["x-link#1"]);
+    const inner = p.ops.find(
+      (o): o is FrameOp => o.op === "frame" && o.parent === definitions(p)[0]?.id
+    );
+    expect(inner?.layout).toMatchObject({ sizingH: "HUG" });
+    expect(instance(p, "b")).toMatchObject({ w: 110, resize: false });
+    expect(instance(p, "b")?.overrides).toMatchObject([
+      { path: [0, 0], kind: "text", text: "Rather longer" },
+    ]);
+  });
+
+  test("an inner frame that is not hugging still compares its size", () => {
+    const fixed = (id: string, w: number) =>
+      tagged("x-a", id, [painted(tagged("div", `${id}i`, [], {}, [w, 20]), red)]);
+    const p = plan([fixed("a", 40), fixed("b", 110)]);
+    expect(definitions(p)).toEqual([]);
+  });
+});
+
+describe("overrides", () => {
+  test("the first occurrence and equal text have none", () => {
+    const p = plan(links(3, () => "Same"));
+    for (const i of instances(p)) expect(i.overrides).toEqual([]);
+  });
+
+  test("different text overrides by path, with its runs", () => {
+    const p = plan(links(2, (i) => (i === 0 ? "Short" : "Rather longer")));
+    expect(instance(p, "l0")?.overrides).toEqual([]);
+    const [override, ...rest] = instance(p, "l1")?.overrides ?? [];
+    expect(rest).toEqual([]);
+    expect(override).toMatchObject({ path: [0], kind: "text", text: "Rather longer" });
+    expect(override).toMatchObject({ runs: [{ start: 0, end: 13 }] });
+  });
+
+  test("only the paths that differ are listed", () => {
+    const card = (id: string, second: string) =>
+      tagged("x-card", id, [label(`${id}a`, "Same"), label(`${id}b`, second)]);
+    const p = plan([card("a", "One"), card("b", "Two")]);
+    expect(instance(p, "b")?.overrides.map((o) => o.path)).toEqual([[1]]);
+  });
+
+  test("different images are an override, not a new signature", () => {
+    const pic = (id: string, hash: string) => tagged("x-pic", id, [image(`${id}i`, hash)]);
+    const p = plan([pic("a", "h1"), pic("b", "h2")]);
+    expect(keys(p)).toEqual(["x-pic#1"]);
+    expect(instance(p, "b")?.overrides).toEqual([{ path: [0], kind: "image", hash: "h2" }]);
+    expect(p.assetHashes.sort()).toEqual(["h1", "h2"]);
+  });
+
+  test("a link with text in a different href overrides runs", () => {
+    const link = (id: string, href: string) =>
+      tagged("x-link", id, [label(`${id}t`, "Same", { href })]);
+    const p = plan([link("a", "https://example.com/a"), link("b", "https://example.com/b")]);
+    expect(keys(p)).toEqual(["x-link#1"]);
+    const [override] = instance(p, "b")?.overrides ?? [];
+    expect(override).toMatchObject({ path: [0], kind: "text", text: "Same" });
+    expect(override).toMatchObject({ runs: [{ href: "https://example.com/b" }] });
+  });
+
+  test("runs split only by a link are one look", () => {
+    const whole = tagged("x-a", "a", [label("ta", "HelloWorld")]);
+    const split = tagged("x-a", "b", [
+      textNode("tb", {
+        text: "HelloWorld",
+        runs: [run({ end: 5, href: "https://example.com/" }), run({ start: 5, end: 10 })],
+      }),
+    ]);
+    const p = plan([whole, split]);
+    expect(keys(p)).toEqual(["x-a#1"]);
+    expect(instance(p, "b")?.overrides[0]).toMatchObject({ runs: [{ end: 5 }, { start: 5 }] });
+  });
+
+  test("a definition keeps its first occurrence's token keys, and an override keeps its own", () => {
+    const styled = { size: 22 };
+    const p = plan(
+      links(4, (i) => `Text ${i}`).map((l) => {
+        const t = l.children[0] as TextNode;
+        return { ...l, children: [{ ...t, runs: [run({ ...styled, end: t.text.length })] }] };
+      })
+    );
+    expect(p.tokens.textStyles).toHaveLength(1);
+    const key = p.tokens.textStyles[0]?.key;
+    const main = p.ops.find((o): o is TextOp => o.op === "text");
+    expect(main?.runs[0]?.styleKey).toBe(key as string);
+    const [override] = instance(p, "l3")?.overrides ?? [];
+    expect(override).toMatchObject({ runs: [{ styleKey: key }] });
+  });
+});
+
+describe("resize", () => {
+  test("a root with no auto layout is fixed, so a different size says so", () => {
+    const absolute = { ...DEFAULT_IMPORT_OPTIONS, components: true, autoLayout: false };
+    const p = plan(
+      [
+        tagged("x-a", "a", [], {}, [100, 40]),
+        tagged("x-a", "b", [], {}, [100, 40]),
+        tagged("x-a", "c", [], {}, [200, 40]),
+      ],
+      absolute
+    );
+    expect(keys(p)).toEqual(["x-a#1"]);
+    expect(instance(p, "a")?.resize).toBe(false);
+    expect(instance(p, "b")?.resize).toBe(false);
+    expect(instance(p, "c")).toMatchObject({ resize: true, w: 200, h: 40 });
+  });
+});
+
+describe("nesting", () => {
+  const icon = (id: string, markup = "<svg/>") => tagged("x-icon", id, [svg(`${id}s`, markup)]);
+  const row = (id: string, ...children: CaptureNode[]) => tagged("x-row", id, children);
+
+  test("a nested repeated element comes out inner-first", () => {
+    const p = plan([row("a", icon("ai")), row("b", icon("bi"))]);
+    expectWellFormed(p);
+    expectInnerFirst(p);
+    expect(keys(p)).toEqual(["x-icon#1", "x-row#1"]);
+    const outer = definitions(p)[1] as FrameOp;
+    const held = p.ops.filter((o) => o.parent === outer.id);
+    expect(held).toMatchObject([{ op: "instance", key: "x-icon#1" }]);
+    expect(p.report).toMatchObject({ components: 2, instances: 3 });
+    expect(
+      instances(p)
+        .filter((o) => o.key === "x-row#1")
+        .map((o) => o.id)
+    ).toEqual(["a", "b"]);
+  });
+
+  test("overrides reach through a nested instance", () => {
+    const inner = (id: string, text: string) => tagged("x-label", id, [label(`${id}t`, text)]);
+    const outer = (id: string, text: string) =>
+      tagged("x-card", id, [
+        label(`${id}h`, "Head"),
+        painted(tagged("div", `${id}d`, [inner(`${id}l`, text)]), red),
+      ]);
+    const p = plan([outer("a", "One"), outer("b", "Two")]);
+    expectInnerFirst(p);
+    expect(instance(p, "a")?.overrides).toEqual([]);
+    expect(instance(p, "b")?.overrides).toMatchObject([
+      { path: [1, 0, 0], kind: "text", text: "Two" },
+    ]);
+  });
+
+  test("a definition's nested instance carries overrides from its first occurrence", () => {
+    const inner = (id: string, text: string) => tagged("x-label", id, [label(`${id}t`, text)]);
+    const p = plan([
+      painted(tagged("div", "plain", [inner("first", "Base")]), red),
+      tagged("x-card", "a", [inner("al", "One")]),
+      tagged("x-card", "b", [inner("bl", "One")]),
+    ]);
+    const outer = definitions(p).find((d) => d.component?.key === "x-card#1") as FrameOp;
+    const nested = p.ops.find((o) => o.parent === outer.id) as InstanceOp;
+    expect(nested.overrides).toMatchObject([{ path: [0], kind: "text", text: "One" }]);
+    // Both occurrences say "One", so nothing differs from the first.
+    expect(instance(p, "b")?.overrides).toEqual([]);
+  });
+
+  test("an element repeated inside itself gives no cycle", () => {
+    const box = (id: string, ...children: CaptureNode[]) => tagged("x-box", id, children);
+    const p = plan([box("o1", box("o1i", label("t1"))), box("o2", box("o2i", label("t2")))]);
+    expectWellFormed(p);
+    expectInnerFirst(p);
+    expect(keys(p)).toEqual(["x-box#1", "x-box#2"]);
+  });
+
+  test("a nesting that a tag-only child would hide still gives no cycle", () => {
+    const box = (id: string, ...children: CaptureNode[]) => tagged("x-box", id, children);
+    // With children read as a bare tag, the outermost looks the same as the one inside it.
+    const p = plan([box("a", box("b", box("c", label("t1")))), box("d", box("e", label("t2")))]);
+    expectWellFormed(p);
+    expectInnerFirst(p);
+    expect(p.ops.find((o) => o.id === "a")?.op).toBe("frame");
+    expect(instance(p, "b")?.key).toBe(instance(p, "d")?.key as string);
+    expect(instance(p, "c")).toBeUndefined();
+  });
+
+  test("two links that differ only by icon are one component with a swap", () => {
+    const link = (id: string, markup: string) => tagged("x-link", id, [icon(`${id}i`, markup)]);
+    const p = plan([
+      link("a", "<svg>1</svg>"),
+      link("b", "<svg>2</svg>"),
+      icon("spare1", "<svg>1</svg>"),
+      icon("spare2", "<svg>2</svg>"),
+    ]);
+    expectWellFormed(p);
+    expectInnerFirst(p);
+    expect(keys(p)).toEqual(["x-icon#1", "x-icon#2", "x-link#1"]);
+    expect(instance(p, "a")?.overrides).toEqual([]);
+    expect(instance(p, "b")?.overrides).toEqual([
+      { path: [0], kind: "swap", key: "x-icon#2" },
+    ] satisfies PlanOverride[]);
+  });
+
+  test("links whose nested icons differ in height stay separate components", () => {
+    const flat = (id: string) => tagged("x-link", id, [icon(`${id}i`)]);
+    const tall = (id: string) =>
+      tagged("x-link", id, [
+        tagged("x-icon", `${id}i`, [
+          painted(tagged("div", `${id}d`, [svg(`${id}s`, "<svg/>")]), red),
+        ]),
+      ]);
+    const p = plan([flat("a"), flat("b"), tall("c"), tall("d")]);
+    expectInnerFirst(p);
+    expect(instance(p, "a")?.key).toBe(instance(p, "b")?.key as string);
+    expect(instance(p, "c")?.key).toBe(instance(p, "d")?.key as string);
+    expect(instance(p, "a")?.key).not.toBe(instance(p, "c")?.key as string);
+  });
+
+  test("two links whose icons appear once each stay plain frames", () => {
+    const link = (id: string, markup: string) => tagged("x-link", id, [icon(`${id}i`, markup)]);
+    const p = plan([link("a", "<svg>1</svg>"), link("b", "<svg>2</svg>")]);
+    expect(definitions(p)).toEqual([]);
+  });
+
+  test("a swapped instance is compared with what it was swapped to", () => {
+    const badge = (id: string, text: string, color: typeof red) =>
+      painted(tagged("x-badge", id, [label(`${id}t`, text)]), color);
+    const card = (id: string, inner: CaptureNode) => tagged("x-card", id, [inner]);
+    const p = plan([
+      card("a", badge("ab", "One", red)),
+      card("b", badge("bb", "Blue", blue)),
+      painted(tagged("div", "w1", [badge("s1", "Red", red)]), blue),
+      painted(tagged("div", "w2", [badge("s2", "Blue", blue)]), blue),
+    ]);
+    expectInnerFirst(p);
+    expect(instance(p, "b")?.overrides).toEqual([
+      { path: [0], kind: "swap", key: instance(p, "s2")?.key as string },
+    ]);
+    expect(instance(p, "s2")?.overrides).toEqual([]);
+  });
+
+  test("a rotated occurrence stays plain, and the repeats inside it can still be instances", () => {
+    const p = plan([tagged("x-row", "turned", [icon("i1"), icon("i2")], { transform: turn(5) })]);
+    expect(p.ops.find((o) => o.id === "turned")?.op).toBe("frame");
+    expect(instance(p, "i1")?.parent).toBe("turned");
+  });
+});
+
+describe("the plan around them", () => {
+  test("definitions come before the root in ops, and the root is the first non-component frame", () => {
+    const p = plan(links(2));
+    expectWellFormed(p);
+    expect(p.ops[0]).toMatchObject({ op: "frame", parent: null, component: { key: "x-link#1" } });
+    expect(pageRoot(p)?.id).toBe("root");
+    const rootAt = p.ops.findIndex((o) => o.id === "root");
+    for (const def of definitions(p)) expect(p.ops.indexOf(def)).toBeLessThan(rootAt);
+    expect(p.ops.filter((o) => o.parent === null).length).toBe(2);
+    expect(pageRoot(p)).toMatchObject({ childCount: 2 });
+  });
+
+  test("childLayout stays on the instance, not the definition", () => {
+    const p = mapCapture(
+      cap(
+        el(
+          "root",
+          [0, 0],
+          [
+            el("a", [0, 0], [], { semantic: { tag: "x-a" } }, [50, 50]),
+            el("b", [60, 0], [], { semantic: { tag: "x-a" } }, [50, 50]),
+            el("c", [120, 0], [], {}, [50, 50]),
+          ],
+          flexRow({ gap: [0, 10] }),
+          [170, 50]
+        )
+      ),
+      inter,
+      on
+    );
+    expect(pageRoot(p)).toMatchObject({ layout: { mode: "HORIZONTAL" } });
+    expect(instance(p, "b")?.childLayout).toBeDefined();
+    expect(definitions(p)[0]?.childLayout).toBeUndefined();
+  });
+
+  test("an instance keeps the occurrence's own name and position", () => {
+    const named = (id: string, aria: string, at: [number, number]) =>
+      el(id, at, [], { semantic: { tag: "x-a", ariaLabel: aria } });
+    const p = plan([named("a", "First", [5, 6]), named("b", "Second", [7, 8])]);
+    expect(instance(p, "b")).toMatchObject({ name: "Second", x: 7, y: 8, parent: "root" });
+    expect(instance(p, "a")).toMatchObject({ name: "First", x: 5, y: 6 });
+  });
+
+  test("a definition's layers keep their names", () => {
+    const p = plan([
+      tagged("x-a", "a", [
+        tagged("div", "ai", [], { semantic: { tag: "div", ariaLabel: "Inner" } }),
+      ]),
+      tagged("x-a", "b", [
+        tagged("div", "bi", [], { semantic: { tag: "div", ariaLabel: "Other" } }),
+      ]),
+    ]);
+    expect(descendantsOf(p, definitions(p)[0]?.id as string).map((o) => o.name)).toEqual(["Inner"]);
+  });
+
+  test("options.components false changes nothing", () => {
+    const children = [...links(3), tagged("x-row", "r", links(1))];
+    const without = plan(children, off);
+    expect(without.ops.every((o) => o.op !== "instance")).toBe(true);
+    expect(definitions(without)).toEqual([]);
+    expect(without.ops.map((o) => o.id).slice(0, 3)).toEqual(["root", "l0", "t0"]);
+    expect(without.report).toMatchObject({ components: 0, instances: 0 });
+  });
+
+  test("a font override still applies inside a definition", () => {
+    const capture = cap(
+      el(
+        "root",
+        [0, 0],
+        [
+          tagged("x-a", "a", [label("ta", "Hello", { family: "Nimbus Sans" })]),
+          tagged("x-a", "b", [label("tb", "World", { family: "Nimbus Sans" })]),
+        ]
+      )
+    );
+    const fonts = [...inter, { family: "Roboto", style: "Regular" }];
+    const p = mapCapture(capture, fonts, on, { "Nimbus Sans": "Roboto" });
+    const main = p.ops.find((o): o is TextOp => o.op === "text");
+    expect(main?.runs[0]?.fontName.family).toBe("Roboto");
+    expect(instance(p, "b")?.overrides[0]).toMatchObject({
+      runs: [{ fontName: { family: "Roboto" } }],
+    });
+  });
+
+  test("extractComponents leaves a plan with nothing repeated as it was", () => {
+    const p = plan([tagged("x-a", "a")], off);
+    const out = extractComponents(p.ops, new Map([["a", "x-a"]]));
+    expect(out).toEqual({ ops: p.ops, components: 0, instances: 0 });
+  });
+});
+
+describe("options", () => {
+  test("components stay off by default until the applier can build them", () => {
+    expect(DEFAULT_IMPORT_OPTIONS.components).toBe(false);
+    const p = mapCapture(cap(el("root", [0, 0], links(2))), inter);
+    expect(instances(p)).toEqual([]);
+  });
+
+  test("hover components start off", () => {
+    expect(DEFAULT_IMPORT_OPTIONS.hoverComponents).toBe(false);
+  });
+});

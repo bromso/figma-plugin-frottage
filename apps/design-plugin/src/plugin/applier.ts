@@ -633,6 +633,8 @@ export function createApplier(api: PluginAPI) {
         place(node, parent, op);
         return node;
       }
+      case "instance":
+        throw new Error("instance ops arrive in Task 6");
     }
   }
 
