@@ -438,13 +438,16 @@ describe("matching text styles", () => {
       const r = mergeVersions([
         version(
           "1440",
-          planOf({ styles: [h2, h3] }, [said("a", "A longer heading", h2), said("b", "Short", h3)])
+          planOf({ styles: [h2, h3] }, [
+            said("a", "A longer heading", h2),
+            said("b", "Shorter one", h3),
+          ])
         ),
         version(
           "390",
           planOf({ styles: [small] }, [
             said("a", "A longer heading", small),
-            said("b", "Short", small),
+            said("b", "Shorter one", small),
           ])
         ),
       ]);
@@ -575,8 +578,8 @@ describe("matching text styles", () => {
       const second = style("heading/2", { fontSize: 30 });
       const token = style("heading/2", { fontSize: 20 });
       const r = mergeVersions([
-        version("a", planOf({ styles: [first, second] }, [said("t", "Title", first)])),
-        version("b", planOf({ styles: [token] }, [said("t", "Title", token)])),
+        version("a", planOf({ styles: [first, second] }, [said("t", "Page title", first)])),
+        version("b", planOf({ styles: [token] }, [said("t", "Page title", token)])),
       ]);
       expect(styleNamed(r, "heading/1")?.from[1]).toBe(token.key);
       expect(styleNamed(r, "heading/2")?.from[1]).toBeNull();
@@ -587,8 +590,8 @@ describe("matching text styles", () => {
       const seed = style("heading/2", { fontSize: 40 });
       const token = style("body/1", { fontSize: 20 });
       const copy = (s: PlanTextStyle) => {
-        const runs = [{ ...textRun(s.key), end: 5 }];
-        return instance("i", [{ path: [0], kind: "text", text: "Title", runs }]);
+        const runs = [{ ...textRun(s.key), end: 10 }];
+        return instance("i", [{ path: [0], kind: "text", text: "Page title", runs }]);
       };
       const r = mergeVersions([
         version("a", planOf({ styles: [seed] }, [copy(seed)])),
@@ -602,7 +605,7 @@ describe("matching text styles", () => {
       const near = style("body/1", { fontSize: 20 });
       const rest = style("body/2", { fontSize: 18 });
       const r = mergeVersions([
-        version("a", planOf({ styles: [seed] }, [said("t", "Title", seed)])),
+        version("a", planOf({ styles: [seed] }, [said("t", "Page title", seed)])),
         version(
           "b",
           planOf({ styles: [near, rest] }, [
@@ -610,9 +613,9 @@ describe("matching text styles", () => {
               "t",
               [
                 { ...textRun(rest.key), end: 6 },
-                { ...textRun(near.key), start: 6, end: 11 },
+                { ...textRun(near.key), start: 6, end: 16 },
               ],
-              "Intro Title"
+              "Intro Page title"
             ),
           ])
         ),
@@ -1414,5 +1417,114 @@ describe("uses across a set", () => {
       version("b", planOf({ colors: [b] })),
     ]);
     expect(r.tokens.colors).toEqual([]);
+  });
+});
+
+describe("how much shared text says", () => {
+  const look = (name: string, fontSize: number) =>
+    style(name, { fontSize, lineHeight: fontSize * 2 });
+  const inStyle = (s: PlanTextStyle, words: string, id = s.name) =>
+    text(id, [{ ...textRun(s.key), end: words.length }], words);
+  /** Whether a seed and a token with another role joined on what they share. */
+  function joined(seedWords: string[], tokenWords: string[]) {
+    const seed = look("heading/1", 40);
+    const token = look("body/1", 20);
+    const r = mergeVersions([
+      version(
+        "a",
+        planOf(
+          { styles: [seed] },
+          seedWords.map((w, i) => inStyle(seed, w, `s${i}`))
+        )
+      ),
+      version(
+        "b",
+        planOf(
+          { styles: [token] },
+          tokenWords.map((w, i) => inStyle(token, w, `t${i}`))
+        )
+      ),
+    ]);
+    return (r.tokens.textStyles[0]?.fontSize.length ?? 0) === 2;
+  }
+
+  test("8 shared characters are enough", () => {
+    expect(joined(["Sign up!"], ["Sign up!"])).toBe(true);
+  });
+
+  test("under 8 shared characters fall back to the role", () => {
+    expect(joined(["Sign up"], ["Sign up"])).toBe(false);
+  });
+
+  test("pieces add up to the 8", () => {
+    expect(joined(["Home", "Docs"], ["Home", "Docs"])).toBe(true);
+  });
+
+  test("a piece with no letter doesn't count", () => {
+    expect(joined(["1,234,567.89"], ["1,234,567.89"])).toBe(false);
+  });
+
+  test("letters of any script count", () => {
+    expect(
+      joined(
+        ["\u6587\u5b57\u6587\u5b57\u6587\u5b57\u6587\u5b57"],
+        ["\u6587\u5b57\u6587\u5b57\u6587\u5b57\u6587\u5b57"]
+      )
+    ).toBe(true);
+  });
+
+  /** `seeds` styles all holding one string, and a token of another role holding it too. */
+  function commonString(seeds: number) {
+    const words = "Read more about this";
+    const styles = Array.from({ length: seeds }, (_, i) => look(`heading/${i + 1}`, 40 + i));
+    const token = look("body/1", 20);
+    return mergeVersions([
+      version(
+        "a",
+        planOf(
+          { styles },
+          styles.map((s) => inStyle(s, words))
+        )
+      ),
+      version("b", planOf({ styles: [token] }, [inStyle(token, words, "t")])),
+    ]);
+  }
+  const lengths = (r: ReturnType<typeof mergeVersions>) =>
+    r.tokens.textStyles.filter((s) => s.fontSize.length === 2).length;
+
+  test("a string in 50 styles still says something", () => {
+    expect(lengths(commonString(50))).toBe(50);
+  });
+
+  test("a string in more than 50 styles says nothing", () => {
+    expect(lengths(commonString(51))).toBe(0);
+  });
+});
+
+describe("a repeated label at the limit", () => {
+  const long = "x".repeat(40);
+
+  test("is cut to leave room for its suffix", () => {
+    const r = mergeVersions(["a", "b", "c"].map(() => version(long, planOf({}))));
+    expect(r.tokens.modes).toEqual([long, `${"x".repeat(36)} (2)`, `${"x".repeat(36)} (3)`]);
+  });
+
+  test("stays within 40 past nine repeats", () => {
+    const r = mergeVersions(Array.from({ length: 11 }, () => version(long, planOf({}))));
+    expect(r.tokens.modes.every((m) => m.length <= 40)).toBe(true);
+    expect(new Set(r.tokens.modes).size).toBe(11);
+  });
+
+  test("never cuts a character in half", () => {
+    const label = `${"x".repeat(35)}\u{1F600}\u{1F600}x`;
+    expect(label.length).toBe(40);
+    const r = mergeVersions([version(label, planOf({})), version(label, planOf({}))]);
+    expect(r.tokens.modes[1]).toBe(`${"x".repeat(35)} (2)`);
+  });
+
+  test("leaves no space before the suffix", () => {
+    const label = `${"x".repeat(35)} ${"y".repeat(4)}`;
+    const r = mergeVersions([version(label, planOf({})), version(label, planOf({}))]);
+    expect(r.tokens.modes[1]).toBe(`${"x".repeat(35)} (2)`);
   });
 });

@@ -44,12 +44,22 @@ type Renames = {
   spacing: Map<string, string>;
 };
 
+/** Longest label the file format accepts, which a mode's name keeps to as well. */
+const LABEL_MAX = 40;
+
+/** `base (n)` within the limit, cutting the base and never a character in half. */
+function suffixed(base: string, n: number): string {
+  const suffix = ` (${n})`;
+  const room = base.slice(0, LABEL_MAX - suffix.length);
+  return `${room.replace(/\p{Cs}$/u, "").trimEnd()}${suffix}`;
+}
+
 function uniqueLabels(labels: string[]): string[] {
   const taken = new Set<string>();
   return labels.map((label) => {
     const base = label.replace(/ \(\d+\)$/, "");
     let unique = label;
-    for (let n = 2; taken.has(unique); n++) unique = `${base} (${n})`;
+    for (let n = 2; taken.has(unique); n++) unique = suffixed(base, n);
     taken.add(unique);
     return unique;
   });
@@ -147,11 +157,21 @@ function textsOf(ops: PlanOp[]): TextCounts {
   return counts;
 }
 
-/** Characters each seed and token have in common, by their keys. Only pairs with some appear. */
+/** Fewer shared characters than this are chance, such as a lone "Menu". */
+const MIN_SHARED = 8;
+/** A piece in more styles than this tells them apart no better than a role, at seeds × tokens. */
+const MAX_HOLDERS = 50;
+const HAS_LETTER = /\p{L}/u;
+
+/**
+ * Characters each seed and token have in common, by their keys. Only pairs with some appear. A
+ * number or a mark says nothing about a role, so only pieces with a letter count.
+ */
 function sharedCharacters(seeds: TextCounts, tokens: TextCounts): Map<string, Map<string, number>> {
   const holders = new Map<string, { seed: string; times: number }[]>();
   for (const [seed, texts] of seeds) {
     for (const [text, times] of texts) {
+      if (!HAS_LETTER.test(text)) continue;
       const list = holders.get(text);
       if (list) list.push({ seed, times });
       else holders.set(text, [{ seed, times }]);
@@ -160,7 +180,9 @@ function sharedCharacters(seeds: TextCounts, tokens: TextCounts): Map<string, Ma
   const scores = new Map<string, Map<string, number>>();
   for (const [token, texts] of tokens) {
     for (const [text, times] of texts) {
-      for (const holder of holders.get(text) ?? []) {
+      const list = holders.get(text);
+      if (!list || list.length > MAX_HOLDERS) continue;
+      for (const holder of list) {
         let row = scores.get(holder.seed);
         if (!row) {
           row = new Map();
@@ -188,7 +210,7 @@ function joinStyles(
     const look = fixedLook(seed);
     for (const [key, chars] of scores.get(seed.key) ?? []) {
       const found = tokenAt.get(key);
-      if (!found || looks.get(found.token) !== look) continue;
+      if (chars < MIN_SHARED || !found || looks.get(found.token) !== look) continue;
       pairs.push({ seed, token: found.token, chars, order: seedAt * tokens.length + found.at });
     }
   });
