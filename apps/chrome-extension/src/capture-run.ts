@@ -7,10 +7,37 @@ export type RunStatus =
   | { state: "capturing" | "packing" | "saving" }
   /**
    * `nodes` is the layer count in the file; `nodeLimit` is set when the page had more than fit;
-   * `blockedImages` counts images the page could not read (the `images-blocked` warning).
+   * `blockedImages` counts images the page could not read (the `images-blocked` warning);
+   * `width` is the page's width in the capture and `label` the label in the file, if it has one.
    */
-  | { state: "saved"; filename: string; nodes: number; nodeLimit: boolean; blockedImages: number }
-  | { state: "error"; message: string };
+  | {
+      state: "saved";
+      filename: string;
+      nodes: number;
+      nodeLimit: boolean;
+      blockedImages: number;
+      width: number;
+      label?: string;
+    }
+  | { state: "error"; message: string }
+  /** A viewport run, on its `index`th of `total` widths; `label` is the width Chrome gave. */
+  | { state: "viewport"; index: number; total: number; label: string }
+  /**
+   * A viewport run's end. `saved` lists each file, which stay however the run ended; `narrow` the
+   * widths under 500 that need DevTools; `mismatched` the widths Chrome gave instead of the one
+   * requested. `stopped` says what ended the run early, and `nodeLimit` and `blockedImages` are the
+   * worst of any file.
+   */
+  | {
+      state: "viewport-done";
+      saved: { label: string; width: number }[];
+      narrow: number[];
+      mismatched: { requested: number; width: number }[];
+      nodeLimit: boolean;
+      blockedImages: number;
+      stopped?: string;
+      cancelled?: boolean;
+    };
 
 export type RunDeps = {
   /** Parses and validates capture JSON; throws when it is not a valid capture. */
@@ -68,6 +95,11 @@ export class CaptureRun {
   status: RunStatus = { state: "idle" };
 
   constructor(private deps: RunDeps) {}
+
+  /** A capture is in progress, so another can't start. */
+  get busy(): boolean {
+    return this.active;
+  }
 
   start(runId: string): void {
     if (this.active) throw new Error("A capture is already running");
@@ -241,6 +273,8 @@ export class CaptureRun {
         nodes,
         nodeLimit,
         blockedImages: blocked,
+        width: capture.source.viewport.w,
+        ...(capture.version ? { label: capture.version.label } : {}),
       });
     } catch (e) {
       this.fail(`Could not save the file: ${message(e)}`);

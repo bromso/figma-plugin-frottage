@@ -1,5 +1,6 @@
 import type { RunStatus } from "./capture-run";
 import type { ChunkMessage } from "./chunks";
+import type { WindowState } from "./viewport-run";
 
 /** Prefix of the port the page script opens to the service worker. */
 export const CAPTURE_PORT = "frottage-capture:";
@@ -34,12 +35,20 @@ export type SwMessage =
       versionKind?: string;
       versionLabel?: string;
     }
+  | { target: "sw"; type: "viewport-start"; tabId: number; widths: number[] }
   | { target: "sw"; type: "download"; url: string; filename: string }
+  | { target: "sw"; type: "tab-origin"; tabId: number }
+  | { target: "sw"; type: "window-state"; tabId: number }
+  | { target: "sw"; type: "resize-window"; windowId: number; width: number }
+  | { target: "sw"; type: "restore-window"; window: WindowState }
   | { target: "sw"; type: "close-offscreen" };
 
 /** Worker and popup messages to the offscreen document. */
 export type OffscreenMessage =
-  | { target: "offscreen"; type: "run-start"; runId: string }
+  /** `viewport` marks a capture that belongs to the viewport run. */
+  | { target: "offscreen"; type: "run-start"; runId: string; viewport?: boolean }
+  | { target: "offscreen"; type: "viewport-start"; tabId: number; widths: number[] }
+  | { target: "offscreen"; type: "viewport-cancel" }
   | { target: "offscreen"; type: "inject-failed"; runId: string; detail: string }
   | { target: "offscreen"; type: "run-live"; runId: string }
   | { target: "offscreen"; type: "get-status" };
@@ -47,5 +56,10 @@ export type OffscreenMessage =
 /** Offscreen document to the popup. */
 export type PopupMessage = { target: "popup"; type: "status"; status: RunStatus };
 
-/** `filename` is the saved basename, set by the worker for downloads. */
-export type Reply = { ok: true; filename?: string } | { ok: false; error: string };
+/**
+ * `filename` is the saved basename, set by the worker for downloads. `origin`, `window` and `width`
+ * answer `tab-origin`, `window-state` and `resize-window`.
+ */
+export type Reply =
+  | { ok: true; filename?: string; origin?: string | null; window?: WindowState; width?: number }
+  | { ok: false; error: string };

@@ -11,7 +11,7 @@ import pkg from "../package.json";
 import { assetChunks, splitIntoChunks } from "./chunks";
 import { fetchViaWorker, imagePortName, makeFetchBytes } from "./image-fetch";
 import { CAPTURE_PORT, type PageMessage } from "./messages";
-import { normaliseVersion } from "./page";
+import { pageVersion } from "./page";
 
 /** The offscreen timeout is 60 s; stay well inside it. */
 const HEARTBEAT_MS = 10_000;
@@ -30,7 +30,11 @@ void (async () => {
   const runId = win.__frottageRunId;
   const collapseWrappers = win.__frottageCollapse === true;
   const imageAccess = win.__frottageImageAccess === true;
-  const version = normaliseVersion(win.__frottageVersionKind, win.__frottageVersionLabel);
+  const version = pageVersion(
+    win.__frottageVersionKind,
+    win.__frottageVersionLabel,
+    window.innerWidth
+  );
   win.__frottageVersionKind = undefined;
   win.__frottageVersionLabel = undefined;
   win.__frottageImageAccess = undefined;

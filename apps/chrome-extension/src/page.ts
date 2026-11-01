@@ -54,6 +54,27 @@ export function normaliseVersion(kind: unknown, label: unknown): CaptureVersion 
   return { label: trimmed, kind: found };
 }
 
+/**
+ * The version a capture records, in the page. A viewport's label is the width the page was laid out
+ * at, which only the page knows; anything else keeps the label it was given.
+ */
+export function pageVersion(
+  kind: unknown,
+  label: unknown,
+  innerWidth: number
+): CaptureVersion | undefined {
+  return normaliseVersion(kind, kind === "viewport" ? String(innerWidth) : label);
+}
+
+/** The origin of a tab's URL; null when Chrome did not give one, as after leaving an `activeTab`. */
+export function pageOrigin(url: string | undefined): string | null {
+  try {
+    return url ? new URL(url).origin : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A label as part of a filename: no path separators, control characters or leading dots. */
 function sanitiseLabel(label: string): string {
   // Control characters go by code point, not by a regex range.

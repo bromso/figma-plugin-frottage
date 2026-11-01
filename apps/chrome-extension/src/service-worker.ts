@@ -9,10 +9,17 @@ import {
   type Reply,
   type SwMessage,
 } from "./messages";
+import { pageOrigin } from "./page";
+import { resizeWindow, restoreWindow, type WindowsApi } from "./viewport-run";
 
 const OFFSCREEN_URL = "offscreen.html";
 const DOWNLOAD_POLL_MS = 250;
 const DOWNLOAD_MAX_POLLS = 240;
+
+const WINDOWS: WindowsApi = {
+  get: (windowId) => chrome.windows.get(windowId),
+  update: (windowId, info) => chrome.windows.update(windowId, info),
+};
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -71,7 +78,12 @@ async function startCapture(
   versionLabel: string
 ): Promise<Reply> {
   const runId = crypto.randomUUID();
-  const started = await toOffscreen({ target: "offscreen", type: "run-start", runId });
+  const started = await toOffscreen({
+    target: "offscreen",
+    type: "run-start",
+    runId,
+    viewport: versionKind === "viewport",
+  });
   if (!started?.ok) return started ?? { ok: false, error: "The capture could not start" };
   try {
     await chrome.scripting.executeScript({
@@ -123,6 +135,12 @@ async function saveFile(url: string, filename: string): Promise<Reply> {
   }
 }
 
+/** Runs one stateless window or tab call, turning a throw (a closed window) into a reply. */
+function answer(call: () => Promise<Reply>, sendResponse: (reply: Reply) => void): true {
+  call().then(sendResponse, (e) => sendResponse({ ok: false, error: errorText(e) }));
+  return true;
+}
+
 // Listeners are registered at the top level so they exist on every worker start.
 chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse) => {
   if (message?.target !== "sw") return;
@@ -138,6 +156,44 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
   if (message.type === "download") {
     saveFile(message.url, message.filename).then(sendResponse);
     return true;
+  }
+  if (message.type === "viewport-start") {
+    return answer(
+      async () =>
+        (await toOffscreen({ ...message, target: "offscreen" })) ?? {
+          ok: false,
+          error: "The capture could not start",
+        },
+      sendResponse
+    );
+  }
+  if (message.type === "tab-origin") {
+    return answer(async () => {
+      const tab = await chrome.tabs.get(message.tabId);
+      return { ok: true, origin: pageOrigin(tab.url) };
+    }, sendResponse);
+  }
+  if (message.type === "window-state") {
+    return answer(async () => {
+      const { windowId } = await chrome.tabs.get(message.tabId);
+      const { state, width, height, left, top } = await chrome.windows.get(windowId);
+      return { ok: true, window: { windowId, state, width, height, left, top } };
+    }, sendResponse);
+  }
+  if (message.type === "resize-window") {
+    return answer(
+      async () => ({
+        ok: true,
+        width: await resizeWindow(WINDOWS, message.windowId, message.width),
+      }),
+      sendResponse
+    );
+  }
+  if (message.type === "restore-window") {
+    return answer(async () => {
+      await restoreWindow(WINDOWS, message.window);
+      return { ok: true };
+    }, sendResponse);
   }
   if (message.type === "close-offscreen") {
     chrome.offscreen.closeDocument().catch(() => {});

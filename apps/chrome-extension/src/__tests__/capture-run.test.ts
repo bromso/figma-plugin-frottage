@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { CaptureRun, type RunDeps, type RunStatus } from "../capture-run";
 import { assetChunks, splitIntoChunks } from "../chunks";
 
-const CAPTURE = { source: { url: "https://example.com/p" }, assets: [] };
+const CAPTURE = {
+  source: { url: "https://example.com/p", viewport: { w: 1440, h: 900 } },
+  assets: [],
+};
 
 function setup(over: Partial<RunDeps> = {}) {
   const statuses: RunStatus[] = [];
@@ -75,6 +78,7 @@ describe("CaptureRun", () => {
       nodes: 0,
       nodeLimit: false,
       blockedImages: 0,
+      width: 1440,
     });
     expect(t.revoked).toEqual(["blob:test/1"]);
     expect(t.timers.size).toBe(0);
@@ -269,8 +273,8 @@ describe("CaptureRun", () => {
 
   test("the limit counts bytes, not characters", async () => {
     const text = JSON.stringify({ ...CAPTURE, pad: "中".repeat(40) });
-    expect(text.length).toBeLessThan(120);
-    const big = setup({ maxCaptureBytes: 120 });
+    expect(text.length).toBeLessThan(150);
+    const big = setup({ maxCaptureBytes: 150 });
     big.run.start("r");
     sendCapture(big.run, "r", text);
     big.run.onEnd("r");
@@ -467,5 +471,15 @@ describe("a labelled capture", () => {
     t.run.onEnd("r1");
     await tick();
     expect(t.downloads[0]?.filename).toBe("example.com-2026-10-31-Dark.frottage");
+  });
+
+  test("the saved status carries the page's width and the file's label", async () => {
+    const t = setup();
+    t.run.start("r1");
+    const labelled = { ...CAPTURE, version: { label: "1440", kind: "viewport" } };
+    sendCapture(t.run, "r1", JSON.stringify(labelled));
+    t.run.onEnd("r1");
+    await tick();
+    expect(last(t.statuses)).toMatchObject({ state: "saved", width: 1440, label: "1440" });
   });
 });

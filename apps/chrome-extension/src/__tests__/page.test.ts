@@ -7,6 +7,8 @@ import {
   isRestrictedUrl,
   nodeAdvice,
   normaliseVersion,
+  pageOrigin,
+  pageVersion,
 } from "../page";
 
 describe("isRestrictedUrl", () => {
@@ -197,5 +199,24 @@ describe("normaliseVersion", () => {
     expect(normaliseVersion("language", "a/b".repeat(20))?.label).toBe(
       "a/b".repeat(20).slice(0, 40)
     );
+  });
+});
+
+describe("pageVersion", () => {
+  test("a viewport capture is labelled with what the page was laid out at", () => {
+    expect(pageVersion("viewport", "1512", 1440)).toEqual({ label: "1440", kind: "viewport" });
+  });
+
+  test("a theme or language keeps the label it was given", () => {
+    expect(pageVersion("theme", "Dark", 1440)).toEqual({ label: "Dark", kind: "theme" });
+    expect(pageVersion(undefined, undefined, 1440)).toBeUndefined();
+  });
+});
+
+describe("pageOrigin", () => {
+  test("is the URL's origin, and null when there is no readable URL", () => {
+    expect(pageOrigin("https://example.com/a?b=c#d")).toBe("https://example.com");
+    expect(pageOrigin(undefined)).toBeNull();
+    expect(pageOrigin("not a url")).toBeNull();
   });
 });
