@@ -10,6 +10,7 @@ import type {
   PlanOverride,
   PlanPaint,
   PlanRun,
+  PlanSpacing,
   PlanTextStyle,
 } from "../plan";
 import { mergeVersions, stripTokens } from "../versions";
@@ -112,13 +113,14 @@ const instance = (id: string, overrides: PlanOverride[]): PlanOp => ({
 });
 
 const planOf = (
-  tokens: { colors?: PlanColor[]; styles?: PlanTextStyle[] },
+  tokens: { colors?: PlanColor[]; styles?: PlanTextStyle[]; spacing?: PlanSpacing[] },
   ops: PlanOp[] = []
 ): LayerPlan => ({
   ops,
   tokens: {
     colors: tokens.colors ?? [],
     textStyles: tokens.styles ?? [],
+    ...(tokens.spacing ? { spacing: tokens.spacing } : {}),
     collection: "example.com",
   },
   fonts: [],
@@ -1081,5 +1083,178 @@ describe("through mapCapture", () => {
       h?.key as string,
       h?.key as string,
     ]);
+  });
+});
+
+describe("spacing across versions", () => {
+  const space = (cssVar: string, px: number, name = `spacing/${cssVar.slice(2)}`): PlanSpacing => ({
+    key: `${cssVar}=${px}`,
+    name,
+    cssVar,
+    px,
+  });
+  /** A row bound to a spacing token: its gap and its top padding. */
+  const bound = (id: string, gap?: string, top?: string): PlanOp =>
+    frame(id, [], {
+      layout: {
+        mode: "HORIZONTAL",
+        wrap: false,
+        itemSpacing: 8,
+        counterSpacing: null,
+        padding: [8, 0, 0, 0],
+        primaryAlign: "MIN",
+        counterAlign: "MIN",
+        sizingH: "FIXED",
+        sizingV: "FIXED",
+        spacingKeys: {
+          ...(gap ? { itemSpacing: gap } : {}),
+          ...(top ? { padding: [top, undefined, undefined, undefined] } : {}),
+        },
+      },
+    });
+  const keysOfOps = (ops: PlanOp[]) => {
+    const found: string[] = [];
+    JSON.stringify(ops, (field, value) => {
+      if (field === "spacingKeys") found.push(JSON.stringify(value));
+      return value;
+    });
+    return found;
+  };
+
+  test("the same custom property with two values is one variable with two modes", () => {
+    const wide = space("--gap", 24);
+    const narrow = space("--gap", 12);
+    const r = mergeVersions([
+      version("1440", planOf({ spacing: [wide] }, [bound("a", wide.key)])),
+      version("390", planOf({ spacing: [narrow] }, [bound("a", narrow.key)])),
+    ]);
+    expect(r.tokens.spacing).toEqual([
+      {
+        key: "spacing:--gap|1440=24|390=12",
+        name: "spacing/gap",
+        cssVar: "--gap",
+        values: [
+          { mode: 0, value: 24 },
+          { mode: 1, value: 12 },
+        ],
+        from: [wide.key, narrow.key],
+      },
+    ]);
+    for (const plan of r.plans) {
+      expect(keysOfOps(plan.ops)).toEqual([
+        JSON.stringify({ itemSpacing: "spacing:--gap|1440=24|390=12" }),
+      ]);
+    }
+  });
+
+  test("modes vary by custom property name, not by value", () => {
+    // The later version's token for 24 px is another property: nothing joins by value.
+    const a = space("--gap", 24);
+    const other = space("--gutter", 24);
+    const r = mergeVersions([
+      version("1440", planOf({ spacing: [a] }, [bound("a", a.key)])),
+      version("390", planOf({ spacing: [other] }, [bound("a", other.key)]), {
+        "--gutter": "24px",
+      }),
+    ]);
+    expect(r.tokens.spacing?.[0]?.values).toEqual([{ mode: 0, value: 24 }]);
+    expect(keysOfOps(r.plans[1]?.ops ?? [])).toEqual([]);
+  });
+
+  test("a version with no token reads the property's value, and its frames stay plain", () => {
+    const wide = space("--gap", 24);
+    const r = mergeVersions([
+      version("1440", planOf({ spacing: [wide] }, [bound("a", wide.key)])),
+      version("390", planOf({}, [bound("a")]), { "--gap": "0.75rem" }),
+    ]);
+    expect(r.tokens.spacing?.[0]?.values).toEqual([
+      { mode: 0, value: 24 },
+      { mode: 1, value: 12 },
+    ]);
+    expect(r.tokens.spacing?.[0]?.from).toEqual([wide.key, null]);
+    expect(r.tokens.spacing?.[0]?.key).toBe("spacing:--gap|1440=24|390=12");
+  });
+
+  test("resolves through var()", () => {
+    const wide = space("--gap", 24);
+    const r = mergeVersions([
+      version("1440", planOf({ spacing: [wide] })),
+      version("390", planOf({}), { "--gap": "var(--base)", "--base": "10px" }),
+    ]);
+    expect(r.tokens.spacing?.[0]?.values.at(-1)).toEqual({ mode: 1, value: 10 });
+  });
+
+  test("a property a version does not define leaves that mode out and its frames plain", () => {
+    const wide = space("--gap", 24);
+    const r = mergeVersions([
+      version("1440", planOf({ spacing: [wide] }, [bound("a", wide.key)])),
+      version("390", planOf({}, [bound("a", "stale")])),
+    ]);
+    expect(r.tokens.spacing?.[0]?.values).toEqual([{ mode: 0, value: 24 }]);
+    expect(r.tokens.spacing?.[0]?.key).toBe("spacing:--gap|1440=24");
+    expect(keysOfOps(r.plans[1]?.ops ?? [])).toEqual([]);
+  });
+
+  test("a value that cannot be read is left out", () => {
+    const wide = space("--gap", 24);
+    const r = mergeVersions([
+      version("1440", planOf({ spacing: [wide] })),
+      version("390", planOf({}), { "--gap": "auto" }),
+    ]);
+    expect(r.tokens.spacing?.[0]?.values).toEqual([{ mode: 0, value: 24 }]);
+  });
+
+  test("keys carry the label, and the order does not matter", () => {
+    const wide = space("--gap", 24);
+    const narrow = space("--gap", 12);
+    const forward = mergeVersions([
+      version("1440", planOf({ spacing: [wide] })),
+      version("390", planOf({ spacing: [narrow] })),
+    ]);
+    const backward = mergeVersions([
+      version("390", planOf({ spacing: [narrow] })),
+      version("1440", planOf({ spacing: [wide] })),
+    ]);
+    expect(backward.tokens.spacing?.[0]?.key).toBe(forward.tokens.spacing?.[0]?.key as string);
+    const swapped = mergeVersions([
+      version("1440", planOf({ spacing: [narrow] })),
+      version("390", planOf({ spacing: [wide] })),
+    ]);
+    expect(swapped.tokens.spacing?.[0]?.key).not.toBe(forward.tokens.spacing?.[0]?.key as string);
+  });
+
+  test("padding keys are rewritten side by side, and an empty side stays empty", () => {
+    const wide = space("--gap", 24);
+    const narrow = space("--gap", 12);
+    const r = mergeVersions([
+      version("1440", planOf({ spacing: [wide] }, [bound("a", undefined, wide.key)])),
+      version("390", planOf({ spacing: [narrow] }, [bound("a", undefined, narrow.key)])),
+    ]);
+    const op = (r.plans[1]?.ops ?? [])[0] as Extract<PlanOp, { op: "frame" }>;
+    const layout = op.layout;
+    if (layout.mode !== "HORIZONTAL") throw new Error("layout");
+    expect(layout.spacingKeys?.padding?.[0]).toBe("spacing:--gap|1440=24|390=12");
+    expect(layout.spacingKeys?.padding?.[1]).toBeUndefined();
+  });
+
+  test("the report counts spacing values that stayed plain", () => {
+    const wide = space("--gap", 24);
+    const stray = space("--gutter", 10);
+    const r = mergeVersions([
+      version("1440", planOf({ spacing: [wide] })),
+      version("390", planOf({ spacing: [stray] })),
+    ]);
+    expect(r.report).toEqual(["390: 1 spacing value stayed a plain value."]);
+  });
+
+  test("stripTokens removes spacing keys and tokens", () => {
+    const wide = space("--gap", 24);
+    const out = stripTokens(planOf({ spacing: [wide] }, [bound("a", wide.key, wide.key)]));
+    expect(keysOfOps(out.ops)).toEqual([]);
+    expect(out.tokens.spacing ?? []).toEqual([]);
+    const layout = (out.ops[0] as Extract<PlanOp, { op: "frame" }>).layout;
+    if (layout.mode !== "HORIZONTAL") throw new Error("layout");
+    expect(layout.itemSpacing).toBe(8);
+    expect(layout.padding).toEqual([8, 0, 0, 0]);
   });
 });

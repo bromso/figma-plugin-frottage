@@ -63,6 +63,18 @@ export type PlanRun = {
 
 export type PlanTrack = { type: "FIXED" | "FLEX" | "HUG"; value: number };
 
+/**
+ * The spacing tokens a frame's lengths are bound to, by `PlanSpacing.key`. A length with no key
+ * stays a plain value. Padding is [top, right, bottom, left].
+ */
+export type SpacingKeys = {
+  itemSpacing?: string;
+  counterSpacing?: string;
+  rowGap?: string;
+  columnGap?: string;
+  padding?: [string?, string?, string?, string?];
+};
+
 /** Padding is [top, right, bottom, left], and takes in the CSS border, which Figma does not lay out. */
 export type PlanLayout =
   | {
@@ -81,6 +93,7 @@ export type PlanLayout =
       counterAlign: "MIN" | "MAX" | "CENTER" | "BASELINE";
       sizingH: "FIXED" | "HUG";
       sizingV: "FIXED" | "HUG";
+      spacingKeys?: SpacingKeys;
     }
   | {
       mode: "GRID";
@@ -89,6 +102,7 @@ export type PlanLayout =
       rowGap: number;
       columnGap: number;
       padding: [number, number, number, number];
+      spacingKeys?: SpacingKeys;
     };
 
 export type PlanChildLayout = {
@@ -271,9 +285,26 @@ export type PlanTextStyle = {
   textCase: PlanRun["textCase"];
 };
 
+/**
+ * A length a page names with a custom property and uses three times or more. `key` is the property
+ * and the value, so it stays the same across imports.
+ */
+export type PlanSpacing = {
+  key: string;
+  /** A proposal, `spacing/<name>`: the sandbox keeps it only if the file has room for it. */
+  name: string;
+  /** The custom property behind it, as `--space-4`. */
+  cssVar: string;
+  px: number;
+};
+
 export type PlanTokens = {
   textStyles: PlanTextStyle[];
   colors: PlanColor[];
+  /** Absent in a plan from before spacing tokens. */
+  spacing?: PlanSpacing[];
+  /** Spacing values that qualified past the cap and stayed plain. */
+  spacingOver?: number;
   /** The variable collection, named after the page's hostname. */
   collection: string;
 };
@@ -308,6 +339,17 @@ export type PlanModeType = {
   from: (string | null)[];
 };
 
+/** A spacing token across versions, joined by its custom property. */
+export type PlanModeSpacing = {
+  key: string;
+  /** From the first version. A proposal, as on `PlanSpacing`. */
+  name: string;
+  cssVar: string;
+  values: ModeValue<number>[];
+  /** Per version, the single-version token key this replaces. */
+  from: (string | null)[];
+};
+
 /** The tokens of a set of versions, with one mode per version. */
 export type PlanVersionTokens = {
   collection: string;
@@ -315,6 +357,7 @@ export type PlanVersionTokens = {
   modes: string[];
   colors: PlanModeColor[];
   textStyles: PlanModeType[];
+  spacing?: PlanModeSpacing[];
 };
 
 export type LayerPlan = {

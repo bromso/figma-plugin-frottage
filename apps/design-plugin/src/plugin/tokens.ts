@@ -4,7 +4,9 @@ import type {
   ModeValue,
   PlanColor,
   PlanModeColor,
+  PlanModeSpacing,
   PlanModeType,
+  PlanSpacing,
   PlanTextStyle,
   PlanTokens,
   PlanVersionTokens,
@@ -345,6 +347,7 @@ function findOwnCollection(
 export function createTokenSet(api: PluginAPI) {
   const styleIds = new Map<string, string>();
   const colors = new Map<string, ColorBinding>();
+  const spacing = new Map<string, Variable>();
   const counts = { ...NO_TOKENS };
   let createdStyles: TextStyle[] = [];
   let createdVariables: Variable[] = [];
@@ -434,12 +437,32 @@ export function createTokenSet(api: PluginAPI) {
     return variable;
   }
 
+  /** A number variable for a length, in every mode of its collection. */
+  function createSpacingVariable(
+    token: PlanSpacing,
+    collection: VariableCollection,
+    taken: Set<string>
+  ): Variable {
+    const name = takeName(token.name, taken, true);
+    const variable = api.variables.createVariable(name, collection, "FLOAT");
+    try {
+      for (const { modeId } of collection.modes) variable.setValueForMode(modeId, token.px);
+      variable.setVariableCodeSyntax("WEB", `var(${token.cssVar})`);
+      variable.setSharedPluginData(NAMESPACE, VALUE_KEY, token.key);
+    } catch (e) {
+      variable.remove();
+      throw e;
+    }
+    return variable;
+  }
+
   async function resolveColors(
     plan: PlanTokens,
     useLocal: boolean,
     runtime: TokenRuntime
   ): Promise<void> {
-    if (plan.colors.length === 0) return;
+    const lengths = plan.spacing ?? [];
+    if (plan.colors.length + lengths.length === 0) return;
     // Of every type: whether a collection is Frottage's goes by all its variables.
     const variables = await api.variables.getLocalVariablesAsync();
     const collections = await api.variables.getLocalVariableCollectionsAsync();
@@ -501,6 +524,31 @@ export function createTokenSet(api: PluginAPI) {
         const variable = createVariable(token, collection, taken);
         createdVariables.push(variable);
         colors.set(token.key, { variable });
+        counts.variablesCreated++;
+      } catch {
+        failed();
+      }
+    }
+    // Frottage's own only: spacing has no matching rule that would take a user's by value.
+    const heldPx = (v: Variable) => v.valuesByMode[modes.get(v.variableCollectionId) ?? ""];
+    for (const token of lengths) {
+      if (runtime.overBudget()) {
+        await runtime.breathe();
+        if (closed) return;
+      }
+      try {
+        const reused = own
+          .get(token.key)
+          ?.find((v) => v.resolvedType === "FLOAT" && FLOAT.same(heldPx(v), token.px));
+        if (reused) {
+          spacing.set(token.key, reused);
+          counts.variablesReused++;
+          continue;
+        }
+        const { collection, taken } = home();
+        const variable = createSpacingVariable(token, collection, taken);
+        createdVariables.push(variable);
+        spacing.set(token.key, variable);
         counts.variablesCreated++;
       } catch {
         failed();
@@ -576,7 +624,8 @@ export function createTokenSet(api: PluginAPI) {
     useLocal: boolean,
     runtime: TokenRuntime
   ): Promise<void> {
-    if (plan.colors.length + plan.textStyles.length === 0) return;
+    const lengths = plan.spacing ?? [];
+    if (plan.colors.length + plan.textStyles.length + lengths.length === 0) return;
     const variables = await api.variables.getLocalVariablesAsync();
     const collections = await api.variables.getLocalVariableCollectionsAsync();
     const textStyles = plan.textStyles.length > 0 ? await api.getLocalTextStylesAsync() : [];
@@ -764,6 +813,26 @@ export function createTokenSet(api: PluginAPI) {
       counts.variablesCreated++;
     };
 
+    /** Frottage's own, as a flat colour can't be: a length has no user's variable to take. */
+    const settleSpacing = async (token: PlanModeSpacing): Promise<void> => {
+      const first = token.values[0]?.value;
+      if (first === undefined) throw new Error("no value");
+      const wants = valuesFor(token.values, first, modeIds);
+      const target = await homeOf();
+      if (closed) return;
+      const reused = await reuseOwn(token.key, wants, first, FLOAT, target);
+      if (closed) return;
+      if (reused) {
+        spacing.set(token.key, reused);
+        counts.variablesReused++;
+        return;
+      }
+      const variable = await makeVariable({ ...token, kind: FLOAT, first, wants }, target);
+      if (!variable) return;
+      spacing.set(token.key, variable);
+      counts.variablesCreated++;
+    };
+
     /** Binds a float variable to a style just made. A refused binding leaves the style's value. */
     const bindType = async (
       style: TextStyle,
@@ -920,7 +989,8 @@ export function createTokenSet(api: PluginAPI) {
             differs(t.fontSize, FLOAT) ||
             differs(t.lineHeight, FLOAT) ||
             differs(t.letterSpacing, FLOAT)
-        );
+        ) ||
+        lengths.some((t) => differs(t.values, FLOAT));
       if (existing || different) {
         try {
           await homeOf();
@@ -945,6 +1015,15 @@ export function createTokenSet(api: PluginAPI) {
         if (!(await pause())) return;
         try {
           await settleColor(token);
+        } catch {
+          failed();
+        }
+        if (closed) return;
+      }
+      for (const token of lengths) {
+        if (!(await pause())) return;
+        try {
+          await settleSpacing(token);
         } catch {
           failed();
         }
@@ -1011,7 +1090,8 @@ export function createTokenSet(api: PluginAPI) {
       try {
         await resolveColors(plan, options.useLocalStyles, runtime);
       } catch {
-        failed(Math.max(plan.colors.length - colors.size, 1));
+        const lengths = plan.spacing?.length ?? 0;
+        failed(Math.max(plan.colors.length + lengths - colors.size - spacing.size, 1));
       }
     },
 
@@ -1025,8 +1105,8 @@ export function createTokenSet(api: PluginAPI) {
       try {
         await resolveVersions(plan, options.useLocalStyles, runtime);
       } catch {
-        const total = plan.textStyles.length + plan.colors.length;
-        failed(Math.max(total - styleIds.size - colors.size, 1));
+        const total = plan.textStyles.length + plan.colors.length + (plan.spacing?.length ?? 0);
+        failed(Math.max(total - styleIds.size - colors.size - spacing.size, 1));
         recordModes(withoutMode(plan));
       }
     },
@@ -1041,6 +1121,7 @@ export function createTokenSet(api: PluginAPI) {
 
     textStyleId: (key: string | undefined) => (key ? styleIds.get(key) : undefined),
     color: (key: string | undefined) => (key ? colors.get(key) : undefined),
+    spacing: (key: string | null | undefined) => (key ? spacing.get(key) : undefined),
     failed,
     counts: () => ({ ...counts }),
 

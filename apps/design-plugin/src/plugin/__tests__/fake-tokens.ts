@@ -19,6 +19,17 @@ type Font = { family: string; style: string };
 type Rgba = { r: number; g: number; b: number; a?: number };
 type Fake = Record<string, any>;
 
+const BINDABLE_LENGTHS = [
+  "itemSpacing",
+  "counterAxisSpacing",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "gridRowGap",
+  "gridColumnGap",
+];
+
 const fontId = (f: Font) => `${f.family}|${f.style}`;
 const hop = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 const stored = (c: Rgba) => ({
@@ -362,6 +373,18 @@ export function tokenModel(
     },
 
     installNode(node: FakeNode) {
+      // Frames bind lengths to number variables; a refused field or variable throws as in Figma.
+      node.setBoundVariable = (field: string, variable: Fake) => {
+        called("node.setBoundVariable");
+        if (typeof variable === "string") throw new Error("dynamic-page needs the variable");
+        if (!BINDABLE_LENGTHS.includes(field)) throw new Error(`can't bind ${field}`);
+        if (!variables.has(variable?.id)) throw new Error("unknown variable");
+        if (variable.resolvedType !== "FLOAT") throw new Error("needs a number variable");
+        node.boundVariables = {
+          ...node.boundVariables,
+          [field]: { type: "VARIABLE_ALIAS", id: variable.id },
+        };
+      };
       const link = (method: "setFillStyleIdAsync" | "setStrokeStyleIdAsync", field: string) => {
         node[method] = async (id: string) => {
           called(method);

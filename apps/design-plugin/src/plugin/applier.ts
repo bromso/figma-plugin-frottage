@@ -2,6 +2,7 @@ import type {
   FontRef,
   ImportOptions,
   PlanEffect,
+  PlanLayout,
   PlanOp,
   PlanOverride,
   PlanPaint,
@@ -497,6 +498,40 @@ export function createApplier(api: PluginAPI) {
    * last. Refused settings leave the frame absolute: losing it would lose its subtree.
    */
   function setLayout(node: FrameNode, op: FrameOp) {
+    applyLayout(node, op);
+    if (node.layoutMode !== "NONE") bindLengths(node, op.layout);
+  }
+
+  /**
+   * Binds the gaps and padding that became spacing variables, once the plain values are set. A
+   * refused binding counts and leaves the plain value, and the layout as it is.
+   */
+  function bindLengths(node: FrameNode, layout: PlanLayout) {
+    if (layout.mode === "NONE") return;
+    const keys = layout.spacingKeys;
+    const set = tokens;
+    if (!keys || !set) return;
+    const bind = (field: VariableBindableNodeField, key: string | null | undefined) => {
+      const variable = set.spacing(key);
+      if (!variable) return;
+      try {
+        node.setBoundVariable(field, variable);
+      } catch {
+        set.failed();
+      }
+    };
+    const sides = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"] as const;
+    for (const [i, field] of sides.entries()) bind(field, keys.padding?.[i]);
+    if (layout.mode === "GRID") {
+      bind("gridRowGap", keys.rowGap);
+      bind("gridColumnGap", keys.columnGap);
+      return;
+    }
+    bind("itemSpacing", keys.itemSpacing);
+    if (layout.wrap) bind("counterAxisSpacing", keys.counterSpacing);
+  }
+
+  function applyLayout(node: FrameNode, op: FrameOp) {
     const { layout } = op;
     const size = () => node.resize(clampSize(op.w), clampSize(op.h));
     if (layout.mode === "NONE") {

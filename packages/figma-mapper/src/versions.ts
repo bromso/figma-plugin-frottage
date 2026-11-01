@@ -3,19 +3,23 @@ import type {
   ModeValue,
   PlanColor,
   PlanModeColor,
+  PlanModeSpacing,
   PlanModeType,
   PlanOp,
   PlanRun,
+  PlanSpacing,
   PlanTextStyle,
   PlanVersionTokens,
+  SpacingKeys,
 } from "./plan";
-import { cssColorOf, rgbaOf } from "./tokens";
+import { cssColorOf, cssSpacingOf, rgbaOf } from "./tokens";
 
 /**
  * Turns several versions' tokens into one set with a mode per version. The first version seeds
  * the set, and a later version's token joins a seed or stays a plain value in its own frame. A
  * colour joins by the same custom property, then the same value. A text style joins by shared
- * text, then the same role, and only with the same look apart from what varies by mode.
+ * text, then the same role, and only with the same look apart from what varies by mode. A spacing
+ * token joins by its custom property alone: a length no property names stays plain.
  */
 
 export type TokenVersion = {
@@ -32,7 +36,11 @@ type Joins<T> = Map<T, T>[];
 type ColorJoins = { joins: Map<PlanColor, PlanColor>; cssOnly: Map<PlanColor, string> };
 
 /** Per version, what each single-version key becomes. */
-type Renames = { colors: Map<string, string>; styles: Map<string, string> };
+type Renames = {
+  colors: Map<string, string>;
+  styles: Map<string, string>;
+  spacing: Map<string, string>;
+};
 
 function uniqueLabels(labels: string[]): string[] {
   const taken = new Set<string>();
@@ -73,6 +81,29 @@ function joinColors(
   // A property this version defines has spoken, even in a value that can't be read.
   for (const seed of seeds) {
     if (!seed.cssVar || !Object.hasOwn(cssValues, seed.cssVar)) join(seed, free.get(seed.key));
+  }
+  return { joins, cssOnly };
+}
+
+/** A later version's spacing: `cssOnly` is what a seed's property holds where no token does. */
+type SpacingJoins = { joins: Map<PlanSpacing, PlanSpacing>; cssOnly: Map<PlanSpacing, number> };
+
+function joinSpacing(
+  seeds: PlanSpacing[],
+  tokens: PlanSpacing[],
+  cssValues: Record<string, string>
+): SpacingJoins {
+  const joins = new Map<PlanSpacing, PlanSpacing>();
+  const cssOnly = new Map<PlanSpacing, number>();
+  const byCssVar = new Map(tokens.map((t) => [t.cssVar, t]));
+  for (const seed of seeds) {
+    const token = byCssVar.get(seed.cssVar);
+    if (token) {
+      joins.set(seed, token);
+      continue;
+    }
+    const px = cssSpacingOf(seed.cssVar, cssValues);
+    if (px !== null) cssOnly.set(seed, px);
   }
   return { joins, cssOnly };
 }
@@ -211,12 +242,30 @@ function perMode<T, V>(
 const fromKeys = <T extends { key: string }>(seed: T, joins: Joins<T>) =>
   joins.map((version) => version.get(seed)?.key ?? null);
 
+/** Spacing keys renamed, or gone with their token. Undefined where none is left. */
+function rekeyedSpacing(keys: SpacingKeys, names: Map<string, string>): SpacingKeys | undefined {
+  const out: SpacingKeys = {};
+  for (const field of ["itemSpacing", "counterSpacing", "rowGap", "columnGap"] as const) {
+    const key = keys[field];
+    const next = key == null ? undefined : names.get(key);
+    if (next !== undefined) out[field] = next;
+  }
+  const padding = keys.padding?.map((key) => (key == null ? undefined : names.get(key)));
+  if (padding?.some((key) => key !== undefined)) out.padding = padding as SpacingKeys["padding"];
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /** A deep copy with every token key renamed, or removed if it has no new name, wherever it sits. */
 function rekeyed(value: unknown, renames: Renames): unknown {
   if (Array.isArray(value)) return value.map((item) => rekeyed(item, renames));
   if (typeof value !== "object" || value === null) return value;
   const out: Record<string, unknown> = {};
   for (const [field, inner] of Object.entries(value)) {
+    if (field === "spacingKeys") {
+      const next = rekeyedSpacing(inner as SpacingKeys, renames.spacing);
+      if (next) out[field] = next;
+      continue;
+    }
     const names =
       field === "colorKey" ? renames.colors : field === "styleKey" ? renames.styles : null;
     if (!names) out[field] = rekeyed(inner, renames);
@@ -239,19 +288,24 @@ function withRenames(plan: LayerPlan, renames: Renames): LayerPlan {
 
 /** A plan with no tokens: every key goes, as an unmatched token's does, and plain values stay. */
 export function stripTokens(plan: LayerPlan): LayerPlan {
-  const none = { colors: new Map<string, string>(), styles: new Map<string, string>() };
+  const none = {
+    colors: new Map<string, string>(),
+    styles: new Map<string, string>(),
+    spacing: new Map<string, string>(),
+  };
   return withRenames(plan, none);
 }
 
 const counted = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
-function plainReport(mode: string, colors: number, styles: number): string[] {
+function plainReport(mode: string, colors: number, styles: number, spacing: number): string[] {
   const parts = [
     ...(colors > 0 ? [counted(colors, "colour")] : []),
     ...(styles > 0 ? [counted(styles, "text style")] : []),
+    ...(spacing > 0 ? [counted(spacing, "spacing value")] : []),
   ];
   if (parts.length === 0) return [];
-  const verb = colors + styles === 1 ? "stayed a plain value" : "stayed plain values";
+  const verb = colors + styles + spacing === 1 ? "stayed a plain value" : "stayed plain values";
   return [`${mode}: ${parts.join(" and ")} ${verb}.`];
 }
 
@@ -262,6 +316,7 @@ export function mergeVersions(versions: TokenVersion[]): {
 } {
   const seedColors = versions[0]?.plan.tokens.colors ?? [];
   const seedStyles = versions[0]?.plan.tokens.textStyles ?? [];
+  const seedSpacing = versions[0]?.plan.tokens.spacing ?? [];
   const colorSets = versions.map((v, i) =>
     i === 0
       ? { joins: new Map(seedColors.map((seed) => [seed, seed])), cssOnly: new Map() }
@@ -279,6 +334,14 @@ export function mergeVersions(versions: TokenVersion[]): {
   const styleJoins = styleSets.map((set) => set.joins);
   const styleAt = (seed: PlanTextStyle, mode: number) =>
     styleJoins[mode]?.get(seed) ?? styleSets[mode]?.shared.get(seed);
+
+  const spacingSets: SpacingJoins[] = versions.map((v, i) =>
+    i === 0
+      ? { joins: new Map(seedSpacing.map((seed) => [seed, seed])), cssOnly: new Map() }
+      : joinSpacing(seedSpacing, v.plan.tokens.spacing ?? [], v.cssValues)
+  );
+  const spacingPxAt = (seed: PlanSpacing, mode: number) =>
+    spacingSets[mode]?.joins.get(seed)?.px ?? spacingSets[mode]?.cssOnly.get(seed);
 
   const modes = uniqueLabels(versions.map((v) => v.label));
   const colors = seedColors.map(
@@ -305,18 +368,39 @@ export function mergeVersions(versions: TokenVersion[]): {
     };
   });
 
+  const spacing = seedSpacing.map(
+    (seed): PlanModeSpacing => ({
+      key: mergedKey(`spacing:${seed.cssVar}`, modes, (mode) =>
+        spacingPxAt(seed, mode)?.toString()
+      ),
+      name: seed.name,
+      cssVar: seed.cssVar,
+      values: perMode(
+        modes,
+        (mode) => spacingPxAt(seed, mode),
+        (px) => px
+      ),
+      from: spacingSets.map((set) => set.joins.get(seed)?.key ?? null),
+    })
+  );
+
   const renamesOf = (tokens: { key: string; from: (string | null)[] }[], version: number) =>
     new Map(tokens.flatMap((t) => (t.from[version] ? [[t.from[version], t.key] as const] : [])));
 
   const plans = versions.map(({ plan }, i) =>
-    withRenames(plan, { colors: renamesOf(colors, i), styles: renamesOf(textStyles, i) })
+    withRenames(plan, {
+      colors: renamesOf(colors, i),
+      styles: renamesOf(textStyles, i),
+      spacing: renamesOf(spacing, i),
+    })
   );
 
   const report = versions.flatMap((v, i) =>
     plainReport(
       modes[i] ?? v.label,
       v.plan.tokens.colors.length - (colorJoins[i]?.size ?? 0),
-      v.plan.tokens.textStyles.length - (styleJoins[i]?.size ?? 0)
+      v.plan.tokens.textStyles.length - (styleJoins[i]?.size ?? 0),
+      (v.plan.tokens.spacing?.length ?? 0) - (spacingSets[i]?.joins.size ?? 0)
     )
   );
 
@@ -326,6 +410,7 @@ export function mergeVersions(versions: TokenVersion[]): {
       modes,
       colors,
       textStyles,
+      ...(spacing.length > 0 ? { spacing } : {}),
     },
     plans,
     report,

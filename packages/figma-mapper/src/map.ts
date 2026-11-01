@@ -782,6 +782,11 @@ export function mapCapture(
   report.nodes = ops.length;
   report.substitutedFonts = [...substituted].map(([from, to]) => ({ from, to }));
   const tokens = extractTokens(capture, ops, options);
+  if (tokens.spacingOver) {
+    report.warnings.push(
+      `Only 200 spacing values became variables; ${tokens.spacingOver} more stayed plain values.`
+    );
+  }
   if (ignoredFilters.size > 0) {
     const names = [...ignoredFilters].map(([name, n]) => `${name} (${n})`).join(", ");
     report.warnings.push(`These filters have no Figma equivalent and were left out: ${names}.`);

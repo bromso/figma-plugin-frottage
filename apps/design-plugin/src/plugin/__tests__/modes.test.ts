@@ -6,6 +6,7 @@ import {
   type ModeValue,
   type PlanColor,
   type PlanModeColor,
+  type PlanModeSpacing,
   type PlanModeType,
   type PlanOp,
   type PlanVersionTokens,
@@ -1250,5 +1251,148 @@ describe("cancel and a frame's bound variables", () => {
     await tokens.discard();
     expect(variableNamed(f, "type/body/1/size")).toBeDefined();
     expect(modeNames(collectionsIn(f)[0])).toEqual(["One", "Two"]);
+  });
+});
+
+describe("spacing across modes", () => {
+  /** As `mergeVersions` makes it: the key is the property and the values by mode. */
+  function spacing(cssVar: string, list: number[], over: Partial<PlanModeSpacing> = {}) {
+    return {
+      key: [`spacing:${cssVar}`, ...list.map((px, i) => `m${i}=${px}`)].join("|"),
+      name: `spacing/${cssVar.slice(2)}`,
+      cssVar,
+      values: perMode(list),
+      from: list.map((px) => `${cssVar}=${px}`),
+      ...over,
+    } satisfies PlanModeSpacing;
+  }
+  const only = (spacingTokens: PlanModeSpacing[], over: Partial<PlanVersionTokens> = {}) =>
+    set({ colors: [], spacing: spacingTokens, ...over });
+
+  test("a spacing variable holds one value per mode, and is named spacing/<name>", async () => {
+    const f = fakeFigma();
+    await settle(f, only([spacing("--gap", [24, 12])]));
+    const [collection] = collectionsIn(f);
+    const [variable] = variablesIn(f);
+    expect(variable.name).toBe("spacing/gap");
+    expect(variable.resolvedType).toBe("FLOAT");
+    expect(variable.codeSyntax.WEB).toBe("var(--gap)");
+    expect(f.tokens.valueIn(variable, modeId(collection, "Light"))).toBe(24);
+    expect(f.tokens.valueIn(variable, modeId(collection, "Dark"))).toBe(12);
+  });
+
+  test("modes vary by custom property name: a mode with no value reads the first", async () => {
+    const f = fakeFigma();
+    const token = spacing("--gap", [24, 12], { values: [{ mode: 0, value: 24 }] });
+    await settle(f, only([token], { modes: ["A", "B", "C"] }));
+    const [collection] = collectionsIn(f);
+    const [variable] = variablesIn(f);
+    for (const mode of ["A", "B", "C"]) {
+      expect(f.tokens.valueIn(variable, modeId(collection, mode))).toBe(24);
+    }
+  });
+
+  test("every mode gets a value, in the modes beyond the limit too", async () => {
+    const f = fakeFigma({ modeLimit: 2 });
+    const tokens = await settle(
+      f,
+      only([spacing("--gap", [24, 12, 8])], { modes: ["A", "B", "C"] })
+    );
+    const [collection] = collectionsIn(f);
+    const [variable] = variablesIn(f);
+    expect(tokens.counts().modesDropped).toBe(1);
+    for (const { modeId: id } of collection.modes) {
+      expect(variable.valuesByMode[id]).not.toBeUndefined();
+    }
+  });
+
+  test("a frame binds to the merged variable in each version's mode", async () => {
+    const f = fakeFigma();
+    const token = spacing("--gap", [24, 12]);
+    const a = createApplier(f.figma);
+    await a.beginSet();
+    await a.importModes(only([token]), options());
+    const layout = {
+      mode: "VERTICAL" as const,
+      wrap: false,
+      itemSpacing: 24,
+      counterSpacing: null,
+      padding: [0, 0, 0, 0] as [number, number, number, number],
+      primaryAlign: "MIN" as const,
+      counterAlign: "MIN" as const,
+      sizingH: "FIXED" as const,
+      sizingV: "FIXED" as const,
+      spacingKeys: { itemSpacing: token.key },
+    };
+    const op = (parent: string | null): PlanOp => ({
+      op: "frame",
+      id: "a",
+      parent,
+      name: "a",
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 50,
+      fills: [],
+      strokes: null,
+      radius: [0, 0, 0, 0],
+      opacity: 1,
+      effects: [],
+      clips: true,
+      layout,
+      childCount: 0,
+    });
+    for (const [i, label] of ["Light", "Dark"].entries()) {
+      await a.begin({ ...meta, version: { index: i, label } });
+      await a.applyBatch([op(null)]);
+      await a.end();
+    }
+    await a.endSet();
+    const [variable] = variablesIn(f);
+    const bound = f.created.filter((n: any) => n.boundVariables?.itemSpacing);
+    expect(bound).toHaveLength(2);
+    for (const node of bound as any[]) {
+      expect(node.boundVariables.itemSpacing.id).toBe(variable.id);
+      expect(node.itemSpacing).toBe(24);
+    }
+    const [collection] = collectionsIn(f);
+    expect((bound as any[]).map((n) => n.explicitModes[collection.id])).toEqual([
+      modeId(collection, "Light"),
+      modeId(collection, "Dark"),
+    ]);
+  });
+
+  test("a second set finds the variable by its key", async () => {
+    const f = fakeFigma();
+    const token = spacing("--gap", [24, 12]);
+    await settle(f, only([token]));
+    await settle(f, only([token]));
+    expect(variablesIn(f)).toHaveLength(1);
+  });
+
+  test("a refused value leaves no variable and counts", async () => {
+    const f = fakeFigma({ failTokens: ["createVariable"] });
+    const tokens = await settle(f, only([spacing("--gap", [24, 12])]));
+    expect(variablesIn(f)).toHaveLength(0);
+    expect(tokens.counts().tokenFailures).toBeGreaterThan(0);
+  });
+
+  test("a user's number variable is not matched by value", async () => {
+    const f = fakeFigma();
+    const mine = f.tokens.seedCollection("Mine");
+    f.tokens.seedVariable("space", mine, 24, "FLOAT");
+    await settle(f, only([spacing("--gap", [24, 24])]));
+    expect(
+      variablesIn(f)
+        .map((v) => v.name)
+        .sort()
+    ).toEqual(["space", "spacing/gap"]);
+    expect(f.tokens.writes.filter((w) => w.startsWith("space:"))).toEqual([]);
+  });
+
+  test("the options switch for styles and variables turns it off", async () => {
+    const f = fakeFigma();
+    await settle(f, only([spacing("--gap", [24, 12])]), options({ tokens: false }));
+    expect(variablesIn(f)).toHaveLength(0);
   });
 });

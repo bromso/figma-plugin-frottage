@@ -1,6 +1,16 @@
 import type { Capture, CaptureNode } from "@repo/capture-schema";
 import type { ImportOptions } from "./options";
-import type { PlanColor, PlanOp, PlanRgb, PlanRun, PlanTextStyle, PlanTokens } from "./plan";
+import type {
+  PlanColor,
+  PlanLayout,
+  PlanOp,
+  PlanRgb,
+  PlanRun,
+  PlanSpacing,
+  PlanTextStyle,
+  PlanTokens,
+  SpacingKeys,
+} from "./plan";
 
 /**
  * Finds the values a page repeats and proposes them as text styles and colour variables. Only the
@@ -14,6 +24,16 @@ const HEADING_RATIO = 1.25;
 const MAX_VAR_DEPTH = 16;
 const MAX_VALUE_LENGTH = 200;
 const FALLBACK_COLLECTION = "Frottage";
+/** Spacing variables per file, so that a page with a huge scale can't flood a Figma file. */
+const MAX_SPACING = 200;
+/**
+ * What `1rem` is in pixels. A capture doesn't record the root element's font size, and a custom
+ * property keeps `rem` as authored, so this assumes the browser default. A page that changes its
+ * root size gets values that match nothing, which stay plain rather than bind to the wrong token.
+ */
+const ROOT_FONT_SIZE = 16;
+/** Two lengths this close are the same length. */
+const PX_STEP = 0.01;
 
 /** Custom properties Figma can hold as a name. CSS allows far more, such as `.` and escapes. */
 const SAFE_PROPERTY = /^--[a-z0-9_-]+$/i;
@@ -150,6 +170,124 @@ function cssNamesByColor(props: Record<string, string>): Map<string, CssName[]> 
     list.sort((a, b) => a.name.length - b.name.length || (a.name < b.name ? -1 : 1));
   }
   return out;
+}
+
+// ---------- Spacing
+
+const LENGTH = /^(-?(?:\d+\.?\d*|\.\d+))(px|rem)$/i;
+
+/** A custom property's length in pixels, in `px` or `rem`, or null. Zero and below are not spacing. */
+export function cssSpacingOf(prop: string, props: Record<string, string>): number | null {
+  const raw = Object.hasOwn(props, prop) ? props[prop] : undefined;
+  if (raw === undefined || raw.length > MAX_VALUE_LENGTH) return null;
+  const value = resolveVars(raw, props);
+  const m = value ? LENGTH.exec(value) : null;
+  if (!m) return null;
+  const px =
+    Number.parseFloat(m[1] as string) * (m[2]?.toLowerCase() === "rem" ? ROOT_FONT_SIZE : 1);
+  return Number.isFinite(px) && px >= PX_STEP ? px : null;
+}
+
+/** `--space-4` becomes `spacing/4`; `--brand-gutter`, `spacing/brand-gutter`. Null if empty. */
+function spacingName(prop: string): string | null {
+  const bare = prop
+    .slice(2)
+    .toLowerCase()
+    .replace(/^(spacing|space|gap)-/, "");
+  if (bare === "" || bare.endsWith("-")) return null;
+  return `spacing/${bare}`;
+}
+
+/** The nearest hundredth of a pixel, as a whole number to compare by. */
+const stepOf = (px: number) => Math.round(px / PX_STEP);
+
+type SpacingUse = { px: number; bind(key: string): void };
+
+/** Each length of a frame that auto layout or a grid sets, with the way to bind it. */
+function spacingUses(layout: PlanLayout): SpacingUse[] {
+  if (layout.mode === "NONE") return [];
+  const keys = (): SpacingKeys => {
+    layout.spacingKeys ??= {};
+    return layout.spacingKeys;
+  };
+  const uses: SpacingUse[] = layout.padding.map((px, side) => ({
+    px,
+    bind(key) {
+      const k = keys();
+      k.padding ??= [undefined, undefined, undefined, undefined];
+      k.padding[side] = key;
+    },
+  }));
+  if (layout.mode === "GRID") {
+    uses.push(
+      { px: layout.rowGap, bind: (key) => Object.assign(keys(), { rowGap: key }) },
+      { px: layout.columnGap, bind: (key) => Object.assign(keys(), { columnGap: key }) }
+    );
+    return uses;
+  }
+  uses.push({ px: layout.itemSpacing, bind: (key) => Object.assign(keys(), { itemSpacing: key }) });
+  // Only a wrapping frame sets it, and a null follows `itemSpacing`.
+  if (layout.wrap && layout.counterSpacing !== null) {
+    uses.push({
+      px: layout.counterSpacing,
+      bind: (key) => Object.assign(keys(), { counterSpacing: key }),
+    });
+  }
+  return uses;
+}
+
+/** Which custom properties hold each length, the shortest name first. */
+function cssNamesByLength(props: Record<string, string>): Map<number, PlanSpacing[]> {
+  const out = new Map<number, PlanSpacing[]>();
+  for (const cssVar of Object.keys(props)) {
+    if (!SAFE_PROPERTY.test(cssVar)) continue;
+    const name = spacingName(cssVar);
+    const px = name ? cssSpacingOf(cssVar, props) : null;
+    if (!name || px === null) continue;
+    const entry = { key: `${cssVar}=${px}`, name, cssVar, px };
+    const list = out.get(stepOf(px));
+    if (list) list.push(entry);
+    else out.set(stepOf(px), [entry]);
+  }
+  for (const list of out.values()) {
+    list.sort((a, b) => a.name.length - b.name.length || (a.name < b.name ? -1 : 1));
+  }
+  return out;
+}
+
+/** Marks the frames in `ops` that use each token. Only a length a custom property names counts. */
+function spacingTokens(
+  ops: PlanOp[],
+  props: Record<string, string>
+): { tokens: PlanSpacing[]; over: number } {
+  const names = cssNamesByLength(props);
+  if (names.size === 0) return { tokens: [], over: 0 };
+  const uses = new Map<number, SpacingUse[]>();
+  for (const op of ops) {
+    if (op.op !== "frame") continue;
+    for (const use of spacingUses(op.layout)) {
+      const at = stepOf(use.px);
+      if (!names.has(at)) continue;
+      const list = uses.get(at);
+      if (list) list.push(use);
+      else uses.set(at, [use]);
+    }
+  }
+  const repeated = [...uses]
+    .filter(([, list]) => list.length >= MIN_USES)
+    .sort(([a, x], [b, y]) => y.length - x.length || a - b);
+
+  const taken = new Set<string>();
+  const found: { token: PlanSpacing; uses: SpacingUse[] }[] = [];
+  for (const [at, list] of repeated) {
+    const free = names.get(at)?.find((c) => !taken.has(c.name));
+    if (!free) continue;
+    taken.add(free.name);
+    found.push({ token: free, uses: list });
+  }
+  const kept = found.slice(0, MAX_SPACING);
+  for (const { token, uses: list } of kept) for (const use of list) use.bind(token.key);
+  return { tokens: kept.map((k) => k.token), over: found.length - kept.length };
 }
 
 // ---------- Colours
@@ -305,10 +443,13 @@ function collectionName(url: string): string {
 /** Proposes the page's tokens, and marks the runs and paints in `ops` that use them. */
 export function extractTokens(capture: Capture, ops: PlanOp[], options: ImportOptions): PlanTokens {
   const collection = collectionName(capture.source.url);
-  if (!options.tokens) return { textStyles: [], colors: [], collection };
+  if (!options.tokens) return { textStyles: [], colors: [], spacing: [], collection };
+  const spacing = spacingTokens(ops, capture.tokens.cssCustomProperties);
   return {
     textStyles: textStyleTokens(ops, capture.root),
     colors: colorTokens(ops, capture.tokens.cssCustomProperties),
+    spacing: spacing.tokens,
+    ...(spacing.over > 0 ? { spacingOver: spacing.over } : {}),
     collection,
   };
 }
