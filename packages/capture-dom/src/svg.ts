@@ -4,9 +4,9 @@ import { insideEditable } from "./flatten";
 /**
  * Serialises an inline `<svg>` so it can be rebuilt in Figma without the page around it.
  *
- * The result is built, not cloned: every element is created fresh from the original's name and a
- * filtered copy of its attributes, so nothing the filter does not know about can come along, and
- * nothing is read from a form control. Computed `fill`, `stroke`, `opacity`, `color` and friends
+ * The result is built, not cloned: every element is created fresh from the original's name and
+ * only the presentation and geometry attributes in `DRAWING_ATTRIBUTES`, so nothing that list does
+ * not name can come along, and nothing is read from a form control. Computed `fill`, `stroke`, `opacity`, `color` and friends
  * are written as attributes, `currentColor` is resolved, and `<use>` is inlined from the same tree
  * (so it works inside shadow roots). Scripts, event handlers, styles, animation, `foreignObject`
  * and any reference that leaves the document are dropped. References to `#id` stay; they are not
@@ -86,6 +86,29 @@ const INHERITED = [
   "text-anchor",
 ];
 const REFERENCING = ["clip-path", "mask", "filter", "marker-start", "marker-mid", "marker-end"];
+
+/** Attributes that decide what an SVG draws, lower-cased; `href` is handled on its own. */
+const DRAWING_ATTRIBUTES = new Set(
+  `id width height x y x1 y1 x2 y2 cx cy r rx ry fx fy fr d points pathlength viewbox
+   preserveaspectratio transform transform-origin transform-box opacity display visibility overflow
+   fill fill-opacity fill-rule stroke stroke-opacity stroke-width stroke-linecap stroke-linejoin
+   stroke-miterlimit stroke-dasharray stroke-dashoffset paint-order vector-effect shape-rendering
+   image-rendering text-rendering color-interpolation color-interpolation-filters mix-blend-mode
+   clip-path clip-rule clippathunits mask maskunits maskcontentunits mask-type filter filterunits
+   primitiveunits marker-start marker-mid marker-end markerwidth markerheight markerunits orient
+   refx refy gradientunits gradienttransform spreadmethod offset stop-color stop-opacity
+   patternunits patterncontentunits patterntransform font-family font-size font-weight font-style
+   font-stretch font-variant letter-spacing word-spacing text-anchor text-decoration
+   dominant-baseline alignment-baseline baseline-shift writing-mode direction unicode-bidi dx dy
+   rotate textlength lengthadjust startoffset method spacing side xml:space in in2 result
+   stddeviation mode type values operator k1 k2 k3 k4 tablevalues slope intercept amplitude
+   exponent flood-color flood-opacity lighting-color basefrequency numoctaves seed stitchtiles
+   surfacescale specularconstant specularexponent diffuseconstant kernelmatrix order divisor bias
+   targetx targety edgemode kernelunitlength preservealpha radius scale xchannelselector
+   ychannelselector azimuth elevation z pointsatx pointsaty pointsatz limitingconeangle`.split(
+    /\s+/
+  )
+);
 
 const DATA_IMAGE = /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]*$/i;
 const EXTERNAL_URL = /url\(\s*(?!['"]?\s*#)/i;
@@ -174,17 +197,7 @@ function copyAttributes(st: State, orig: Element, clone: Element, color: string)
   for (const a of Array.from(orig.attributes)) {
     const name = a.name;
     const lower = name.toLowerCase();
-    if (
-      lower.startsWith("on") ||
-      lower.startsWith("xmlns") ||
-      lower.startsWith("data-") ||
-      lower === "style" ||
-      lower === "class" ||
-      lower === "color" ||
-      lower === "xml:base"
-    ) {
-      continue;
-    }
+    if (lower !== "href" && lower !== "xlink:href" && !DRAWING_ATTRIBUTES.has(lower)) continue;
     let value = a.value;
     if (lower === "href" || lower === "xlink:href") {
       const target = value.trim();
@@ -194,7 +207,7 @@ function copyAttributes(st: State, orig: Element, clone: Element, color: string)
       else clone.setAttribute("href", target);
       continue;
     }
-    if (/javascript:/i.test(value) || EXTERNAL_URL.test(value)) continue;
+    if (/javascript:|:\/\//i.test(value) || EXTERNAL_URL.test(value)) continue;
     const local = LOCAL_URL.exec(value);
     if (local) st.refs.add(idOf((local[1] as string).slice(1)));
     value = value.replace(/currentcolor/gi, color);

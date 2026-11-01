@@ -1475,3 +1475,60 @@ test("a pseudo-element left out at the depth limit is reported", async ({ page }
   const c = await runCapture(page, "x");
   expect(c.warnings.map((w) => w.code)).toContain("depth-limit");
 });
+
+// ---------- SVG attributes
+
+test("only drawing attributes of an SVG are stored", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/form.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<svg id="odd" width="20" height="20" viewBox="0 0 20 20" data-user="SECRET-DATA">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox" gradientTransform="rotate(45)" spreadMethod="pad">
+            <stop offset="0.5" stop-color="#ff0000"/>
+          </linearGradient>
+          <clipPath id="c" clipPathUnits="userSpaceOnUse"><circle cx="5" cy="5" r="5"/></clipPath>
+          <filter id="f" x="0" y="0" width="1" height="1" filterUnits="objectBoundingBox"><feGaussianBlur in="SourceGraphic" stdDeviation="2" result="b"/></filter>
+          <pattern id="pt" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2"/></pattern>
+          <marker id="m" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto"><path d="M0 0h4v4H0z"/></marker>
+        </defs>
+        <path src="https://a.test/?token=SECRET-SRC" poster="https://a.test/?SECRET-POSTER" foo="SECRET-FOO"
+              aria-description="SECRET-ARIA" d="M0 0h20v20H0z" fill-rule="evenodd" clip-path="url(#c)" filter="url(#f)" marker-end="url(#m)"/>
+        <rect id="https://a.test/?token=SECRET-ID" width="4" height="4" rx="1" ry="1" x="2" y="3" fill="url(#g)"/>
+        <rect width="4" height="4" fill="url(#pt)"/>
+        <text x="1" y="9" dx="1" dy="1" text-anchor="middle" textLength="12" lengthAdjust="spacing">Label</text>
+      </svg>`
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const markup = svgs(c).find((n) => n.semantic.id === "odd")?.markup ?? "";
+  expect(JSON.stringify(c)).not.toContain("SECRET");
+  for (const name of ["src=", "poster=", "foo=", "aria-description=", "data-user="]) {
+    expect(markup).not.toContain(name);
+  }
+  for (const kept of [
+    'viewBox="0 0 20 20"',
+    'gradientUnits="objectBoundingBox"',
+    'gradientTransform="rotate(45)"',
+    'spreadMethod="pad"',
+    'offset="0.5"',
+    'clipPathUnits="userSpaceOnUse"',
+    'stdDeviation="2"',
+    'filterUnits="objectBoundingBox"',
+    'patternUnits="userSpaceOnUse"',
+    'markerWidth="4"',
+    'orient="auto"',
+    'refX="2"',
+    'd="M0 0h20v20H0z"',
+    'fill-rule="evenodd"',
+    'clip-path="url(#c)"',
+    'rx="1"',
+    'textLength="12"',
+    'text-anchor="middle"',
+  ]) {
+    expect(markup).toContain(kept);
+  }
+});
