@@ -324,10 +324,10 @@ test("no query, fragment or userinfo reaches the capture or the plan, and fetche
     if (n.kind === "element") n.children.forEach(go);
   };
   go(capture.root);
+  expect(JSON.stringify(capture)).not.toContain("ada@example.com");
   expect(hrefs).toEqual([
     "http://localhost:4173/reset",
     "http://localhost:4173/account",
-    "mailto:ada@example.com",
     "javascript:",
     "http://localhost:4173/reset",
     "http://cdn.test/x",

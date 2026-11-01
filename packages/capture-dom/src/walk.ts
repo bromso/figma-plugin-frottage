@@ -130,6 +130,8 @@ const BUTTON_INPUTS = new Set(["submit", "button", "reset"]);
 const SECRET_AUTOCOMPLETE =
   /\b(current-password|new-password|one-time-code|cc-number|cc-csc|cc-exp)\b/;
 
+const STORED_LINK = /^(?:https?|javascript|data|blob):/i;
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const utf8Length = (text: string): number => new TextEncoder().encode(text).length;
 
@@ -325,8 +327,14 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
           u.hash &&
           u.href.slice(0, u.href.length - u.hash.length) ===
             new URL(doc.URL).href.replace(/#.*$/s, "");
-        if ((u.protocol === "http:" || u.protocol === "https:") && !samePage) {
-          out = cleanUrl(u.href);
+        const web = u.protocol === "http:" || u.protocol === "https:";
+        if (web && !samePage) out = cleanUrl(u.href);
+        else if (!web && u.protocol !== "javascript:") {
+          warn(
+            "link-not-web",
+            undefined,
+            "Links that are not web pages, such as email or phone links, have no link in Figma"
+          );
         }
       } catch {
         out = undefined;
@@ -823,7 +831,9 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const landmark = LANDMARK_TAGS[tag];
     if (landmark) semantic.landmark = landmark;
     if (tag === "a" && el.namespaceURI === XHTML && el.hasAttribute("href")) {
-      semantic.href = cleanUrl((el as HTMLAnchorElement).href);
+      const href = (el as HTMLAnchorElement).href;
+      // The rest of a `mailto:`, `tel:` or app link is a person's address, not a page.
+      if (STORED_LINK.test(href)) semantic.href = cleanUrl(href);
     }
     const alt = el.getAttribute("alt");
     if (alt !== null && alt !== "") semantic.alt = alt;

@@ -1145,6 +1145,35 @@ test("javascript, mailto, tel, fragment-only and empty links store no href", asy
   expect(JSON.stringify(t)).not.toContain("javascript");
 });
 
+test("mailto and tel links are counted in one warning, and no address is stored", async ({
+  page,
+}) => {
+  const c = await capture(page, "links.html");
+  const found = c.warnings.filter((w) => w.code === "link-not-web");
+  expect(found).toHaveLength(1);
+  expect(found[0]?.detail).toContain("(2 times)");
+  const json = JSON.stringify(c);
+  expect(json).not.toContain("a@b.co");
+  expect(json).not.toContain("tel:");
+  expect(json).not.toContain("mailto:");
+});
+
+test("a block mailto link stores no address either", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/links.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<a class="block" href="mailto:private@example.test">Write</a><a class="block" href="sms:+15550100">Text</a>'
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  expect(JSON.stringify(c)).not.toContain("private@example.test");
+  expect(JSON.stringify(c)).not.toContain("15550100");
+  expect(c.warnings.find((w) => w.code === "link-not-web")?.detail).toContain("(4 times)");
+});
+
 // ---------- Links through the flattened tree
 
 const hrefsOf = (n: Extract<CaptureNode, { kind: "text" }>) => n.runs.map((r) => r.href);
