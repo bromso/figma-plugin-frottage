@@ -1876,9 +1876,46 @@ test("a selector the reader cannot answer is skipped and counted", async ({ page
   expect(partial?.detail).toMatch(/\(\d+ times\)$/);
 });
 
-test(":not(:hover) is skipped", async ({ page }) => {
+test(":not(:hover) is skipped, while the hover branch of its list is read", async ({ page }) => {
   const c = await capture(page, "hover.html");
   expect(hoverOf(c, "x-btn", "not")).toBeUndefined();
+  expect(hoverOf(c, "x-btn", "notb")?.backgroundColor?.r).toBeCloseTo(0.6, 2);
+});
+
+test("a group with a branch that matches at rest gets no hover", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  expect(hoverOf(c, "x-btn", "isb")).toBeUndefined();
+});
+
+test("a nested parent list keeps its resting branch resting", async ({ page }) => {
+  const c = await capture(page, "hover.html");
+  const xs = elements(c, (n) => n.semantic.className === "nl-x");
+  expect(xs).toHaveLength(4);
+  const [a1, b1, a2, b2] = xs;
+  expect(a1?.hover).toBeUndefined();
+  expect(a2?.hover).toBeUndefined();
+  expect(b1?.hover?.color?.g).toBeCloseTo(0.667, 2);
+  expect(b2?.hover?.color?.g).toBeCloseTo(0.667, 2);
+});
+
+test("unreadable shapes count once each, and a shared sheet counts once", async ({ page }) => {
+  const c = await capture(page, "hover-limits.html");
+  // @container, a custom-property-only rule, the shared sheet's transform, a bare :host rule
+  const partial = c.warnings.find((x) => x.code === "hover-partial");
+  expect(partial?.detail).toMatch(/\(4 times\)$/);
+  // the shared sheet still matches in each root
+  const ys = elements(c, (n) => n.semantic.className === "y");
+  expect(ys).toHaveLength(2);
+  for (const y of ys) expect(y.hover?.color?.r).toBe(1);
+  expect(hoverOf(c, "x-lim", "good")?.color?.g).toBe(1);
+  expect(hoverOf(c, "x-lim", "custom")).toBeUndefined();
+});
+
+test("past the rule cap reading stops with one warning", async ({ page }) => {
+  const c = await capture(page, "hover-limits.html");
+  const stopped = c.warnings.filter((x) => x.code === "hover-stopped");
+  expect(stopped).toHaveLength(1);
+  expect(stopped[0]?.detail).not.toMatch(/times/);
 });
 
 test("a rule with an unsupported property keeps what it can and is counted", async ({ page }) => {

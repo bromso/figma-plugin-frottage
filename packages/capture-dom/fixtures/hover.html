@@ -30,7 +30,11 @@ x-btn.mq:hover { opacity: 0.25; }
 .card:hover .title { color: #0000ff; }
 
 /* skipped or counted */
-x-btn.not:not(:hover) { background-color: #999999; }
+x-btn.not:not(:hover), x-btn.notb:hover { background-color: #999999; }
+/* .isb matches at rest through its second branch, so it has no hover */
+x-btn:is(.isa:hover, .isb) { background-color: #ff00aa; }
+/* the same through nesting: .nl-a is at rest, only .nl-b needs the hover */
+.nl-a, .nl-b:hover { & .nl-x { color: #00aa00; } }
 x-btn.pseudo:hover::after { content: "x"; color: red; }
 x-btn.has:has(:hover) { background-color: #888888; }
 x-pill:hover { color: #009900; transform: scale(2); }
@@ -80,11 +84,13 @@ x-btn.secret:hover { background-color: var(--token); box-shadow: 0 0 0 var(--tok
   <x-btn class="mq">Media</x-btn>
   <x-btn class="sup">Supports</x-btn>
   <x-btn class="not">Not</x-btn>
+  <x-btn class="notb">Not2</x-btn>
+  <x-btn class="isb">Isb</x-btn>
   <x-btn class="pseudo">Pseudo</x-btn>
   <x-btn class="has">Has<i>i</i></x-btn>
   <x-btn class="secret">Secret</x-btn>
-  <x-tile><div class="card"><h3 class="title">One</h3></div></x-tile>
-  <x-tile><div class="card"><h3 class="title">Two</h3></div></x-tile>
+  <x-tile><div class="card"><h3 class="title">One</h3></div><div class="nl-a"><h4 class="nl-x">A1</h4></div><div class="nl-b"><h4 class="nl-x">B1</h4></div></x-tile>
+  <x-tile><div class="card"><h3 class="title">Two</h3></div><div class="nl-a"><h4 class="nl-x">A2</h4></div><div class="nl-b"><h4 class="nl-x">B2</h4></div></x-tile>
   <x-pill class="a">Pill</x-pill>
   <x-pill class="cur">Pill</x-pill>
   <x-once>Only one</x-once>

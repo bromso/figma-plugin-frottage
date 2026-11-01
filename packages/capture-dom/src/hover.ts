@@ -12,11 +12,15 @@ export type HoverDeps = {
   win: Win;
   computed: (el: Element) => CSSStyleDeclaration;
   /** Counts only: how many sheets could not be read, and how many rules were read in part. */
-  report: (code: "hover-unreadable" | "hover-partial", count: number) => void;
+  report: (code: "hover-unreadable" | "hover-partial" | "hover-stopped", count: number) => void;
+  /** Milliseconds, `performance.now()`. */
+  now: () => number;
 };
 
 /** Matches `LIMITS` in spirit: a page with more hover rules than this is read up to here. */
 const MAX_HOVER_RULES = 2000;
+/** Reading stops after this long, so a heavy page cannot stall the capture. */
+const TIME_BUDGET_MS = 500;
 /** Rules looked at in total, hover or not, so a huge sheet cannot stall the capture. */
 const MAX_RULES_SEEN = 200_000;
 const MAX_ELEMENTS = 100_000;
@@ -49,7 +53,8 @@ export function hoverCandidates(
       if (list) list.push(el);
       else byTag.set(el.localName, [el]);
     }
-    for (const child of flatChildren(el, env))
+    // Reversed, so the stack pops in document order and so do the roots read later.
+    for (const child of flatChildren(el, env).reverse())
       if (child.nodeType === 1) stack.push(child as Element);
   }
 
@@ -62,7 +67,7 @@ export function hoverCandidates(
         const el = down.pop() as Element;
         if (candidates.has(el) || isEditable(el)) continue;
         candidates.add(el);
-        for (const child of flatChildren(el, env))
+        for (const child of flatChildren(el, env).reverse())
           if (child.nodeType === 1) down.push(child as Element);
       }
     }
@@ -118,20 +123,26 @@ type Analysis =
   | { kind: "partial" }
   | { kind: "ok"; selector: string };
 
+/** Selector lists that match when any branch does. */
+const GROUPS = new Set(["is", "where", "matches", "-webkit-any", "-moz-any"]);
 const PSEUDO_ELEMENT_NAMES = new Set(["before", "after", "first-line", "first-letter"]);
 
 /**
  * Replace each `:hover` with `:is(*)`, "assume it is hovered", which is valid wherever `:hover`
  * was. `:not(:hover)` describes the resting element, so it is skipped. `:hover` under `:has()`
  * or beside a pseudo-element can't be answered from the elements that exist, so it is partial.
+ * So is `:hover` in an `:is()` or `:where()` with a branch that has none: that branch matches at
+ * rest, and `:is(*)` would give it a hover it never has.
  */
 export function analyse(selector: string): Analysis {
   let out = "";
-  const stack: string[] = [];
+  // `branches` says, per comma-separated branch of the group, whether :hover is in it.
+  const stack: Array<{ name: string; branches: boolean[] }> = [];
   let hover = false;
   let negated = false;
   let has = false;
   let pseudoElement = false;
+  let mixed = false;
   for (let i = 0; i < selector.length; i++) {
     const ch = selector[i] as string;
     if (ch === "\\") {
@@ -154,10 +165,19 @@ export function analyse(selector: string): Analysis {
       out += selector.slice(i, j + 1);
       i = j;
     } else if (ch === "(") {
-      stack.push((/:([\w-]+)$/.exec(out)?.[1] ?? "").toLowerCase());
+      stack.push({ name: (/:([\w-]+)$/.exec(out)?.[1] ?? "").toLowerCase(), branches: [false] });
       out += ch;
     } else if (ch === ")") {
-      stack.pop();
+      const frame = stack.pop();
+      if (frame?.branches.some(Boolean)) {
+        // A group that matches at rest through a branch without :hover can't be read as hovered.
+        if (GROUPS.has(frame.name) && !frame.branches.every(Boolean)) mixed = true;
+        const parent = stack[stack.length - 1];
+        if (parent) parent.branches[parent.branches.length - 1] = true;
+      }
+      out += ch;
+    } else if (ch === "," && stack.length > 0) {
+      stack[stack.length - 1]?.branches.push(false);
       out += ch;
     } else if (ch === ":") {
       if (selector[i + 1] === ":") {
@@ -171,8 +191,10 @@ export function analyse(selector: string): Analysis {
       const lower = name.toLowerCase();
       if (lower === "hover") {
         hover = true;
-        if (stack.includes("not")) negated = true;
-        if (stack.includes("has")) has = true;
+        const top = stack[stack.length - 1];
+        if (top) top.branches[top.branches.length - 1] = true;
+        if (stack.some((f) => f.name === "not")) negated = true;
+        if (stack.some((f) => f.name === "has")) has = true;
         out += ":is(*)";
       } else {
         if (PSEUDO_ELEMENT_NAMES.has(lower)) pseudoElement = true;
@@ -183,7 +205,7 @@ export function analyse(selector: string): Analysis {
     }
   }
   if (!hover) return { kind: "none" };
-  if (pseudoElement || has) return { kind: "partial" };
+  if (pseudoElement || has || mixed) return { kind: "partial" };
   if (negated) return { kind: "skip" };
   return { kind: "ok", selector: out };
 }
@@ -283,13 +305,20 @@ function hasUnsupported(style: CSSStyleDeclaration, get: (n: string) => string):
   return false;
 }
 
+function onlyCustom(style: CSSStyleDeclaration): boolean {
+  const count = Math.min(style.length, MAX_LONGHANDS);
+  for (let i = 0; i < count; i++) if (!style.item(i).startsWith("--")) return false;
+  return count > 0;
+}
+
 function declared(rule: CSSStyleRule): Declared {
   const style = rule.style;
   const get = (name: string) => style.getPropertyValue(name).trim();
   return {
     get,
     custom: (name) => get(name) || undefined,
-    unsupported: hasUnsupported(style, get),
+    // A rule that only sets custom properties changes things through var() that are not read here.
+    unsupported: hasUnsupported(style, get) || onlyCustom(style),
   };
 }
 
@@ -394,6 +423,28 @@ function apply(into: Hover, d: Declared, el: Element, deps: HoverDeps): boolean 
   return partial;
 }
 
+/**
+ * A nested rule's selectors with each parent branch folded in as CSS nesting means it. Branches
+ * stay apart, so a parent branch without :hover stays a resting selector. `truncated` says some
+ * combinations were dropped.
+ */
+export function nestSelectors(
+  own: string[],
+  parents: string[] | undefined
+): { selectors: string[]; truncated: boolean } {
+  if (!parents) return { selectors: own, truncated: false };
+  const selectors: string[] = [];
+  for (const child of own) {
+    for (const parent of parents) {
+      if (selectors.length >= MAX_NESTED_COMBOS) return { selectors, truncated: true };
+      selectors.push(
+        child.includes("&") ? child.replaceAll("&", `:is(${parent})`) : `:is(${parent}) ${child}`
+      );
+    }
+  }
+  return { selectors, truncated: false };
+}
+
 // ---------- Reading the sheets
 
 /**
@@ -418,6 +469,18 @@ export function readHover(
   let hoverRules = 0;
   let seen = 0;
   let stopped = false;
+  const startedAt = deps.now();
+  // Each rule and sheet is counted once, however many roots or imports reach it.
+  const countedRules = new WeakSet<CSSRule>();
+  const partialRules = new WeakSet<CSSRule>();
+  const unreadableSheets = new WeakSet<CSSStyleSheet>();
+  const readIn = new WeakMap<Root, WeakSet<CSSStyleSheet>>();
+
+  const markPartial = (rule: CSSRule) => {
+    if (partialRules.has(rule)) return;
+    partialRules.add(rule);
+    partial++;
+  };
 
   const store = (el: Element, from: Hover) => {
     result.set(el, { ...result.get(el), ...from });
@@ -432,8 +495,9 @@ export function readHover(
 
   /** The candidates one `:hover` selector reaches inside `root`. Throws on an invalid selector. */
   const targets = (root: Root, selector: string): Element[] => {
-    const hostRule = /^:host\(/i.exec(selector);
-    if (!hostRule) return matching(root, selector);
+    // `:host .x:hover` and `:host-context()` are not read; only `:host(...)` is.
+    if (/^:host/i.test(selector) && !/^:host\(/i.test(selector)) throw new Error("bare host");
+    if (!/^:host\(/i.test(selector)) return matching(root, selector);
     if (root.nodeType !== 11) return [];
     const host = (root as ShadowRoot).host;
     const end = closeOf(selector, 5);
@@ -450,16 +514,14 @@ export function readHover(
   const handleSelectors = (root: Root, selectors: string[], rule: CSSStyleRule) => {
     let decl: Declared | undefined;
     let ruleIsPartial = false;
-    let counted = false;
     for (const sel of selectors) {
       const a = analyse(sel.replace(/^:host:hover/i, ":host(:hover)"));
       if (a.kind === "none" || a.kind === "skip") continue;
-      if (!counted) {
-        counted = true;
+      if (!countedRules.has(rule)) {
+        countedRules.add(rule);
         if (++hoverRules > MAX_HOVER_RULES) {
           stopped = true;
-          partial++;
-          return;
+          break;
         }
       }
       if (a.kind === "partial") {
@@ -481,32 +543,29 @@ export function readHover(
         if (Object.keys(into).length > 0) store(el, into);
       }
     }
-    if (ruleIsPartial) partial++;
+    if (ruleIsPartial) markPartial(rule);
   };
 
-  /** The rule's selectors with a parent's folded in, as CSS nesting means them. */
-  const nest = (own: string[], parents: string[] | undefined): string[] => {
-    if (!parents) return own;
-    const out: string[] = [];
-    for (const child of own) {
-      for (const parent of parents) {
-        if (out.length >= MAX_NESTED_COMBOS) return out;
-        out.push(
-          child.includes("&") ? child.replaceAll("&", `:is(${parent})`) : `:is(${parent}) ${child}`
-        );
-      }
+  /** Whether any style rule inside `rules` has a :hover selector, looking a few levels down. */
+  const holdsHover = (rules: CSSRuleList, depth = 0): boolean => {
+    if (depth > 8) return true;
+    for (const rule of Array.from(rules)) {
+      if (rule instanceof win.CSSStyleRule && /:hover/i.test(rule.selectorText)) return true;
+      const inner = (rule as { cssRules?: CSSRuleList }).cssRules;
+      if (inner && holdsHover(inner, depth + 1)) return true;
     }
-    return out;
+    return false;
   };
 
   const readRules = (rules: CSSRuleList, root: Root, parents: string[] | undefined) => {
     for (const rule of Array.from(rules)) {
-      if (stopped || seen++ > MAX_RULES_SEEN) {
+      if (stopped || seen++ > MAX_RULES_SEEN || deps.now() - startedAt > TIME_BUDGET_MS) {
         stopped = true;
         return;
       }
       if (rule instanceof win.CSSStyleRule) {
-        const selectors = nest(splitSelectors(rule.selectorText), parents);
+        const { selectors, truncated } = nestSelectors(splitSelectors(rule.selectorText), parents);
+        if (truncated) markPartial(rule);
         if (selectors.some((s) => /:hover/i.test(s))) handleSelectors(root, selectors, rule);
         if (rule.cssRules && rule.cssRules.length > 0) readRules(rule.cssRules, root, selectors);
       } else if (rule instanceof win.CSSMediaRule) {
@@ -517,19 +576,33 @@ export function readHover(
         if (rule.styleSheet) readSheet(rule.styleSheet, root);
       } else if (win.CSSLayerBlockRule && rule instanceof win.CSSLayerBlockRule) {
         readRules(rule.cssRules, root, parents);
+      } else {
+        // @container, @scope and the like depend on state the reader cannot see.
+        const inner = (rule as { cssRules?: CSSRuleList }).cssRules;
+        if (inner && holdsHover(inner)) markPartial(rule);
       }
     }
   };
 
   const readSheet = (sheet: CSSStyleSheet, root: Root) => {
     if (sheet.disabled) return;
+    let done = readIn.get(root);
+    if (!done) {
+      done = new WeakSet();
+      readIn.set(root, done);
+    }
+    if (done.has(sheet)) return;
+    done.add(sheet);
     const media = sheet.media?.mediaText;
     if (media && !win.matchMedia(media).matches) return;
     let rules: CSSRuleList;
     try {
       rules = sheet.cssRules;
     } catch {
-      unreadable++; // cross-origin
+      if (!unreadableSheets.has(sheet)) {
+        unreadableSheets.add(sheet);
+        unreadable++; // cross-origin
+      }
       return;
     }
     readRules(rules, root, undefined);
@@ -545,5 +618,6 @@ export function readHover(
 
   if (unreadable > 0) deps.report("hover-unreadable", unreadable);
   if (partial > 0) deps.report("hover-partial", partial);
+  if (stopped) deps.report("hover-stopped", 1);
   return result;
 }

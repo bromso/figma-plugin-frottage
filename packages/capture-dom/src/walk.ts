@@ -1198,6 +1198,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     hovers = readHover(roots, candidates, {
       win,
       computed: cs,
+      now: () => win.performance.now(),
       report: (code, count) =>
         warnEach(
           count,
@@ -1205,7 +1206,9 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
           "",
           code === "hover-unreadable"
             ? "A stylesheet could not be read, so its :hover rules were left out"
-            : "A :hover rule was only partly read, so part of it was left out"
+            : code === "hover-stopped"
+              ? "Reading :hover rules stopped at its time or rule limit, so later ones were left out"
+              : "A :hover rule was only partly read, so part of it was left out"
         ),
     });
   } catch {

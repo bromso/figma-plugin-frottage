@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { analyse, resolveVars } from "../hover";
+import { analyse, nestSelectors, resolveVars } from "../hover";
 import { parseAuthoredBoxShadows } from "../styles";
 
 const lookup = (table: Record<string, string>) => (name: string) => table[name];
@@ -38,6 +38,45 @@ describe("analyse", () => {
     expect(analyse("a:has(:hover)")).toEqual({ kind: "partial" });
     expect(analyse("a:hover::after")).toEqual({ kind: "partial" });
     expect(analyse("a:hover:before")).toEqual({ kind: "partial" });
+  });
+});
+
+describe("analyse: a group needs :hover in every branch", () => {
+  test(":is() and :where() with a branch that has no :hover are partial", () => {
+    expect(analyse("x-btn:is(.a:hover, .b)")).toEqual({ kind: "partial" });
+    expect(analyse(":where(.a, .b:hover) .x")).toEqual({ kind: "partial" });
+    expect(analyse(":is(.a:hover, :is(.b:hover, .c)) .x")).toEqual({ kind: "partial" });
+  });
+  test("a group where every branch has :hover is read, nested or not", () => {
+    expect(analyse("x-btn:is(.a:hover, .b:hover)")).toEqual({
+      kind: "ok",
+      selector: "x-btn:is(.a:is(*), .b:is(*))",
+    });
+    expect(analyse(":is(:is(a:hover, b:hover), c:hover)").kind).toBe("ok");
+    expect(analyse(".card:is(.a, .b):hover .x").kind).toBe("ok");
+  });
+  test(":is(:not(:hover), .x:hover) is never read as hovered", () => {
+    expect(analyse(":is(:not(:hover), .x:hover)").kind).not.toBe("ok");
+  });
+});
+
+describe("nestSelectors", () => {
+  test("keeps each parent branch apart, so a resting branch stays resting", () => {
+    const { selectors } = nestSelectors(["& .x"], [".a", ".b:hover"]);
+    expect(selectors).toEqual([":is(.a) .x", ":is(.b:hover) .x"]);
+    expect(analyse(selectors[0] as string).kind).toBe("none");
+    expect(analyse(selectors[1] as string).kind).toBe("ok");
+  });
+  test("a parent used inside :is() with a resting branch is partial", () => {
+    const { selectors } = nestSelectors([":is(&, .y) .x"], [".b:hover"]);
+    expect(analyse(selectors[0] as string).kind).toBe("partial");
+  });
+  test("reports truncation", () => {
+    const parents = Array.from({ length: 60 }, (_, i) => `.p${i}:hover`);
+    const out = nestSelectors(["& .x"], parents);
+    expect(out.truncated).toBe(true);
+    expect(out.selectors.length).toBeLessThan(60);
+    expect(nestSelectors(["& .x"], [".a"]).truncated).toBe(false);
   });
 });
 
