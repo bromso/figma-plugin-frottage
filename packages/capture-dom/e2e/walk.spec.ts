@@ -1737,6 +1737,44 @@ test("zIndex is stored for a positioned box and left out for auto", async ({ pag
   expect(parseCapture(c).ok).toBe(true);
 });
 
+test("a pseudo-element keeps its z-index, so an underlay stays under the text", async ({
+  page,
+}) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/layout.html");
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      [
+        "<style>.zq-pill{position:relative;width:80px}",
+        ".zq-pill::before{content:'';position:absolute;inset:0;background:#000;z-index:-1}",
+        ".zq-row{display:flex}.zq-row::after{content:'';width:5px;height:5px;background:#000;z-index:2}",
+        ".zq-auto::before{content:'';position:absolute;inset:0;background:#000}</style>",
+        '<div class="zq-pill" id="zq-pill"><span style="color:#fff">Label</span></div>',
+        '<div class="zq-row" id="zq-row"><b>One</b></div>',
+        '<div class="zq-auto" id="zq-auto" style="position:relative">Two</div>',
+      ].join("")
+    );
+  });
+  await page.addScriptTag({ content: bundle });
+  const c = await runCapture(page, "x");
+  const byId = new Map<string, ElementNode>();
+  each(c, (n) => {
+    if (n.kind === "element" && n.semantic.id?.startsWith("zq-")) byId.set(n.semantic.id, n);
+  });
+  const pseudo = (id: string) => {
+    const parent = byId.get(id);
+    return parent?.children.find((n) => n.semantic.tag.startsWith("::"));
+  };
+  expect(pseudo("zq-pill")?.zIndex).toBe(-1);
+  expect(pseudo("zq-row")?.zIndex).toBe(2);
+  expect(pseudo("zq-auto")?.zIndex).toBeUndefined();
+  expect(parseCapture(c).ok).toBe(true);
+  const { ops } = mapCapture(c, [{ family: "Arial", style: "Regular" }]);
+  const under = ops.filter((o) => o.parent === byId.get("zq-pill")?.id).map((o) => o.id);
+  expect(under[0]).toBe(pseudo("zq-pill")?.id);
+});
+
 test("background-clip: text is captured and the text paints with the first gradient colour", async ({
   page,
 }) => {

@@ -765,6 +765,112 @@ describe("stacking order", () => {
     expect(order.filter((id) => id !== "badge")).toEqual(["a", "b"]);
     expect(order[0]).toBe("badge");
   });
+
+  describe("under auto layout", () => {
+    /** One frame of 200 by 100 holding `children`, with the mode the plan gave it. */
+    const stacked = (children: ReturnType<typeof el>[], parent = {}) => {
+      const root = el("root", [0, 0], [el("p", [0, 0], children, parent, [200, 100])]);
+      const { ops } = mapCapture(cap(root), inter);
+      const frame = ops.find((o) => o.id === "p") as FramePlanOp;
+      return {
+        mode: frame.layout.mode,
+        order: ops.filter((o) => o.parent === "p").map((o) => o.id),
+      };
+    };
+    const rel = (over = {}) => ({
+      layout: { ...el("x", [0, 0]).layout, position: "relative" },
+      ...over,
+    });
+    const content = (over = {}) => el("content", [0, 0], [], over, [200, 100]);
+    const backdrop = (z?: number) => el("backdrop", [0, 0], [], abs(z), [200, 100]);
+
+    test("content that is positioned stays over an absolute backdrop before it", () => {
+      expect(stacked([backdrop(), content(rel())])).toEqual({
+        mode: "VERTICAL",
+        order: ["backdrop", "content"],
+      });
+    });
+    test("content with a z-index stays over the backdrop", () => {
+      expect(stacked([backdrop(), content(rel({ zIndex: 1 }))]).order).toEqual([
+        "backdrop",
+        "content",
+      ]);
+    });
+    test("a transform, opacity or filter puts content on the same level", () => {
+      const transform: ElementNode["transform"] = [1, 0, 0, 1, 2, 0];
+      const filtered = { style: { ...el("x", [0, 0]).style, filters: ["brightness(1.2)"] } };
+      for (const over of [{ transform }, { opacity: 0.9 }, filtered]) {
+        const { mode, order } = stacked([backdrop(), content(over)]);
+        expect(mode).toBe("VERTICAL");
+        expect(order).toEqual(["backdrop", "content"]);
+      }
+    });
+    test("a static child still goes under an absolute one, as CSS paints it", () => {
+      expect(stacked([backdrop(), content()]).order).toEqual(["content", "backdrop"]);
+    });
+    test("content through a collapsed wrapper keeps its level", () => {
+      const inner = el("inner", [0, 0], [], rel(), [200, 100]);
+      const wrapper = el("content", [0, 0], [inner], {}, [200, 100]);
+      expect(stacked([backdrop(), wrapper]).order).toEqual(["backdrop", "inner"]);
+    });
+    test("a negative z-index goes under the flow", () => {
+      expect(stacked([content(rel()), backdrop(-1)]).order).toEqual(["backdrop", "content"]);
+    });
+    test("flow slots keep CSS order while an absolute keeps its paint slot", () => {
+      const row = {
+        layout: { ...el("x", [0, 0]).layout, display: "flex", flexDirection: "row" },
+      };
+      const { mode, order } = stacked(
+        [
+          el("a", [0, 0], [], {}, [100, 100]),
+          el("mid", [0, 0], [], abs(), [100, 100]),
+          el("b", [100, 0], [], rel(), [100, 100]),
+        ],
+        row
+      );
+      expect(mode).toBe("HORIZONTAL");
+      expect(order).toEqual(["a", "mid", "b"]);
+    });
+    test("an item painted before its flow neighbour does not leave its flow slot", () => {
+      const row = {
+        layout: { ...el("x", [0, 0]).layout, display: "flex", flexDirection: "row" },
+      };
+      const { order } = stacked(
+        [
+          el("a", [0, 0], [], rel({ zIndex: 2 }), [100, 100]),
+          el("b", [100, 0], [], {}, [100, 100]),
+        ],
+        row
+      );
+      expect(order).toEqual(["a", "b"]);
+    });
+    test("members of one level stay in tree order", () => {
+      const { order } = stacked([
+        el("one", [0, 0], [], abs(), [10, 10]),
+        el("flow", [0, 0], [], rel(), [200, 100]),
+        el("two", [0, 0], [], abs(), [10, 10]),
+        el("three", [0, 0], [], abs(0), [10, 10]),
+      ]);
+      expect(order).toEqual(["one", "flow", "two", "three"]);
+    });
+  });
+
+  test("a relative z-auto child goes over a static later sibling in a frame with no layout", () => {
+    const rel = { layout: { ...el("x", [0, 0]).layout, position: "relative" } };
+    const order = kids([
+      el("over", [0, 0], [], rel, [50, 50]),
+      el("under", [20, 20], [], {}, [50, 50]),
+    ]);
+    expect(order).toEqual(["under", "over"]);
+  });
+  test("a frame with no layout counts a transform as the z-0 level", () => {
+    const transform: ElementNode["transform"] = [1, 0, 0, 1, 2, 0];
+    const order = kids([
+      el("over", [0, 0], [], { transform }, [50, 50]),
+      el("under", [20, 20], [], {}, [50, 50]),
+    ]);
+    expect(order).toEqual(["under", "over"]);
+  });
 });
 
 describe("gradients", () => {

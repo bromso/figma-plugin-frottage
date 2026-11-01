@@ -359,3 +359,11 @@ export function readTransform(value: string): ElementNode["transform"] {
   if (n.length !== 6 || n.some((v) => !Number.isFinite(v))) return undefined;
   return n as [number, number, number, number, number, number];
 }
+
+/** z-index only counts on a positioned box, or on a flex or grid item. */
+export function readZIndex(s: CSSStyleDeclaration, parentDisplay: string): { zIndex?: number } {
+  if (s.zIndex === "auto") return {};
+  const z = Number.parseInt(s.zIndex, 10);
+  if (!Number.isFinite(z)) return {};
+  return s.position !== "static" || /flex|grid/.test(parentDisplay) ? { zIndex: z } : {};
+}

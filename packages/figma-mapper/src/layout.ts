@@ -174,49 +174,48 @@ function cssOrder(node: ElementNode, flow: CaptureNode[]): CaptureNode[] {
 
 const sameOrder = (a: CaptureNode[], b: CaptureNode[]) => a.every((c, i) => c === b[i]);
 
+const isPositioned = (node: CaptureNode) => (placement(node).position ?? "static") !== "static";
+
+/** Whether CSS paints a node with the positioned layer rather than with the flow. */
+function isLayered(node: CaptureNode): boolean {
+  if (isPositioned(node) || node.zIndex !== undefined) return true;
+  if (node.opacity < 1 || node.transform !== undefined) return true;
+  if (node.kind !== "element") return false;
+  return node.style.filters.length > 0 || node.style.backdropFilter !== undefined;
+}
+
+/** Below the flow, the flow, the z-0 level, above it; then z-index within the outer two. */
+function paintRank(node: CaptureNode): [number, number] {
+  // A wrapper that collapses is no layer: what it holds takes its place among the siblings.
+  const target = collapsed(node);
+  if (!isLayered(node) && !isLayered(target)) return [1, 0];
+  const z = node.zIndex ?? target.zIndex ?? 0;
+  return z < 0 ? [0, z] : z === 0 ? [2, 0] : [3, z];
+}
+
+/** Sorts DOM-ordered siblings into CSS paint order; stable, so a level stays in tree order. */
+function stackOrder(children: CaptureNode[]): CaptureNode[] {
+  const keyed = children.map((c) => ({ c, k: paintRank(c) }));
+  keyed.sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1]);
+  return keyed.map((x) => x.c);
+}
+
 /**
- * Children in the order the applier should add them: visual under auto layout, and DOM otherwise,
- * so that paint order survives. Absolute children go last, as CSS paints them over the flow.
+ * Children in the order the applier should add them, which is the order they paint in. Under auto
+ * layout that order also places them, so flow children keep CSS order in whatever slots the flow
+ * got, and only absolute ones paint where CSS has them.
  */
 export function visualOrder(
   node: ElementNode,
   children: CaptureNode[],
   layout: PlanLayout
 ): CaptureNode[] {
-  return stackOrder(cssVisualOrder(node, children, layout), layout);
-}
-
-const isPositioned = (node: CaptureNode) => (placement(node).position ?? "static") !== "static";
-
-/**
- * Sorts siblings into CSS paint order: positioned with a negative z-index, then flow, then
- * positioned with z-index auto or 0, then positive. Under auto layout only absolute children
- * move, as a flow item moved would change the layout. Stable within a group.
- */
-function stackOrder(children: CaptureNode[], layout: PlanLayout): CaptureNode[] {
-  const auto = layout.mode === "HORIZONTAL" || layout.mode === "VERTICAL";
-  const rank = (c: CaptureNode): [number, number] => {
-    if (!(auto ? isAbsolute(c) : isPositioned(c) || c.zIndex !== undefined)) return [1, 0];
-    const z = c.zIndex ?? 0;
-    return z < 0 ? [0, z] : z === 0 ? [2, 0] : [3, z];
-  };
-  if (!children.some((c) => rank(c)[0] !== 1)) return children;
-  const keyed = children.map((c) => ({ c, k: rank(c) }));
-  keyed.sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1]);
-  const sorted = keyed.map((x) => x.c);
-  return sameOrder(children, sorted) ? children : sorted;
-}
-
-function cssVisualOrder(
-  node: ElementNode,
-  children: CaptureNode[],
-  layout: PlanLayout
-): CaptureNode[] {
-  if (layout.mode !== "HORIZONTAL" && layout.mode !== "VERTICAL") return children;
-  const flow = children.filter((c) => renders(c) && !isAbsolute(c));
-  const ordered = cssOrder(node, flow);
-  if (sameOrder(flow, ordered)) return children;
-  return [...ordered, ...children.filter((c) => renders(c) && isAbsolute(c))];
+  const stacked = stackOrder(children);
+  if (layout.mode !== "HORIZONTAL" && layout.mode !== "VERTICAL") return stacked;
+  const inFlow = (c: CaptureNode) => renders(c) && !isAbsolute(c);
+  const flow = cssOrder(node, children.filter(inFlow));
+  let slot = 0;
+  return stacked.map((c) => (inFlow(c) ? (flow[slot++] as CaptureNode) : c));
 }
 
 /**

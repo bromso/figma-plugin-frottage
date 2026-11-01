@@ -32,6 +32,7 @@ import {
   readRadii,
   readStyle,
   readTransform,
+  readZIndex,
 } from "./styles";
 import { emptySvgReport, MAX_SVG_BYTES, SvgTooLargeError, serialiseSvg } from "./svg";
 import { cleanUrl, rememberUrl } from "./urls";
@@ -1057,16 +1058,6 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return out;
   }
 
-  /** z-index only counts on a positioned box, or on a flex or grid item. */
-  function readZIndex(el: Element, s: CSSStyleDeclaration): { zIndex?: number } {
-    if (s.zIndex === "auto") return {};
-    const z = Number.parseInt(s.zIndex, 10);
-    if (!Number.isFinite(z)) return {};
-    const parent = el.parentElement ? cs(el.parentElement).display : "";
-    const item = /flex|grid/.test(parent);
-    return s.position !== "static" || item ? { zIndex: z } : {};
-  }
-
   /** The one element a collapsible wrapper holds, or null when `el` is not such a wrapper. */
   function wrappedChild(el: Element, s: CSSStyleDeclaration): Element | null {
     if (el === root || el === doc.body || el.namespaceURI !== XHTML) return null;
@@ -1149,7 +1140,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       id,
       box,
       paintOrder: n,
-      ...readZIndex(el, s),
+      ...readZIndex(s, el.parentElement ? cs(el.parentElement).display : ""),
       visible: s.visibility !== "hidden",
       opacity: Math.min(1, Math.max(0, Number.parseFloat(s.opacity))) || 0,
       blendMode: s.mixBlendMode,

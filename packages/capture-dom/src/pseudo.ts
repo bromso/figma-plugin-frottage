@@ -1,5 +1,5 @@
 import type { CaptureNode, ElementNode, TextNode } from "@repo/capture-schema";
-import { colorOf, px, readLayout, readStyle, readTransform } from "./styles";
+import { colorOf, px, readLayout, readStyle, readTransform, readZIndex } from "./styles";
 import { cleanText } from "./urls";
 
 export type Box = { x: number; y: number; w: number; h: number };
@@ -316,6 +316,7 @@ export function pseudoNodes(
     kind: "element",
     box,
     paintOrder: n,
+    ...readZIndex(s, host.display),
     visible: s.visibility !== "hidden",
     opacity: Math.min(1, Math.max(0, Number.parseFloat(s.opacity))) || 0,
     blendMode: s.mixBlendMode,
