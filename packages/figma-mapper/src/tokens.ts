@@ -195,9 +195,13 @@ export const cssSpacingOf = (prop: string, props: Record<string, string>): numbe
   lengthOf(prop, props)?.px ?? null;
 
 /** A name that says spacing, as a matching length alone doesn't. */
-const SPACING_NAME = /space|spacing|gap|gutter|margin|padding|inset/;
-/** A name that says something else. `inline` is a direction, as in `--padding-inline`. */
-const NOT_SPACING_NAME = /font|radius|border|shadow|(?<!in)line|height|width|breakpoint/;
+const SPACING_NAME = /(^|-)space|spacing|gap|gutter|margin|padding|inset/;
+/**
+ * A name that says something else. `inline` is a direction, as in `--padding-inline`, and `letter`
+ * and `word` start their word, or `--newsletter-gap` and `--password-padding` would go too.
+ */
+const NOT_SPACING_NAME =
+  /font|radius|border|shadow|(?<!in)line|height|width|breakpoint|(^|-)(letter|word)/;
 
 /**
  * `--space-4` becomes `spacing/4`; `--brand-gutter`, `spacing/brand-gutter`. Null if empty, or if

@@ -506,6 +506,20 @@ describe("spacing tokens", () => {
     expect(plan(rows("a", 3, 16), { [name]: "16px" }).tokens.spacing).toHaveLength(1);
   });
 
+  test.each(["--letter-spacing", "--word-spacing", "--h1-letter-spacing", "--workspace-sidebar"])(
+    "%s isn't spacing",
+    (name) => {
+      expect(plan(rows("a", 3, 16), { [name]: "16px" }).tokens.spacing).toEqual([]);
+    }
+  );
+
+  test.each(["--newsletter-gap", "--password-padding", "--space", "--brand-space-m"])(
+    "%s still is",
+    (name) => {
+      expect(plan(rows("a", 3, 16), { [name]: "16px" }).tokens.spacing).toHaveLength(1);
+    }
+  );
+
   test("a name that says both isn't spacing", () => {
     const p = plan(rows("a", 3, 16), { "--gap-font-size": "16px", "--padding-line": "16px" });
     expect(p.tokens.spacing).toEqual([]);
