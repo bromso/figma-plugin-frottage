@@ -1443,3 +1443,182 @@ describe("spacing across modes", () => {
     expect(variablesIn(f)).toHaveLength(0);
   });
 });
+
+describe("a width added to a set", () => {
+  const TWO = ["1512", "834"];
+  const THREE = ["1512", "834", "390"];
+  const gap = (px: number[]): PlanModeSpacing => ({
+    key: ["spacing:--gap", ...px].join("|"),
+    name: "spacing/gap",
+    cssVar: "--gap",
+    values: perMode(px),
+    from: px.map(() => "--gap"),
+  });
+  const body = (sizes: number[], lines: number[]) => role("body/1", sizes, lines);
+  const ink = (list: Rgba[]) => color("color/ink", list);
+
+  test("creates nothing but a mode", async () => {
+    const f = fakeFigma();
+    await settle(
+      f,
+      set({
+        modes: TWO,
+        colors: [ink([INK, PAPER])],
+        textStyles: [body([16, 14], [24, 20])],
+        spacing: [gap([24, 16])],
+      })
+    );
+    const [collection] = collectionsIn(f);
+    const variables = variablesIn(f).length;
+    const styles = stylesIn(f).length;
+    const tokens = await settle(
+      f,
+      set({
+        modes: THREE,
+        colors: [ink([INK, PAPER, SKY])],
+        textStyles: [body([16, 14, 12], [24, 20, 18])],
+        spacing: [gap([24, 16, 8])],
+      })
+    );
+    expect(collectionsIn(f)).toEqual([collection]);
+    expect(modeNames(collection)).toEqual(THREE);
+    expect(variablesIn(f)).toHaveLength(variables);
+    expect(stylesIn(f)).toHaveLength(styles);
+    expect(tokens.counts()).toMatchObject({
+      variablesCreated: 0,
+      stylesCreated: 0,
+      tokenFailures: 0,
+    });
+    const narrow = modeId(collection, "390");
+    expect(channel(variableNamed(f, "color/ink").valuesByMode[narrow])).toBeCloseTo(SKY.g);
+    expect(variableNamed(f, "spacing/gap").valuesByMode[narrow]).toBe(8);
+    expect(variableNamed(f, "type/body/1/size").valuesByMode[narrow]).toBe(12);
+    expect(variableNamed(f, "type/body/1/line-height").valuesByMode[narrow]).toBe(18);
+    expect(tokens.textStyleId(body([16, 14, 12], [24, 20, 18]).key)).toBe(stylesIn(f)[0].id);
+  });
+
+  test("a colour the same in all three finds its variable, with local reuse off", async () => {
+    const f = fakeFigma();
+    const opts = options({ useLocalStyles: false });
+    await settle(f, set({ modes: TWO, colors: [ink([INK, INK])] }), opts);
+    const tokens = await settle(f, set({ modes: THREE, colors: [ink([INK, INK, INK])] }), opts);
+    expect(variablesIn(f)).toHaveLength(1);
+    expect(tokens.counts().variablesCreated).toBe(0);
+    const narrow = modeId(collectionsIn(f)[0], "390");
+    expect(channel(variableNamed(f, "color/ink").valuesByMode[narrow])).toBeCloseTo(INK.g);
+  });
+
+  test("a style the same in all three finds itself by name", async () => {
+    const f = fakeFigma();
+    const opts = options({ useLocalStyles: false });
+    await settle(f, set({ modes: TWO, textStyles: [body([16, 16], [24, 24])] }), opts);
+    const tokens = await settle(
+      f,
+      set({ modes: THREE, textStyles: [body([16, 16, 16], [24, 24, 24])] }),
+      opts
+    );
+    expect(stylesIn(f)).toHaveLength(1);
+    expect(tokens.counts().stylesCreated).toBe(0);
+  });
+
+  test("a style flat so far that varies now keeps its style and gains a variable", async () => {
+    const f = fakeFigma();
+    const flat = body([16, 16], [24, 24]);
+    await settle(f, set({ modes: TWO, colors: [ink([INK, PAPER])], textStyles: [flat] }));
+    const [style] = stylesIn(f);
+    const next = body([16, 16, 12], [24, 24, 24]);
+    const colors = [ink([INK, PAPER, SKY])];
+    const tokens = await settle(f, set({ modes: THREE, colors, textStyles: [next] }));
+    expect(stylesIn(f)).toEqual([style]);
+    expect(tokens.textStyleId(next.key)).toBe(style.id);
+    expect(style.boundVariables.fontSize.id).toBe(variableNamed(f, "type/body/1/size").id);
+    expect(tokens.counts()).toMatchObject({ stylesCreated: 0, variablesCreated: 1 });
+  });
+
+  test("a binding refused on a style that was there leaves it, and its runs plain", async () => {
+    const f = fakeFigma({ failStyleBinding: "fontSize" });
+    const flat = body([16, 16], [24, 24]);
+    await settle(f, set({ modes: TWO, colors: [ink([INK, PAPER])], textStyles: [flat] }));
+    const [style] = stylesIn(f);
+    const next = body([16, 16, 12], [24, 24, 24]);
+    const colors = [ink([INK, PAPER, SKY])];
+    const tokens = await settle(f, set({ modes: THREE, colors, textStyles: [next] }));
+    expect(stylesIn(f)).toEqual([style]);
+    expect(tokens.textStyleId(next.key)).toBeUndefined();
+    expect(variablesIn(f).map((v) => v.name)).toEqual(["color/ink"]);
+    expect(tokens.counts().tokenFailures).toBe(1);
+  });
+
+  test("a wider width ahead of the others finds the same style", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ modes: TWO, colors: [], textStyles: [body([16, 14], [24, 20])] }));
+    const next = body([18, 16, 14], [26, 24, 20]);
+    const tokens = await settle(
+      f,
+      set({ modes: ["1920", ...TWO], colors: [], textStyles: [next] })
+    );
+    expect(stylesIn(f)).toHaveLength(1);
+    expect(tokens.counts()).toMatchObject({ stylesCreated: 0, variablesCreated: 0 });
+    const wide = modeId(collectionsIn(f)[0], "1920");
+    expect(variableNamed(f, "type/body/1/size").valuesByMode[wide]).toBe(18);
+  });
+
+  test("a style whose shared width no longer matches isn't taken", async () => {
+    const f = fakeFigma();
+    const flat = body([16, 16], [24, 24]);
+    await settle(f, set({ modes: TWO, colors: [ink([INK, PAPER])], textStyles: [flat] }));
+    const next = body([16, 15, 12], [24, 24, 24]);
+    await settle(f, set({ modes: THREE, colors: [ink([INK, PAPER, SKY])], textStyles: [next] }));
+    expect(stylesIn(f)).toHaveLength(2);
+  });
+
+  test("a style from before there were modes has no width to share", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ modes: TWO, colors: [], textStyles: [body([16, 16], [24, 24])] }));
+    await settle(
+      f,
+      set({ modes: THREE, colors: [], textStyles: [body([16, 16, 12], [24, 24, 24])] })
+    );
+    expect(stylesIn(f)).toHaveLength(2);
+  });
+
+  test("a variable whose shared width changed isn't taken", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ modes: TWO, colors: [ink([INK, PAPER])] }));
+    await settle(f, set({ modes: THREE, colors: [ink([INK, SKY, SKY])] }));
+    expect(variablesIn(f)).toHaveLength(2);
+    expect(channel(variablesIn(f)[0].valuesByMode[modeId(collectionsIn(f)[0], "834")])).toBeCloseTo(
+      PAPER.g
+    );
+  });
+
+  test("a width dropped and one added: the width they share decides", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ modes: TWO, colors: [ink([INK, PAPER])] }));
+    await settle(f, set({ modes: ["834", "390"], colors: [ink([PAPER, SKY])] }));
+    expect(variablesIn(f)).toHaveLength(1);
+    const [collection] = collectionsIn(f);
+    const [variable] = variablesIn(f);
+    expect(channel(variable.valuesByMode[modeId(collection, "1512")])).toBeCloseTo(INK.g);
+    expect(channel(variable.valuesByMode[modeId(collection, "390")])).toBeCloseTo(SKY.g);
+  });
+
+  test("with no width shared, a name is no evidence", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ modes: TWO, colors: [ink([INK, PAPER])] }));
+    await settle(f, set({ modes: ["390", "320"], colors: [ink([INK, SKY])] }));
+    expect(variablesIn(f)).toHaveLength(2);
+  });
+
+  test("a user's variable of that name is left alone", async () => {
+    const f = fakeFigma();
+    await settle(f, set({ modes: TWO, colors: [ink([INK, PAPER])] }));
+    const [collection] = collectionsIn(f);
+    const mine = f.tokens.seedVariable("color/mine", collection, INK);
+    mine.setValueForMode(modeId(collection, "834"), PAPER);
+    const writes = f.tokens.writes.length;
+    await settle(f, set({ modes: THREE, colors: [color("color/mine", [INK, PAPER, SKY])] }));
+    expect(f.tokens.writes.slice(writes).filter((w) => w.startsWith("color/mine:"))).toEqual([]);
+    expect(variablesIn(f).map((v) => v.name)).toContain("color/mine-2");
+  });
+});

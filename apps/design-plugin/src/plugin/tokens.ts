@@ -260,6 +260,17 @@ function byOwnKey<T extends TextStyle | Variable>(list: T[]): Map<string, T[]> {
   return out;
 }
 
+/** Tokens by their name, which several in different collections can share. */
+function namedIn<T extends { name: string }>(list: T[]): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const token of list) {
+    const same = out.get(token.name);
+    if (same) same.push(token);
+    else out.set(token.name, [token]);
+  }
+  return out;
+}
+
 /** Layers bound to these variables. Mixed text fills aren't read: Figma has no quick way to. */
 function boundOnPage(page: PageNode, ids: Set<string>): Set<string> {
   const used = new Set<string>();
@@ -647,15 +658,18 @@ export function createTokenSet(api: PluginAPI) {
     const ownVariables = byOwnKey(variables);
     const ownStyles = byOwnKey(textStyles);
     const tagged = new Set([...ownVariables.values()].flat().map((v) => v.id));
+    const existing = findOwnCollection(collections, ownVariables, plan.collection);
     const byId = new Map(variables.map((v) => [v.id, v]));
+    const ownNamed = namedIn(
+      variables.filter((v) => tagged.has(v.id) && v.variableCollectionId === existing?.id)
+    );
+    const ownStylesNamed = namedIn([...ownStyles.values()].flat());
     const local = useLocal ? variables.filter((v) => v.resolvedType === "COLOR") : [];
     const solids = paintStyles.flatMap((s) => {
       const color = solidColorOf(s);
       return color ? [{ id: s.id, color }] : [];
     });
     const takenStyles = new Set(textStyles.map((s) => s.name));
-
-    const existing = findOwnCollection(collections, ownVariables, plan.collection);
 
     let home: Home | null = null;
     /** Whether anything asked for modes, so that their absence means something. */
@@ -683,13 +697,20 @@ export function createTokenSet(api: PluginAPI) {
      * each with what it should read. Null if it can't be used, because a value it holds says
      * otherwise, or because it's the user's and would need a write, or because there's no home to
      * read it in. A mode outside the set may hold anything, but the default reads `first`, or an
-     * edited variable would pass when every label is new.
+     * edited variable would pass when every label is new. `byShared` is for a variable found by
+     * name: a label it shares is the evidence for it, so the default needn't be in the set.
      */
-    const staleModes = <T>(variable: Variable, wants: Map<string, T>, first: T, kind: Kind<T>) => {
+    const staleModes = <T>(
+      variable: Variable,
+      wants: Map<string, T>,
+      first: T,
+      kind: Kind<T>,
+      byShared = false
+    ) => {
       if (!home) return null;
       const values = held.get(variable.id);
       const defaultId = defaults.get(variable.variableCollectionId) ?? "";
-      if (!wants.has(defaultId) && !kind.same(values?.[defaultId], first)) return null;
+      if (!byShared && !wants.has(defaultId) && !kind.same(values?.[defaultId], first)) return null;
       const own = tagged.has(variable.id);
       const stale: [string, T][] = [];
       for (const { modeId } of home.collection.modes) {
@@ -713,9 +734,35 @@ export function createTokenSet(api: PluginAPI) {
       }
     };
 
-    /** Frottage's own variable with this key in the home collection, filling in any new modes. */
+    /** Modes that were here before this import, which is what a name has to be checked against. */
+    const sharedModes = (wants: Map<string, unknown>) =>
+      home?.collection === createdCollection
+        ? []
+        : [...wants.keys()].filter((modeId) => !home?.added.has(modeId));
+
+    /**
+     * Keys hold every label, so a set with another width finds nothing by key. Frottage's variable
+     * of this name stands in if it reads the same at each label they share, and they share one.
+     */
+    const byName = <T>(name: string, wants: Map<string, T>, first: T, kind: Kind<T>) => {
+      const shared = sharedModes(wants);
+      for (const variable of ownNamed.get(name) ?? []) {
+        const values = held.get(variable.id);
+        if (variable.resolvedType !== kind.type) continue;
+        if (!shared.some((modeId) => values?.[modeId] !== undefined)) continue;
+        const stale = staleModes(variable, wants, first, kind, true);
+        if (stale) return { variable, stale };
+      }
+      return null;
+    };
+
+    /**
+     * Frottage's own variable with this key in the home collection, or else this name, filling in
+     * any new modes.
+     */
     const reuseOwn = async <T extends VariableValue>(
       key: string,
+      name: string,
       wants: Map<string, T>,
       first: T,
       kind: Kind<T>,
@@ -728,7 +775,10 @@ export function createTokenSet(api: PluginAPI) {
         await fillIn(variable, stale);
         return closed ? null : variable;
       }
-      return null;
+      const named = byName(name, wants, first, kind);
+      if (!named) return null;
+      await fillIn(named.variable, named.stale);
+      return closed ? null : named.variable;
     };
 
     /** Null if the import ended meanwhile, which also took the variable back. */
@@ -770,10 +820,18 @@ export function createTokenSet(api: PluginAPI) {
       const fits = (v: Variable) =>
         COLOR.same(held.get(v.id)?.[defaultOf(v)], value) &&
         (!inHome(v) || staleModes(v, wants, value, COLOR) !== null);
-      const reused =
+      const keyed =
         ownVariables.get(token.key)?.find(fits) ??
-        ownVariables.get(leadKey(token.from))?.find(fits) ??
-        local.find(fits);
+        ownVariables.get(leadKey(token.from))?.find(fits);
+      const named = keyed ? null : byName(token.name, wants, value, COLOR);
+      if (named) {
+        await fillIn(named.variable, named.stale);
+        if (closed) return;
+        colors.set(token.key, { variable: named.variable });
+        counts.variablesReused++;
+        return;
+      }
+      const reused = keyed ?? local.find(fits);
       if (reused) {
         if (inHome(reused)) await fillIn(reused, staleModes(reused, wants, value, COLOR) ?? []);
         if (closed) return;
@@ -803,7 +861,7 @@ export function createTokenSet(api: PluginAPI) {
       if (!varies(wants, COLOR)) return settleFlatColor(token, leadOf(wants, first), wants);
       const target = await homeOf();
       if (closed) return;
-      const reused = await reuseOwn(token.key, wants, first, COLOR, target);
+      const reused = await reuseOwn(token.key, token.name, wants, first, COLOR, target);
       if (closed) return;
       if (reused) {
         colors.set(token.key, { variable: reused });
@@ -823,7 +881,7 @@ export function createTokenSet(api: PluginAPI) {
       const wants = valuesFor(token.values, first, modeIds);
       const target = await homeOf();
       if (closed) return;
-      const reused = await reuseOwn(token.key, wants, first, FLOAT, target);
+      const reused = await reuseOwn(token.key, token.name, wants, first, FLOAT, target);
       if (closed) return;
       if (reused) {
         spacing.set(token.key, reused);
@@ -844,7 +902,7 @@ export function createTokenSet(api: PluginAPI) {
       made: Variable[]
     ): Promise<boolean> => {
       try {
-        const reused = await reuseOwn(key, wants, first, FLOAT, target);
+        const reused = await reuseOwn(key, name, wants, first, FLOAT, target);
         if (closed) return true;
         const variable =
           reused ?? (await makeVariable({ name, key, kind: FLOAT, first, wants }, target));
@@ -875,12 +933,13 @@ export function createTokenSet(api: PluginAPI) {
     const boundFits = (
       style: TextStyle,
       { field, first, wants }: TypeField,
-      { collection }: Home
+      { collection }: Home,
+      byShared = false
     ) => {
       const alias = style.boundVariables?.[field];
       const variable = alias && byId.get(alias.id);
       if (variable?.variableCollectionId !== collection.id) return null;
-      const stale = staleModes(variable, wants, first, FLOAT);
+      const stale = staleModes(variable, wants, first, FLOAT, byShared);
       return stale ? { variable, stale } : null;
     };
 
@@ -891,6 +950,7 @@ export function createTokenSet(api: PluginAPI) {
       const found =
         ownStyles.get(role.key)?.find(fits) ??
         ownStyles.get(leadKey(role.from))?.find(fits) ??
+        ownStylesNamed.get(role.name)?.find(fits) ??
         (useLocal ? textStyles.find(fits) : undefined);
       if (found) {
         styleIds.set(role.key, found.id);
@@ -901,6 +961,43 @@ export function createTokenSet(api: PluginAPI) {
       createdStyles.push(style);
       styleIds.set(role.key, style.id);
       counts.stylesCreated++;
+    };
+
+    /**
+     * Frottage's style of this name for a set with another width. It holds what its first mode
+     * read, so that's what it's compared with, and a field not bound yet has to read the same at
+     * every label shared, or the style wasn't this role's.
+     */
+    const styleByName = (
+      role: PlanModeType,
+      look: TextLook,
+      fields: { field: TypeField; varying: boolean }[],
+      target: Home
+    ) => {
+      const defaultId = target.collection.defaultModeId;
+      const reads: TextLook = { ...look };
+      for (const { field } of fields) {
+        if (field.field === "lineHeight" && look.lineHeight === null) continue;
+        reads[field.field] = field.wants.get(defaultId) ?? look[field.field] ?? 0;
+      }
+      const shared = sharedModes(fields[0]?.field.wants ?? new Map());
+      if (shared.length === 0) return undefined;
+      const readsAcross = ({ field, wants }: TypeField) =>
+        shared.every((modeId) => {
+          const want = wants.get(modeId);
+          return want === undefined || FLOAT.same(want, reads[field] ?? 0);
+        });
+      return ownStylesNamed
+        .get(role.name)
+        ?.find(
+          (s) =>
+            sameTextStyle(s, reads) &&
+            fields.every(({ field }) =>
+              s.boundVariables?.[field.field]
+                ? boundFits(s, field, target, true)
+                : readsAcross(field)
+            )
+        );
     };
 
     const settleVaryingRole = async (
@@ -916,15 +1013,24 @@ export function createTokenSet(api: PluginAPI) {
         fields.every(({ field, varying }) =>
           s.boundVariables?.[field.field] ? boundFits(s, field, target) : !varying
         );
-      const found = ownStyles.get(role.key)?.find(isFit);
+      const keyed = ownStyles.get(role.key)?.find(isFit);
+      const found = keyed ?? styleByName(role, look, fields, target);
       if (found) {
-        for (const { field } of fields) {
-          const bound = boundFits(found, field, target);
-          if (!bound) continue;
-          await fillIn(bound.variable, bound.stale);
+        const made: Variable[] = [];
+        for (const { field, varying } of fields) {
+          const bound = boundFits(found, field, target, !keyed);
+          if (bound) {
+            await fillIn(bound.variable, bound.stale);
+            if (closed) return;
+            counts.variablesReused++;
+          } else if (varying && !(await bindType(found, field, target, made))) {
+            // The style was there before this import: it stays, and its runs keep plain values.
+            for (const variable of made) dropVariable(variable);
+            return;
+          }
           if (closed) return;
-          counts.variablesReused++;
         }
+        counts.variablesCreated += made.length;
         styleIds.set(role.key, found.id);
         counts.stylesReused++;
         return;
