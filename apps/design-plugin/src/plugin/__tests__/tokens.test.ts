@@ -1069,13 +1069,14 @@ describe("from a capture", () => {
 
 // ---------- Spacing
 
-const gap: PlanSpacing = { key: "--space-4=16", name: "spacing/4", cssVar: "--space-4", px: 16 };
+const gap: PlanSpacing = { key: "--space-4=10", name: "spacing/4", cssVar: "--space-4", px: 10 };
+type Box = [number, number, number, number];
 const auto = (keys: object, over: object = {}) => ({
   mode: "HORIZONTAL" as const,
   wrap: false,
-  itemSpacing: 16,
+  itemSpacing: 10,
   counterSpacing: null,
-  padding: [16, 0, 8, 0] as [number, number, number, number],
+  padding: [10, 0, 10, 0] as [number, number, number, number],
   primaryAlign: "MIN" as const,
   counterAlign: "MIN" as const,
   sizingH: "FIXED" as const,
@@ -1083,91 +1084,149 @@ const auto = (keys: object, over: object = {}) => ({
   spacingKeys: keys,
   ...over,
 });
+const box = (id: string, parent: string, [x, y, w, h]: Box, childLayout: object = flow()): PlanOp =>
+  ({
+    op: "placeholder",
+    id,
+    parent,
+    name: id,
+    x,
+    y,
+    w,
+    h,
+    opacity: 1,
+    label: id,
+    childLayout,
+  }) as PlanOp;
+const flow = (over: object = {}) => ({
+  positioning: "AUTO",
+  sizingH: "FIXED",
+  sizingV: "FIXED",
+  ...over,
+});
+/** A row that verifies: two 50 px boxes 10 px apart, 10 px above and below. */
+const rowOps = (keys: object, over: object = {}): PlanOp[] => [
+  frame("a", null, { layout: auto(keys, over), h: 60, w: 200, childCount: 2 }),
+  box("b1", "a", [0, 10, 50, 40]),
+  box("b2", "a", [60, 10, 50, 40]),
+];
 const bound = (f: Fake, name = "Import") => f.frame(name).boundVariables ?? {};
 const spacingTokens = (spacing: PlanSpacing[] = [gap]) =>
   tokens({ textStyles: [], colors: [], spacing });
+const idsOf = (b: object) => Object.fromEntries(Object.entries(b).map(([k, v]: any) => [k, v.id]));
 
 describe("spacing variables", () => {
   test("a gap and a side of padding bind to one Frottage number variable", async () => {
     const f = fakeFigma();
-    const layout = auto({
-      itemSpacing: gap.key,
-      padding: [gap.key, undefined, undefined, undefined],
-    });
-    const end = await runImport(f, spacingTokens(), options(), [frame("a", null, { layout })]);
+    const keys = { itemSpacing: gap.key, padding: [gap.key, undefined, undefined, undefined] };
+    const end = await runImport(f, spacingTokens(), options(), rowOps(keys));
     const [variable] = variablesIn(f) as [any];
     expect(variable.name).toBe("spacing/4");
     expect(variable.resolvedType).toBe("FLOAT");
     expect(variable.codeSyntax.WEB).toBe("var(--space-4)");
     expect(variable.getSharedPluginData("frottage", "valueKey")).toBe(gap.key);
-    expect(Object.values(variable.valuesByMode)).toEqual([16]);
-    expect(bound(f).itemSpacing.id).toBe(variable.id);
-    expect(bound(f).paddingTop.id).toBe(variable.id);
-    expect(bound(f).paddingLeft).toBeUndefined();
+    expect(Object.values(variable.valuesByMode)).toEqual([10]);
+    expect(idsOf(bound(f))).toEqual({ itemSpacing: variable.id, paddingTop: variable.id });
     // The plain values are set as well.
-    expect(f.frame("Import").itemSpacing).toBe(16);
-    expect(f.frame("Import").paddingTop).toBe(16);
+    expect(f.frame("Import").itemSpacing).toBe(10);
+    expect(f.frame("Import").paddingTop).toBe(10);
     expect(end.variablesCreated).toBe(1);
     expect(end.tokenFailures).toBe(0);
+    expect(end.fallbackFrames).toBe(0);
   });
 
   test("gaps and padding bind", async () => {
     const f = fakeFigma();
-    const wrap = auto(
-      {
-        itemSpacing: gap.key,
-        counterSpacing: gap.key,
-        padding: [undefined, gap.key, gap.key, gap.key],
-      },
-      { wrap: true, counterSpacing: 16 }
-    );
-    const grid = {
-      mode: "GRID" as const,
-      rows: [{ type: "FIXED" as const, value: 20 }],
-      columns: [{ type: "FIXED" as const, value: 20 }],
-      rowGap: 16,
-      columnGap: 16,
-      padding: [0, 0, 0, 0] as [number, number, number, number],
-      spacingKeys: { rowGap: gap.key, columnGap: gap.key },
+    const wrapKeys = {
+      itemSpacing: gap.key,
+      counterSpacing: gap.key,
+      padding: [undefined, gap.key, gap.key, gap.key],
     };
+    const wrapped = frame("a", null, {
+      layout: auto(wrapKeys, { wrap: true, counterSpacing: 10, padding: [0, 10, 10, 10] }),
+      w: 130,
+      h: 110,
+      childCount: 3,
+    });
     await runImport(f, spacingTokens(), options(), [
-      frame("a", null, { layout: wrap, childCount: 1 }),
-      frame("g", "a", { layout: grid }),
+      wrapped,
+      box("b1", "a", [10, 0, 50, 40]),
+      box("b2", "a", [70, 0, 50, 40]),
+      box("b3", "a", [10, 50, 50, 40]),
     ]);
     const id = (variablesIn(f)[0] as any).id;
-    expect(Object.fromEntries(Object.entries(bound(f)).map(([k, v]: any) => [k, v.id]))).toEqual({
+    expect(idsOf(bound(f))).toEqual({
       itemSpacing: id,
       counterAxisSpacing: id,
       paddingRight: id,
       paddingBottom: id,
       paddingLeft: id,
     });
-    expect(bound(f, "g")).toMatchObject({ gridRowGap: { id }, gridColumnGap: { id } });
   });
 
-  test("a refused binding keeps the plain value and counts", async () => {
+  test("grid gaps bind", async () => {
+    const f = fakeFigma();
+    const grid = {
+      mode: "GRID" as const,
+      rows: [
+        { type: "FIXED" as const, value: 40 },
+        { type: "FIXED" as const, value: 40 },
+      ],
+      columns: [
+        { type: "FLEX" as const, value: 1 },
+        { type: "HUG" as const, value: 50 },
+      ],
+      rowGap: 10,
+      columnGap: 10,
+      padding: [0, 0, 0, 0] as [number, number, number, number],
+      spacingKeys: { rowGap: gap.key, columnGap: gap.key },
+    };
+    const cell = (row: number, column: number, over: object = {}) =>
+      flow({ cell: { row, column }, ...over });
+    const end = await runImport(f, spacingTokens(), options(), [
+      frame("a", null, { layout: grid, w: 200, h: 90, childCount: 2 }),
+      box("late", "a", [150, 50, 50, 40], cell(1, 1)),
+      box("early", "a", [0, 0, 140, 40], cell(0, 0, { sizingH: "FILL" })),
+    ]);
+    const id = (variablesIn(f)[0] as any).id;
+    expect(end.fallbackFrames).toBe(0);
+    expect(idsOf(bound(f))).toEqual({ gridRowGap: id, gridColumnGap: id });
+  });
+
+  test("a refused binding keeps the plain value and counts once for the frame", async () => {
     const f = fakeFigma({ failTokens: ["node.setBoundVariable"] });
-    const layout = auto({ itemSpacing: gap.key });
-    const end = await runImport(f, spacingTokens(), options(), [frame("a", null, { layout })]);
-    expect(f.frame("Import").itemSpacing).toBe(16);
+    const keys = { itemSpacing: gap.key, padding: [gap.key, gap.key, gap.key, gap.key] };
+    const end = await runImport(f, spacingTokens(), options(), rowOps(keys));
+    expect(f.frame("Import").itemSpacing).toBe(10);
+    expect(f.frame("Import").layoutMode).toBe("HORIZONTAL");
     expect(bound(f)).toEqual({});
     expect(end.tokenFailures).toBe(1);
     expect(end.failedOps).toBe(0);
   });
 
+  test("a frame that falls back to absolute lets go of its bindings", async () => {
+    const f = fakeFigma();
+    // The second box is not where the layout would put it, so verification fails.
+    const ops = rowOps({ itemSpacing: gap.key });
+    ops[2] = box("b2", "a", [300, 10, 50, 40]);
+    const end = await runImport(f, spacingTokens(), options(), ops);
+    expect(end.fallbackFrames).toBe(1);
+    expect(f.frame("Import").layoutMode).toBe("NONE");
+    expect(bound(f)).toEqual({});
+  });
+
   test("a variable that cannot be made leaves plain values and counts", async () => {
     const f = fakeFigma({ failTokens: ["createVariable"] });
-    const layout = auto({ itemSpacing: gap.key });
-    const end = await runImport(f, spacingTokens(), options(), [frame("a", null, { layout })]);
-    expect(f.frame("Import").itemSpacing).toBe(16);
+    const end = await runImport(f, spacingTokens(), options(), rowOps({ itemSpacing: gap.key }));
+    expect(f.frame("Import").itemSpacing).toBe(10);
     expect(end.tokenFailures).toBeGreaterThan(0);
   });
 
   test("a second import reuses the variable by its key", async () => {
     const f = fakeFigma();
-    const layout = auto({ itemSpacing: gap.key });
-    await runImport(f, spacingTokens(), options(), [frame("a", null, { layout })]);
-    const end = await runImport(f, spacingTokens(), options(), [frame("a", null, { layout })]);
+    const ops = rowOps({ itemSpacing: gap.key });
+    await runImport(f, spacingTokens(), options(), ops);
+    const end = await runImport(f, spacingTokens(), options(), ops);
     expect(variablesIn(f)).toHaveLength(1);
     expect(end.variablesReused).toBe(1);
     expect(end.variablesCreated).toBe(0);
@@ -1176,9 +1235,8 @@ describe("spacing variables", () => {
   test("a user's number variable with the same value is neither bound nor written", async () => {
     const f = fakeFigma();
     const mine = f.tokens.seedCollection("Mine");
-    const theirs = f.tokens.seedVariable("space", mine, 16, "FLOAT");
-    const layout = auto({ itemSpacing: gap.key });
-    await runImport(f, spacingTokens(), options(), [frame("a", null, { layout })]);
+    const theirs = f.tokens.seedVariable("space", mine, 10, "FLOAT");
+    await runImport(f, spacingTokens(), options(), rowOps({ itemSpacing: gap.key }));
     expect(variablesIn(f)).toHaveLength(2);
     expect(bound(f).itemSpacing.id).not.toBe(theirs.id);
     expect(f.tokens.writes.filter((w) => w.startsWith("space:"))).toEqual([]);
@@ -1186,10 +1244,14 @@ describe("spacing variables", () => {
 
   test("the options switch for styles and variables turns it off", async () => {
     const f = fakeFigma();
-    const layout = auto({ itemSpacing: gap.key });
-    await runImport(f, spacingTokens(), options({ tokens: false }), [frame("a", null, { layout })]);
+    await runImport(
+      f,
+      spacingTokens(),
+      options({ tokens: false }),
+      rowOps({ itemSpacing: gap.key })
+    );
     expect(variablesIn(f)).toHaveLength(0);
     expect(bound(f)).toEqual({});
-    expect(f.frame("Import").itemSpacing).toBe(16);
+    expect(f.frame("Import").itemSpacing).toBe(10);
   });
 });

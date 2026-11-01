@@ -378,6 +378,11 @@ export function tokenModel(
         called("node.setBoundVariable");
         if (typeof variable === "string") throw new Error("dynamic-page needs the variable");
         if (!BINDABLE_LENGTHS.includes(field)) throw new Error(`can't bind ${field}`);
+        if (variable === null) {
+          const { [field]: _gone, ...rest } = node.boundVariables ?? {};
+          node.boundVariables = rest;
+          return;
+        }
         if (!variables.has(variable?.id)) throw new Error("unknown variable");
         if (variable.resolvedType !== "FLOAT") throw new Error("needs a number variable");
         node.boundVariables = {

@@ -177,16 +177,22 @@ function cssNamesByColor(props: Record<string, string>): Map<string, CssName[]> 
 const LENGTH = /^(-?(?:\d+\.?\d*|\.\d+))(px|rem)$/i;
 
 /** A custom property's length in pixels, in `px` or `rem`, or null. Zero and below are not spacing. */
-export function cssSpacingOf(prop: string, props: Record<string, string>): number | null {
+function lengthOf(
+  prop: string,
+  props: Record<string, string>
+): { px: number; rem: boolean } | null {
   const raw = Object.hasOwn(props, prop) ? props[prop] : undefined;
   if (raw === undefined || raw.length > MAX_VALUE_LENGTH) return null;
   const value = resolveVars(raw, props);
   const m = value ? LENGTH.exec(value) : null;
   if (!m) return null;
-  const px =
-    Number.parseFloat(m[1] as string) * (m[2]?.toLowerCase() === "rem" ? ROOT_FONT_SIZE : 1);
-  return Number.isFinite(px) && px >= PX_STEP ? px : null;
+  const rem = m[2]?.toLowerCase() === "rem";
+  const px = Number.parseFloat(m[1] as string) * (rem ? ROOT_FONT_SIZE : 1);
+  return Number.isFinite(px) && px >= PX_STEP ? { px, rem } : null;
 }
+
+export const cssSpacingOf = (prop: string, props: Record<string, string>): number | null =>
+  lengthOf(prop, props)?.px ?? null;
 
 /** `--space-4` becomes `spacing/4`; `--brand-gutter`, `spacing/brand-gutter`. Null if empty. */
 function spacingName(prop: string): string | null {
@@ -203,14 +209,18 @@ const stepOf = (px: number) => Math.round(px / PX_STEP);
 
 type SpacingUse = { px: number; bind(key: string): void };
 
-/** Each length of a frame that auto layout or a grid sets, with the way to bind it. */
+/**
+ * Each distinct length of a frame that auto layout or a grid sets, with the way to bind every field
+ * that holds it. A frame counts once for a length, however many of its fields share it.
+ */
 function spacingUses(layout: PlanLayout): SpacingUse[] {
   if (layout.mode === "NONE") return [];
   const keys = (): SpacingKeys => {
     layout.spacingKeys ??= {};
     return layout.spacingKeys;
   };
-  const uses: SpacingUse[] = layout.padding.map((px, side) => ({
+  type Field = { px: number; bind(key: string): void };
+  const fields: Field[] = layout.padding.map((px, side) => ({
     px,
     bind(key) {
       const k = keys();
@@ -218,22 +228,30 @@ function spacingUses(layout: PlanLayout): SpacingUse[] {
       k.padding[side] = key;
     },
   }));
+  const named = (px: number, field: "rowGap" | "columnGap" | "itemSpacing" | "counterSpacing") =>
+    fields.push({ px, bind: (key) => Object.assign(keys(), { [field]: key }) });
   if (layout.mode === "GRID") {
-    uses.push(
-      { px: layout.rowGap, bind: (key) => Object.assign(keys(), { rowGap: key }) },
-      { px: layout.columnGap, bind: (key) => Object.assign(keys(), { columnGap: key }) }
-    );
-    return uses;
+    named(layout.rowGap, "rowGap");
+    named(layout.columnGap, "columnGap");
+  } else {
+    named(layout.itemSpacing, "itemSpacing");
+    // Only a wrapping frame sets it, and a null follows `itemSpacing`.
+    if (layout.wrap && layout.counterSpacing !== null) {
+      named(layout.counterSpacing, "counterSpacing");
+    }
   }
-  uses.push({ px: layout.itemSpacing, bind: (key) => Object.assign(keys(), { itemSpacing: key }) });
-  // Only a wrapping frame sets it, and a null follows `itemSpacing`.
-  if (layout.wrap && layout.counterSpacing !== null) {
-    uses.push({
-      px: layout.counterSpacing,
-      bind: (key) => Object.assign(keys(), { counterSpacing: key }),
-    });
+  const byStep = new Map<number, Field[]>();
+  for (const field of fields) {
+    const list = byStep.get(stepOf(field.px));
+    if (list) list.push(field);
+    else byStep.set(stepOf(field.px), [field]);
   }
-  return uses;
+  return [...byStep.values()].map((list) => ({
+    px: (list[0] as Field).px,
+    bind: (key) => {
+      for (const field of list) field.bind(key);
+    },
+  }));
 }
 
 /** Which custom properties hold each length, the shortest name first. */
@@ -259,9 +277,9 @@ function cssNamesByLength(props: Record<string, string>): Map<number, PlanSpacin
 function spacingTokens(
   ops: PlanOp[],
   props: Record<string, string>
-): { tokens: PlanSpacing[]; over: number } {
+): { tokens: PlanSpacing[]; over: number; rem: boolean } {
   const names = cssNamesByLength(props);
-  if (names.size === 0) return { tokens: [], over: 0 };
+  if (names.size === 0) return { tokens: [], over: 0, rem: false };
   const uses = new Map<number, SpacingUse[]>();
   for (const op of ops) {
     if (op.op !== "frame") continue;
@@ -287,7 +305,8 @@ function spacingTokens(
   }
   const kept = found.slice(0, MAX_SPACING);
   for (const { token, uses: list } of kept) for (const use of list) use.bind(token.key);
-  return { tokens: kept.map((k) => k.token), over: found.length - kept.length };
+  const rem = kept.some((k) => lengthOf(k.token.cssVar, props)?.rem);
+  return { tokens: kept.map((k) => k.token), over: found.length - kept.length, rem };
 }
 
 // ---------- Colours
@@ -450,6 +469,7 @@ export function extractTokens(capture: Capture, ops: PlanOp[], options: ImportOp
     colors: colorTokens(ops, capture.tokens.cssCustomProperties),
     spacing: spacing.tokens,
     ...(spacing.over > 0 ? { spacingOver: spacing.over } : {}),
+    ...(spacing.rem ? { spacingRem: true } : {}),
     collection,
   };
 }

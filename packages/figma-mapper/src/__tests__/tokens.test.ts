@@ -411,6 +411,20 @@ describe("spacing tokens", () => {
     expect(p.tokens.spacing?.map((s) => [s.cssVar, s.px])).toEqual([["--gap", 16]]);
   });
 
+  test("a rem value says in the report that it assumes a 16 px root", () => {
+    const p = plan(rows("a", 3, 16), { "--gap": "1rem" });
+    expect(p.report.warnings.some((w) => w.includes("16 px root"))).toBe(true);
+    const q = plan(rows("a", 3, 16), { "--gap": "16px" });
+    expect(q.report.warnings.some((w) => w.includes("16 px root"))).toBe(false);
+  });
+
+  test("a frame counts once for a length it uses on all four sides", () => {
+    const two = plan(rows("a", 2, 0, 8), { "--pad": "8px" });
+    expect(two.tokens.spacing).toEqual([]);
+    const three = plan(rows("a", 3, 0, 8), { "--pad": "8px" });
+    expect(three.tokens.spacing).toHaveLength(1);
+  });
+
   test("a var() that names another property resolves", () => {
     const p = plan(rows("a", 3, 16), { "--base": "16px", "--space-4": "var(--base)" });
     expect(p.tokens.spacing?.map((s) => [s.cssVar, s.px])).toEqual([["--space-4", 16]]);
@@ -535,7 +549,9 @@ describe("spacing tokens", () => {
     const p = plan(frames, props);
     expect(p.tokens.spacing).toHaveLength(200);
     expect(p.tokens.spacingOver).toBe(1);
-    expect(p.report.warnings.some((w) => w.includes("200 spacing"))).toBe(true);
+    expect(p.report.warnings).toContain(
+      "Only 200 spacing values became variables; 1 more stayed a plain value."
+    );
   });
 
   test("the plan survives postMessage", () => {

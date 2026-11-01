@@ -305,6 +305,8 @@ export type PlanTokens = {
   spacing?: PlanSpacing[];
   /** Spacing values that qualified past the cap and stayed plain. */
   spacingOver?: number;
+  /** Some spacing token came from a `rem` value, read as 16 px per rem. */
+  spacingRem?: boolean;
   /** The variable collection, named after the page's hostname. */
   collection: string;
 };

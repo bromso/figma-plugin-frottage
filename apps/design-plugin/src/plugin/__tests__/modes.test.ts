@@ -1306,60 +1306,89 @@ describe("spacing across modes", () => {
     }
   });
 
-  test("a frame binds to the merged variable in each version's mode", async () => {
-    const f = fakeFigma();
-    const token = spacing("--gap", [24, 12]);
+  /** One two-box row per version, its gap the token's value in that version's mode. */
+  async function importRows(f: Fake, token: PlanModeSpacing, opts: { labels?: string[] } = {}) {
     const a = createApplier(f.figma);
     await a.beginSet();
-    await a.importModes(only([token]), options());
-    const layout = {
-      mode: "VERTICAL" as const,
-      wrap: false,
-      itemSpacing: 24,
-      counterSpacing: null,
-      padding: [0, 0, 0, 0] as [number, number, number, number],
-      primaryAlign: "MIN" as const,
-      counterAlign: "MIN" as const,
-      sizingH: "FIXED" as const,
-      sizingV: "FIXED" as const,
-      spacingKeys: { itemSpacing: token.key },
-    };
-    const op = (parent: string | null): PlanOp => ({
-      op: "frame",
-      id: "a",
-      parent,
-      name: "a",
-      x: 0,
-      y: 0,
-      w: 100,
-      h: 50,
-      fills: [],
-      strokes: null,
-      radius: [0, 0, 0, 0],
-      opacity: 1,
-      effects: [],
-      clips: true,
-      layout,
-      childCount: 0,
-    });
-    for (const [i, label] of ["Light", "Dark"].entries()) {
-      await a.begin({ ...meta, version: { index: i, label } });
-      await a.applyBatch([op(null)]);
+    await a.importModes(only([token], { modes: opts.labels ?? ["Light", "Dark"] }), options());
+    const frames: PlanOp[][] = token.values.map(({ value: px }) => [
+      {
+        op: "frame",
+        id: "a",
+        parent: null,
+        name: "a",
+        x: 0,
+        y: 0,
+        w: 100 + px,
+        h: 40,
+        fills: [],
+        strokes: null,
+        radius: [0, 0, 0, 0],
+        opacity: 1,
+        effects: [],
+        clips: true,
+        layout: {
+          mode: "HORIZONTAL",
+          wrap: false,
+          itemSpacing: px,
+          counterSpacing: null,
+          padding: [0, 0, 0, 0],
+          primaryAlign: "MIN",
+          counterAlign: "MIN",
+          sizingH: "FIXED",
+          sizingV: "FIXED",
+          spacingKeys: { itemSpacing: token.key },
+        },
+        childCount: 2,
+      },
+      ...[0, 50 + px].map(
+        (x, i): PlanOp => ({
+          op: "placeholder",
+          id: `b${i}`,
+          parent: "a",
+          name: `b${i}`,
+          x,
+          y: 0,
+          w: 50,
+          h: 40,
+          opacity: 1,
+          label: "b",
+          childLayout: { positioning: "AUTO", sizingH: "FIXED", sizingV: "FIXED" },
+        })
+      ),
+    ]);
+    for (const [i, ops] of frames.entries()) {
+      await a.begin({ ...meta, version: { index: i, label: ["Light", "Dark"][i] as string } });
+      await a.applyBatch(ops);
       await a.end();
     }
-    await a.endSet();
+    return a.endSet();
+  }
+
+  test("a frame binds to the merged variable in each version's mode, with its own gap", async () => {
+    const f = fakeFigma();
+    await importRows(f, spacing("--gap", [24, 12]));
     const [variable] = variablesIn(f);
-    const bound = f.created.filter((n: any) => n.boundVariables?.itemSpacing);
-    expect(bound).toHaveLength(2);
-    for (const node of bound as any[]) {
-      expect(node.boundVariables.itemSpacing.id).toBe(variable.id);
-      expect(node.itemSpacing).toBe(24);
-    }
     const [collection] = collectionsIn(f);
-    expect((bound as any[]).map((n) => n.explicitModes[collection.id])).toEqual([
-      modeId(collection, "Light"),
-      modeId(collection, "Dark"),
-    ]);
+    const bound = f.created.filter((n: any) => n.boundVariables?.itemSpacing) as any[];
+    expect(bound).toHaveLength(2);
+    expect(bound.map((n) => n.itemSpacing)).toEqual([24, 12]);
+    for (const [i, node] of bound.entries()) {
+      expect(node.boundVariables.itemSpacing.id).toBe(variable.id);
+      // What the variable reads where the frame sits is what the frame holds.
+      const mode = node.explicitModes[collection.id];
+      expect(f.tokens.valueIn(variable, mode)).toBe(node.itemSpacing);
+      expect(mode).toBe(modeId(collection, ["Light", "Dark"][i] as string));
+    }
+  });
+
+  test("a refused mode keeps plain values and binds nothing in that version", async () => {
+    const f = fakeFigma({ failExplicitMode: true });
+    const end = await importRows(f, spacing("--gap", [24, 12]));
+    const frames = f.created.filter((n: any) => n.layoutMode === "HORIZONTAL") as any[];
+    expect(frames.map((n) => n.itemSpacing)).toEqual([24, 12]);
+    for (const node of frames) expect(node.boundVariables ?? {}).toEqual({});
+    expect(end.tokenFailures).toBeGreaterThan(0);
   });
 
   test("a second set finds the variable by its key", async () => {

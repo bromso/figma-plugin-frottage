@@ -784,7 +784,12 @@ export function mapCapture(
   const tokens = extractTokens(capture, ops, options);
   if (tokens.spacingOver) {
     report.warnings.push(
-      `Only 200 spacing values became variables; ${tokens.spacingOver} more stayed plain values.`
+      `Only 200 spacing values became variables; ${tokens.spacingOver} more stayed ${tokens.spacingOver === 1 ? "a plain value" : "plain values"}.`
+    );
+  }
+  if (tokens.spacingRem) {
+    report.warnings.push(
+      "Spacing variables in rem assume a 16 px root font size; values on another root stay plain."
     );
   }
   if (ignoredFilters.size > 0) {

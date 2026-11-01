@@ -315,17 +315,25 @@ export function createApplier(api: PluginAPI) {
     rootX = set ? set.x : clearOf(page);
   }
 
-  /** Puts a root or a main on its version's mode. A refused mode leaves it on the first. */
-  function setMode(node: FrameNode | ComponentNode) {
-    if (versionIndex === null) return;
+  /**
+   * Puts a root or a main on its version's mode. A refused mode leaves it on the first. Returns
+   * false in that case only: a version with no mode of its own has nothing to be true to.
+   */
+  function setMode(node: FrameNode | ComponentNode): boolean {
+    if (versionIndex === null) return true;
     const mode = tokens?.modeOf(versionIndex);
-    if (!mode) return;
+    if (!mode) return true;
     try {
       node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
+      return true;
     } catch {
       tokens?.failed();
+      return false;
     }
   }
+
+  /** Frames whose subtree sits on a mode other than its version's: bound lengths would be wrong. */
+  const offMode = new WeakSet<FrameNode>();
 
   /** Settles the plan's tokens against the file. Comes before any batch that uses them. */
   async function importTokens(plan: PlanTokens, options: ImportOptions): Promise<void> {
@@ -497,9 +505,9 @@ export function createApplier(api: PluginAPI) {
    * after its mode. Both axes start FIXED, as SPACE_* alignment and FLEX tracks need, so HUG comes
    * last. Refused settings leave the frame absolute: losing it would lose its subtree.
    */
-  function setLayout(node: FrameNode, op: FrameOp) {
+  function setLayout(node: FrameNode, op: FrameOp, bind: boolean) {
     applyLayout(node, op);
-    if (node.layoutMode !== "NONE") bindLengths(node, op.layout);
+    if (bind && node.layoutMode !== "NONE") bindLengths(node, op.layout);
   }
 
   /**
@@ -511,13 +519,14 @@ export function createApplier(api: PluginAPI) {
     const keys = layout.spacingKeys;
     const set = tokens;
     if (!keys || !set) return;
+    let refused = false;
     const bind = (field: VariableBindableNodeField, key: string | null | undefined) => {
       const variable = set.spacing(key);
       if (!variable) return;
       try {
         node.setBoundVariable(field, variable);
       } catch {
-        set.failed();
+        refused = true;
       }
     };
     const sides = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"] as const;
@@ -525,10 +534,12 @@ export function createApplier(api: PluginAPI) {
     if (layout.mode === "GRID") {
       bind("gridRowGap", keys.rowGap);
       bind("gridColumnGap", keys.columnGap);
-      return;
+    } else {
+      bind("itemSpacing", keys.itemSpacing);
+      if (layout.wrap) bind("counterAxisSpacing", keys.counterSpacing);
     }
-    bind("itemSpacing", keys.itemSpacing);
-    if (layout.wrap) bind("counterAxisSpacing", keys.counterSpacing);
+    // One failure per frame, as the frame is what lost its binding.
+    if (refused) set.failed();
   }
 
   function applyLayout(node: FrameNode, op: FrameOp) {
@@ -681,8 +692,10 @@ export function createApplier(api: PluginAPI) {
   function buildFrame(op: FrameOp, parent: FrameNode | null) {
     const name = parent || op.component ? op.name : rootName || op.name;
     const node = createFrame(parent, op, name);
-    if (!parent) setMode(node);
-    setLayout(node, op);
+    // A subtree is true to its mode only while its root is on it.
+    const onMode = parent ? !offMode.has(parent) : setMode(node);
+    if (!onMode) offMode.add(node);
+    setLayout(node, op, onMode);
     node.clipsContent = op.clips;
     // A refused paint costs that paint, not the frame and all that is under it.
     try {
