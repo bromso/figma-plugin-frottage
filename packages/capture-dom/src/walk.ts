@@ -284,35 +284,46 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
   }
 
-  /** The stored target of the nearest enclosing `<a href>`, only when it is a real http(s) page. */
-  function linkOf(el: Element | null): string | undefined {
-    for (let cur = el; cur; cur = cur.parentElement ?? null) {
-      if (cur.localName !== "a" || cur.namespaceURI !== XHTML || !cur.hasAttribute("href"))
-        continue;
-      const raw = (cur.getAttribute("href") ?? "").trim();
-      if (raw === "" || raw.startsWith("#")) return undefined;
+  /**
+   * The link a node's text carries, passed down the walk so it follows the flattened tree: slotted
+   * content takes the link of the slot's ancestors in the shadow root, and a shadow host's content
+   * the link of the light anchor around the host. `undefined` is no link.
+   */
+  type Link = string | undefined;
+  const anchorTargets = new WeakMap<Element, Link>();
+
+  /** The stored target of an `<a href>`, only when it is a real http(s) page; cached per anchor. */
+  function anchorTarget(a: Element): Link {
+    if (anchorTargets.has(a)) return anchorTargets.get(a);
+    let out: Link;
+    const raw = (a.getAttribute("href") ?? "").trim();
+    if (raw !== "" && !raw.startsWith("#")) {
       try {
-        const u = new URL((cur as HTMLAnchorElement).href);
-        if (u.protocol !== "http:" && u.protocol !== "https:") return undefined;
+        const u = new URL((a as HTMLAnchorElement).href);
         // A same-page `#anchor` has no target once the fragment is cleaned away.
-        const here = new URL(doc.URL);
-        if (
+        const samePage =
           u.hash &&
-          u.href.slice(0, u.href.length - u.hash.length) === here.href.replace(/#.*$/s, "")
-        ) {
-          return undefined;
+          u.href.slice(0, u.href.length - u.hash.length) ===
+            new URL(doc.URL).href.replace(/#.*$/s, "");
+        if ((u.protocol === "http:" || u.protocol === "https:") && !samePage) {
+          out = cleanUrl(u.href);
         }
-        return cleanUrl(u.href);
       } catch {
-        return undefined;
+        out = undefined;
       }
     }
-    return undefined;
+    anchorTargets.set(a, out);
+    return out;
   }
 
-  const withLink = (run: Run, el: Element): Run => {
-    const href = linkOf(el);
-    if (href !== undefined) run.href = href;
+  /** The link in effect inside `el`: its own when it is an anchor, else the one it sits in. */
+  const linkInside = (el: Element, inherited: Link): Link =>
+    el.localName === "a" && el.namespaceURI === XHTML && el.hasAttribute("href")
+      ? anchorTarget(el)
+      : inherited;
+
+  const withLink = (run: Run, link: Link): Run => {
+    if (link !== undefined) run.href = link;
     return run;
   };
 
@@ -460,7 +471,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return round2(ctx.measureText(shown).width + spacing * shown.length);
   }
 
-  function buildText(group: Item[], parent: Element): TextNode | null {
+  function buildText(group: Item[], parent: Element, link: Link): TextNode | null {
     let text = "";
     const runs: Run[] = [];
     const rects: Rect[] = [];
@@ -474,7 +485,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       else runs.push({ ...run, start, end: text.length });
     };
 
-    const addText = (node: Text, parentEl: Element) => {
+    const addText = (node: Text, parentEl: Element, link: Link) => {
       // A slotted text node takes its style from the slot it is assigned to, not its light parent.
       const s = cs(node.assignedSlot ?? parentEl);
       if (s.visibility !== "visible") return;
@@ -497,10 +508,10 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         rects.push(pageBox(r));
       }
       if (!any) return;
-      append(piece, withLink(runOf(s, 0, 0), parentEl));
+      append(piece, withLink(runOf(s, 0, 0), link));
     };
 
-    const addPseudo = (p: Pseudo) => {
+    const addPseudo = (p: Pseudo, link: Link) => {
       noteApproximations(p, undefined, pseudoCtx);
       const s = p.style;
       if (s.visibility !== "visible") return;
@@ -513,15 +524,15 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       if (!piece) return;
       const lineH = px(s.lineHeight) || px(s.fontSize) * 1.2;
       rects.push({ x: 0, y: 0, w: measure(piece, s), h: round2(lineH), gen: p.which });
-      append(piece, withLink(runOf(s, 0, 0), parent));
+      append(piece, withLink(runOf(s, 0, 0), link));
     };
 
-    const addNodes = (nodes: Iterable<Item>, styleEl: Element) => {
+    const addNodes = (nodes: Iterable<Item>, styleEl: Element, link: Link) => {
       for (const n of nodes) {
         if (isPseudoItem(n)) {
-          addPseudo(n.pseudo);
+          addPseudo(n.pseudo, link);
         } else if (n.nodeType === 3) {
-          addText(n as Text, styleEl);
+          addText(n as Text, styleEl, link);
         } else if (n.nodeType === 1) {
           const e = n as Element;
           if (IGNORED_TAGS.has(e.localName)) continue;
@@ -536,14 +547,14 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
                 break;
               }
             }
-            append("\n", withLink(runOf(cs(e), 0, 0), e));
+            append("\n", withLink(runOf(cs(e), 0, 0), link));
           } else {
-            addNodes(inlineItems(e), e);
+            addNodes(inlineItems(e), e, linkInside(e, link));
           }
         }
       }
     };
-    addNodes(group, parent);
+    addNodes(group, parent, link);
     placeGenerated(rects, parent);
 
     const trimmed = text.replace(/[ \n]+$/, "");
@@ -807,12 +818,13 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return layout;
   }
 
-  function visitChildren(el: Element, depth: number): CaptureNode[] {
+  /** `link` is the link in effect inside `el`. */
+  function visitChildren(el: Element, depth: number, link: Link): CaptureNode[] {
     const out: CaptureNode[] = [];
     let group: Item[] = [];
     const flush = () => {
       if (group.length === 0) return;
-      const node = buildText(group, el);
+      const node = buildText(group, el, link);
       if (node) out.push(node);
       group = [];
     };
@@ -835,7 +847,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
           group.push(e);
         } else {
           flush();
-          out.push(...visit(e, depth + 1, false));
+          out.push(...visit(e, depth + 1, false, link));
         }
       }
     }
@@ -844,12 +856,13 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return out;
   }
 
-  function visit(el: Element, depth: number, isRoot: boolean): CaptureNode[] {
+  function visit(el: Element, depth: number, isRoot: boolean, inherited: Link): CaptureNode[] {
     if (IGNORED_TAGS.has(el.localName)) return [];
     if (el instanceof win.HTMLInputElement && el.type === "hidden") return [];
     const s = cs(el);
     if (s.display === "none") return [];
-    if (s.display === "contents") return visitChildren(el, depth - 1);
+    const link = linkInside(el, inherited);
+    if (s.display === "contents") return visitChildren(el, depth - 1, link);
 
     const box = boxOf(el, s);
     const clipped = el !== doc.body && (s.overflowX !== "visible" || s.overflowY !== "visible");
@@ -952,7 +965,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         if (t) element.children.push(t);
       }
     } else {
-      element.children = visitChildren(el, depth);
+      element.children = visitChildren(el, depth, link);
     }
 
     if (isRoot) {
@@ -967,7 +980,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return [element];
   }
 
-  const [tree] = visit(root, 1, true);
+  const [tree] = visit(root, 1, true, undefined);
   if (tree?.kind !== "element") throw new Error("The document has no root element");
 
   // ---------- Tokens

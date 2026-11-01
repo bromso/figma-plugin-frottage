@@ -1143,3 +1143,46 @@ test("javascript, mailto, tel, fragment-only and empty links store no href", asy
   expect(t.runs.some((r) => r.href !== undefined)).toBe(false);
   expect(JSON.stringify(t)).not.toContain("javascript");
 });
+
+// ---------- Links through the flattened tree
+
+const hrefsOf = (n: Extract<CaptureNode, { kind: "text" }>) => n.runs.map((r) => r.href);
+
+test("an element slotted into a shadow anchor takes the anchor's link", async ({ page }) => {
+  const t = findText(await capture(page, "shadow.html"), "Open slotted link");
+  expect(hrefsOf(t)).toEqual(["http://localhost:4173/open-slotted"]);
+});
+
+test("a light anchor around a custom element reaches the text in its shadow root", async ({
+  page,
+}) => {
+  const t = findText(await capture(page, "shadow.html"), "Open host text");
+  expect(hrefsOf(t)).toEqual(["https://example.com/open-host"]);
+});
+
+test("the same holds inside closed shadow roots", async ({ page }) => {
+  const c = await capture(page, "shadow.html", { closedShadow: true });
+  expect(hrefsOf(findText(c, "Closed slotted link"))).toEqual([
+    "http://localhost:4173/closed-slotted",
+  ]);
+  expect(hrefsOf(findText(c, "Closed host text"))).toEqual(["https://example.com/closed-host"]);
+});
+
+test("a custom element's own href attribute does not make a link", async ({ page }) => {
+  const t = findText(await capture(page, "shadow.html"), "Unlinked host text");
+  expect(hrefsOf(t)).toEqual([undefined]);
+});
+
+test("existing shadow link text still reads as before and keeps its link", async ({ page }) => {
+  const t = findText(await capture(page, "shadow.html"), "Link 12");
+  expect(t.text).toBe("Link 12 New");
+  expect(hrefsOf(t)).toEqual(["http://localhost:4173/link/12"]);
+});
+
+test("pseudo-element text inside an anchor is linked, and outside one is not", async ({ page }) => {
+  const c = await capture(page, "links.html");
+  const linked = findText(c, "Pseudo link");
+  expect(linked.text).toBe("Pseudo link (out)");
+  expect(hrefsOf(linked).every((h) => h === "https://example.com/pseudo")).toBe(true);
+  expect(hrefsOf(findText(c, "Not linked")).every((h) => h === undefined)).toBe(true);
+});

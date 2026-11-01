@@ -6,6 +6,7 @@
 <style>
 body { margin: 0; padding: 16px; font: 14px/20px Arial, sans-serif; color: #111; width: 600px; }
 a.block { display: block; width: 300px; }
+a.out::after { content: " (out)"; }
 </style>
 </head>
 <body>
@@ -22,5 +23,7 @@ a.block { display: block; width: 300px; }
   <a href="">empty</a>
   <a>nohref</a>
 </p>
+<p id="pseudo"><a class="out" href="https://example.com/pseudo">Pseudo link</a></p>
+<p id="nonlink"><span class="out">Not linked</span></p>
 </body>
 </html>

@@ -5,7 +5,7 @@
 <title>Shadow DOM</title>
 <style>
 body { margin: 0; font: 14px/1.4 "Frottage Novum", Helvetica; color: #111; }
-x-theme, x-link, x-icon, x-card, x-login { display: block; }
+x-theme, x-link, x-icon, x-card, x-login, x-slotbox, x-plain { display: block; }
 .hdr { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: #f4f4f4; }
 .icons { display: flex; gap: 8px; padding: 12px; }
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 12px; }
@@ -66,6 +66,30 @@ h1 { margin: 12px; font-size: 24px; }
     }
   }
 
+  // <a href><slot></slot></a>: the common wrapper-link component. "closed" attaches a closed root.
+  class XSlotbox extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot || window.__frottageClosedRoots.has(this)) return;
+      const closed = this.hasAttribute("closed");
+      const root = this.attachShadow({ mode: closed ? "closed" : "open" });
+      if (closed) window.__frottageClosedRoots.set(this, root);
+      root.innerHTML = `<a href="/${this.getAttribute("data-to")}"><slot></slot></a>`;
+    }
+  }
+
+  // Text that lives in the shadow root; any link around it is a light anchor around the host.
+  class XPlain extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot || window.__frottageClosedRoots.has(this)) return;
+      const closed = this.hasAttribute("closed");
+      const root = this.attachShadow({ mode: closed ? "closed" : "open" });
+      if (closed) window.__frottageClosedRoots.set(this, root);
+      root.innerHTML = `<span>${this.getAttribute("data-text")}</span>`;
+    }
+  }
+
+  customElements.define("x-slotbox", XSlotbox);
+  customElements.define("x-plain", XPlain);
   customElements.define("x-theme", XTheme);
   customElements.define("x-link", XLink);
   customElements.define("x-icon", XIcon);
@@ -93,6 +117,11 @@ h1 { margin: 12px; font-size: 24px; }
     <x-card><p slot="nowhere">ORPHAN-SLOTTED</p></x-card>
   </div>
   <x-login></x-login>
+  <x-slotbox data-to="open-slotted"><span>Open slotted link</span></x-slotbox>
+  <a href="https://example.com/open-host"><x-plain data-text="Open host text"></x-plain></a>
+  <x-slotbox closed data-to="closed-slotted"><span>Closed slotted link</span></x-slotbox>
+  <a href="https://example.com/closed-host"><x-plain closed data-text="Closed host text"></x-plain></a>
+  <x-plain data-text="Unlinked host text" href="https://example.com/host-attr"></x-plain>
 </x-theme>
 </body>
 </html>
