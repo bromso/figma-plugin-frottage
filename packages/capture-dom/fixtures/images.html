@@ -5,7 +5,7 @@
     <title>Images</title>
     <style>
       body { margin: 0; padding: 16px; font: 14px/1.4 Arial, sans-serif; }
-      img, .bg { display: block; margin-bottom: 8px; }
+      img, video, .bg { display: block; margin-bottom: 8px; }
       .bg { width: 160px; height: 60px; background-size: cover; background-position: center; background-repeat: no-repeat; }
       .tile { background-size: 20px 20px; background-repeat: repeat; }
     </style>
@@ -21,6 +21,8 @@
     <img id="dup-a" src="/assets/photo.png?copy=a" width="60" height="40" alt="dup-a" />
     <img id="dup-b" src="/assets/photo.png?copy=b" width="60" height="40" alt="dup-b" />
     <img id="blocked" src="http://localhost:4174/assets/photo.png" width="90" height="60" alt="blocked" />
+    <video id="poster" poster="/assets/photo.png?poster=1" width="120" height="80"></video>
+    <video id="poster-blocked" poster="http://localhost:4174/assets/photo.png?poster=2" width="90" height="70"></video>
     <div id="bg-local" class="bg" style="background-image: url('/assets/photo.png')"></div>
     <div id="bg-tile" class="bg tile" style="background-image: url('/assets/photo.png?copy=tile')"></div>
     <div id="bg-blocked" class="bg" style="background-image: url('http://localhost:4174/assets/photo.png')"></div>

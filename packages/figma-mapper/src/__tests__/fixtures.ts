@@ -119,7 +119,8 @@ export function nested(pos: { parent: [number, number]; child: [number, number] 
 
 export function deepTree(depth = 5000): Capture {
   let node: ElementNode = el("n0", [0, 0]);
-  for (let i = 1; i <= depth; i++) node = el(`n${i}`, [0, 0], [node]);
+  // Each level is wider than the last, so no wrapper collapses into its child.
+  for (let i = 1; i <= depth; i++) node = el(`n${i}`, [0, 0], [node], {}, [100 + i, 100]);
   return cap(node);
 }
 

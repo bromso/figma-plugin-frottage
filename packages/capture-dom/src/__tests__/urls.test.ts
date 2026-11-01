@@ -38,6 +38,43 @@ describe("cleanCss", () => {
 });
 
 describe("cleanText", () => {
+  test.each([
+    ["/reset?token=SECRET", "/reset"],
+    ["./reset?token=SECRET", "./reset"],
+    ["../reset#SECRET", "../reset"],
+    ["//cdn.test/x?token=SECRET", "//cdn.test/x"],
+    ["https://a.test/x,y?token=SECRET", "https://a.test/x,y"],
+    ["https://a.test/(x)?token=SECRET", "https://a.test/(x)"],
+    ["see /reset?token=SECRET now", "see /reset now"],
+    ['"/reset?token=SECRET"', '"/reset"'],
+    ["(/reset?token=SECRET)", "(/reset)"],
+    ["href=/reset?token=SECRET", "href=/reset"],
+    ["a /b?t=SECRET,/c?t=SECRET", "a /b"],
+    ["[/reset?token=SECRET]", "[/reset]"],
+    ["</reset?token=SECRET>", "</reset>"],
+    ["{/reset?token=SECRET}", "{/reset}"],
+    ["a|/reset?token=SECRET", "a|/reset"],
+    ["a|/reset?token=SECRET|RET", "a|/reset"],
+  ])("takes the query off %s", (raw, clean) => {
+    expect(cleanText(raw)).toBe(clean);
+  });
+
+  test.each([
+    "Why? Because",
+    "Is it 1/2? Yes",
+    "and/or? Both",
+    "Issue #12 and C#",
+    "What is /etc/passwd? A file",
+    "1 / 2 # 3",
+    "Rock & roll!",
+    "[Why? Because]",
+    "{a|b}? Yes",
+    "<b>Why?</b> Because",
+    "a | b # c",
+  ])("leaves prose alone: %s", (text) => {
+    expect(cleanText(text)).toBe(text);
+  });
+
   test("cleans URLs inside an error message", () => {
     expect(cleanText("Could not load https://x/a?token=1, sorry")).toBe(
       "Could not load https://x/a, sorry"

@@ -23,6 +23,8 @@ const frame = (id: string, parent: string | null = null, extra: object = {}): Pl
   opacity: 1,
   effects: [],
   clips: true,
+  layout: { mode: "NONE" },
+  childCount: 0,
   ...extra,
 });
 const run = (start: number, end: number, fontName: FontRef): PlanRun => ({
@@ -332,7 +334,21 @@ test("an import with no root op returns an empty rootId and counts a failure", a
   const a = createApplier(f.figma);
   await a.begin(meta);
   const r = await a.end();
-  expect(r).toEqual({ rootId: "", failedOps: 1, missingImages: 0, rewrappedTexts: 0 });
+  expect(r).toEqual({
+    rootId: "",
+    failedOps: 1,
+    missingImages: 0,
+    rewrappedTexts: 0,
+    autoLayoutFrames: 0,
+    fallbackFrames: 0,
+    fallbackReasons: {},
+    textDriftCount: 0,
+    stylesCreated: 0,
+    stylesReused: 0,
+    variablesCreated: 0,
+    variablesReused: 0,
+    tokenFailures: 0,
+  });
 });
 
 test("a failed root op is counted once and fails its children", async () => {
@@ -536,6 +552,16 @@ test("wrapped text that needs 3 lines widens until 2 lines, keeping its centre",
   expect(r.rewrappedTexts).toBe(0);
 });
 
+test("wrapped text stays inside a clipping parent it fitted, and counts the rewrap", async () => {
+  const f = fakeFigma({ charWidth: 10 });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([{ ...frame("a"), w: 207 }, wrapped({ x: 100, align: "LEFT" })]);
+  const r = await a.end();
+  expect(textNodeOf(f).width).toBeLessThanOrEqual(107);
+  expect(r.rewrappedTexts).toBe(1);
+});
+
 test("widening right-aligned wrapped text moves x left by the whole added width", async () => {
   const f = fakeFigma({ charWidth: 10 });
   const a = createApplier(f.figma);
@@ -641,4 +667,199 @@ test("wrapped text ends in HEIGHT mode with the captured line count, even when h
   expect(t.textAutoResize).toBe("HEIGHT");
   expect(t.height).toBe(24);
   expect(r.rewrappedTexts).toBe(0);
+});
+
+const svgOp = (markup = "<svg/>", extra: object = {}): PlanOp => ({
+  op: "svg",
+  id: "vec",
+  parent: "a",
+  name: "Svg",
+  x: 7,
+  y: 8,
+  w: 24,
+  h: 16,
+  markup,
+  opacity: 0.5,
+  ...extra,
+});
+
+test("applier creates a vector frame and sizes it", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp("<svg>ok</svg>")]);
+  expect(f.calls).toContain("createNodeFromSvg");
+  expect(f.svgSources).toEqual(["<svg>ok</svg>"]);
+  const r = await a.end();
+  const v = f.node(r.rootId).children[0];
+  expect(v.name).toBe("Svg");
+  expect([v.x, v.y, v.width, v.height, v.opacity]).toEqual([7, 8, 24, 16, 0.5]);
+  expect(v.parent).toBe(f.node(r.rootId));
+  expect(v.clipsContent).toBe(true);
+  expect(r.failedOps).toBe(0);
+});
+
+test("an svg whose overflow was visible does not clip", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp("<svg/>", { clips: false })]);
+  expect(f.node((await a.end()).rootId).children[0].clipsContent).toBe(false);
+});
+
+test("an svg shown at another size scales its vectors", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp("<svg/>", { w: 48, h: 12 })]);
+  const v = f.node((await a.end()).rootId).children[0];
+  expect(v.children[0].constraints).toEqual({ horizontal: "SCALE", vertical: "SCALE" });
+  expect([v.children[0].width, v.children[0].height]).toEqual([48, 12]);
+});
+
+test("an svg already at its size keeps its default constraints", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp("<svg/>", { w: 24.3, h: 24 })]);
+  const v = f.node((await a.end()).rootId).children[0];
+  expect(v.children[0].constraints).toEqual({ horizontal: "MIN", vertical: "MIN" });
+});
+
+test("a rejected svg becomes a placeholder and the import continues", async () => {
+  const f = fakeFigma({ svgThrows: true });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp(), textOp("t", "a", [run(0, 5, inter)])]);
+  const r = await a.end();
+  const kids = f.node(r.rootId).children;
+  expect(kids.map((n: any) => n.type)).toEqual(["FRAME", "TEXT"]);
+  expect(kids[0].name).toContain("SVG");
+  expect([kids[0].x, kids[0].y, kids[0].width, kids[0].height]).toEqual([7, 8, 24, 16]);
+  expect(r.failedOps).toBe(0);
+});
+
+test("svg markup over 256 KiB is not handed to Figma", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp(`<svg>${"x".repeat(256 * 1024)}</svg>`)]);
+  const r = await a.end();
+  expect(f.count("createNodeFromSvg")).toBe(0);
+  expect(f.node(r.rootId).children[0].name).toContain("SVG");
+  expect(r.failedOps).toBe(0);
+});
+
+test("a multi-byte svg is measured in bytes", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  // 100,000 characters but 300,000 bytes.
+  await a.applyBatch([frame("a"), svgOp(`<svg>${"\u20ac".repeat(100_000)}</svg>`)]);
+  expect(f.count("createNodeFromSvg")).toBe(0);
+});
+
+test("an svg with no parent fails like any other op", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp("<svg/>", { parent: "missing" })]);
+  expect(f.count("createNodeFromSvg")).toBe(0);
+  expect((await a.end()).failedOps).toBe(1);
+});
+
+test("an svg frame whose setup fails is removed and counted", async () => {
+  const f = fakeFigma({ failOn: "Svg" });
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), svgOp()]);
+  const r = await a.end();
+  expect(r.failedOps).toBe(1);
+  expect(f.node(r.rootId).children).toHaveLength(0);
+});
+
+const linkedRuns = (...parts: [number, number, string?][]) =>
+  parts.map(([s, e, href]) => ({ ...run(s, e, inter), ...(href ? { href } : {}) }));
+
+test("setRangeHyperlink is called per linked run, only over that range", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a"),
+    textOp(
+      "t",
+      "a",
+      linkedRuns([0, 2], [2, 4, "https://a.test/x"], [4, 5], [5, 99, "https://a.test/y"])
+    ),
+  ]);
+  expect((await a.end()).failedOps).toBe(0);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  const links = t.ranges.filter((r: any) => r.m === "setRangeHyperlink");
+  // The run at 5-99 starts at the end of the 5-character text, so it is empty and never linked.
+  expect(links.map((r: any) => [r.s, r.e, r.v])).toEqual([
+    [2, 4, { type: "URL", value: "https://a.test/x" }],
+  ]);
+});
+
+test("a link is set after fonts and fills, and fills and decoration are reapplied", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), textOp("t", "a", linkedRuns([0, 5, "https://a.test/x"]))]);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  const order = t.ranges.map((r: any) => r.m);
+  const at = order.indexOf("setRangeHyperlink");
+  expect(at).toBeGreaterThan(order.indexOf("setRangeFontName"));
+  expect(at).toBeGreaterThan(order.indexOf("setRangeFills"));
+  expect(order.slice(at + 1)).toEqual(["setRangeFills", "setRangeTextDecoration"]);
+});
+
+test("a rejected URL drops only the link; the run keeps its style", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a"),
+    textOp("t", "a", linkedRuns([0, 2, "not a url"], [2, 5, "https://a.test/ok"])),
+  ]);
+  expect((await a.end()).failedOps).toBe(0);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  expect(t.ranges.filter((r: any) => r.m === "setRangeFontSize")).toHaveLength(2);
+  expect(
+    t.ranges.filter((r: any) => r.m === "setRangeHyperlink" && r.v).map((r: any) => r.v.value)
+  ).toEqual(["https://a.test/ok"]);
+});
+
+test("runs with no href set no hyperlink", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), textOp("t", "a", [run(0, 5, inter)])]);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  expect(t.ranges.some((r: any) => r.m === "setRangeHyperlink")).toBe(false);
+});
+
+test("a javascript: href that reaches the applier is not set", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([frame("a"), textOp("t", "a", linkedRuns([0, 5, "javascript:alert(1)"]))]);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  expect(t.ranges.some((r: any) => r.m === "setRangeHyperlink")).toBe(false);
+});
+
+test("a link running past the text is clamped", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a"),
+    textOp("t", "a", linkedRuns([0, 2], [2, 99, "https://a.test/x"])),
+  ]);
+  expect((await a.end()).failedOps).toBe(0);
+  const t = f.created.find((n) => n.type === "TEXT") as any;
+  expect(
+    t.ranges.filter((r: any) => r.m === "setRangeHyperlink").map((r: any) => [r.s, r.e])
+  ).toEqual([[2, 5]]);
 });

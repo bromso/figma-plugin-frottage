@@ -59,6 +59,8 @@ const style = z.object({
   clip: box.optional(),
 });
 
+const marginAuto = z.tuple([z.boolean(), z.boolean(), z.boolean(), z.boolean()]);
+
 const layout = z.object({
   display: z.string(),
   position: z.string(),
@@ -70,9 +72,21 @@ const layout = z.object({
   gap: z.tuple([z.number(), z.number()]).optional(),
   padding: four,
   margin: four,
+  // `margin` holds used pixels, so this says which sides were `auto`: [top, right, bottom, left].
+  marginAuto: marginAuto.optional(),
   order: z.number(),
   grow: z.number(),
   shrink: z.number(),
+  rowGap: z.number().optional(),
+  columnGap: z.number().optional(),
+  // Resolved px tracks, as computed style gives them.
+  gridTemplateColumns: z.string().optional(),
+  gridTemplateRows: z.string().optional(),
+  // The stylesheet's value, kept only when it shows `fr`, which computed style resolves away.
+  authoredGridTemplateColumns: z.string().optional(),
+  authoredGridTemplateRows: z.string().optional(),
+  gridColumn: z.string().optional(),
+  gridRow: z.string().optional(),
 });
 
 const semantic = z.object({
@@ -83,6 +97,10 @@ const semantic = z.object({
   landmark: z.string().optional(),
   href: z.string().optional(),
   alt: z.string().optional(),
+  // The first class token, when it reads as a name: never hashed, never longer than 40.
+  className: z.string().max(40).optional(),
+  // The element id, under the same filters as className.
+  id: z.string().max(40).optional(),
 });
 
 const common = {
@@ -111,6 +129,8 @@ const textRun = z.object({
   decoration: z.string(),
   transform: z.string(),
   align: z.string(),
+  /** Cleaned http(s) target of the link the text sits in; no query, fragment or userinfo. */
+  href: z.string().optional(),
 });
 
 const textNode = z.object({
@@ -121,8 +141,16 @@ const textNode = z.object({
   runs: z.array(textRun),
 });
 
+// How a leaf sits among its siblings; left out when static or zero. Elements have `layout`.
+const flow = {
+  position: z.string().optional(),
+  margin: four.optional(),
+  marginAuto: marginAuto.optional(),
+};
+
 const imageNode = z.object({
   ...common,
+  ...flow,
   kind: z.literal("image"),
   assetHash: z.string().optional(),
   sourceUrl: z.string().optional(),
@@ -135,12 +163,16 @@ const imageNode = z.object({
 
 const svgNode = z.object({
   ...common,
+  ...flow,
   kind: z.literal("svg"),
   markup: z.string(),
+  /** Computed overflow of the `<svg>`; browsers clip inline SVG unless this is `visible`. */
+  overflow: z.string().optional(),
 });
 
 const placeholderNode = z.object({
   ...common,
+  ...flow,
   kind: z.literal("placeholder"),
   placeholderKind: z.enum(["canvas", "video", "cross-origin-iframe", "blocked-image"]),
   sourceUrl: z.string().optional(),

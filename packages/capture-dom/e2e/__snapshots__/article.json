@@ -289,7 +289,13 @@
        ],
        "order": 0,
        "grow": 0,
-       "shrink": 1
+       "shrink": 1,
+       "marginAuto": [
+        false,
+        true,
+        false,
+        true
+       ]
       },
       "children": [
        {
@@ -299,7 +305,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "p"
+         "tag": "p",
+         "className": "kicker"
         },
         "kind": "element",
         "style": {
@@ -548,7 +555,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "p"
+         "tag": "p",
+         "className": "byline"
         },
         "kind": "element",
         "style": {
@@ -8357,7 +8365,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "p"
+         "tag": "p",
+         "className": "rule"
         },
         "kind": "element",
         "style": {

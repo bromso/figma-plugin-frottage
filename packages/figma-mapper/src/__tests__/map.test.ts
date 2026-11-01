@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { batchOps, mapCapture, type PlanOp } from "../index";
+import { batchOps, DEFAULT_IMPORT_OPTIONS, mapCapture, missingFonts, type PlanOp } from "../index";
 import {
   anyOp,
   cap,
@@ -27,6 +27,13 @@ function textOp(capture: Parameters<typeof mapCapture>[0]): TextPlanOp {
 }
 const frame = (c: Parameters<typeof mapCapture>[0], id: string) =>
   mapCapture(c, inter).ops.find((o) => o.id === id) as FramePlanOp;
+
+describe("text alignment", () => {
+  test.each(["constructor", "__proto__", "toString"])("%s falls back to LEFT", (align) => {
+    const op = textOp(withText(textNode("t", { runs: [run({ align })] })));
+    expect(op.align).toBe("LEFT");
+  });
+});
 
 describe("mapCapture", () => {
   test("positions children relative to their parent", () => {
@@ -57,6 +64,25 @@ describe("mapCapture", () => {
     const plan = mapCapture(usingFont("Nimbus Sans"), inter);
     expect(plan.report.substitutedFonts).toEqual([{ from: "Nimbus Sans", to: "Inter Regular" }]);
     expect(plan.fonts).toEqual([{ family: "Inter", style: "Regular" }]);
+  });
+  test("a font override replaces a missing family with the chosen one", () => {
+    const available = [...inter, { family: "Roboto", style: "Regular" }];
+    const plan = mapCapture(usingFont("Nimbus Sans"), available, DEFAULT_IMPORT_OPTIONS, {
+      "Nimbus Sans": "Roboto",
+    });
+    expect(plan.fonts).toEqual([{ family: "Roboto", style: "Regular" }]);
+    expect(plan.report.substitutedFonts).toEqual([{ from: "Nimbus Sans", to: "Roboto Regular" }]);
+  });
+  test("an override naming a family that is not available falls back as before", () => {
+    const plan = mapCapture(usingFont("Nimbus Sans"), inter, DEFAULT_IMPORT_OPTIONS, {
+      "Nimbus Sans": "Gone",
+    });
+    expect(plan.fonts).toEqual([{ family: "Inter", style: "Regular" }]);
+  });
+  test("missingFonts lists each substituted family with its nearest match", () => {
+    const plan = mapCapture(usingFont("Nimbus Sans"), inter);
+    expect(missingFonts(plan.report, inter)).toEqual([{ family: "Nimbus Sans", nearest: "Inter" }]);
+    expect(missingFonts(mapCapture(usingFont("Inter"), inter).report, inter)).toEqual([]);
   });
   test("a run with no text produces no empty range", () => {
     const runs = textOp(withText(emptyRun())).runs;
@@ -247,10 +273,83 @@ describe("mapCapture", () => {
     });
     expect(plan.ops.find((o) => o.id === "i2")?.op).toBe("placeholder");
     expect(plan.ops.find((o) => o.id === "p")?.op).toBe("placeholder");
-    expect(plan.ops.find((o) => o.id === "s")?.op).toBe("placeholder");
+    expect(plan.ops.find((o) => o.id === "s")?.op).toBe("svg");
     expect(plan.ops.find((o) => o.id === "gone")).toBeUndefined();
     expect(plan.assetHashes).toEqual(["hh"]);
-    expect(plan.report).toMatchObject({ nodes: 5, texts: 0, images: 1, placeholders: 3 });
+    expect(plan.report).toMatchObject({ nodes: 5, texts: 0, images: 1, placeholders: 2 });
+  });
+  describe("svg", () => {
+    const svgBase = {
+      box: { x: 10, y: 20, w: 24, h: 24 },
+      paintOrder: 0,
+      visible: true,
+      opacity: 0.5,
+      blendMode: "normal",
+      semantic: { tag: "svg" },
+    };
+    const withSvg = (markup: string, over: object = {}) =>
+      cap(el("root", [0, 0], [{ ...svgBase, id: "s", kind: "svg", markup, ...over }]));
+    test("svg nodes become svg ops", () => {
+      expect(mapCapture(withSvg("<svg/>"), inter).ops.find((o) => o.op === "svg")).toMatchObject({
+        op: "svg",
+        id: "s",
+        parent: "root",
+        name: "Icon",
+        x: 10,
+        y: 20,
+        w: 24,
+        h: 24,
+        markup: "<svg/>",
+        opacity: 0.5,
+      });
+    });
+    test("clips follows the captured overflow and defaults to clipping", () => {
+      const clips = (over: object) =>
+        (
+          mapCapture(withSvg("<svg/>", over), inter).ops.find((o) => o.id === "s") as {
+            clips?: boolean;
+          }
+        ).clips;
+      expect(clips({})).toBe(true);
+      expect(clips({ overflow: "hidden" })).toBe(true);
+      expect(clips({ overflow: "visible" })).toBe(false);
+      expect(clips({ overflow: "visible hidden" })).toBe(true);
+    });
+    test("an svg with no markup stays a placeholder", () => {
+      const op = mapCapture(withSvg(""), inter).ops.find((o) => o.id === "s");
+      expect(op).toMatchObject({ op: "placeholder", label: "SVG" });
+    });
+    test("an svg is placed relative to its parent and listed after it", () => {
+      const c = cap(
+        el(
+          "root",
+          [5, 5],
+          [
+            el(
+              "box",
+              [15, 25],
+              [
+                {
+                  ...svgBase,
+                  id: "s",
+                  kind: "svg",
+                  markup: "<svg/>",
+                  box: { x: 30, y: 40, w: 8, h: 8 },
+                },
+              ]
+            ),
+          ]
+        )
+      );
+      const { ops } = mapCapture(c, inter);
+      expect(ops.map((o) => o.id)).toEqual(["root", "box", "s"]);
+      expect(ops[2]).toMatchObject({ op: "svg", parent: "box", x: 15, y: 15, w: 8, h: 8 });
+    });
+    test("an invisible svg is skipped", () => {
+      expect(mapCapture(withSvg("<svg/>", { visible: false }), inter).ops.map((o) => o.id)).toEqual(
+        ["root"]
+      );
+    });
   });
   test("images keep opacity, radius and border; placeholders keep opacity", () => {
     const red = { r: 1, g: 0, b: 0, a: 1 };
@@ -373,6 +472,34 @@ describe("mapCapture", () => {
     expect(at(null)).toBe(100);
     expect(at(12)).toBe(103);
   });
+  test("a text op's box is its line box, which is what auto layout stacks", () => {
+    const op = textOp(
+      withText(
+        textNode("t", {
+          box: { x: 0, y: 100, w: 100, h: 18 },
+          lines: [{ x: 0, y: 100, w: 100, h: 18 }],
+          runs: [run({ lineHeight: 24 })],
+        })
+      )
+    );
+    expect(op).toMatchObject({ y: 97, h: 24 });
+  });
+  test("frames count the direct child ops the applier will receive", () => {
+    const empty = textNode("gone", { text: "", runs: [] });
+    const c = cap(
+      el(
+        "root",
+        [0, 0],
+        [el("a", [0, 0], [textNode("t", {}), empty, el("b", [0, 0])]), el("c", [0, 0])]
+      )
+    );
+    const { ops } = mapCapture(c, inter);
+    const count = (id: string) => (ops.find((o) => o.id === id) as FramePlanOp).childCount;
+    expect(count("root")).toBe(ops.filter((o) => o.parent === "root").length);
+    expect(count("root")).toBe(2);
+    expect(count("a")).toBe(2);
+    expect(count("b")).toBe(0);
+  });
   test("text with no line boxes keeps its y", () => {
     const op = textOp(
       withText(
@@ -491,5 +618,99 @@ describe("batchOps", () => {
   test("custom size, and bad sizes fall back", () => {
     expect(batchOps(new Array(5).fill(anyOp), 2).map((b) => b.length)).toEqual([2, 2, 1]);
     expect(batchOps(new Array(3).fill(anyOp), 0).map((b) => b.length)).toEqual([3]);
+  });
+});
+
+describe("mapCapture options", () => {
+  const tree = () =>
+    cap(
+      el(
+        "root",
+        [0, 0],
+        [
+          el(
+            "row",
+            [0, 0],
+            [el("a", [0, 0], [], {}, [40, 20]), el("b", [50, 0], [], {}, [40, 20])],
+            { layout: { ...el("x", [0, 0]).layout, display: "flex" } },
+            [100, 20]
+          ),
+        ]
+      )
+    );
+  test("autoLayout on infers layout, off gives NONE for every frame", () => {
+    const on = mapCapture(tree(), inter).ops.filter((o) => o.op === "frame");
+    expect(on.some((o) => o.layout.mode !== "NONE")).toBe(true);
+    const off = mapCapture(tree(), inter, {
+      ...DEFAULT_IMPORT_OPTIONS,
+      autoLayout: false,
+    }).ops.filter((o) => o.op === "frame");
+    expect(off.length).toBe(on.length);
+    for (const o of off) expect(o.layout).toEqual({ mode: "NONE" });
+    for (const o of mapCapture(tree(), inter, { ...DEFAULT_IMPORT_OPTIONS, autoLayout: false })
+      .ops) {
+      expect(o.childLayout).toBeUndefined();
+    }
+  });
+  test("htmlNames switches every frame to tag names", () => {
+    const names = mapCapture(tree(), inter, { ...DEFAULT_IMPORT_OPTIONS, htmlNames: true })
+      .ops.filter((o) => o.op === "frame")
+      .map((o) => o.name);
+    expect(names.every((n) => n === "div")).toBe(true);
+  });
+});
+
+describe("hyperlinks", () => {
+  const linked = (hrefs: (string | undefined)[], text = "abcdefghij") =>
+    withText(
+      textNode("t", {
+        text,
+        runs: hrefs.map((href, i) =>
+          run({ start: i * 3, end: Math.min(i * 3 + 3, text.length), ...(href ? { href } : {}) })
+        ),
+      })
+    );
+  const hrefs = (c: Parameters<typeof mapCapture>[0], opts = DEFAULT_IMPORT_OPTIONS) => {
+    const o = mapCapture(c, inter, opts).ops.find((x) => x.op === "text") as TextPlanOp;
+    return o.runs.map((r) => [r.start, r.end, r.href]);
+  };
+  test("a link covering part of a text block links only that range", () => {
+    expect(hrefs(linked([undefined, "https://example.com/a", undefined, undefined]))).toEqual([
+      [0, 3, undefined],
+      [3, 6, "https://example.com/a"],
+      [6, 9, undefined],
+      [9, 10, undefined],
+    ]);
+  });
+  test("a block link applies to every run of its text", () => {
+    const u = "https://example.com/b";
+    expect(hrefs(linked([u, u, u, u])).every((r) => r[2] === u)).toBe(true);
+  });
+  test("javascript, mailto, tel, data, fragment and empty links are not set", () => {
+    const bad = ["javascript:alert(1)", "mailto:a@b.co", "tel:1", "data:text/html,x", "#top", ""];
+    for (const b of bad) {
+      expect(hrefs(linked([b, "https://example.com/ok"], "abcdef")).map((r) => r[2])).toEqual([
+        undefined,
+        "https://example.com/ok",
+      ]);
+    }
+  });
+  test("http and https are kept", () => {
+    expect(
+      hrefs(linked(["http://a.test/x", "https://a.test/y"], "abcdef")).map((r) => r[2])
+    ).toEqual(["http://a.test/x", "https://a.test/y"]);
+  });
+  test("hyperlinks off puts no href on any run", () => {
+    const plan = mapCapture(linked(["https://example.com/a"], "abc"), inter, {
+      ...DEFAULT_IMPORT_OPTIONS,
+      hyperlinks: false,
+    });
+    expect(JSON.stringify(plan)).not.toContain("href");
+  });
+  test("a link on a non-text element does not reach the plan", () => {
+    const c = cap(
+      el("root", [0, 0], [el("x", [0, 0], [], { semantic: { tag: "a", href: "https://e.test/" } })])
+    );
+    expect(JSON.stringify(mapCapture(c, inter))).not.toContain("e.test");
   });
 });

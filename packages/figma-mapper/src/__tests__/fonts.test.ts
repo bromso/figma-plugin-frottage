@@ -9,6 +9,16 @@ describe("matchFont", () => {
       substituted: false,
     });
   });
+  test.each(["Constructor", "__proto__", "toString"])(
+    "a style named %s has no weight, so it is not parsed",
+    (style) => {
+      const f = [
+        { family: "Inter", style },
+        { family: "Inter", style: "Bold" },
+      ];
+      expect(matchFont("Inter", 300, false, f).font.style).toBe("Bold");
+    }
+  );
   test("weight 450 takes the nearest style", () => {
     expect(matchFont("Inter", 450, false, inter).font.style).toBe("Regular");
   });

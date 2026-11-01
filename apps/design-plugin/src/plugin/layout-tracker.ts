@@ -1,0 +1,320 @@
+import type { PlanChildLayout, PlanOp } from "@repo/figma-mapper";
+import { type ExpectedChild, type ExpectedLayout, TOL, verifyFrame } from "./verify-layout";
+
+/**
+ * Follows frames in auto layout from creation to verification, and takes back to absolute the ones
+ * that do not match the capture. Works out when a frame's size is final, as that decides when it can
+ * be judged. Runs in the plugin sandbox, so this module too only takes types from @repo/figma-mapper.
+ */
+
+type FrameOp = Extract<PlanOp, { op: "frame" }>;
+type Sizing = PlanChildLayout["sizingH"];
+
+/** The kinds of node an op makes. */
+export type Built = FrameNode | TextNode | RectangleNode;
+
+/** What wrapped text must fit: the captured width, and the height that means its line count. */
+/** `max` is the widest the text may go, where a clipping parent would cut its line ends off. */
+export type TextFit = { w: number; limit: number; max?: number };
+
+/** What a fallback needs beyond what verification reads. `fit` marks wrapped text set to FILL. */
+type Child = ExpectedChild & { node: Built; align: string; fit?: TextFit };
+
+/** A frame in auto layout, from its creation until it has been verified. */
+type LaidFrame = {
+  id: string;
+  frame: FrameNode;
+  op: FrameOp;
+  sizingH: Sizing;
+  sizingV: Sizing;
+  /** Its entry among its parent's children. */
+  child: Child | null;
+  /** Null when the parent is not in auto layout: nothing about this frame affects it then. */
+  parent: LaidFrame | null;
+  children: Child[];
+  /** FILL text, whose lines can only be judged once this frame's size is final. */
+  fillTexts: Child[];
+  containsText: boolean;
+  /** Direct children still to arrive, or whose own content is still to arrive. */
+  waiting: number;
+  /** Finished FILL children, whose size this frame's other children still decide. */
+  deferred: LaidFrame[];
+};
+
+const MIN_SIZE = 0.01;
+const MAX_WIDEN_STEPS = 8;
+/** Reads are quick, but a fallback writes, so the applier's time limit is not the only one. */
+const MAX_VERIFIES_PER_SLICE = 200;
+
+export const clampSize = (n: number) => Math.max(n, MIN_SIZE);
+
+/** x for a text box of `actual` width that must stay anchored inside the captured `w`. */
+export function alignedX(align: string, x: number, w: number, actual: number): number {
+  if (align === "CENTER") return x + (w - actual) / 2;
+  if (align === "RIGHT") return x + w - actual;
+  return x;
+}
+
+/**
+ * Sets wrapped text to its captured width, widening it until it is back to its line count. False
+ * if it never gets there.
+ */
+export function widenToLines(node: TextNode, fit: TextFit): boolean {
+  // Keep the current height: a different one switches HEIGHT mode to NONE.
+  node.resize(clampSize(fit.w), clampSize(node.height));
+  for (let step = 1; node.height > fit.limit && step <= MAX_WIDEN_STEPS; step++) {
+    const w = fit.w + (fit.w * step) / 100;
+    if (fit.max !== undefined && w > fit.max) break;
+    node.resize(clampSize(w), clampSize(node.height));
+  }
+  return node.height <= fit.limit;
+}
+
+export function createLayoutTracker() {
+  let rewrappedTexts = 0;
+  let autoLayoutFrames = 0;
+  let fallbackFrames = 0;
+  let textDriftCount = 0;
+  const fallbackReasons: Record<string, number> = {};
+  /** Frames with children to come, in creation order, so parents come before their children. */
+  let open = new Map<string, LaidFrame>();
+  /** Finished frames to verify, children before parents. */
+  let ready: LaidFrame[] = [];
+
+  function noteReason(reason: string) {
+    fallbackReasons[reason] = (fallbackReasons[reason] ?? 0) + 1;
+  }
+
+  function countFallback(reason: string) {
+    fallbackFrames++;
+    noteReason(reason);
+  }
+
+  /** One failed step must not stop the rest: a frame half put back is worse than one bad child. */
+  function attempt(step: () => void) {
+    try {
+      step();
+    } catch {
+      noteReason("error");
+    }
+  }
+
+  function passTextUp({ containsText, child, parent }: LaidFrame) {
+    if (child) child.containsText = containsText;
+    if (parent && containsText) parent.containsText = true;
+  }
+
+  /** Counts one child in. True when that was the last one. */
+  function arrived(frame: LaidFrame): boolean {
+    frame.waiting--;
+    return frame.waiting <= 0 && open.has(frame.id);
+  }
+
+  /**
+   * A frame is finished when its children and all that is below them are. Walks up rather than
+   * recursing, as one op can finish a deep chain. A FILL frame is verified along with its parent:
+   * until the parent has all its children, the frame's size is not its final one.
+   */
+  function finish(first: LaidFrame) {
+    let current: LaidFrame | undefined = first;
+    while (current) {
+      const { id, parent, deferred, sizingH, sizingV }: LaidFrame = current;
+      open.delete(id);
+      const waitsForParent =
+        parent && open.has(parent.id) && (sizingH === "FILL" || sizingV === "FILL");
+      const target = waitsForParent ? parent.deferred : ready;
+      for (const frame of deferred) target.push(frame);
+      target.push(current);
+      passTextUp(current);
+      current = parent && arrived(parent) ? parent : undefined;
+    }
+  }
+
+  /** Back to FIXED and widened, for FILL text that the frame's final width gave extra lines. */
+  function checkLines(c: Child) {
+    const { fit } = c;
+    if (!fit || c.node.height <= fit.limit) return;
+    const node = c.node as TextNode;
+    node.layoutSizingHorizontal = "FIXED";
+    c.sizingH = "FIXED";
+    c.fit = undefined;
+    if (!widenToLines(node, fit)) rewrappedTexts++;
+  }
+
+  /** A box that fills is wider than the text in it by design, so only its height can drift. */
+  function countDrift({ node, w, h, text, sizingH }: Child) {
+    if (!text) return;
+    const wide = sizingH !== "FILL" && Math.abs(node.width - w) > TOL;
+    if (wide || Math.abs(node.height - h) > TOL) textDriftCount++;
+  }
+
+  function placeChild(c: Child) {
+    const { node } = c;
+    if (c.fit) {
+      // Nothing gives it its width now, and it may have been keeping its lines on a wider box.
+      if (!widenToLines(node as TextNode, c.fit)) rewrappedTexts++;
+      c.fit = undefined;
+    } else if (!c.text && (c.sizingH === "FILL" || c.sizingV === "FILL")) {
+      const sized = node as FrameNode;
+      sized.resize(
+        clampSize(c.sizingH === "FILL" ? c.w : node.width),
+        clampSize(c.sizingV === "FILL" ? c.h : node.height)
+      );
+      if (c.sizingH === "HUG") sized.layoutSizingHorizontal = "HUG";
+      if (c.sizingV === "HUG") sized.layoutSizingVertical = "HUG";
+    }
+    node.x = alignedX(c.align, c.x, c.w, node.width);
+    node.y = c.y;
+  }
+
+  /**
+   * Puts the frame back to absolute, leaving its children's own layout alone. Text keeps its
+   * measured height, and a child that hugged goes on hugging; only a FILL axis has lost its source.
+   */
+  function fallBack({ frame, op, parent, child, sizingH, sizingV, children }: LaidFrame) {
+    attempt(() => {
+      frame.layoutMode = "NONE";
+    });
+    attempt(() => {
+      frame.resize(clampSize(op.w), clampSize(op.h));
+      if (parent && parent.frame.layoutMode !== "NONE") {
+        if (sizingH === "FILL") frame.layoutSizingHorizontal = "FILL";
+        if (sizingV === "FILL") frame.layoutSizingVertical = "FILL";
+      }
+    });
+    for (const c of children) attempt(() => placeChild(c));
+    if (child) {
+      child.sizingH = sizingH === "FILL" ? "FILL" : "FIXED";
+      child.sizingV = sizingV === "FILL" ? "FILL" : "FIXED";
+    }
+  }
+
+  function expectation(frame: LaidFrame): ExpectedLayout {
+    return {
+      layout: frame.op.layout as ExpectedLayout["layout"],
+      w: frame.op.w,
+      h: frame.op.h,
+      containsText: frame.containsText,
+      sizingH: frame.sizingH,
+      sizingV: frame.sizingV,
+      children: frame.children,
+    };
+  }
+
+  function verify(frame: LaidFrame) {
+    for (const c of frame.fillTexts) attempt(() => checkLines(c));
+    for (const c of frame.children) attempt(() => countDrift(c));
+    let reason: string | undefined;
+    try {
+      const verdict = verifyFrame(frame.frame, expectation(frame));
+      if (verdict.ok) {
+        autoLayoutFrames++;
+        return;
+      }
+      reason = verdict.reason ?? "unknown";
+    } catch {
+      reason = "error";
+    }
+    countFallback(reason);
+    fallBack(frame);
+  }
+
+  return {
+    countFallback,
+    noteRewrapped() {
+      rewrappedTexts++;
+    },
+
+    /** Records what the op made, so that its parent and the node itself can be verified. */
+    track(op: PlanOp, node: Built, fit: TextFit | null) {
+      const parent = op.parent === null ? undefined : open.get(op.parent);
+      const auto = op.op === "frame" && (node as FrameNode).layoutMode !== "NONE";
+      const own = auto && op.layout.mode !== "NONE" && op.layout.mode !== "GRID" ? op.layout : null;
+      const sizing = (axis: "sizingH" | "sizingV"): Sizing =>
+        op.childLayout?.[axis] === "FILL" ? "FILL" : (own?.[axis] ?? "FIXED");
+      const sizingH = sizing("sizingH");
+      const sizingV = sizing("sizingV");
+      let child: Child | null = null;
+      if (parent) {
+        child = {
+          node,
+          x: op.x,
+          y: op.y,
+          w: op.w,
+          h: op.h,
+          absolute: op.childLayout?.positioning === "ABSOLUTE",
+          text: op.op === "text",
+          containsText: false,
+          sizingH,
+          sizingV,
+          align: op.op === "text" ? op.align : "LEFT",
+        };
+        parent.children.push(child);
+        if (op.op === "text") parent.containsText = true;
+        if (fit) {
+          child.fit = fit;
+          parent.fillTexts.push(child);
+        }
+      }
+      if (op.op === "frame" && auto) {
+        const frame: LaidFrame = {
+          id: op.id,
+          frame: node as FrameNode,
+          op,
+          sizingH,
+          sizingV,
+          child,
+          parent: parent ?? null,
+          children: [],
+          fillTexts: [],
+          containsText: false,
+          waiting: op.childCount,
+          deferred: [],
+        };
+        open.set(op.id, frame);
+        if (op.childCount <= 0) finish(frame);
+      } else if (parent && arrived(parent)) {
+        finish(parent);
+      }
+    },
+
+    /** A failed child is one less to wait for; verification judges the frame without it. */
+    failed(op: PlanOp) {
+      const parent = op.parent === null ? undefined : open.get(op.parent);
+      if (parent && arrived(parent)) finish(parent);
+    },
+
+    /** Verifies what is ready. `yieldNow` says when, `breathe` does it; false means stop. */
+    async drain(yieldNow: () => boolean, breathe: () => Promise<boolean>): Promise<boolean> {
+      let verified = 0;
+      for (let i = 0; i < ready.length; i++) {
+        if (verified >= MAX_VERIFIES_PER_SLICE || yieldNow()) {
+          if (!(await breathe())) return false;
+          verified = 0;
+        }
+        verify(ready[i] as LaidFrame);
+        verified++;
+      }
+      ready = [];
+      return true;
+    },
+
+    /** Frames still open never got all their ops. Latest first: children come after their parents. */
+    closeOpen() {
+      for (const frame of [...open.values()].reverse()) {
+        for (const deferred of frame.deferred) ready.push(deferred);
+        ready.push(frame);
+        passTextUp(frame);
+      }
+      open = new Map();
+    },
+
+    counts: () => ({
+      rewrappedTexts,
+      autoLayoutFrames,
+      fallbackFrames,
+      fallbackReasons,
+      textDriftCount,
+    }),
+  };
+}

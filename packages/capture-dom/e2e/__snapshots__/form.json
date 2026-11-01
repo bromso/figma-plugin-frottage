@@ -426,7 +426,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "input"
+         "tag": "input",
+         "id": "u"
         },
         "kind": "element",
         "style": {
@@ -550,7 +551,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "input"
+         "tag": "input",
+         "id": "e"
         },
         "kind": "element",
         "style": {
@@ -674,7 +676,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "input"
+         "tag": "input",
+         "id": "p"
         },
         "kind": "element",
         "style": {
@@ -947,7 +950,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "input"
+         "tag": "input",
+         "id": "pw"
         },
         "kind": "element",
         "style": {
@@ -1071,7 +1075,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "input"
+         "tag": "input",
+         "id": "card"
         },
         "kind": "element",
         "style": {
@@ -1195,7 +1200,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "input"
+         "tag": "input",
+         "id": "attr"
         },
         "kind": "element",
         "style": {
@@ -1286,7 +1292,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "select"
+         "tag": "select",
+         "id": "s"
         },
         "kind": "element",
         "style": {
@@ -1410,7 +1417,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "textarea"
+         "tag": "textarea",
+         "id": "t"
         },
         "kind": "element",
         "style": {
@@ -1658,7 +1666,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "p"
+         "tag": "p",
+         "className": "br"
         },
         "kind": "element",
         "style": {
@@ -1782,7 +1791,8 @@
         "opacity": 1,
         "blendMode": "normal",
         "semantic": {
-         "tag": "div"
+         "tag": "div",
+         "className": "zero-visible"
         },
         "kind": "element",
         "style": {

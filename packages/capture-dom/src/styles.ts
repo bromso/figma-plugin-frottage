@@ -38,6 +38,25 @@ export function splitTop(value: string, separator: "," | " " = ","): string[] {
   return out;
 }
 
+const MAX_TOKEN_VALUE = 200;
+const LENGTH =
+  /^[+-]?(?:\d+\.?\d*|\.\d+)(?:px|r?em|ex|ch|lh|rlh|[sld]?v[wh]|[sld]?vmin|[sld]?vmax|cm|mm|q|in|pt|pc|%)$/i;
+const VAR_CHAIN = /^var\(\s*--[^\s,)]+\s*(?:,(.*))?\)$/is;
+
+/**
+ * Whether a custom property's value may be stored: a colour, a length, or a `var()` chain ending
+ * in one, within 200 characters. The rest (fonts, URLs, session tokens) is no use to Figma and may
+ * not be the page's to give. `isColor` is `CSS.supports("color", value)` in the page.
+ */
+export function isTokenValue(value: string, isColor: (value: string) => boolean): boolean {
+  const v = value.trim();
+  if (v === "" || v.length > MAX_TOKEN_VALUE) return false;
+  const chain = VAR_CHAIN.exec(v);
+  if (chain) return chain[1] === undefined || isTokenValue(chain[1], isColor);
+  if (/var\(/i.test(v)) return false;
+  return v === "0" || LENGTH.test(v) || isColor(v);
+}
+
 const DIRECTIONS: Record<string, number> = {
   "to top": 0,
   "to right": 90,
@@ -123,7 +142,7 @@ export function parseBackgroundImages(cs: CSSStyleDeclaration): BackgroundImage[
           const n = Number.parseFloat(deg[1] as string);
           angle = deg[2] === "turn" ? n * 360 : deg[2] === "rad" ? (n * 180) / Math.PI : n;
           colorArgs = args.slice(1);
-        } else if (first in DIRECTIONS) {
+        } else if (Object.hasOwn(DIRECTIONS, first)) {
           angle = DIRECTIONS[first];
           colorArgs = args.slice(1);
         } else if (type === "linear-gradient") {
@@ -254,8 +273,42 @@ export function readLayout(cs: CSSStyleDeclaration): Layout {
     layout.alignItems = cs.alignItems;
     layout.gap = [px(cs.rowGap), px(cs.columnGap)];
   }
+  if (display.includes("grid")) {
+    layout.gridTemplateColumns = cs.gridTemplateColumns;
+    layout.gridTemplateRows = cs.gridTemplateRows;
+    layout.rowGap = px(cs.rowGap);
+    layout.columnGap = px(cs.columnGap);
+  }
   if (cs.alignSelf && cs.alignSelf !== "auto") layout.alignSelf = cs.alignSelf;
+  if (cs.gridColumn && cs.gridColumn !== "auto") layout.gridColumn = cs.gridColumn;
+  if (cs.gridRow && cs.gridRow !== "auto") layout.gridRow = cs.gridRow;
   return layout;
+}
+
+/**
+ * Which margins are `auto`. Computed style gives their used pixels, which look like any other
+ * margin; only the typed style map still says `auto`. Undefined when none is.
+ */
+export function readMarginAuto(el: Element): Layout["marginAuto"] {
+  const map = el.computedStyleMap?.();
+  if (!map) return undefined;
+  const auto = (side: string) => String(map.get(`margin-${side}`)) === "auto";
+  const sides: Layout["marginAuto"] = [auto("top"), auto("right"), auto("bottom"), auto("left")];
+  return sides.some(Boolean) ? sides : undefined;
+}
+
+/** A leaf node's place in the flow, leaving out the defaults. */
+export function readFlow(
+  el: Element,
+  cs: CSSStyleDeclaration
+): { position?: string; margin?: Layout["margin"]; marginAuto?: Layout["marginAuto"] } {
+  const margin = four(cs, "margin");
+  const marginAuto = margin.some((m) => m > 0) ? readMarginAuto(el) : undefined;
+  return {
+    ...(cs.position && cs.position !== "static" ? { position: cs.position } : {}),
+    ...(margin.some((m) => m !== 0) ? { margin } : {}),
+    ...(marginAuto ? { marginAuto } : {}),
+  };
 }
 
 /** A 2D matrix from a computed transform, or undefined for none or 3D. */

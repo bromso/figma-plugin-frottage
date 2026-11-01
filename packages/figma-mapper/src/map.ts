@@ -1,25 +1,36 @@
 import type { Capture, CaptureNode, ElementNode, TextNode } from "@repo/capture-schema";
 import { matchFont } from "./fonts";
+import {
+  collapseTarget,
+  inferChildLayout,
+  inferLayout,
+  repeatedItems,
+  type Siblings,
+  siblingsOf,
+  textLeading,
+  visualOrder,
+} from "./layout";
+import { layerName } from "./names";
+import { DEFAULT_IMPORT_OPTIONS, type ImportOptions } from "./options";
 import type {
   FontRef,
+  ImportReport,
   LayerPlan,
+  PlanChildLayout,
   PlanEffect,
+  PlanLayout,
   PlanOp,
   PlanPaint,
   PlanRgb,
   PlanRun,
   PlanStroke,
 } from "./plan";
+import { extractTokens } from "./tokens";
 
 type Fit = "FILL" | "FIT" | "CROP" | "TILE";
 type Color = { r: number; g: number; b: number; a: number };
 
 const rgb = (c: Color): PlanRgb => ({ r: c.r, g: c.g, b: c.b });
-
-function nameOf(node: CaptureNode, fallback: string): string {
-  const tag = node.semantic.tag.replace(/^[^a-zA-Z0-9]+/, "");
-  return tag ? tag.charAt(0).toUpperCase() + tag.slice(1) : fallback;
-}
 
 // Phase 3: CSS `object-fit: fill` stretches, while Figma's FILL crops to keep the aspect ratio.
 function imageFit(fit: "cover" | "contain" | "fill" | "none" | "tile"): Fit {
@@ -105,7 +116,22 @@ const ALIGN = {
 } as const;
 
 function mapAlign(align: string | undefined): "LEFT" | "CENTER" | "RIGHT" | "JUSTIFIED" {
-  return ALIGN[(align ?? "left") as keyof typeof ALIGN] ?? "LEFT";
+  return align !== undefined && Object.hasOwn(ALIGN, align)
+    ? ALIGN[align as keyof typeof ALIGN]
+    : "LEFT";
+}
+
+/** Only web pages get a Figma link; the capture has already dropped query, fragment and userinfo. */
+function linkTarget(href: string | undefined): string | undefined {
+  if (!href) return undefined;
+  try {
+    const u = new URL(href);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return undefined;
+    if (u.username || u.password) return undefined;
+    return href;
+  } catch {
+    return undefined;
+  }
 }
 
 function mapDecoration(d: string): PlanRun["decoration"] {
@@ -129,7 +155,23 @@ function dominantAlign(runs: TextNode["runs"]): string | undefined {
   return best?.align;
 }
 
-export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
+/** A frame that fills its parent is not also hugging its content: Figma has one sizing per axis. */
+function settle(layout: PlanLayout, childLayout: PlanChildLayout | undefined): PlanLayout {
+  if (!childLayout || (layout.mode !== "HORIZONTAL" && layout.mode !== "VERTICAL")) return layout;
+  return {
+    ...layout,
+    sizingH: childLayout.sizingH === "FILL" ? "FIXED" : layout.sizingH,
+    sizingV: childLayout.sizingV === "FILL" ? "FIXED" : layout.sizingV,
+  };
+}
+
+export function mapCapture(
+  capture: Capture,
+  available: FontRef[],
+  options: ImportOptions = DEFAULT_IMPORT_OPTIONS,
+  /** Missing family to the available family the user chose for it. */
+  fontOverrides: Readonly<Record<string, string>> = {}
+): LayerPlan {
   const ops: PlanOp[] = [];
   const fonts = new Map<string, FontRef>();
   const hashes = new Set<string>();
@@ -151,10 +193,16 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     let m = matches.get(key);
     if (!m) {
       m = matchFont(family, weight, italic, available);
+      const chosen = Object.hasOwn(fontOverrides, family) ? fontOverrides[family] : undefined;
+      if (m.substituted && chosen) {
+        const o = matchFont(chosen, weight, italic, available);
+        if (!o.substituted) m = o;
+      }
       matches.set(key, m);
     }
     fonts.set(`${m.font.family}\u0000${m.font.style}`, m.font);
-    if (m.substituted && !substituted.has(family)) {
+    const replaced = m.font.family.trim().toLowerCase() !== family.trim().toLowerCase();
+    if ((m.substituted || replaced) && !substituted.has(family)) {
       substituted.set(family, `${m.font.family} ${m.font.style}`);
     }
     return m.font;
@@ -177,7 +225,16 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     return fallbackFont;
   };
 
-  const mapText = (node: TextNode, parent: string, x: number, y: number): PlanOp | null => {
+  const nameFor = (node: CaptureNode, peers: CaptureNode[]): string =>
+    layerName(node, peers, { htmlNames: options.htmlNames });
+
+  const mapText = (
+    node: TextNode,
+    parent: string,
+    x: number,
+    y: number,
+    peers: CaptureNode[]
+  ): PlanOp | null => {
     const len = node.text.length;
     if (len === 0) return null;
     const valid: PlanRun[] = [];
@@ -185,6 +242,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
       const start = Math.max(0, Math.min(r.start, len));
       const end = Math.max(0, Math.min(r.end, len));
       if (!(end > start)) continue;
+      const href = options.hyperlinks ? linkTarget(r.href) : undefined;
       valid.push({
         start,
         end,
@@ -196,6 +254,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
         opacity: r.color.a,
         decoration: mapDecoration(r.decoration),
         textCase: mapCase(r.transform),
+        ...(href ? { href } : {}),
       });
     }
     // Cover the whole string with no gaps or overlaps: the applier sets every
@@ -225,20 +284,18 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     }
     if (cursor < len) runs.push(filler(cursor, len));
     report.texts++;
-    // The captured y is the top of the glyph box; a fixed Figma line height starts at the top of
-    // the line box, half the leading higher.
-    const lineHeight = node.runs[0]?.lineHeight;
-    const firstLine = node.lines[0];
-    const leading = lineHeight != null && firstLine ? (lineHeight - firstLine.h) / 2 : 0;
+    // The captured box is the glyph box; a fixed Figma line height starts at the top of the line
+    // box, half the leading higher, and the line box is what auto layout stacks.
+    const leading = textLeading(node);
     return {
       op: "text",
       id: node.id,
       parent,
-      name: nameOf(node, "Text"),
+      name: nameFor(node, peers),
       x,
       y: y - leading,
       w: node.box.w,
-      h: node.box.h,
+      h: node.box.h + 2 * leading,
       text: node.text,
       runs,
       align: mapAlign(dominantAlign(node.runs)),
@@ -252,14 +309,15 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     parent: string,
     x: number,
     y: number,
-    label: string
+    label: string,
+    peers: CaptureNode[]
   ): PlanOp => {
     report.placeholders++;
     return {
       op: "placeholder",
       id: node.id,
       parent,
-      name: nameOf(node, "Placeholder"),
+      name: nameFor(node, peers),
       x,
       y,
       w: node.box.w,
@@ -271,10 +329,30 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
 
   // Iterative pre-order walk: parents always come before their children, and
   // no recursion limit applies however deep the capture is.
-  type Item = { node: CaptureNode; parent: ElementNode | null; parentId: string | null };
-  const stack: Item[] = [{ node: capture.root, parent: null, parentId: null }];
+  // `outer` differs from `node` when wrappers collapsed: it is what the parent laid out.
+  type Item = {
+    node: CaptureNode;
+    outer: CaptureNode;
+    parent: ElementNode | null;
+    parentId: string | null;
+    parentLayout: PlanLayout | null;
+    siblings: Siblings | undefined;
+    /** What the parent's children turned into, for numbering repeated items. */
+    peers: CaptureNode[];
+  };
+  const stack: Item[] = [
+    {
+      node: capture.root,
+      outer: capture.root,
+      parent: null,
+      parentId: null,
+      parentLayout: null,
+      siblings: undefined,
+      peers: [],
+    },
+  ];
   while (stack.length > 0) {
-    const { node, parent, parentId } = stack.pop() as Item;
+    const { node, outer, parent, parentId, parentLayout, siblings, peers } = stack.pop() as Item;
     // visibility:hidden on a parent does not hide visible children, so an
     // invisible element with children stays as an unpainted frame.
     const hidden = !node.visible;
@@ -282,15 +360,27 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
     const x = node.box.x - (parent?.box.x ?? 0);
     const y = node.box.y - (parent?.box.y ?? 0);
     let op: PlanOp | null = null;
+    const childLayout =
+      parent && parentLayout && parentLayout.mode !== "NONE"
+        ? inferChildLayout(outer, parentLayout, parent, node, siblings)
+        : undefined;
 
     switch (node.kind) {
       case "element": {
         const s = node.style;
+        const inferred = inferLayout(
+          node,
+          node.children,
+          parentLayout ? { parent: parentLayout } : {}
+        );
+        const layout: PlanLayout = options.autoLayout
+          ? settle(inferred, childLayout)
+          : { mode: "NONE" };
         op = {
           op: "frame",
           id: node.id,
           parent: parentId,
-          name: nameOf(node, "Frame"),
+          name: nameFor(node, peers),
           x,
           y,
           w: node.box.w,
@@ -302,14 +392,32 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
           opacity: node.opacity,
           effects: hidden ? [] : mapEffects(s),
           clips: s.overflow.split(/\s+/).some((o) => o !== "" && o !== "visible"),
+          layout,
+          childCount: 0, // known once the walk has seen what the children turn into
         };
-        for (let i = node.children.length - 1; i >= 0; i--) {
-          stack.push({ node: node.children[i] as CaptureNode, parent: node, parentId: node.id });
+        const children = visualOrder(node, node.children, layout);
+        const repeated = repeatedItems(children);
+        const around =
+          layout.mode === "HORIZONTAL" || layout.mode === "VERTICAL"
+            ? siblingsOf(node.children, layout.mode === "HORIZONTAL")
+            : undefined;
+        const targets = children.map((child) => collapseTarget(child, repeated));
+        for (let i = children.length - 1; i >= 0; i--) {
+          const child = children[i] as CaptureNode;
+          stack.push({
+            node: targets[i] as CaptureNode,
+            outer: child,
+            parent: node,
+            parentId: node.id,
+            parentLayout: layout,
+            siblings: around,
+            peers: targets,
+          });
         }
         break;
       }
       case "text":
-        op = mapText(node, parentId as string, x, y);
+        op = mapText(node, parentId as string, x, y, peers);
         break;
       case "image":
         if (node.assetHash) {
@@ -319,7 +427,7 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
             op: "image",
             id: node.id,
             parent: parentId as string,
-            name: nameOf(node, "Image"),
+            name: nameFor(node, peers),
             x,
             y,
             w: node.box.w,
@@ -336,12 +444,31 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
             parentId as string,
             x,
             y,
-            node.sourceUrl ?? node.semantic.alt ?? "Image"
+            node.sourceUrl ?? node.semantic.alt ?? "Image",
+            peers
           );
         }
         break;
       case "svg":
-        op = placeholder(node, parentId as string, x, y, "SVG");
+        // Markup that was left out of the capture has nothing to rebuild.
+        op =
+          node.markup === ""
+            ? placeholder(node, parentId as string, x, y, "SVG", peers)
+            : {
+                op: "svg",
+                id: node.id,
+                parent: parentId as string,
+                name: nameFor(node, peers),
+                x,
+                y,
+                w: node.box.w,
+                h: node.box.h,
+                markup: node.markup,
+                opacity: node.opacity,
+                clips:
+                  node.overflow === undefined ||
+                  node.overflow.split(/\s+/).some((o) => o !== "" && o !== "visible"),
+              };
         break;
       case "placeholder":
         op = placeholder(
@@ -349,16 +476,26 @@ export function mapCapture(capture: Capture, available: FontRef[]): LayerPlan {
           parentId as string,
           x,
           y,
-          node.sourceUrl ? `${node.placeholderKind}: ${node.sourceUrl}` : node.placeholderKind
+          node.sourceUrl ? `${node.placeholderKind}: ${node.sourceUrl}` : node.placeholderKind,
+          peers
         );
         break;
     }
-    if (op) ops.push(op);
+    if (op) ops.push(childLayout ? { ...op, childLayout } : op);
+  }
+
+  const childCounts = new Map<string, number>();
+  for (const { parent } of ops) {
+    if (parent !== null) childCounts.set(parent, (childCounts.get(parent) ?? 0) + 1);
+  }
+  for (const op of ops) {
+    if (op.op === "frame") op.childCount = childCounts.get(op.id) ?? 0;
   }
 
   report.nodes = ops.length;
   report.substitutedFonts = [...substituted].map(([from, to]) => ({ from, to }));
-  return { ops, fonts: [...fonts.values()], assetHashes: [...hashes], report };
+  const tokens = extractTokens(capture, ops, options);
+  return { ops, tokens, fonts: [...fonts.values()], assetHashes: [...hashes], report };
 }
 
 export function batchOps(ops: PlanOp[], size = 50): PlanOp[][] {
@@ -366,4 +503,14 @@ export function batchOps(ops: PlanOp[], size = 50): PlanOp[][] {
   const out: PlanOp[][] = [];
   for (let i = 0; i < ops.length; i += n) out.push(ops.slice(i, i + n));
   return out;
+}
+
+export type MissingFont = { family: string; nearest: string };
+
+/** The families a plan had to replace, each with the family it was replaced by. */
+export function missingFonts(report: ImportReport, available: FontRef[]): MissingFont[] {
+  return report.substitutedFonts.map(({ from, to }) => ({
+    family: from,
+    nearest: available.find((f) => `${f.family} ${f.style}` === to)?.family ?? to,
+  }));
 }

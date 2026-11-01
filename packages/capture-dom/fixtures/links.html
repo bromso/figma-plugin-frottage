@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Links</title>
+<style>
+body { margin: 0; padding: 16px; font: 14px/20px Arial, sans-serif; color: #111; width: 600px; }
+a.block { display: block; width: 300px; }
+a.out::after { content: " (out)"; }
+a.gen::before { content: "Block generated"; display: block; background: #eee; }
+a.pinned { position: relative; display: block; height: 60px; }
+a.pinned::after { content: "Pinned generated"; position: absolute; top: 20px; left: 0; }
+.u { text-decoration: underline; }
+.s { text-decoration: line-through; }
+.ib { display: inline-block; }
+.out-of-flow { position: absolute; top: 400px; left: 10px; }
+.floated { float: right; }
+</style>
+</head>
+<body>
+<p id="inline">Read the <a href="https://example.com/docs?token=SECRET-Q#SECRET-H">docs</a> today</p>
+<p id="nested">See <a href="/guide"><b>bold</b> and <em>slanted</em></a> now</p>
+<p id="split">Plain <a href="https://example.com/a">one</a><a href="https://example.com/b">two</a> end</p>
+<p id="same">Same <a href="https://example.com/x">one</a> <a href="https://example.com/x">two</a></p>
+<a class="block" id="block" href="https://example.com/block">Whole block link</a>
+<p id="bad">
+  <a href="javascript:alert(1)">js</a>
+  <a href="mailto:a@b.co">mail</a>
+  <a href="tel:123">tel</a>
+  <a href="#top">frag</a>
+  <a href="">empty</a>
+  <a>nohref</a>
+</p>
+<p id="pseudo"><a class="out" href="https://example.com/pseudo">Pseudo link</a></p>
+<p id="nonlink"><span class="out">Not linked</span></p>
+<a class="block gen" id="gen" href="https://example.com/gen">Link body</a>
+<a class="pinned" id="pinned" href="https://example.com/pinned">Pinned body</a>
+<p id="under-anchor"><a href="/u" class="u"><span>Span in anchor</span></a></p>
+<div class="u" id="under-block"><p>Paragraph in block</p><ul><li>Item in block</li></ul></div>
+<p class="u" id="under-both"><span class="s">Both lines</span></p>
+<p class="u" id="under-atomic">Line then <span class="ib">Atomic word</span> end</p>
+<div class="u" id="under-out"><span class="out-of-flow">Out of flow word</span><span class="floated">Floated word</span></div>
+<div class="u" id="under-gen"><a class="block gen" href="https://example.com/gen2">Body two</a></div>
+</body>
+</html>

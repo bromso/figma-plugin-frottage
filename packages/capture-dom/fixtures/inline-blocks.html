@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inline blocks</title>
+<style>
+body { margin: 0; padding: 16px; font: 14px/20px Arial, sans-serif; color: #111; width: 600px; }
+.last { display: inline-flex; }
+.badge { display: inline-block; padding: 2px 8px; }
+.fixed { display: inline-block; width: 120px; }
+.holder { display: inline-flex; }
+.holder b { display: inline-block; padding: 0 4px; }
+.tab { display: inline-block; }
+.tab a { padding: 0 16px; }
+.skinny { display: inline-block; max-width: 40px; }
+.lean { margin-left: 8px; }
+ul { margin: 0; padding: 0; list-style: none; }
+</style>
+</head>
+<body>
+<h3 id="merge"><span>Sentence one before </span><span class="last">Lastword </span></h3>
+<p id="padded">Alpha <span class="badge">Padded</span> omega</p>
+<p id="fixed">Beta <span class="fixed">Fixedwidth</span> omega</p>
+<p id="holder">Gamma <span class="holder"><b>Boxed</b></span> omega</p>
+<ul id="row"><li class="tab"><a>Home</a></li> <li class="tab"><a>About</a></li></ul>
+<ul id="bare"><li class="tab">Plain</li> <li class="tab">Items</li></ul>
+<nav id="wrapped"><a href="/one"><span class="tab">First</span></a> <a href="/two"><span class="tab">Second</span></a></nav>
+<p id="lines">Label <span class="tab">One<br>Two</span> tail</p>
+<p id="wrap">Label <span class="skinny">Some words</span> tail</p>
+<p id="spaced">Delta <span class="tab"><a>Roomy</a></span> omega</p>
+<p id="margin">Theta <span class="tab"><i class="lean">Leaning</i></span> omega</p>
+<p id="both">Zeta <span class="tab">Single</span> and <span class="tab">Double</span> omega</p>
+</body>
+</html>

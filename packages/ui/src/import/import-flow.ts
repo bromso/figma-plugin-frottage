@@ -2,17 +2,32 @@ import { type Capture, FrottageFileError, unpackFrottage } from "@repo/capture-s
 import { sha256Hex } from "@repo/capture-schema/hash";
 import {
   batchOps,
+  DEFAULT_IMPORT_OPTIONS,
   type FontRef,
+  type ImportOptions,
   type ImportReport,
   mapCapture,
+  missingFonts,
   type PlanOp,
+  type PlanTokens,
 } from "@repo/figma-mapper";
 import { messageForError } from "./messages";
 
 export { messageForError };
 
+/** A font the file uses that the user does not have, with the available family chosen for it. */
+export type ReviewFont = { family: string; choice: string };
+
 export type ImportState =
   | { step: "idle" }
+  | {
+      step: "review";
+      missing: ReviewFont[];
+      /** Every available family, for the choices. */
+      families: string[];
+      options: ImportOptions;
+      hostname: string;
+    }
   | { step: "working"; done: number; total: number }
   | {
       step: "done";
@@ -20,12 +35,23 @@ export type ImportState =
       failedOps: number;
       missingImages: number;
       rewrappedTexts: number;
+      textDriftCount: number;
+      autoLayoutFrames: number;
+      fallbackFrames: number;
+      stylesCreated: number;
+      stylesReused: number;
+      variablesCreated: number;
+      variablesReused: number;
+      tokenFailures: number;
     }
   | { step: "error"; message: string };
 
 export type ImportPort = {
+  getPrefs(key: string): Promise<unknown>;
+  setPrefs(key: string, value: unknown): Promise<void>;
   listFonts(): Promise<FontRef[]>;
   begin(meta: { name: string; fonts: FontRef[]; totalOps: number }): Promise<void>;
+  tokens(tokens: PlanTokens, options: ImportOptions): Promise<void>;
   image(hash: string, bytes: Uint8Array): Promise<{ ok: boolean }>;
   batch(ops: PlanOp[]): Promise<void>;
   end(): Promise<{
@@ -33,9 +59,63 @@ export type ImportPort = {
     failedOps: number;
     missingImages?: number;
     rewrappedTexts?: number;
+    textDriftCount?: number;
+    autoLayoutFrames?: number;
+    fallbackFrames?: number;
+    stylesCreated?: number;
+    stylesReused?: number;
+    variablesCreated?: number;
+    variablesReused?: number;
+    tokenFailures?: number;
   }>;
   cancel(): Promise<void>;
 };
+
+/** What the user confirmed in the review step. `fonts` maps a missing family to a chosen one. */
+export type ReviewDecision = { options: ImportOptions; fonts: ReadonlyMap<string, string> };
+
+export type ReviewSession = {
+  /** Review even when no font is missing. */
+  forceReview: boolean;
+  /** Resolves when the user confirms, or with null when they cancel. */
+  decide(): Promise<ReviewDecision | null>;
+};
+
+/** Stored options are untrusted: take each boolean field that is one, and keep the default for the rest. */
+export function sanitizeOptions(raw: unknown): ImportOptions {
+  const options = { ...DEFAULT_IMPORT_OPTIONS };
+  if (typeof raw !== "object" || raw === null) return options;
+  for (const key of Object.keys(options) as (keyof ImportOptions)[]) {
+    const value = (raw as Record<string, unknown>)[key];
+    if (typeof value === "boolean") options[key] = value;
+  }
+  return options;
+}
+
+/** Prefs never block an import: a failing read is as good as nothing stored. */
+async function readPref(port: ImportPort, key: string): Promise<unknown> {
+  try {
+    return await port.getPrefs(key);
+  } catch {
+    return undefined;
+  }
+}
+
+async function writePref(port: ImportPort, key: string, value: unknown): Promise<void> {
+  try {
+    await port.setPrefs(key, value);
+  } catch {
+    // Not remembering is the only cost.
+  }
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
 
 /** Files above this are refused before reading; the container enforces the real limits. */
 export const MAX_FILE_BYTES = 300 * 1024 * 1024;
@@ -82,7 +162,8 @@ async function verifyAssets(assets: Map<string, Uint8Array>): Promise<void> {
 export async function runImport(
   file: File,
   port: ImportPort,
-  onState: (s: ImportState) => void
+  onState: (s: ImportState) => void,
+  session?: ReviewSession
 ): Promise<void> {
   let begun = false;
   try {
@@ -94,13 +175,51 @@ export async function runImport(
     await verifyAssets(assets);
 
     await yieldToPaint();
-    const plan = mapCapture(capture, await port.listFonts());
+    const available = await port.listFonts();
+    const hostname = hostnameOf(capture.source.url);
+    let options = sanitizeOptions(
+      hostname ? await readPref(port, `options:${hostname}`) : undefined
+    );
+    let plan = mapCapture(capture, available, options);
+
+    const missing = missingFonts(plan.report, available);
+    if (session && (missing.length > 0 || session.forceReview)) {
+      const families = [...new Set(available.map((f) => f.family))];
+      const reviewFonts: ReviewFont[] = [];
+      for (const { family, nearest } of missing) {
+        const stored = await readPref(port, `font:${family}`);
+        const choice = typeof stored === "string" && families.includes(stored) ? stored : nearest;
+        reviewFonts.push({ family, choice });
+      }
+      onState({ step: "review", missing: reviewFonts, families, options, hostname });
+      const decision = await session.decide();
+      if (!decision) {
+        onState({ step: "idle" });
+        return;
+      }
+      options = sanitizeOptions(decision.options);
+      // Prefilled choices the user left alone still apply to the plan, but are not remembered.
+      const overrides: Record<string, string> = Object.create(null);
+      const changed: [string, string][] = [];
+      for (const { family, choice } of reviewFonts) {
+        const picked = decision.fonts.get(family);
+        const chosen = typeof picked === "string" && families.includes(picked) ? picked : choice;
+        overrides[family] = chosen;
+        if (chosen !== choice) changed.push([family, chosen]);
+      }
+      onState({ step: "working", done: 0, total: 0 });
+      await yieldToPaint();
+      plan = mapCapture(capture, available, options, overrides);
+      if (hostname) await writePref(port, `options:${hostname}`, options);
+      for (const [family, chosen] of changed) await writePref(port, `font:${family}`, chosen);
+    }
     const total = plan.ops.length;
     onState({ step: "working", done: 0, total });
 
     // Set first: a begin that fails halfway may still have created state to cancel.
     begun = true;
     await port.begin({ name: importName(capture.source), fonts: plan.fonts, totalOps: total });
+    await port.tokens(plan.tokens, options);
 
     for (const hash of plan.assetHashes) {
       const data = assets.get(hash);
@@ -125,6 +244,14 @@ export async function runImport(
       failedOps: result.failedOps,
       missingImages: result.missingImages ?? 0,
       rewrappedTexts: result.rewrappedTexts ?? 0,
+      textDriftCount: result.textDriftCount ?? 0,
+      autoLayoutFrames: result.autoLayoutFrames ?? 0,
+      fallbackFrames: result.fallbackFrames ?? 0,
+      stylesCreated: result.stylesCreated ?? 0,
+      stylesReused: result.stylesReused ?? 0,
+      variablesCreated: result.variablesCreated ?? 0,
+      variablesReused: result.variablesReused ?? 0,
+      tokenFailures: result.tokenFailures ?? 0,
     });
   } catch (error) {
     if (begun) {
