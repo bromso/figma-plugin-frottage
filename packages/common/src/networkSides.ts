@@ -1,4 +1,10 @@
-import type { FontRef, ImportOptions, PlanOp, PlanTokens } from "@repo/figma-mapper";
+import type {
+  FontRef,
+  ImportOptions,
+  PlanOp,
+  PlanTokens,
+  PlanVersionTokens,
+} from "@repo/figma-mapper";
 import { Networker } from "monorepo-networker";
 
 /** Anything `figma.clientStorage` keeps. Stored values are untrusted when read back. */
@@ -18,6 +24,7 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
   setPrefs(key: string, value: StoredValue): void;
   importBegin(meta: { name: string; fonts: FontRef[]; totalOps: number }): void;
   importTokens(tokens: PlanTokens, options: ImportOptions): void;
+  importModes(tokens: PlanVersionTokens, options: ImportOptions): void;
   importImage(hash: string, bytes: Uint8Array): { ok: boolean; error?: string };
   importBatch(ops: PlanOp[]): void;
   importCancel(): void;
@@ -44,5 +51,7 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     variablesCreated: number;
     variablesReused: number;
     tokenFailures: number;
+    modes: number;
+    modesDropped: number;
   };
 }>();

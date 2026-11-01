@@ -11,6 +11,8 @@ export type TokenOptions = {
   failTokens?: string[];
   /** A name that createVariable refuses. */
   failVariableName?: string;
+  /** Modes a collection can hold: 10 on this owner's plan, 1 on Starter. */
+  modeLimit?: number;
 };
 
 type Font = { family: string; style: string };
@@ -114,6 +116,19 @@ export function tokenModel(
         },
       });
     }
+    style.setBoundVariable = (field: string, variable: Fake) => {
+      called("textStyle.setBoundVariable");
+      writes.push(`${state.name}: bound ${field}`);
+      if (typeof variable === "string") throw new Error("dynamic-page needs the variable");
+      if (!["fontSize", "lineHeight"].includes(field)) throw new Error(`can't bind ${field}`);
+      if (!variables.has(variable?.id)) throw new Error("unknown variable");
+      if (variable.resolvedType !== "FLOAT") throw new Error("needs a number variable");
+      if (!loaded.has(fontId(state.fontName))) throw new Error("font not loaded");
+      style.boundVariables = {
+        ...style.boundVariables,
+        [field]: { type: "VARIABLE_ALIAS", id: variable.id },
+      };
+    };
     textStyles.set(id, style);
     return style;
   }
@@ -146,11 +161,43 @@ export function tokenModel(
 
   function makeCollection(name: string, modes = ["Mode 1"]): Fake {
     const id = `VC:${++seq}`;
+    let nextMode = modes.length;
+    const known = (modeId: string) => {
+      const mode = collection.modes.find((m: { modeId: string }) => m.modeId === modeId);
+      if (!mode) throw new Error("unknown mode");
+      return mode;
+    };
     const collection: Fake = {
       id,
       name,
       modes: modes.map((m, i) => ({ modeId: `${id}/${i}`, name: m })),
       defaultModeId: `${id}/0`,
+      addMode(modeName: string) {
+        called("addMode");
+        const limit = opts.modeLimit ?? 10;
+        if (collection.modes.length >= limit) {
+          throw new Error(`in addMode: Limited to ${limit} modes only`);
+        }
+        writes.push(`${collection.name}: add mode ${modeName}`);
+        const modeId = `${id}/${nextMode++}`;
+        collection.modes = [...collection.modes, { modeId, name: modeName }];
+        return modeId;
+      },
+      renameMode(modeId: string, modeName: string) {
+        called("renameMode");
+        writes.push(`${collection.name}: rename mode`);
+        known(modeId).name = modeName;
+      },
+      removeMode(modeId: string) {
+        called("removeMode");
+        writes.push(`${collection.name}: remove mode`);
+        known(modeId);
+        if (modeId === collection.defaultModeId) throw new Error("can't remove the default mode");
+        collection.modes = collection.modes.filter((m: { modeId: string }) => m.modeId !== modeId);
+        for (const v of variables.values()) {
+          if (v.variableCollectionId === id) delete v.valuesByMode[modeId];
+        }
+      },
       get variableIds() {
         return [...variables.values()]
           .filter((v) => v.variableCollectionId === id)
@@ -165,11 +212,12 @@ export function tokenModel(
         }
       },
     };
+    pluginData(collection, () => collection.name);
     collections.set(id, collection);
     return collection;
   }
 
-  function makeVariable(name: string, collection: Fake): Fake {
+  function makeVariable(name: string, collection: Fake, type = "COLOR"): Fake {
     if (!collections.has(collection?.id)) throw new Error("unknown collection");
     if (opts.failVariableName === name || /[.{}]/.test(name)) throw new Error(`bad name ${name}`);
     for (const v of variables.values()) {
@@ -182,7 +230,7 @@ export function tokenModel(
     const variable: Fake = {
       id,
       name,
-      resolvedType: "COLOR",
+      resolvedType: type,
       variableCollectionId: collection.id,
       valuesByMode,
       codeSyntax: {},
@@ -193,7 +241,13 @@ export function tokenModel(
         if (!collection.modes.some((m: { modeId: string }) => m.modeId === modeId)) {
           throw new Error("unknown mode");
         }
-        valuesByMode[modeId] = value.type === "VARIABLE_ALIAS" ? value : stored(value);
+        if (type === "FLOAT") {
+          if (typeof value !== "number") throw new Error("needs a number");
+          valuesByMode[modeId] = Math.fround(value);
+        } else {
+          if (typeof value === "number") throw new Error("needs a colour");
+          valuesByMode[modeId] = value.type === "VARIABLE_ALIAS" ? value : stored(value);
+        }
       },
       setVariableCodeSyntax(platform: string, value: string) {
         called("setVariableCodeSyntax");
@@ -244,8 +298,8 @@ export function tokenModel(
       createVariable(name: string, collection: Fake, type: string) {
         called("createVariable");
         if (typeof collection === "string") throw new Error("dynamic-page needs the collection");
-        if (type !== "COLOR") throw new Error("unexpected type");
-        return makeVariable(name, collection);
+        if (type !== "COLOR" && type !== "FLOAT") throw new Error("unexpected type");
+        return makeVariable(name, collection, type);
       },
       setBoundVariableForPaint(paint: Fake, field: string, variable: Fake) {
         called("setBoundVariableForPaint");
@@ -275,6 +329,11 @@ export function tokenModel(
     collections,
     count: (name: string) => log.filter((x) => x === name).length,
     textStyleById: (id: string) => textStyles.get(id),
+    /** What a variable reads in a mode, which is the default mode's value if it has none. */
+    valueIn(variable: Fake, modeId: string) {
+      const collection = collections.get(variable.variableCollectionId);
+      return variable.valuesByMode[modeId] ?? variable.valuesByMode[collection?.defaultModeId];
+    },
 
     /** A style someone else made. */
     seedTextStyle(name: string, fields: Fake) {
@@ -288,8 +347,8 @@ export function tokenModel(
     seedPaintStyle: (name: string, paints: any[]) => makePaintStyle(name, paints),
     seedCollection: (name: string, modes?: string[]) => makeCollection(name, modes),
     /** A variable someone else made. */
-    seedVariable(name: string, collection: Fake, value: any) {
-      const variable = makeVariable(name, collection);
+    seedVariable(name: string, collection: Fake, value: any, type = "COLOR") {
+      const variable = makeVariable(name, collection, type);
       variable.setValueForMode(collection.defaultModeId, value);
       writes.length = 0;
       return variable;

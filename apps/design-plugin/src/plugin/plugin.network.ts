@@ -49,6 +49,10 @@ PLUGIN_CHANNEL.registerMessageHandler("importTokens", (tokens, options) =>
   applier.importTokens(tokens, options)
 );
 
+PLUGIN_CHANNEL.registerMessageHandler("importModes", (tokens, options) =>
+  applier.importModes(tokens, options)
+);
+
 PLUGIN_CHANNEL.registerMessageHandler("importImage", (hash, bytes) =>
   applier.addImage(hash, bytes)
 );

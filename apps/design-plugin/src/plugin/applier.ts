@@ -10,6 +10,7 @@ import type {
   PlanStroke,
   PlanTokens,
   PlanTrack,
+  PlanVersionTokens,
 } from "@repo/figma-mapper";
 import { type ComponentSet, childAt, createComponentSet } from "./components";
 import {
@@ -21,7 +22,13 @@ import {
   turnAbout,
   widenToLines,
 } from "./layout-tracker";
-import { createTokenSet, NO_TOKENS, type TokenCounts, type TokenSet } from "./tokens";
+import {
+  createTokenSet,
+  NO_TOKENS,
+  type TokenCounts,
+  type TokenRuntime,
+  type TokenSet,
+} from "./tokens";
 
 /**
  * Turns plan ops into Figma layers. Runs in the plugin sandbox. Only types come
@@ -235,17 +242,28 @@ export function createApplier(api: PluginAPI) {
   /** Settles the plan's tokens against the file. Comes before any batch that uses them. */
   async function importTokens(plan: PlanTokens, options: ImportOptions): Promise<void> {
     if (!active) throw new Error("import not started");
-    const run = generation;
     tokens ??= createTokenSet(api);
+    await tokens.resolve(plan, options, tokenRuntime());
+  }
+
+  /** As `importTokens`, for a set of two or more versions. */
+  async function importModes(plan: PlanVersionTokens, options: ImportOptions): Promise<void> {
+    if (!active) throw new Error("import not started");
+    tokens ??= createTokenSet(api);
+    await tokens.resolveModes(plan, options, tokenRuntime());
+  }
+
+  function tokenRuntime(): TokenRuntime {
+    const run = generation;
     sliceStart = Date.now();
-    await tokens.resolve(plan, options, {
+    return {
       overBudget,
       breathe: () => breathe(run),
       ensureFont: async (font) => {
         if (!loadedFonts.has(fontKey(font))) await loadFont(font);
         return loadedFonts.has(fontKey(font));
       },
-    });
+    };
   }
 
   async function addImage(
@@ -976,5 +994,14 @@ export function createApplier(api: PluginAPI) {
     api.commitUndo();
   }
 
-  return { begin, importTokens, addImage, applyBatch, end, cancel, isActive: () => active };
+  return {
+    begin,
+    importTokens,
+    importModes,
+    addImage,
+    applyBatch,
+    end,
+    cancel,
+    isActive: () => active,
+  };
 }
