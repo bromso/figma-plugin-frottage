@@ -172,8 +172,10 @@ function normalise(c: Capture): unknown {
     const { box, ...rest } = n as CaptureNode & {
       box: { x: number; y: number; w: number; h: number };
     };
+    // Inline SVG and placeholders sit on the text baseline, which moves with platform font metrics.
     const keepBox =
-      n.kind === "image" || (n.kind !== "placeholder" && box.w === box.h && box.w >= 8);
+      n.kind === "image" ||
+      (n.kind !== "placeholder" && n.kind !== "svg" && box.w === box.h && box.w >= 8);
     const base: Record<string, unknown> = { ...rest, ...(keepBox ? { box } : {}) };
     if (n.kind === "text") {
       base.lines = undefined;

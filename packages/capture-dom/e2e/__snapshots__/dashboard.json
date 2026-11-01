@@ -3711,13 +3711,7 @@
             },
             "kind": "svg",
             "markup": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\" fill=\"none\" stroke=\"#0d9488\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M7 15l4-4 3 3 5-6\" fill=\"none\" stroke=\"#0d9488\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
-            "overflow": "hidden",
-            "box": {
-             "x": 296,
-             "y": 265,
-             "w": 20,
-             "h": 20
-            }
+            "overflow": "hidden"
            },
            {
             "id": "n54",
