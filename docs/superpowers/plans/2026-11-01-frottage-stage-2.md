@@ -465,13 +465,13 @@ Reload the extension, capture `https://www.volvogroup.com/en/`, and import with 
 Exit requires:
 - all visible text present, reading text inside instances too;
 - every Stage 1 target still met;
-- at least 80% of the page's custom elements that appear twice or more are instances;
+- at least 80% of `vcdk-link` elements are instances, and every icon used twice or more is a component; theme providers with different content and single-use icons stay plain by the spec's own rules;
 - `vcdk-link`, the page's 97 elements, gives at most 5 components;
 - the counts of mains and instances recorded;
 - import time recorded;
 - `vcdk-*` hover variants present and a `State` switch keeps text.
 
-Also confirm the Stage 1 carry-overs: `SPACE_AROUND` and `SPACE_EVENLY` with a gap, grids with `ABSOLUTE` children, the clipped-text cap on real teasers, `swapComponent`, and the conic start direction. Lift the two "stay absolute" rulings if Figma behaves.
+Also confirm the Stage 1 carry-overs: `SPACE_AROUND` and `SPACE_EVENLY` with a gap, grids with `ABSOLUTE` children, the clipped-text cap on real teasers, `swapComponent`, and the conic start direction. Also check that children of a GRID main keep op order after `appendChildAt`, because override paths depend on it, and that a text override's fill doesn't block the Hover variant's text colour on instances. Lift the two "stay absolute" rulings if Figma behaves.
 
 - [ ] **Step 4: Record and commit**
 
