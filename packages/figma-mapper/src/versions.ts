@@ -196,6 +196,22 @@ function sharedCharacters(seeds: TextCounts, tokens: TextCounts): Map<string, Ma
   return scores;
 }
 
+const roleOf = (style: PlanTextStyle) => style.name.split("/")[0] ?? "";
+
+/** Each style at the floor by its role and its place among those, as `heading/2`. */
+function ranksOf(styles: PlanTextStyle[]): Map<PlanTextStyle, string> {
+  const counts = new Map<string, number>();
+  const ranks = new Map<PlanTextStyle, string>();
+  for (const style of styles) {
+    if (style.uses < MIN_USES) continue;
+    const role = roleOf(style);
+    const n = (counts.get(role) ?? 0) + 1;
+    counts.set(role, n);
+    ranks.set(style, `${role}/${n}`);
+  }
+  return ranks;
+}
+
 function joinStyles(
   seeds: PlanTextStyle[],
   tokens: PlanTextStyle[],
@@ -229,14 +245,21 @@ function joinStyles(
   }
 
   // A seed with no text in common: a language pair, or a part of the page only one version shows.
-  const byRole = new Map(tokens.map((t) => [t.name, t]));
-  for (const seed of seeds) {
-    if (joins.has(seed) || shared.has(seed)) continue;
-    const token = byRole.get(seed.name);
-    if (!token || claimed.has(token) || looks.get(token) !== fixedLook(seed)) continue;
+  // The same value in the same role is the best evidence left. Then rank, which a one-off in either
+  // plan would shift, so only tokens at the floor have one.
+  const free = (seed: PlanTextStyle, token: PlanTextStyle | undefined) => {
+    if (joins.has(seed) || shared.has(seed)) return;
+    if (!token || claimed.has(token) || looks.get(token) !== fixedLook(seed)) return;
     joins.set(seed, token);
     claimed.add(token);
+  };
+  for (const seed of seeds) {
+    const same = tokenAt.get(seed.key)?.token;
+    if (same && roleOf(same) === roleOf(seed)) free(seed, same);
   }
+  const seedRanks = ranksOf(seeds);
+  const byRank = new Map([...ranksOf(tokens)].map(([token, rank]) => [rank, token]));
+  for (const [seed, rank] of seedRanks) free(seed, byRank.get(rank));
   return { joins, shared };
 }
 
@@ -320,7 +343,7 @@ export function stripTokens(plan: LayerPlan): LayerPlan {
   return withRenames(plan, none);
 }
 
-/** Uses of a seed across the versions it joined. */
+/** Uses of a seed across the versions it reads a token in. */
 const usesAcross = <T extends { uses: number }>(seed: T, joins: Joins<T>) =>
   joins.reduce((sum, version) => sum + (version.get(seed)?.uses ?? 0), 0);
 
@@ -367,7 +390,8 @@ export function mergeVersions(versions: TokenVersion[]): {
       : joinStyles(firstStyles, v.plan.tokens.textStyles, seedTexts, textsOf(v.plan.ops))
   );
   const styleJoins = styleSets.map((set) => set.joins);
-  const seedStyles = firstStyles.filter((seed) => usesAcross(seed, styleJoins) >= MIN_USES);
+  const styleReads = styleSets.map((set) => new Map([...set.joins, ...set.shared]));
+  const seedStyles = firstStyles.filter((seed) => usesAcross(seed, styleReads) >= MIN_USES);
   const styleAt = (seed: PlanTextStyle, mode: number) =>
     styleJoins[mode]?.get(seed) ?? styleSets[mode]?.shared.get(seed);
 

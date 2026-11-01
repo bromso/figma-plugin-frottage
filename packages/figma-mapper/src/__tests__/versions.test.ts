@@ -1346,7 +1346,8 @@ describe("uses across a set", () => {
   const ink = (hex: string, uses: number) => color(hex, "color/ink", "--ink", uses);
   const heading = (size: number, uses: number) =>
     style("heading/1", { fontSize: size, lineHeight: size * 1.2, uses });
-  const headline = (styleKey: string) => text("h", [textRun(styleKey)], "Pricing for every team");
+  const headline = (styleKey: string) =>
+    text("h", [{ ...textRun(styleKey), end: 22 }], "Pricing for every team");
   const sizes = [40, 32, 24];
 
   test("a heading used once per version is kept when the three reach 3", () => {
@@ -1526,5 +1527,96 @@ describe("a repeated label at the limit", () => {
     const label = `${"x".repeat(35)} ${"y".repeat(4)}`;
     const r = mergeVersions([version(label, planOf({})), version(label, planOf({}))]);
     expect(r.tokens.modes[1]).toBe(`${"x".repeat(35)} (2)`);
+  });
+});
+
+describe("the role step, with one-offs in the plans", () => {
+  const heading = (n: number, fontSize: number, uses: number) =>
+    style(`heading/${n}`, { fontSize, lineHeight: 60, uses });
+  const said = (s: PlanTextStyle, words: string) =>
+    text(`${s.fontSize}`, [{ ...textRun(s.key), end: words.length }], words);
+  const sizesOf = (r: ReturnType<typeof mergeVersions>) =>
+    r.tokens.textStyles.map((s) => s.fontSize.map((v) => v.value));
+
+  test("a one-off ahead of the rest doesn't shift them onto each other", () => {
+    const en = [heading(1, 48, 1), heading(2, 32, 3), heading(3, 24, 3)];
+    const sv = [heading(1, 64, 1), heading(2, 48, 1), heading(3, 32, 3), heading(4, 24, 3)];
+    const [a, b, c] = en as [PlanTextStyle, PlanTextStyle, PlanTextStyle];
+    const [z, x, y, w] = sv as [PlanTextStyle, PlanTextStyle, PlanTextStyle, PlanTextStyle];
+    const r = mergeVersions([
+      version(
+        "en",
+        planOf({ styles: en }, [said(a, "Hello"), said(b, "Section"), said(c, "Cards")])
+      ),
+      version(
+        "sv",
+        planOf({ styles: sv }, [
+          said(z, "99%"),
+          said(x, "Hej"),
+          said(y, "Avsnitt"),
+          said(w, "Kort"),
+        ])
+      ),
+    ]);
+    expect(sizesOf(r)).toEqual([
+      [32, 32],
+      [24, 24],
+    ]);
+  });
+
+  test("the seed's own key comes before a rank", () => {
+    const en = [heading(1, 40, 3), heading(2, 32, 3)];
+    const sv = [heading(1, 36, 3), heading(2, 40, 3)];
+    const r = mergeVersions([
+      version("en", planOf({ styles: en })),
+      version("sv", planOf({ styles: sv })),
+    ]);
+    expect(sizesOf(r)).toEqual([[40, 40], [32]]);
+  });
+
+  test("ranks count only tokens at the floor, in each version", () => {
+    const en = [heading(1, 48, 3), heading(2, 32, 3)];
+    const sv = [heading(1, 60, 1), heading(2, 44, 3), heading(3, 30, 3)];
+    const r = mergeVersions([
+      version("en", planOf({ styles: en })),
+      version("sv", planOf({ styles: sv })),
+    ]);
+    expect(sizesOf(r)).toEqual([
+      [48, 44],
+      [32, 30],
+    ]);
+  });
+
+  test("a one-off never joins by its rank", () => {
+    const r = mergeVersions([
+      version("en", planOf({ styles: [heading(1, 48, 2)] })),
+      version("sv", planOf({ styles: [heading(1, 40, 2)] })),
+    ]);
+    expect(r.tokens.textStyles).toEqual([]);
+  });
+
+  test("a seed reading a token another joined counts that token's uses", () => {
+    const [big, small] = [heading(1, 40, 1), heading(2, 32, 1)];
+    const narrow = heading(1, 24, 2);
+    const r = mergeVersions([
+      version(
+        "wide",
+        planOf({ styles: [big, small] }, [
+          said(big, "A longer heading"),
+          said(small, "Shorter one"),
+        ])
+      ),
+      version(
+        "narrow",
+        planOf({ styles: [narrow] }, [
+          said(narrow, "A longer heading"),
+          said(narrow, "Shorter one"),
+        ])
+      ),
+    ]);
+    expect(sizesOf(r)).toEqual([
+      [40, 24],
+      [32, 24],
+    ]);
   });
 });
