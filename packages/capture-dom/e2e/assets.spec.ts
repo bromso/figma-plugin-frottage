@@ -329,6 +329,10 @@ test("no query, fragment or userinfo reaches the capture or the plan, and fetche
     "http://localhost:4173/account",
     "mailto:ada@example.com",
     "javascript:",
+    "http://localhost:4173/reset",
+    "http://cdn.test/x",
+    "https://a.test/x,y",
+    "https://a.test/(x)",
   ]);
 
   // Only the capture is cleaned: the page's own requests still carry their tokens.

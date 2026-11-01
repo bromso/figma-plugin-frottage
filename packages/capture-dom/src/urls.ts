@@ -6,7 +6,11 @@ const SHORT_URL = 200;
 const PLACEHOLDER = /data:@@frottage-(\d+)@@/g;
 const URL_IN_CSS = /url\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^)\s]*))\s*\)/;
 const URLS_IN_CSS = new RegExp(URL_IN_CSS.source, "g");
-const BARE_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'()<>,]+/gi;
+// Both run to white space or a quote, since stripping too much is the safe direction. Only
+// punctuation that ends a sentence stays out of the match.
+const BARE_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"']*[^\s"',.;:!?)]/gi;
+/** A word that starts like a path and has a query or fragment. "Why? Because" is not one. */
+const PATH_WITH_QUERY = /(?<![^\s"'(=,:])\.{0,2}\/[^\s"'?#]*[?#][^\s"']*[^\s"',.;:!?)]/g;
 
 const unescapeCss = (text: string) => text.replace(/\\(.)/g, "$1");
 
@@ -33,7 +37,8 @@ export function cleanUrl(url: string): string {
 }
 
 /** Cleans every URL in text that is not itself a URL, such as an error message. */
-export const cleanText = (text: string): string => text.replace(BARE_URL, cleanUrl);
+export const cleanText = (text: string): string =>
+  text.replace(BARE_URL, cleanUrl).replace(PATH_WITH_QUERY, cleanUrl);
 
 /** Cleans every `url()` and bare URL in a computed CSS value or custom property. */
 export function cleanCss(value: string): string {
