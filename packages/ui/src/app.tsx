@@ -350,7 +350,7 @@ function App({ port }: { port?: ImportPort }) {
         ref={input}
         type="file"
         hidden
-        aria-label="Choose a .frottage file"
+        aria-label="Choose .frottage files"
         multiple
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
@@ -381,7 +381,7 @@ function App({ port }: { port?: ImportPort }) {
           }`}
         >
           <p className="text-figma-text-secondary">Drop one or more .frottage files here, or</p>
-          <Button onClick={() => input.current?.click()}>Choose a file…</Button>
+          <Button onClick={() => input.current?.click()}>Choose files…</Button>
           <Button
             variant="secondary"
             aria-pressed={optionsOpen}
@@ -448,7 +448,7 @@ function App({ port }: { port?: ImportPort }) {
             <Report state={state} headingRef={headingRef} />
           )}
           <Button variant="secondary" onClick={reset}>
-            Import another file
+            Import more files
           </Button>
         </>
       )}

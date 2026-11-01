@@ -15,9 +15,9 @@ import {
 describe("App (import screen)", () => {
   it("has a labelled file input with no accept filter", () => {
     render(<App port={fakePort()} />);
-    const input = screen.getByLabelText("Choose a .frottage file");
+    const input = screen.getByLabelText("Choose .frottage files");
     expect(input).not.toHaveAttribute("accept");
-    expect(screen.getByRole("button", { name: /Choose a file/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Choose files/ })).toBeInTheDocument();
   });
 
   it("shows the report when an import finishes, then allows another", async () => {
@@ -25,7 +25,7 @@ describe("App (import screen)", () => {
     const port = fakePort();
     port.endResult = { rootId: "1:2", failedOps: 2, missingImages: 0, rewrappedTexts: 5 };
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(3));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(3));
     expect(await screen.findByText("Import complete")).toBeInTheDocument();
     expect(screen.getByText("Text").nextSibling).toHaveTextContent("3");
     expect(screen.getByText("Failed layers")).toBeInTheDocument();
@@ -33,8 +33,8 @@ describe("App (import screen)", () => {
     expect(screen.getByText("Text blocks that wrap differently").nextSibling).toHaveTextContent(
       "5"
     );
-    await user.click(screen.getByRole("button", { name: "Import another file" }));
-    expect(screen.getByRole("button", { name: /Choose a file/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Import more files" }));
+    expect(screen.getByRole("button", { name: /Choose files/ })).toBeInTheDocument();
   });
 
   it("shows text that came out a different size only when there is some", async () => {
@@ -42,19 +42,19 @@ describe("App (import screen)", () => {
     const port = fakePort();
     port.endResult = { rootId: "1:2", failedOps: 0, missingImages: 0, textDriftCount: 4 };
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(3));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(3));
     expect(await screen.findByText("Import complete")).toBeInTheDocument();
     expect(screen.getByText("Text blocks that changed size").nextSibling).toHaveTextContent("4");
-    await user.click(screen.getByRole("button", { name: "Import another file" }));
+    await user.click(screen.getByRole("button", { name: "Import more files" }));
     port.endResult = { rootId: "1:2", failedOps: 0, missingImages: 0 };
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(3));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(3));
     expect(await screen.findByText("Import complete")).toBeInTheDocument();
     expect(screen.queryByText("Text blocks that changed size")).toBeNull();
   });
 
   it("imports several files and reports each version", async () => {
     render(<App port={fakePort()} />);
-    const input = screen.getByLabelText("Choose a .frottage file");
+    const input = screen.getByLabelText("Choose .frottage files");
     expect(input).toHaveAttribute("multiple");
     fireEvent.change(input, {
       target: { files: [frottageFile(1), frottageFile(1, 1, "second.frottage")] },
@@ -68,12 +68,12 @@ describe("App (import screen)", () => {
   it("shows the downscaled image count only when there is one", async () => {
     const user = userEvent.setup();
     render(<App port={fakePort()} />);
-    const input = screen.getByLabelText("Choose a .frottage file");
+    const input = screen.getByLabelText("Choose .frottage files");
     await user.upload(input, await downscaledFile());
     expect(await screen.findByText("Images downscaled")).toBeInTheDocument();
     expect(screen.getByText("Images downscaled").nextSibling).toHaveTextContent("1");
-    await user.click(screen.getByRole("button", { name: "Import another file" }));
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await user.click(screen.getByRole("button", { name: "Import more files" }));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(1));
     await screen.findByText("Import complete");
     expect(screen.queryByText("Images downscaled")).toBeNull();
   });
@@ -82,7 +82,7 @@ describe("App (import screen)", () => {
     const user = userEvent.setup({ applyAccept: false });
     render(<App port={fakePort()} />);
     await user.upload(
-      screen.getByLabelText("Choose a .frottage file"),
+      screen.getByLabelText("Choose .frottage files"),
       new File([new Uint8Array([1, 2, 3])], "x.txt")
     );
     expect(await screen.findByRole("alert")).toHaveTextContent("This isn't a Frottage file");
@@ -93,7 +93,7 @@ describe("App (import screen)", () => {
     let release: () => void = () => {};
     port.begin = () => new Promise<void>((r) => (release = r));
     render(<App port={port} />);
-    const input = screen.getByLabelText("Choose a .frottage file");
+    const input = screen.getByLabelText("Choose .frottage files");
     await act(async () => {
       await userEvent.setup().upload(input, frottageFile(2));
     });
@@ -109,7 +109,7 @@ describe("App (import screen)", () => {
     const user = userEvent.setup();
     render(<App port={fakePort()} />);
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(1));
     await screen.findByText("Import complete");
     expect(screen.getAllByRole("status")).toHaveLength(1);
   });
@@ -117,7 +117,7 @@ describe("App (import screen)", () => {
   it("moves focus to the result heading and to the error", async () => {
     const user = userEvent.setup({ applyAccept: false });
     render(<App port={fakePort()} />);
-    const input = screen.getByLabelText("Choose a .frottage file");
+    const input = screen.getByLabelText("Choose .frottage files");
     await user.upload(input, new File([new Uint8Array([1])], "x.txt"));
     expect(await screen.findByRole("alert")).toHaveFocus();
     await user.upload(input, frottageFile(1));
@@ -127,7 +127,7 @@ describe("App (import screen)", () => {
   it("two quick picks start one import", async () => {
     const port = fakePort();
     render(<App port={port} />);
-    const input = screen.getByLabelText("Choose a .frottage file");
+    const input = screen.getByLabelText("Choose .frottage files");
     await act(async () => {
       fireEvent.change(input, { target: { files: [frottageFile(1)] } });
       fireEvent.change(input, { target: { files: [frottageFile(1)] } });
@@ -162,7 +162,7 @@ describe("App (options and font table)", () => {
   it("imports straight away when no font is missing", async () => {
     const user = userEvent.setup();
     render(<App port={fakePort(fonts)} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(1));
     expect(await screen.findByText("Import complete")).toBeInTheDocument();
   });
 
@@ -171,7 +171,7 @@ describe("App (options and font table)", () => {
     const port = fakePort(fonts);
     render(<App port={port} />);
     await user.click(screen.getByRole("button", { name: "Options" }));
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(1));
     expect(await screen.findByText("Enhancements")).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Options" })).toBeInTheDocument();
     for (const name of [
@@ -200,7 +200,7 @@ describe("App (options and font table)", () => {
     const user = userEvent.setup();
     render(<App port={fakePort(fonts)} />);
     await user.click(screen.getByRole("button", { name: "Options" }));
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(1));
     const local = await screen.findByRole("switch", { name: "Use existing local styles" });
     expect(local).toBeEnabled();
     await user.click(screen.getByRole("switch", { name: "Create styles and variables" }));
@@ -211,7 +211,7 @@ describe("App (options and font table)", () => {
     const user = userEvent.setup();
     render(<App port={fakePort(fonts)} />);
     await user.click(screen.getByRole("button", { name: "Options" }));
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(1));
     const hover = await screen.findByRole("switch", { name: "Hover components (slower)" });
     expect(hover).not.toBeChecked();
     expect(hover).toBeEnabled();
@@ -232,12 +232,12 @@ describe("App (options and font table)", () => {
       await batch(ops);
     };
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(1));
     const cancel = await screen.findByRole("button", { name: "Cancel" });
     await user.click(cancel);
     expect(screen.getByRole("button", { name: "Cancelling…" })).toBeDisabled();
     release();
-    expect(await screen.findByRole("button", { name: /Choose a file/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Choose files/ })).toBeInTheDocument();
     expect(port.log).toContain("cancel");
     expect(port.log).not.toContain("end");
     expect(screen.queryByText("Import complete")).toBeNull();
@@ -247,7 +247,7 @@ describe("App (options and font table)", () => {
     const user = userEvent.setup();
     const port = fakePort(fonts);
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), fontFile("Nimbus Sans"));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), fontFile("Nimbus Sans"));
     const choice = await screen.findByRole("combobox", { name: "Replacement for Nimbus Sans" });
     expect(choice).toHaveTextContent("Inter");
     await user.click(screen.getByRole("button", { name: "Import" }));
@@ -259,7 +259,7 @@ describe("App (options and font table)", () => {
     const user = userEvent.setup();
     const port = fakePort(fonts);
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), fontFile("Nimbus Sans"));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), fontFile("Nimbus Sans"));
     const choice = await screen.findByRole("combobox", { name: "Replacement for Nimbus Sans" });
     await user.click(choice);
     await user.click(await screen.findByRole("option", { name: "Roboto" }));
@@ -272,7 +272,7 @@ describe("App (options and font table)", () => {
   it("moves focus to the review heading", async () => {
     const user = userEvent.setup();
     render(<App port={fakePort(fonts)} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), fontFile("Nimbus Sans"));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), fontFile("Nimbus Sans"));
     const heading = await screen.findByText("Import settings");
     await waitFor(() => expect(heading).toHaveFocus());
   });
@@ -281,22 +281,22 @@ describe("App (options and font table)", () => {
     const user = userEvent.setup();
     const port = fakePort(fonts);
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), fontFile("Nimbus Sans"));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), fontFile("Nimbus Sans"));
     // The working state has its own Cancel; wait for the review step's.
     await screen.findByText("Import settings");
     await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(await screen.findByRole("button", { name: /Choose a file/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Choose files/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Import" })).toBeNull();
     expect(port.log).not.toContain("begin");
     // The next plain file is not reviewed.
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(1));
     expect(await screen.findByText("Import complete")).toBeInTheDocument();
   });
 
   it("keeps the Import button outside the scrolling list", async () => {
     const user = userEvent.setup();
     render(<App port={fakePort(fonts)} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), fontFile("Nimbus Sans"));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), fontFile("Nimbus Sans"));
     const list = await screen.findByTestId("review-scroll");
     expect(list.className).toContain("overflow-y-auto");
     expect(list).not.toContainElement(screen.getByRole("button", { name: "Import" }));
@@ -316,7 +316,7 @@ describe("App (options and font table)", () => {
       tokenFailures: 2,
     };
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(1));
     await screen.findByText("Import complete");
     const row = (label: string) => screen.getByText(label).nextSibling;
     expect(row("Auto layout frames")).toHaveTextContent("7");
@@ -333,7 +333,7 @@ describe("App (options and font table)", () => {
     const port = fakePort(fonts);
     port.endResult = { ...port.endResult, componentsCreated: 1, overrideFailures: 2 };
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), repeatedFile(3));
     await screen.findByText("Import complete");
     expect(screen.getByText("Components").nextSibling).toHaveTextContent("1");
     expect(screen.getByText("Instances").nextSibling).toHaveTextContent("3");
@@ -349,7 +349,7 @@ describe("App (options and font table)", () => {
     const port = fakePort(fonts);
     port.endResult = { ...port.endResult, overrideFailures: 1, overrideFailuresInMains: 1 };
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), repeatedFile(3));
     await screen.findByText("Import complete");
     expect(
       screen.getByText(
@@ -363,7 +363,7 @@ describe("App (options and font table)", () => {
     const port = fakePort(fonts);
     port.endResult = { ...port.endResult, failedOps: 2, instancesCreated: 1 };
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), repeatedFile(3));
     await screen.findByText("Import complete");
     expect(screen.getByText("Instances").nextSibling).toHaveTextContent("1");
   });
@@ -373,7 +373,7 @@ describe("App (options and font table)", () => {
     const port = fakePort(fonts);
     port.endResult = { ...port.endResult, layoutFailures: 1 };
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), repeatedFile(3));
     await screen.findByText("Import complete");
     expect(screen.getByText(/could not be arranged/)).toBeInTheDocument();
   });
@@ -383,7 +383,7 @@ describe("App (options and font table)", () => {
     const port = fakePort(fonts);
     port.endResult = { ...port.endResult, hoverVariants: 4, hoverFailures: 2 };
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), repeatedFile(3));
     await screen.findByText("Import complete");
     expect(screen.getByText("Hover variants").nextSibling).toHaveTextContent("4");
     expect(screen.getByText(/2 components could not get a Hover variant/)).toBeInTheDocument();
@@ -394,7 +394,7 @@ describe("App (options and font table)", () => {
     const port = fakePort(fonts);
     port.endResult = { ...port.endResult, paintFailures: 3 };
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), repeatedFile(3));
     await screen.findByText("Import complete");
     expect(screen.getByText(/refused the fills or effects of 3 layers/)).toBeInTheDocument();
   });
@@ -404,7 +404,7 @@ describe("App (options and font table)", () => {
     const port = fakePort(fonts);
     port.endResult = { ...port.endResult, resizedFallbacks: 2 };
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), repeatedFile(3));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), repeatedFile(3));
     await screen.findByText("Import complete");
     expect(screen.getByText(/2 instances were resized/)).toBeInTheDocument();
   });
@@ -412,7 +412,7 @@ describe("App (options and font table)", () => {
   it("leaves component rows out when nothing repeats", async () => {
     const user = userEvent.setup();
     render(<App port={fakePort(fonts)} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(1));
     await screen.findByText("Import complete");
     expect(screen.queryByText("Components")).toBeNull();
     expect(screen.queryByText("Instances")).toBeNull();
@@ -425,7 +425,7 @@ describe("App (options and font table)", () => {
   it("leaves token rows out when nothing happened", async () => {
     const user = userEvent.setup();
     render(<App port={fakePort(fonts)} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), frottageFile(1));
+    await user.upload(screen.getByLabelText("Choose .frottage files"), frottageFile(1));
     await screen.findByText("Import complete");
     expect(screen.queryByText("Styles created")).toBeNull();
     expect(screen.queryByText(/could not be created/)).toBeNull();
@@ -443,7 +443,7 @@ describe("App (a set of versions)", () => {
     port.setResult = result;
     port.failVersion = failVersion;
     render(<App port={port} />);
-    await user.upload(screen.getByLabelText("Choose a .frottage file"), pair());
+    await user.upload(screen.getByLabelText("Choose .frottage files"), pair());
     await screen.findByText("Import complete");
   }
 
