@@ -194,12 +194,19 @@ function lengthOf(
 export const cssSpacingOf = (prop: string, props: Record<string, string>): number | null =>
   lengthOf(prop, props)?.px ?? null;
 
-/** `--space-4` becomes `spacing/4`; `--brand-gutter`, `spacing/brand-gutter`. Null if empty. */
+/** A name that says spacing, as a matching length alone doesn't. */
+const SPACING_NAME = /space|spacing|gap|gutter|margin|padding|inset/;
+/** A name that says something else. `inline` is a direction, as in `--padding-inline`. */
+const NOT_SPACING_NAME = /font|radius|border|shadow|(?<!in)line|height|width|breakpoint/;
+
+/**
+ * `--space-4` becomes `spacing/4`; `--brand-gutter`, `spacing/brand-gutter`. Null if empty, or if
+ * the name doesn't say spacing.
+ */
 function spacingName(prop: string): string | null {
-  const bare = prop
-    .slice(2)
-    .toLowerCase()
-    .replace(/^(spacing|space|gap)-/, "");
+  const lower = prop.toLowerCase();
+  if (!SPACING_NAME.test(lower) || NOT_SPACING_NAME.test(lower)) return null;
+  const bare = lower.slice(2).replace(/^(spacing|space|gap)-/, "");
   if (bare === "" || bare.endsWith("-")) return null;
   return `spacing/${bare}`;
 }

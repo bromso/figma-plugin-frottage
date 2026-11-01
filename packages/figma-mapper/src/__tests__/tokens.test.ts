@@ -419,9 +419,9 @@ describe("spacing tokens", () => {
   });
 
   test("a frame counts once for a length it uses on all four sides", () => {
-    const two = plan(rows("a", 2, 0, 8), { "--pad": "8px" });
+    const two = plan(rows("a", 2, 0, 8), { "--padding": "8px" });
     expect(two.tokens.spacing).toEqual([]);
-    const three = plan(rows("a", 3, 0, 8), { "--pad": "8px" });
+    const three = plan(rows("a", 3, 0, 8), { "--padding": "8px" });
     expect(three.tokens.spacing).toHaveLength(1);
   });
 
@@ -451,11 +451,46 @@ describe("spacing tokens", () => {
   });
 
   test("padding on every side binds, each side by its own key", () => {
-    const p = plan(rows("a", 3, 0, 8), { "--pad": "8px" });
-    expect(p.tokens.spacing?.map((s) => s.cssVar)).toEqual(["--pad"]);
+    const p = plan(rows("a", 3, 0, 8), { "--padding": "8px" });
+    expect(p.tokens.spacing?.map((s) => s.cssVar)).toEqual(["--padding"]);
     const [first] = spacingKeysOf(p);
-    expect(first?.padding).toEqual(["--pad=8", "--pad=8", "--pad=8", "--pad=8"]);
+    expect(first?.padding).toEqual(["--padding=8", "--padding=8", "--padding=8", "--padding=8"]);
     expect(first?.itemSpacing).toBeUndefined();
+  });
+
+  test("a matching length alone isn't spacing: the name has to say so", () => {
+    const props = {
+      "--font-size-m": "16px",
+      "--radius-m": "16px",
+      "--border-width": "16px",
+      "--shadow-blur": "16px",
+      "--line-height": "16px",
+      "--max-height": "16px",
+      "--width-card": "16px",
+      "--breakpoint-sm": "16px",
+      "--unit": "16px",
+    };
+    const p = plan(rows("a", 3, 16), props);
+    expect(p.tokens.spacing).toEqual([]);
+    expect(spacingKeysOf(p)).toEqual([]);
+  });
+
+  test.each([
+    "--space-m",
+    "--spacing-m",
+    "--gap-m",
+    "--brand-gutter",
+    "--margin-m",
+    "--padding-m",
+    "--inset-m",
+    "--padding-inline",
+  ])("%s says spacing", (name) => {
+    expect(plan(rows("a", 3, 16), { [name]: "16px" }).tokens.spacing).toHaveLength(1);
+  });
+
+  test("a name that says both isn't spacing", () => {
+    const p = plan(rows("a", 3, 16), { "--gap-font-size": "16px", "--padding-line": "16px" });
+    expect(p.tokens.spacing).toEqual([]);
   });
 
   test("zero is not a spacing token", () => {
@@ -464,9 +499,9 @@ describe("spacing tokens", () => {
   });
 
   test("two properties with one value: the shortest name, then the alphabetical one", () => {
-    const props = { "--space-large": "16px", "--gap": "16px", "--gab": "16px" };
+    const props = { "--space-large": "16px", "--gap-b": "16px", "--gap-a": "16px" };
     const a = plan(rows("a", 3, 16), props);
-    expect(a.tokens.spacing?.map((s) => s.cssVar)).toEqual(["--gab"]);
+    expect(a.tokens.spacing?.map((s) => s.cssVar)).toEqual(["--gap-a"]);
     const reversed = plan(rows("a", 3, 16), Object.fromEntries(Object.entries(props).reverse()));
     expect(reversed.tokens.spacing).toEqual(a.tokens.spacing);
   });
@@ -533,17 +568,17 @@ describe("spacing tokens", () => {
       g.children[1] = { ...(g.children[1] as ElementNode), box: { x: 120, y: 0, w: 100, h: 50 } };
       return g;
     });
-    const p = plan(grids, { "--g": "20px" });
+    const p = plan(grids, { "--gap": "20px" });
     const grid = frameOps(p).find((o) => o.layout.mode === "GRID");
     if (grid?.layout.mode !== "GRID") throw new Error("no grid");
-    expect(grid.layout.spacingKeys).toMatchObject({ columnGap: "--g=20" });
+    expect(grid.layout.spacingKeys).toMatchObject({ columnGap: "--gap=20" });
   });
 
   test("the cap is 200 tokens, and the rest stay plain and are reported", () => {
     const props: Record<string, string> = {};
     const frames: ElementNode[] = [];
     for (let i = 0; i < 201; i++) {
-      props[`--s${i}`] = `${i + 1}px`;
+      props[`--space-${i}`] = `${i + 1}px`;
       frames.push(...rows(`r${i}-`, 3, i + 1));
     }
     const p = plan(frames, props);

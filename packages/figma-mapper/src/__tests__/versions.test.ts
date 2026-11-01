@@ -1298,9 +1298,23 @@ describe("spacing across versions", () => {
     return version("w", mapCapture(capture, inter, DEFAULT_IMPORT_OPTIONS), props);
   };
 
+  test("a font size with the gap's length doesn't make that gap change by mode", () => {
+    const wide = { ...mappedRows(16, 0, { "--font-size-m": "16px" }), label: "1512" };
+    const narrow = { ...mappedRows(16, 0, { "--font-size-m": "14px" }), label: "834" };
+    const r = mergeVersions([wide, narrow]);
+    expect(r.tokens.spacing ?? []).toEqual([]);
+    expect(JSON.stringify(r.plans)).not.toContain("spacingKeys");
+  });
+
   test("every bound length equals the merged value in its version's mode", () => {
-    const wide = { ...mappedRows(24, 16, { "--gap": "24px", "--pad": "16px" }), label: "1440" };
-    const narrow = { ...mappedRows(12, 8, { "--gap": "0.75rem", "--pad": "8px" }), label: "390" };
+    const wide = {
+      ...mappedRows(24, 16, { "--gap": "24px", "--padding": "16px" }),
+      label: "1440",
+    };
+    const narrow = {
+      ...mappedRows(12, 8, { "--gap": "0.75rem", "--padding": "8px" }),
+      label: "390",
+    };
     const r = mergeVersions([wide, narrow]);
     const valueAt = (key: string, mode: number) =>
       r.tokens.spacing?.find((t) => t.key === key)?.values.find((v) => v.mode === mode)?.value;
