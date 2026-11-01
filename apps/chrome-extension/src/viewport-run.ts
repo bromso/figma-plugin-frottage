@@ -136,7 +136,7 @@ export type ViewportDeps = {
 type Final = RunStatus & { state: "viewport-done" };
 
 const WINDOW_CLOSED = "The window was closed, so the run stopped.";
-const LEFT_PAGE = "The tab left the page, so the run stopped.";
+const LEFT_PAGE = "The page changed address, so the run stopped.";
 const NOT_RESIZED = "The window couldn't be resized, so the run stopped.";
 const NOT_RESTORED = "The window could not be put back as it was.";
 const WENT_WRONG = "Something went wrong, so the run stopped.";

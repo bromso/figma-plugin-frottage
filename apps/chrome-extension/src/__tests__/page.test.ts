@@ -191,6 +191,18 @@ describe("captureFilename with a version", () => {
 });
 
 describe("normaliseVersion", () => {
+  test("a lone surrogate doesn't reach the file", () => {
+    const label = normaliseVersion("theme", "Dark\ud83d")?.label ?? "";
+    expect(label.isWellFormed()).toBe(true);
+    expect(label).toBe("Dark\ufffd");
+  });
+
+  test("a cut through a character leaves a well-formed label", () => {
+    const label = normaliseVersion("theme", `${"x".repeat(39)}\u{1F600}`)?.label ?? "";
+    expect(label.isWellFormed()).toBe(true);
+    expect(label.length).toBeLessThanOrEqual(40);
+  });
+
   test("label is trimmed, and blank means no version", () => {
     expect(normaliseVersion("theme", "  Dark  ")).toEqual({ label: "Dark", kind: "theme" });
     expect(normaliseVersion("theme", "   ")).toBeUndefined();
@@ -309,8 +321,8 @@ describe("viewportAdvice", () => {
 
   test("a stopped run says why, and a cancelled one says so", () => {
     expect(
-      viewportAdvice({ ...base, stopped: "The tab left the page, so the run stopped." }).stopped
-    ).toBe("The tab left the page, so the run stopped.");
+      viewportAdvice({ ...base, stopped: "The page changed address, so the run stopped." }).stopped
+    ).toBe("The page changed address, so the run stopped.");
     expect(viewportAdvice({ ...base, cancelled: true }).stopped).toBe("You stopped the run.");
   });
 
@@ -342,5 +354,30 @@ describe("pageVersion under 500", () => {
   test("500 and over stay plain, and a given label wins", () => {
     expect(pageVersion(undefined, undefined, 500)).toBeUndefined();
     expect(pageVersion("theme", "Dark", 393)).toEqual({ label: "Dark", kind: "theme" });
+  });
+});
+
+describe("a label in a filename", () => {
+  const nameFor = (label: string) =>
+    captureFilename("https://example.com/", new Date(2026, 10, 1), { label, kind: "theme" });
+  const part = (label: string) => nameFor(label).replace("example.com-2026-11-01", "");
+
+  test.each([
+    ["a zero-width space", "Da\u200brk"],
+    ["a soft hyphen", "Da\u00adrk"],
+    ["a joiner", "Da\u200drk"],
+    ["a right-to-left override", "\u202eDark"],
+    ["a byte order mark", "\ufeffDark"],
+  ])("%s goes", (_, label) => {
+    expect(part(label)).toBe("-Dark.frottage");
+  });
+
+  test.each([
+    ["a line separator", "Dark\u2028mode"],
+    ["a paragraph separator", "Dark\u2029mode"],
+    ["a C1 control", "Dark\u0085mode"],
+    ["a tilde", "Dark~mode"],
+  ])("%s separates words", (_, label) => {
+    expect(part(label)).toBe("-Dark-mode.frottage");
   });
 });

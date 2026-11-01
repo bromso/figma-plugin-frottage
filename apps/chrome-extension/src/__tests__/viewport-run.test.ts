@@ -286,7 +286,7 @@ describe("ViewportRun", () => {
     await t.run.start([1512, 1440]);
     expect(t.captures).toEqual(["1512"]);
     expect(t.final().saved).toEqual([put("1512")]);
-    expect(t.final().stopped).toBe("The tab left the page, so the run stopped.");
+    expect(t.final().stopped).toBe("The page changed address, so the run stopped.");
     expect(t.fake.win.width).toBe(1728);
   });
 
@@ -301,7 +301,7 @@ describe("ViewportRun", () => {
     });
     await t.run.start([1512, 1440]);
     expect(t.captures).toEqual(["1512"]);
-    expect(t.final().stopped).toBe("The tab left the page, so the run stopped.");
+    expect(t.final().stopped).toBe("The page changed address, so the run stopped.");
   });
 
   test("a window closed during a capture says so, not that the tab left", async () => {
@@ -402,7 +402,7 @@ describe("ViewportRun", () => {
       },
     });
     await t.run.start([1512, 1440]);
-    expect(t.final().stopped).toBe("The tab left the page, so the run stopped.");
+    expect(t.final().stopped).toBe("The page changed address, so the run stopped.");
   });
 
   test("a tab that navigates while the page settles is not captured", async () => {
@@ -415,7 +415,7 @@ describe("ViewportRun", () => {
     });
     await t.run.start([1512]);
     expect(t.captures).toEqual([]);
-    expect(t.final().stopped).toBe("The tab left the page, so the run stopped.");
+    expect(t.final().stopped).toBe("The page changed address, so the run stopped.");
   });
 
   test("a refused injection stops the run with a plain message", async () => {

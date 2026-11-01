@@ -50,7 +50,8 @@ const VERSION_KINDS = ["viewport", "theme", "language"] as const;
 export function normaliseVersion(kind: unknown, label: unknown): CaptureVersion | undefined {
   if (typeof label !== "string") return undefined;
   const found = VERSION_KINDS.find((k) => k === kind);
-  const trimmed = label.trim().slice(0, LABEL_MAX).trim();
+  // After the cut, which can land inside a surrogate pair. A lone one can't be stored as UTF-8.
+  const trimmed = label.trim().slice(0, LABEL_MAX).trim().toWellFormed();
   if (!found || !trimmed) return undefined;
   return { label: trimmed, kind: found };
 }
@@ -88,15 +89,11 @@ export function pageOrigin(url: string | undefined): string | null {
   }
 }
 
-/** A label as part of a filename: no path separators, control characters or leading dots. */
+/** A label as part of a filename: no path separators, invisible characters or leading dots. */
 function sanitiseLabel(label: string): string {
-  // Control characters go by code point, not by a regex range.
-  const printable = Array.from(label, (c) => {
-    const code = c.codePointAt(0) ?? 0;
-    return code < 0x20 || code === 0x7f ? " " : c;
-  }).join("");
-  return printable
-    .replace(/[/\\:*?"<>|%]+/g, " ")
+  return label
+    .replace(/\p{Cf}+/gu, "")
+    .replace(/[\p{Cc}\p{Zl}\p{Zp}/\\:*?"<>|%~]+/gu, " ")
     .trim()
     .replace(/\s+/g, "-")
     .replace(/\.{2,}/g, ".")
