@@ -61,10 +61,13 @@ function hugged(op: PlanOp): string[] {
   return [...(sizingH === "HUG" ? ["w"] : []), ...(sizingV === "HUG" ? ["h"] : [])];
 }
 
-/** What a definition's root leaves out. Without auto layout, a resize would not move its children. */
+/**
+ * What a definition's root leaves out. Auto layout moves the children, so `resize` takes care of any
+ * size; without it, a resize would not move them.
+ */
 function rootSize({ op, children }: Tree): string[] {
-  if (op.op !== "frame" || isAuto(op.layout)) return hugged(op);
-  return children.length > 0 ? [] : ["w", "h"];
+  if (op.op !== "frame") return [];
+  return isAuto(op.layout) || children.length === 0 ? ["w", "h"] : [];
 }
 
 /** Positions come from subtracting page coordinates, so they carry rounding noise. */
@@ -86,9 +89,17 @@ function placement({ op }: Tree, parent: Tree): string {
   return JSON.stringify([op.childLayout ?? null, ...at]);
 }
 
-/** What a repeated child adds: its tag, so it can be swapped, and any size an instance won't take on its own. */
+/**
+ * What a repeated child adds: its tag, so it can be swapped, and any size an instance won't take on
+ * its own. No override holds a size, so a child of another fixed size is another component.
+ */
 function bareTag(tag: string, { op }: Tree): string {
-  return op.op === "frame" && isAuto(op.layout) ? `tag:${tag}` : `tag:${tag}:${op.w}x${op.h}`;
+  const follows = hugged(op);
+  const free = (axis: "w" | "h", sizing: "sizingH" | "sizingV") =>
+    follows.includes(axis) || op.childLayout?.[sizing] === "FILL";
+  const w = free("w", "sizingH") ? "" : op.w;
+  const h = free("h", "sizingV") ? "" : op.h;
+  return `tag:${tag}:${w}x${h}`;
 }
 
 function buildForest(ops: PlanOp[]): Tree[] {

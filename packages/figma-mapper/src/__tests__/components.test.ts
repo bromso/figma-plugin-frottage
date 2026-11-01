@@ -576,6 +576,37 @@ describe("overrides", () => {
 });
 
 describe("resize", () => {
+  /** A label in a box bigger than its text, so auto layout has it FIXED both ways. */
+  const fixedLabel = (id: string, w: number, h: number) => {
+    const text = label(`${id}t`, "Label");
+    text.box = { x: 0, y: 0, w: 60, h: 20 };
+    return tagged("x-link", id, [text], {}, [w, h]);
+  };
+
+  test("auto layout roots of different fixed sizes are one component, resized", () => {
+    const p = plan([fixedLabel("a", 100, 40), fixedLabel("b", 137, 40), fixedLabel("c", 100, 60)]);
+    expect(definitions(p)).toHaveLength(1);
+    expect(instance(p, "a")?.resize).toBe(false);
+    expect(instance(p, "b")).toMatchObject({ resize: true, w: 137, h: 40 });
+    expect(instance(p, "c")).toMatchObject({ resize: true, w: 100, h: 60 });
+  });
+  test("frames with no auto layout still keep their size, as a resize would not move children", () => {
+    const frame = (id: string, w: number) =>
+      tagged("x-map", id, [svg(`${id}s`, "<svg/>")], { layout: { ...flexRow().layout } }, [w, 80]);
+    const at = (node: ElementNode, x: number): ElementNode => {
+      const [only] = node.children;
+      if (only) only.box = { ...only.box, x, y: 3 };
+      return node;
+    };
+    const p = plan([at(frame("a", 100), 50), at(frame("b", 120), 50)]);
+    expect(definitions(p)).toEqual([]);
+  });
+  test("a nested repeated element of another fixed size is not hidden in its parent", () => {
+    const card = (id: string, w: number) =>
+      painted(tagged("x-card", id, [fixedLabel(`${id}l`, w, 40)], {}, [300, 40]), red);
+    const p = plan([card("a", 100), card("b", 137), card("c", 100), card("d", 137)]);
+    expect(definitions(p).filter((d) => d.component?.name.startsWith("x-card"))).toHaveLength(2);
+  });
   test("a root with no auto layout is fixed, so a different size says so", () => {
     const p = plan(
       [
