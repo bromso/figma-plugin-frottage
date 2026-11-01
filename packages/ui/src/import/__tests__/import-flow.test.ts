@@ -19,6 +19,8 @@ import {
   frottageFile,
   imageFile,
   namedFile,
+  setFile,
+  setFileWithImage,
   versionFile,
 } from "./helpers";
 
@@ -1230,5 +1232,112 @@ describe("a set of versions", () => {
       plainFrames: 1,
       variablesCreated: 4,
     });
+  });
+});
+
+describe("a file holding several captures", () => {
+  async function runAll(files: File[], port = fakePort()) {
+    const states: ImportState[] = [];
+    await runImports(files, port, (s) => states.push(s));
+    return { port, states, last: states.at(-1) as ImportState };
+  }
+  function doneOf(state: ImportState) {
+    if (state.step !== "done") throw new Error(`not done: ${state.step}`);
+    return state;
+  }
+
+  test("one file with three captures imports as one set of three versions", async () => {
+    const { port, last } = await runAll([setFile({ widths: [834, 1512, 1000] })]);
+    const done = doneOf(last);
+    expect(done.versions).toHaveLength(3);
+    expect(done.versions.map((v) => v.label)).toEqual(["1512", "1000", "834"]);
+    expect(done.sets).toHaveLength(1);
+    expect(port.log.filter((l) => l === "beginSet")).toHaveLength(1);
+    expect(port.log.filter((l) => l === "begin")).toHaveLength(3);
+  });
+
+  test("a one-capture file keeps its file name as the version's name", async () => {
+    const { last } = await runAll([setFile({ name: "mine.frottage", widths: [1280] })]);
+    expect(doneOf(last).versions[0]?.name).toBe("mine.frottage");
+  });
+
+  test("versions from one file are named by label and page, not a repeated file name", async () => {
+    const { last } = await runAll([setFile({ name: "set.frottage", widths: [1512, 834] })]);
+    const names = doneOf(last).versions.map((v) => v.name);
+    expect(names).toEqual(["Home | Volvo Group", "Home | Volvo Group"]);
+    expect(names.some((n) => n.includes("set.frottage"))).toBe(false);
+    const headings = doneOf(last).versions.map((v) => `${v.label} · ${v.name}`);
+    expect(headings).toEqual(["1512 · Home | Volvo Group", "834 · Home | Volvo Group"]);
+  });
+
+  test("images are read again per version, and a file that changed is refused", async () => {
+    const file = setFileWithImage([1512, 834]);
+    const reads = { n: 0 };
+    const original = file.arrayBuffer.bind(file);
+    file.arrayBuffer = () => {
+      reads.n += 1;
+      return original();
+    };
+    const first = await runAll([file]);
+    expect(reads.n).toBe(3);
+    expect(first.port.log).toContain("image");
+    expect(doneOf(first.last).versions).toHaveLength(2);
+
+    const changing = setFileWithImage([1512, 834]);
+    const again = changing.arrayBuffer.bind(changing);
+    const plain = await setFile({ widths: [1512, 834] }).arrayBuffer();
+    let n = 0;
+    changing.arrayBuffer = () => {
+      n += 1;
+      return n === 1 ? again() : Promise.resolve(plain);
+    };
+    const { last } = await runAll([changing]);
+    expect(last.step).toBe("error");
+    const message = (last as { message: string }).message;
+    expect(message.split("\n")[0]).toBe(failureHeading(2));
+    expect(message).toContain("Home | Volvo Group");
+  });
+
+  test("two files of three captures each import as one set of six", async () => {
+    const { last } = await runAll([
+      setFile({ name: "a.frottage", widths: [1512, 1000, 834] }),
+      setFile({
+        name: "b.frottage",
+        widths: [1600, 700, 400],
+      }),
+    ]);
+    const done = doneOf(last);
+    expect(done.versions).toHaveLength(6);
+    expect(done.sets).toHaveLength(1);
+    expect(done.versions.map((v) => v.label)).toEqual([
+      "1600",
+      "1512",
+      "1000",
+      "834",
+      "700",
+      "400",
+    ]);
+  });
+
+  test("a drop over 16 captures is refused before anything is created", async () => {
+    const widths = (from: number) => Array.from({ length: 9 }, (_, i) => from + i * 10);
+    const { port, last } = await runAll([
+      setFile({ widths: widths(1000) }),
+      setFile({ widths: widths(300) }),
+    ]);
+    expect(port.log.filter((l) => l === "begin" || l === "beginSet")).toEqual([]);
+    expect(last).toEqual({
+      step: "error",
+      message: "Frottage imports up to 16 sizes at a time. Choose fewer files and try again.",
+    });
+  });
+
+  test("a corrupt capture in a set fails that file by name", async () => {
+    const bad = setFile({ name: "bad.frottage", widths: [1512, 834] });
+    const broken = new File([new Uint8Array(await bad.arrayBuffer()).slice(0, 40)], "bad.frottage");
+    const { last } = await runAll([broken, versionFile({ name: "ok", width: 100 })]);
+    const done = doneOf(last);
+    expect(done.failures.map((f) => f.name)).toEqual(["bad.frottage"]);
+    expect(done.versions.map((v) => v.name)).toEqual(["ok"]);
   });
 });

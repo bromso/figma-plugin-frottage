@@ -1,4 +1,4 @@
-import { type Capture, FrottageFileError, unpackFrottage } from "@repo/capture-schema";
+import { type Capture, FrottageFileError, unpackFrottageSet } from "@repo/capture-schema";
 import { sha256Hex } from "@repo/capture-schema/hash";
 import {
   batchOps,
@@ -247,6 +247,8 @@ async function verifyAssets(assets: Map<string, Uint8Array>): Promise<void> {
 
 /** Files and bytes in one drop. Over either, nothing is read. */
 export const MAX_FILES = 8;
+/** Captures in one drop, over all its files. */
+export const MAX_CAPTURES = 16;
 export const MAX_TOTAL_BYTES = 600 * 1024 * 1024;
 
 /** Shared by the screen's partial and all-failed reports. */
@@ -255,16 +257,25 @@ export function failureHeading(count: number): string {
 }
 
 const TOO_MANY_FILES = `Frottage imports up to ${MAX_FILES} files at a time. Choose fewer files and try again.`;
+const TOO_MANY_CAPTURES = `Frottage imports up to ${MAX_CAPTURES} sizes at a time. Choose fewer files and try again.`;
 const TOO_MANY_BYTES = "These files add up to more than 600 MB. Choose fewer files and try again.";
 
-/** Read and unpack one file. `verify` also checks every image against its hash. */
-export async function loadFile(file: File, verify = true): Promise<LoadedFile> {
+/**
+ * Read and unpack one file, giving one entry per capture in it. `verify` also checks every image
+ * against its hash. A file of several captures names each version by its page, not the file.
+ */
+export async function loadFile(file: File, verify = true): Promise<LoadedFile[]> {
   if (file.size > MAX_FILE_BYTES) throw new FrottageFileError("too-large");
   await yieldToPaint();
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const { capture, assets } = unpackFrottage(bytes);
+  const { captures, assets } = unpackFrottageSet(bytes);
   if (verify) await verifyAssets(assets);
-  return { name: file.name, capture, assets };
+  const several = captures.length > 1;
+  return captures.map((capture) => ({
+    name: several ? importName(capture.source) : file.name,
+    capture,
+    assets,
+  }));
 }
 
 type FileInfo = { index: number; total: number; name: string };
@@ -550,12 +561,14 @@ export async function runImports(
           );
     onState({ step: "error", message });
   };
+  /** Counts the files until they are read, then the versions in them. */
+  let counted = files.length;
   /** Files are numbered one way throughout: by position in the order they were dropped. */
   const working = (index: number, name: string, done = 0, total = 0): ImportState => ({
     step: "working",
     done,
     total,
-    file: { index, total: files.length, name },
+    file: { index, total: counted, name },
   });
 
   try {
@@ -563,32 +576,38 @@ export async function runImports(
     if (files.reduce((sum, f) => sum + f.size, 0) > MAX_TOTAL_BYTES) {
       return onState({ step: "error", message: TOO_MANY_BYTES });
     }
-    const single = files.length === 1;
 
     // Pass 1, one file at a time: keep each capture but let its images go, unless it is the only
-    // file. The images are read again when their version imports.
-    const sources = new Map<Capture["source"], File>();
+    // capture. The images are read again when their version imports.
+    const sources = new Map<Capture["source"], { file: File; index: number }>();
     const assetKeys = new Map<Capture["source"], Set<string>>();
     const light: LoadedFile[] = [];
     for (const [i, file] of files.entries()) {
       onState(working(i + 1, file.name));
       try {
-        const loaded = await loadFile(file, single);
-        const kept = single ? loaded : { ...loaded, assets: new Map() };
-        sources.set(kept.capture.source, file);
-        assetKeys.set(kept.capture.source, new Set(loaded.assets.keys()));
-        light.push(kept);
+        const loaded = await loadFile(file, files.length === 1);
+        for (const [index, one] of loaded.entries()) {
+          sources.set(one.capture.source, { file, index });
+          assetKeys.set(one.capture.source, new Set(one.assets.keys()));
+          light.push(one);
+        }
       } catch (error) {
         fail(file.name, error);
       }
       if (signal?.aborted) return onState({ step: "idle" });
     }
     if (light.length === 0) return finishWithError();
+    if (light.length > MAX_CAPTURES) return onState({ step: "error", message: TOO_MANY_CAPTURES });
+    const single = light.length === 1;
+    if (!single) for (const one of light) one.assets = new Map();
+    // Progress counts versions from here on.
+    counted = light.length;
 
     const sets = groupVersions(light);
     const ordered = sets.flatMap((s) => s.versions);
     // Grouping may relabel (copy) a file, but its capture's source object stays the same.
-    const fileOf = (v: LoadedFile): File => sources.get(v.capture.source) as File;
+    const sourceOf = (v: LoadedFile) =>
+      sources.get(v.capture.source) as { file: File; index: number };
 
     await yieldToPaint();
     const available = await port.listFonts();
@@ -649,8 +668,9 @@ export async function runImports(
     const cancelled = () => onState(doneState() ?? { step: "idle" });
     const assetsOf = async (version: LoadedFile) => {
       if (single) return version.assets;
-      const again = await loadFile(fileOf(version));
-      if (!sameKeys(again.assets, assetKeys.get(version.capture.source))) {
+      const { file, index } = sourceOf(version);
+      const again = (await loadFile(file))[index];
+      if (!again || !sameKeys(again.assets, assetKeys.get(version.capture.source))) {
         throw new FrottageFileError("invalid-capture");
       }
       return again.assets;
@@ -675,7 +695,7 @@ export async function runImports(
           options,
           plans,
           firstFile,
-          totalFiles: files.length,
+          totalFiles: counted,
           assetsOf,
           fail,
         });
@@ -700,7 +720,7 @@ export async function runImports(
             onState,
             signal,
             options,
-            file: { index: firstFile, total: files.length, name: version.name },
+            file: { index: firstFile, total: counted, name: version.name },
           }
         );
         if (!report) return cancelled();

@@ -1,4 +1,9 @@
-import { type Capture, type CaptureNode, packFrottage } from "@repo/capture-schema";
+import {
+  type Capture,
+  type CaptureNode,
+  packFrottage,
+  packFrottageSet,
+} from "@repo/capture-schema";
 import { sha256Hex } from "@repo/capture-schema/hash";
 import type {
   FontRef,
@@ -311,4 +316,51 @@ export function versionFile(opts: {
   }
   if (opts.label) capture.version = { label: opts.label, kind: opts.kind ?? "viewport" };
   return new File([packFrottage(capture, new Map()) as BlobPart], opts.name);
+}
+
+/** A File holding one capture per width, of one page, each labelled by its width. */
+export function setFile(opts: {
+  name?: string;
+  widths: number[];
+  url?: string;
+  title?: string;
+  /** Packed beside the captures, shared by all. */
+  assets?: Map<string, Uint8Array>;
+  edit?: (capture: Capture, index: number) => void;
+}): File {
+  const captures = opts.widths.map((w, i) => {
+    const capture = captureWithTexts(1);
+    capture.source.url = opts.url ?? "https://example.com/";
+    capture.source.title = opts.title ?? "Home | Volvo Group";
+    capture.source.viewport = { w, h: 800 };
+    capture.version = { label: String(w), kind: "viewport" };
+    opts.edit?.(capture, i);
+    return capture;
+  });
+  const bytes = packFrottageSet(captures, opts.assets ?? new Map());
+  return new File([bytes as BlobPart], opts.name ?? "set.frottage");
+}
+
+/** A set file whose every capture shows one image, which is packed once. */
+export function setFileWithImage(widths: number[], good = true, name = "set.frottage"): File {
+  const key = good ? sha256Hex(PNG) : "a".repeat(64);
+  return setFile({
+    name,
+    widths,
+    assets: new Map([[key, PNG]]),
+    edit: (capture) => {
+      (capture.root as { children: CaptureNode[] }).children = [
+        {
+          ...common,
+          id: "img",
+          kind: "image",
+          assetHash: key,
+          fit: "cover",
+          objectPosition: "50% 50%",
+          borderRadius: [0, 0, 0, 0],
+          borders: { top: noBorder, right: noBorder, bottom: noBorder, left: noBorder },
+        } as CaptureNode,
+      ];
+    },
+  });
 }
