@@ -102,7 +102,7 @@ describe("bindLayers", () => {
     expect(p.report.raw?.colors).toBe(1);
   });
 
-  test("a stroke bound to a variable with alpha in Dark takes opacity 1", () => {
+  test("a stroke binds to a variable with alpha in Dark and keeps its captured opacity", () => {
     const side = { width: 1, style: "solid", color: rgba("oklch(1 0 0 / 10%)") };
     const base = el("a", [0, 0]);
     const node = {
@@ -113,7 +113,7 @@ describe("bindLayers", () => {
     const p = plan([node]);
     const stroke = frame(p, "a").strokes;
     expect(stroke?.colorKey).toBe("theme:border");
-    expect(stroke?.opacity).toBe(1);
+    expect(stroke?.opacity).toBeCloseTo(0.1, 4);
   });
 
   test("a radius ref on all corners gives four radius keys", () => {

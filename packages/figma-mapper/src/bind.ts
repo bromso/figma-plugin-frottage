@@ -48,7 +48,10 @@ const sameLength = (a: number, b: number) => Math.abs(a - b) <= PX + EPSILON;
 const accepts = (v: PlanVariable, scope: string) =>
   v.scopes.includes(scope) || v.scopes.includes("ALL_SCOPES");
 
-/** A colour to bind; a bound paint takes opacity 1, as the variable carries the alpha. */
+/**
+ * A colour to bind. The paint keeps its captured opacity: the applier sets 1 only once the variable,
+ * which carries the alpha, is bound, so a failed binding still shows the raw colour.
+ */
 function colourField(
   paint: { color: PlanRgb; opacity: number; colorKey?: string },
   scope: string,
@@ -61,7 +64,6 @@ function colourField(
     ref,
     bind(key) {
       paint.colorKey = key;
-      paint.opacity = 1;
     },
   };
 }
