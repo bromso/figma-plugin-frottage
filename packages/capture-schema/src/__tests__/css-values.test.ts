@@ -62,6 +62,18 @@ describe("evalLength", () => {
     expect(evalLength("calc(1px * 2px)", {})).toBeNull();
   });
 
+  test("is null, and quick, for a fan-out that grows with every level", () => {
+    const props: Record<string, string> = { "--a16": "1px" };
+    for (let i = 15; i >= 1; i--) {
+      props[`--a${i}`] = `calc(${Array(4)
+        .fill(`var(--a${i + 1})`)
+        .join(" + ")})`;
+    }
+    const start = performance.now();
+    expect(evalLength("var(--a1)", props)).toBeNull();
+    expect(performance.now() - start).toBeLessThan(100);
+  });
+
   test("is null for a var loop", () => {
     expect(evalLength("var(--a)", { "--a": "var(--b)", "--b": "var(--a)" })).toBeNull();
     expect(evalLength("var(--a)", { "--a": "var(--a)" })).toBeNull();

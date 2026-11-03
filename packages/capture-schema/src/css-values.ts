@@ -221,6 +221,9 @@ export function parseCssColor(value: string): Rgba | null {
 // ---------- Lengths
 
 const MAX_VAR_DEPTH = 16;
+/** Total `var()` expansions and the longest expanded text, so a crafted fan-out can't run away. */
+const MAX_SUBSTITUTIONS = 256;
+const MAX_EXPANDED_LENGTH = 2048;
 
 /** The index of the `)` that closes the `(` at `open`, or -1. */
 function closing(text: string, open: number): number {
@@ -236,9 +239,10 @@ function closing(text: string, open: number): number {
 function substituteVars(
   value: string,
   props: Record<string, string>,
-  depth: number
+  depth: number,
+  budget = { left: MAX_SUBSTITUTIONS }
 ): string | null {
-  if (depth > MAX_VAR_DEPTH) return null;
+  if (depth > MAX_VAR_DEPTH || value.length > MAX_EXPANDED_LENGTH) return null;
   let out = "";
   let at = 0;
   for (;;) {
@@ -250,11 +254,13 @@ function substituteVars(
     const comma = inner.indexOf(",");
     const name = (comma === -1 ? inner : inner.slice(0, comma)).trim();
     const fallback = comma === -1 ? undefined : inner.slice(comma + 1);
+    if (--budget.left < 0) return null;
     const raw = Object.hasOwn(props, name) ? props[name] : fallback;
     if (raw === undefined) return null;
-    const resolved = substituteVars(raw, props, depth + 1);
+    const resolved = substituteVars(raw, props, depth + 1, budget);
     if (resolved === null) return null;
     out += `${value.slice(at, start)}(${resolved})`;
+    if (out.length > MAX_EXPANDED_LENGTH) return null;
     at = end + 1;
   }
 }
