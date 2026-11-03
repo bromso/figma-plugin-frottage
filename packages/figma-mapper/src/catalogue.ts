@@ -17,17 +17,29 @@ export type Catalogue = {
   variables: PlanVariable[];
   /** The variable a token ref (`--name` or `--name*n`) names, or null. */
   resolveRef(ref: string): PlanVariable | null;
+  /**
+   * Variables left out past `MAX_VARIABLES`, theme or primitive, including spacing steps refused
+   * later by `resolveRef`. It grows as those are asked for, so read it after binding.
+   */
+  dropped: number;
 };
 
 const LIGHT = "Light";
 const MAX_ALIAS_DEPTH = 16;
+/** Variables per import, so that a page with thousands of custom properties can't flood a file. */
+export const MAX_VARIABLES = 1000;
+/** The largest `--spacing*n` step made on demand. */
+const MAX_SPACING_STEP = 1000;
 /** Prefixes frameworks put on their own properties; the name is what follows. */
 const FRAMEWORK_PREFIX = /^(bs|mantine|chakra|ant)-/i;
 /** A value that is one `var()` and nothing else, with or without a fallback (one level deep). */
 const SINGLE_VAR = /^var\(\s*(--[A-Za-z0-9_-]+)\s*(?:,(?:[^()]|\([^()]*\))*)?\)$/;
 const REF = /^(--[A-Za-z0-9_-]+)(?:\*(-?(?:\d+\.?\d*|\.\d+)))?$/;
 const FAMILY = /^\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9 _-]+?))\s*(?:,|$)/;
-const NAMED: Record<string, string> = { white: "#ffffff", black: "#000000" };
+const NAMED = new Map([
+  ["white", "#ffffff"],
+  ["black", "#000000"],
+]);
 
 const COLOR_SCOPES = ["ALL_FILLS", "STROKE_COLOR", "EFFECT_COLOR"];
 const SPACING_SCOPES = ["GAP", "WIDTH_HEIGHT"];
@@ -48,7 +60,7 @@ const bareName = (prop: string) => prop.slice(2).replace(FRAMEWORK_PREFIX, "");
 function colourOf(value: string, props: Record<string, string>): PlanVarValue | null {
   const text = resolveVars(value, props)?.trim().toLowerCase();
   if (!text) return null;
-  const c = parseCssColor(NAMED[text] ?? text);
+  const c = parseCssColor(NAMED.get(text) ?? text);
   return c ? { r: c.r, g: c.g, b: c.b, a: c.a } : null;
 }
 
@@ -217,6 +229,30 @@ export function buildCatalogue(capture: Capture): Catalogue {
     byCssVar.set(prop, add("theme", light, values, prop, prop));
   }
 
+  // The cap: theme variables first, then primitives in property order.
+  let dropped = 0;
+  const themeVars = variables.filter((v) => v.collection === "theme");
+  const kept = new Set([
+    ...themeVars.slice(0, MAX_VARIABLES),
+    ...variables
+      .filter((v) => v.collection === "primitives")
+      .slice(0, Math.max(0, MAX_VARIABLES - themeVars.length)),
+  ]);
+  if (kept.size < variables.length) {
+    const gone = new Map(variables.filter((v) => !kept.has(v)).map((v) => [v.key, v]));
+    dropped = gone.size;
+    for (const v of gone.values()) byKey.delete(v.key);
+    for (const [prop, v] of byCssVar) if (gone.has(v.key)) byCssVar.delete(prop);
+    // A theme value aliased to a dropped primitive holds the primitive's value instead.
+    for (const v of kept) {
+      v.values = v.values.map((value) => {
+        const target = typeof value === "object" && "alias" in value ? gone.get(value.alias) : null;
+        return target ? (target.values[0] as PlanVarValue) : value;
+      });
+    }
+    variables.splice(0, variables.length, ...variables.filter((v) => kept.has(v)));
+  }
+
   // Aliases of theme properties, as Tailwind's `--color-card: var(--card)`, collapse into them.
   for (const prop of Object.keys(root)) {
     if (!usable(prop) || themeProps.has(prop)) continue;
@@ -227,12 +263,21 @@ export function buildCatalogue(capture: Capture): Catalogue {
 
   const spacingBase =
     usable("--spacing") && root["--spacing"] ? pxOf(root["--spacing"], root) : null;
+  /** Steps refused at the cap, so each counts once. */
+  const refused = new Set<string>();
   /** `spacing/<n>`, made when a ref first asks for it. Figma names can't hold `.`. */
   const spacingStep = (n: number): PlanVariable | null => {
-    if (spacingBase === null) return null;
+    if (spacingBase === null || !Number.isFinite(n) || n < 0 || n > MAX_SPACING_STEP) return null;
     const name = `spacing/${String(n).replace(".", "_")}`;
     const existing = byKey.get(`primitives:${name}`);
     if (existing) return existing;
+    if (variables.length >= MAX_VARIABLES) {
+      if (!refused.has(name)) {
+        refused.add(name);
+        catalogue.dropped++;
+      }
+      return null;
+    }
     const px = n * spacingBase;
     return add(
       "primitives",
@@ -242,7 +287,8 @@ export function buildCatalogue(capture: Capture): Catalogue {
     );
   };
 
-  return {
+  const catalogue: Catalogue = {
+    dropped,
     hostname: collectionName(capture.source.url),
     modes,
     themeSource: themes.length > 0 ? "site" : "none",
@@ -258,4 +304,5 @@ export function buildCatalogue(capture: Capture): Catalogue {
       return byCssVar.get(prop) ?? null;
     },
   };
+  return catalogue;
 }

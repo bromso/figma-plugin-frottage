@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Capture } from "@repo/capture-schema";
 import { parseCssColor } from "@repo/capture-schema/css-values";
-import { buildCatalogue } from "../catalogue";
+import { buildCatalogue, MAX_VARIABLES } from "../catalogue";
 import type { PlanVarValue } from "../plan";
 import { cap, el } from "./fixtures";
 
@@ -216,5 +216,65 @@ describe("buildCatalogue", () => {
       "--indent": "2em",
     };
     expect(buildCatalogue(capture).variables).toEqual([]);
+  });
+
+  test("a value named like an Object.prototype member is just not a colour", () => {
+    const capture = cap(el("root", [0, 0]));
+    capture.tokens.cssCustomProperties = {
+      "--a": "constructor",
+      "--b": "__proto__",
+      "--c": "toString",
+      "--d": "hasOwnProperty",
+    };
+    const cat = buildCatalogue(capture);
+    expect(cat.variables).toEqual([]);
+  });
+
+  test("spacing steps must be finite and between 0 and 1000", () => {
+    const cat = buildCatalogue(shadcn());
+    expect(cat.resolveRef(`--spacing*${"9".repeat(400)}`)).toBeNull();
+    expect(cat.resolveRef("--spacing*-2")).toBeNull();
+    expect(cat.resolveRef("--spacing*1001")).toBeNull();
+    expect(cat.resolveRef("--spacing*1000")?.values).toEqual([4000]);
+    expect(cat.resolveRef("--spacing*0")?.values).toEqual([0]);
+    const steps = cat.variables.filter((v) => v.name.startsWith("spacing/")).map((v) => v.name);
+    expect(steps.sort()).toEqual(["spacing/0", "spacing/1000"]);
+  });
+
+  test("variables stop at the cap, theme first, and the rest are counted", () => {
+    const capture = cap(el("root", [0, 0]));
+    const props: Record<string, string> = { "--spacing": "4px", "--surface": "#fff" };
+    for (let i = 0; i < MAX_VARIABLES + 5; i++) props[`--size-${i}`] = `${i + 1}px`;
+    capture.tokens = {
+      cssCustomProperties: props,
+      authored: { "--surface": "var(--size-1010)" },
+      themes: [{ context: ".dark", mode: "Dark", properties: { "--surface": "#000" } }],
+    };
+    const cat = buildCatalogue(capture);
+    expect(cat.variables).toHaveLength(MAX_VARIABLES);
+    expect(cat.variables.some((v) => v.key === "theme:surface")).toBe(true);
+    // The theme variable takes one place, so the last six primitives go.
+    expect(cat.dropped).toBe(6);
+    expect(cat.resolveRef("--size-998")?.name).toBe("size/998");
+    expect(cat.resolveRef("--size-999")).toBeNull();
+    // Steps made on demand count against the cap too.
+    expect(cat.resolveRef("--spacing*4")).toBeNull();
+    expect(cat.resolveRef("--spacing*4")).toBeNull();
+    expect(cat.dropped).toBe(7);
+  });
+
+  test("a theme alias to a primitive past the cap holds its value", () => {
+    const capture = cap(el("root", [0, 0]));
+    const props: Record<string, string> = { "--surface": "#fff" };
+    for (let i = 0; i < MAX_VARIABLES; i++) props[`--size-${i}`] = `${i + 1}px`;
+    props["--color-white"] = "#fff";
+    capture.tokens = {
+      cssCustomProperties: props,
+      authored: { "--surface": "var(--color-white)" },
+      themes: [{ context: ".dark", mode: "Dark", properties: { "--surface": "#000" } }],
+    };
+    const cat = buildCatalogue(capture);
+    expect(cat.resolveRef("--color-white")).toBeNull();
+    expectColour(cat.byCssVar.get("--surface")?.values[0], "#ffffff");
   });
 });
