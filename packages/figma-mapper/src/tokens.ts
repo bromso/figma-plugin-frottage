@@ -15,6 +15,7 @@ import type {
   PlanTokens,
   SpacingKeys,
 } from "./plan";
+import { bindTextStyles } from "./styles-tokens";
 
 /**
  * Finds the values a page repeats and proposes them as text styles and colour variables. Only the
@@ -53,7 +54,7 @@ const hexByte = (n: number) =>
 const hexOf = (r: number, g: number, b: number) => `#${hexByte(r)}${hexByte(g)}${hexByte(b)}`;
 
 /** Wide-gamut pages give fractional channels; the key is their nearest 8-bit colour. */
-const colorKeyOf = ({ r, g, b }: PlanRgb) => hexOf(r * 255, g * 255, b * 255);
+export const colorKeyOf = ({ r, g, b }: PlanRgb) => hexOf(r * 255, g * 255, b * 255);
 
 /**
  * A colour key's value, so a token's doesn't depend on which use came first. Only a value read from
@@ -344,7 +345,7 @@ function colorTokens(ops: PlanOp[], props: Record<string, string>, floor: number
 // ---------- Text styles
 
 /** The text nodes inside a heading. Wrappers collapse, so ops no longer show it. */
-function headedTexts(root: CaptureNode): Set<string> {
+export function headedTexts(root: CaptureNode): Set<string> {
   const headed = new Set<string>();
   const stack: { node: CaptureNode; inHeading: boolean }[] = [{ node: root, inHeading: false }];
   while (stack.length > 0) {
@@ -460,13 +461,21 @@ export function extractTokens(
   if (!options.tokens) return { textStyles: [], colors: [], spacing: [], collection };
   const floor = options.tokenFloor ?? MIN_USES;
   if (options.layers) {
-    const { layers, raw } = bindLayers(buildCatalogue(capture), ops);
+    const catalogue = buildCatalogue(capture);
+    // Bound while the runs still hold their refs.
+    const textStyles = textStyleTokens(ops, capture.root, floor);
+    const keep = bindTextStyles(textStyles, ops, catalogue);
+    const { layers, raw } = bindLayers(catalogue, ops, {
+      root: capture.root,
+      props: capture.tokens.cssCustomProperties,
+      keep,
+    });
     if (report) {
       report.raw = raw;
       report.themeModes = layers.modes;
     }
     return {
-      textStyles: textStyleTokens(ops, capture.root, floor),
+      textStyles,
       colors: [],
       spacing: [],
       collection,

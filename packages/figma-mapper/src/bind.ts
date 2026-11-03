@@ -1,4 +1,6 @@
-import type { Catalogue } from "./catalogue";
+import type { CaptureNode } from "@repo/capture-schema";
+import { type Catalogue, COLOR_SCOPES, followAlias, MAX_VARIABLES } from "./catalogue";
+import { inferTheme, nearTwins, primitiveName, sameColour } from "./infer";
 import type {
   PlanLayers,
   PlanLayout,
@@ -8,6 +10,8 @@ import type {
   PlanVarValue,
   SpacingKeys,
 } from "./plan";
+import { effectStyles, gradientStyles } from "./styles-tokens";
+import { colorKeyOf, MIN_USES, rgbaOf } from "./tokens";
 
 /**
  * Binds each colour, corner radius and spacing length in `ops` to a variable of the catalogue: the
@@ -17,13 +21,16 @@ import type {
 
 type Rgba = PlanRgb & { a: number };
 export type RawCounts = { colors: number; radii: number; spacing: number };
+/** What else binding needs from the capture, and the keys text styles bound, which stay. */
+export type BindContext = {
+  root?: CaptureNode;
+  props?: Record<string, string>;
+  keep?: Iterable<string>;
+};
 
-/** Two colours this close in every channel, alpha included, are the same colour. */
-const CHANNEL = 1 / 255;
 /** Two lengths this close are the same length. */
 const PX = 0.01;
 const EPSILON = 1e-9;
-const MAX_ALIAS_DEPTH = 16;
 
 type Field =
   | { kind: "colors"; scope: string; value: Rgba; ref?: string; bind(key: string): void }
@@ -36,12 +43,6 @@ type Field =
     };
 
 const isColour = (v: PlanVarValue): v is Rgba => typeof v === "object" && "r" in v;
-
-const sameColour = (a: Rgba, b: Rgba) =>
-  Math.abs(a.r - b.r) <= CHANNEL + EPSILON &&
-  Math.abs(a.g - b.g) <= CHANNEL + EPSILON &&
-  Math.abs(a.b - b.b) <= CHANNEL + EPSILON &&
-  Math.abs(a.a - b.a) <= CHANNEL + EPSILON;
 
 const sameLength = (a: number, b: number) => Math.abs(a - b) <= PX + EPSILON;
 
@@ -135,25 +136,19 @@ function fieldsOf(op: PlanOp, out: Field[]) {
 
 export function bindLayers(
   catalogue: Catalogue,
-  ops: PlanOp[]
+  ops: PlanOp[],
+  context: BindContext = {}
 ): { layers: PlanLayers; raw: RawCounts } {
   // Aliases point at variables the catalogue made up front, never at a step made on demand.
   const byKey = new Map(catalogue.variables.map((v) => [v.key, v]));
-  /** A value with its alias followed, or null. */
-  const followed = (value: PlanVarValue | undefined): PlanVarValue | null => {
-    let at = value;
-    for (let depth = 0; depth < MAX_ALIAS_DEPTH; depth++) {
-      if (at === undefined) return null;
-      if (typeof at !== "object" || !("alias" in at)) return at;
-      at = byKey.get(at.alias)?.values[0];
-    }
-    return null;
-  };
+  const followed = (value: PlanVarValue | undefined) => followAlias(byKey, value);
+  // Read before inference adds any: a site that names colours gets no unnamed primitives.
+  const siteColours = catalogue.variables.some((v) => v.type === "COLOR");
 
   const fields: Field[] = [];
   for (const op of ops) fieldsOf(op, fields);
 
-  const bound = new Set<string>();
+  const bound = new Set<string>(context.keep);
   const bind = (field: Field, v: PlanVariable) => {
     field.bind(v.key);
     bound.add(v.key);
@@ -161,7 +156,7 @@ export function bindLayers(
 
   // (1) The ref, where the variable is of the field's type. A length must also hold the field's
   // value in some mode, as a frame's padding takes in its border.
-  const unbound: Field[] = [];
+  let unbound: Field[] = [];
   for (const field of fields) {
     const v = field.ref ? catalogue.resolveRef(field.ref) : null;
     let fits = false;
@@ -176,7 +171,9 @@ export function bindLayers(
     else unbound.push(field);
   }
 
-  // Roles inferred for a page with no theme join the catalogue here, before values are matched.
+  // Roles inferred for a page with no theme join the catalogue here, before values are matched,
+  // unless some layer or text style bound to a site variable by its ref.
+  if (bound.size === 0 && context.root) inferTheme(catalogue, ops, context.root);
 
   // (2) The only theme variable whose Light value is equal, (3) else the only equal primitive.
   const equal = (field: Field, v: PlanVariable): boolean => {
@@ -197,6 +194,52 @@ export function bindLayers(
     }
     return found;
   };
+  const match = (field: Field) => only(field, theme) ?? only(field, primitives);
+
+  // On a site that names no colours, an opaque colour used `MIN_USES` times that no variable takes
+  // becomes a primitive named by family and step, and its uses bind to it.
+  if (!siteColours) {
+    const groups = new Map<string, Field[]>();
+    for (const field of unbound) {
+      if (field.kind !== "colors" || field.value.a < 1 - EPSILON) continue;
+      const key = colorKeyOf(field.value);
+      const list = groups.get(key);
+      if (list) list.push(field);
+      else groups.set(key, [field]);
+    }
+    const names = new Set(primitives.map((v) => v.name));
+    const made = new Set<Field>();
+    const repeated = [...groups]
+      .filter(([, list]) => list.length >= MIN_USES)
+      .sort(([a, x], [b, y]) => y.length - x.length || (a < b ? -1 : 1));
+    for (const [key, list] of repeated) {
+      if (match(list[0] as Field)) continue;
+      if (catalogue.variables.length >= MAX_VARIABLES) {
+        catalogue.dropped++;
+        continue;
+      }
+      const value = rgbaOf(key);
+      const name = primitiveName(value, names);
+      names.add(name);
+      const v: PlanVariable = {
+        key: `primitives:${name}`,
+        name,
+        collection: "primitives",
+        type: "COLOR",
+        values: [value],
+        description: `Inferred: used ${list.length} times`,
+        scopes: COLOR_SCOPES,
+      };
+      catalogue.variables.push(v);
+      primitives.push(v);
+      for (const field of list) {
+        bind(field, v);
+        made.add(field);
+      }
+    }
+    unbound = unbound.filter((field) => !made.has(field));
+  }
+
   // Pages repeat few values, so each is looked up once.
   const matches = new Map<string, PlanVariable | null>();
   const raw: RawCounts = { colors: 0, radii: 0, spacing: 0 };
@@ -204,12 +247,21 @@ export function bindLayers(
     const at = `${field.kind}|${field.scope}|${JSON.stringify(field.value)}`;
     let v = matches.get(at);
     if (v === undefined) {
-      v = only(field, theme) ?? only(field, primitives);
+      v = match(field);
       matches.set(at, v);
     }
     if (v) bind(field, v);
     else raw[field.kind]++;
   }
+
+  // Shadows and gradients the page repeats; their colours bind as a field's would.
+  const matchColour = (value: Rgba, scope: string) => {
+    const v = match({ kind: "colors", scope, value, bind() {} });
+    if (v) bound.add(v.key);
+    return v?.key ?? null;
+  };
+  const effects = effectStyles(ops, context.props ?? {}, matchColour);
+  const gradients = gradientStyles(ops, matchColour);
 
   // (4) The rest stayed raw. Every theme variable stays, and the primitives bound or aliased.
   for (const v of theme) {
@@ -226,10 +278,17 @@ export function bindLayers(
       modes: catalogue.modes,
       themeSource: catalogue.themeSource,
       variables: kept,
-      effectStyles: [],
-      gradientStyles: [],
+      effectStyles: effects,
+      gradientStyles: gradients,
       // Read after binding: refs may have asked for spacing steps past the cap.
-      notes: { twins: [], inferred: [], droppedPrimitives: unused + catalogue.dropped },
+      notes: {
+        twins: nearTwins(kept),
+        inferred:
+          catalogue.themeSource === "inferred"
+            ? theme.filter((v) => v.description.startsWith("Inferred:")).map((v) => v.name)
+            : [],
+        droppedPrimitives: unused + catalogue.dropped,
+      },
     },
     raw,
   };

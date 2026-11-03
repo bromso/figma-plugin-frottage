@@ -41,7 +41,7 @@ const NAMED = new Map([
   ["black", "#000000"],
 ]);
 
-const COLOR_SCOPES = ["ALL_FILLS", "STROKE_COLOR", "EFFECT_COLOR"];
+export const COLOR_SCOPES = ["ALL_FILLS", "STROKE_COLOR", "EFFECT_COLOR"];
 const SPACING_SCOPES = ["GAP", "WIDTH_HEIGHT"];
 
 type Spec = {
@@ -52,10 +52,24 @@ type Spec = {
 };
 
 /** Tailwind's `--tw-*` properties are internals and never become tokens. */
-const usable = (prop: string) => SAFE_PROPERTY.test(prop) && !/^--tw-/i.test(prop);
+export const usable = (prop: string) => SAFE_PROPERTY.test(prop) && !/^--tw-/i.test(prop);
 
 /** `--bs-primary` becomes `primary`. */
-const bareName = (prop: string) => prop.slice(2).replace(FRAMEWORK_PREFIX, "");
+export const bareName = (prop: string) => prop.slice(2).replace(FRAMEWORK_PREFIX, "");
+
+/** A variable's value with its alias followed, or null. */
+export function followAlias(
+  byKey: Map<string, PlanVariable>,
+  value: PlanVarValue | undefined
+): PlanVarValue | null {
+  let at = value;
+  for (let depth = 0; depth < MAX_ALIAS_DEPTH; depth++) {
+    if (at === undefined) return null;
+    if (typeof at !== "object" || !("alias" in at)) return at;
+    at = byKey.get(at.alias)?.values[0];
+  }
+  return null;
+}
 
 function colourOf(value: string, props: Record<string, string>): PlanVarValue | null {
   const text = resolveVars(value, props)?.trim().toLowerCase();

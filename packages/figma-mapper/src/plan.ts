@@ -21,6 +21,8 @@ export type PlanPaint =
       transform: [[number, number, number], [number, number, number]];
       /** Positions run 0 to 1 along the gradient. */
       stops: { position: number; color: PlanRgb & { a: number } }[];
+      /** The paint style to link, when this gradient became one. */
+      gradientStyleKey?: string;
     };
 
 /** Per-side weights; one colour (the most common among drawn sides). */
@@ -158,6 +160,8 @@ export type PlanOp = (
       radiusKeys?: [string?, string?, string?, string?];
       opacity: number;
       effects: PlanEffect[];
+      /** The effect style to link, when these shadows became one; it replaces `effects`. */
+      effectStyleKey?: string;
       clips: boolean;
       layout: PlanLayout;
       /** Clockwise degrees as in CSS, about the box centre; absent when not rotated. */
@@ -299,6 +303,14 @@ export type PlanTextStyle = {
   textCase: PlanRun["textCase"];
   /** How many runs use it in this capture. */
   uses: number;
+  /** The variables its fields are bound to, by `PlanVariable.key`, on the layered path. */
+  bind?: {
+    fontSize?: string;
+    lineHeight?: string;
+    letterSpacing?: string;
+    fontFamily?: string;
+    fontWeight?: string;
+  };
 };
 
 /**
@@ -360,6 +372,7 @@ export type PlanLayers = {
   variables: PlanVariable[];
   effectStyles: PlanEffectStyle[];
   gradientStyles: PlanGradientStyle[];
+  /** Near twins by key; the inferred roles' names; primitives left out. */
   notes: { twins: [string, string][]; inferred: string[]; droppedPrimitives: number };
 };
 
