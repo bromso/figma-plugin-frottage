@@ -1,5 +1,27 @@
 # @repo/chrome-extension
 
+## 0.2.0
+
+### Minor Changes
+
+- [#5](https://github.com/bromso/figma-plugin-frottage/pull/5) [`4a79d42`](https://github.com/bromso/figma-plugin-frottage/commit/4a79d42aaa540814c4fd5453fdde77db9574d73f) Thanks [@bromso](https://github.com/bromso)! - Choose widths in the popup: "Capture at several widths" resizes the window to each ticked width (1512, 1440 and 834 by default, each editable from 320 to 3840) and saves one file per width, with a Cancel button. Widths under 500 can't be reached by resizing, so the popup explains how to capture them in Chrome's DevTools device mode, and a plain capture at that width is labelled with it.
+
+- [#5](https://github.com/bromso/figma-plugin-frottage/pull/5) [`beb3854`](https://github.com/bromso/figma-plugin-frottage/commit/beb385421b0ad882a0a3bfb3cddd62ecd47dffb5) Thanks [@bromso](https://github.com/bromso)! - Label a capture by theme or language: the popup has an optional Theme or Language selector and a label such as Dark or Svenska, saved in the file and added to its name.
+
+- [#5](https://github.com/bromso/figma-plugin-frottage/pull/5) [`84fc4fe`](https://github.com/bromso/figma-plugin-frottage/commit/84fc4fe36e24a5d724a0ea14730a34a2db24daa6) Thanks [@bromso](https://github.com/bromso)! - One Capture button and eight fixed sizes in the popup: TV, Desktop, Laptop, Tablet landscape, Tablet portrait, Phone landscape, Phone portrait and Watch. Each has its own width (120 to 3840, editable) and a tick, and the button saves every ticked size in one `.frottage` file. The plain "Capture this page" path is gone.
+
+### Patch Changes
+
+- [#5](https://github.com/bromso/figma-plugin-frottage/pull/5) [`34f5993`](https://github.com/bromso/figma-plugin-frottage/commit/34f5993681b8fea23ea0ca69dfaaa9a1c781d58c) Thanks [@bromso](https://github.com/bromso)! - A capture at several widths now stops and says why when Developer Tools' device toolbar holds the page at one width, instead of saving the same file once per width.
+
+- [#5](https://github.com/bromso/figma-plugin-frottage/pull/5) [`f3a7a68`](https://github.com/bromso/figma-plugin-frottage/commit/f3a7a68eb829639edecce7217042f9305a04d4d6) Thanks [@bromso](https://github.com/bromso)! - A label's invisible characters and tildes stay out of the file name, and a label cut at the 40 character limit stays valid text. A viewport run stopped by navigation now says the page changed address.
+
+- [#5](https://github.com/bromso/figma-plugin-frottage/pull/5) [`a1ff031`](https://github.com/bromso/figma-plugin-frottage/commit/a1ff031416d29ccebb1202041b1db4bb9695901c) Thanks [@bromso](https://github.com/bromso)! - Read custom properties from every rule that applies to the page, so a dark capture holds its dark values, including those set in media queries, layers, or by a class on the root.
+- Updated dependencies [[`d7e51c9`](https://github.com/bromso/figma-plugin-frottage/commit/d7e51c983e326a062ba0878f53f50c12254a508c), [`1bf5a22`](https://github.com/bromso/figma-plugin-frottage/commit/1bf5a221705c9fdb8fa1d855907beb411a94cfd6)]:
+  - @repo/capture-schema@0.2.0
+  - @repo/ui@2.1.0
+  - @repo/capture-dom@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes
