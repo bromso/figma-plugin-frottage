@@ -236,19 +236,17 @@ export function parseCapture(
   }
 }
 
-function checkTokens(input: unknown): { cssCustomProperties: Record<string, string> } {
-  if (!isRecord(input) || !isRecord(input.cssCustomProperties)) {
-    throw new Reject("invalid", "tokens.cssCustomProperties: expected an object");
-  }
+/** Copy a string record key by key, stopping at the first bad entry or past `max` entries. */
+function checkStringRecord(input: unknown, where: string, max: number): Record<string, string> {
+  if (!isRecord(input)) throw new Reject("invalid", `${where}: expected an object`);
   const out: Record<string, string> = {};
-  for (const key of Object.keys(input.cssCustomProperties)) {
+  let count = 0;
+  for (const key of Object.keys(input)) {
     if (key === "__proto__") continue; // z.record skips it too
-    const value = input.cssCustomProperties[key];
+    if (++count > max) throw new Reject("invalid", `${where}: more than ${max} entries`);
+    const value = input[key];
     if (typeof value !== "string") {
-      throw new Reject(
-        "invalid",
-        `tokens.cssCustomProperties.${key.slice(0, 80)}: expected a string`
-      );
+      throw new Reject("invalid", `${where}.${key.slice(0, 80)}: expected a string`);
     }
     Object.defineProperty(out, key, {
       value,
@@ -257,7 +255,43 @@ function checkTokens(input: unknown): { cssCustomProperties: Record<string, stri
       configurable: true,
     });
   }
-  return { cssCustomProperties: out };
+  return out;
+}
+
+type Tokens = Capture["tokens"];
+
+function checkTokens(input: unknown): Tokens {
+  if (!isRecord(input) || !isRecord(input.cssCustomProperties)) {
+    throw new Reject("invalid", "tokens.cssCustomProperties: expected an object");
+  }
+  const out: Tokens = {
+    cssCustomProperties: checkStringRecord(
+      input.cssCustomProperties,
+      "tokens.cssCustomProperties",
+      Number.POSITIVE_INFINITY
+    ),
+  };
+  if (input.authored !== undefined) {
+    out.authored = checkStringRecord(input.authored, "tokens.authored", Number.POSITIVE_INFINITY);
+  }
+  if (input.themes !== undefined) {
+    const themes = checkList<NonNullable<Tokens["themes"]>[number]>(
+      { safeParse: (v) => parts.theme.omit({ properties: true }).safeParse(v) },
+      input.themes,
+      "tokens.themes",
+      parts.maxThemes
+    );
+    const raw = input.themes as Record<string, unknown>[];
+    out.themes = themes.map((theme, i) => ({
+      ...theme,
+      properties: checkStringRecord(
+        raw[i]?.properties,
+        `tokens.themes.${i}.properties`,
+        parts.maxThemeProperties
+      ),
+    }));
+  }
+  return out;
 }
 
 export function countNodes(root: CaptureNode): number {

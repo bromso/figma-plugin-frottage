@@ -118,3 +118,38 @@ test("an empty label or an unknown kind is refused", () => {
     false
   );
 });
+
+const themeOf = (n: number, properties: Record<string, string> = { "--a": "#000" }) => ({
+  context: `.t${n}`,
+  mode: `T${n}`,
+  properties,
+});
+
+test("authored tokens and themes parse like the schema does", async () => {
+  const { captureSchema } = await import("../index");
+  const input = {
+    ...minimalCapture(),
+    tokens: {
+      cssCustomProperties: { "--a": "1px" },
+      authored: { "--a": "calc(var(--b) * 2)" },
+      themes: [themeOf(1), themeOf(2)],
+    },
+  };
+  const result = parseCapture(input);
+  expect(result.ok).toBe(true);
+  if (result.ok) expect(result.capture).toEqual(captureSchema.parse(input));
+});
+
+test("themes: at most 8, and 2,000 properties each", () => {
+  const withThemes = (themes: unknown) => ({
+    ...minimalCapture(),
+    tokens: { cssCustomProperties: {}, themes },
+  });
+  expect(parseCapture(withThemes(Array.from({ length: 8 }, (_, i) => themeOf(i)))).ok).toBe(true);
+  expect(parseCapture(withThemes(Array.from({ length: 9 }, (_, i) => themeOf(i)))).ok).toBe(false);
+  const props = (n: number) =>
+    Object.fromEntries(Array.from({ length: n }, (_, i) => [`--p${i}`, "1"]));
+  expect(parseCapture(withThemes([themeOf(0, props(2000))])).ok).toBe(true);
+  expect(parseCapture(withThemes([themeOf(0, props(2001))])).ok).toBe(false);
+  expect(parseCapture(withThemes([themeOf(0, { "--a": 1 as never })])).ok).toBe(false);
+});

@@ -234,6 +234,9 @@ export type ElementNode = z.infer<typeof elementBase> & {
 };
 export type CaptureNode = ElementNode | TextNode | ImageNode | SvgNode | PlaceholderNode;
 
+const MAX_THEMES = 8;
+const MAX_THEME_PROPERTIES = 2000;
+
 export const captureSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
   capturedAt: z.string(),
@@ -253,7 +256,24 @@ export const captureSchema = z.object({
       kind: z.enum(["viewport", "theme", "language"]),
     })
     .optional(),
-  tokens: z.object({ cssCustomProperties: z.record(z.string(), z.string()) }),
+  tokens: z.object({
+    cssCustomProperties: z.record(z.string(), z.string()),
+    /** A root custom property's authored value, kept only when it holds `var(` or `calc(`. */
+    authored: z.record(z.string(), z.string()).optional(),
+    /** Stylesheet contexts that restyle the root, such as `.dark`: one entry per mode. */
+    themes: z
+      .array(
+        z.object({
+          context: z.string(),
+          mode: z.string(),
+          properties: z
+            .record(z.string(), z.string())
+            .refine((p) => Object.keys(p).length <= MAX_THEME_PROPERTIES, "too many properties"),
+        })
+      )
+      .max(MAX_THEMES)
+      .optional(),
+  }),
   fonts: z.array(
     z.object({
       family: z.string(),
@@ -299,6 +319,9 @@ export const parts = {
   textRun,
   boxShadow,
   maxHoverShadows: MAX_HOVER_SHADOWS,
+  maxThemes: MAX_THEMES,
+  maxThemeProperties: MAX_THEME_PROPERTIES,
+  theme: captureSchema.shape.tokens.shape.themes.unwrap().unwrap(),
   backgroundImage: backgroundImage.omit({ stops: true }),
   stop,
   string: z.string(),

@@ -45,3 +45,25 @@ describe("isTokenValue", () => {
     expect(isTokenValue(`#${"a".repeat(200)}`, () => true)).toBe(false);
   });
 });
+
+describe("isTokenValue with calc and modern colours", () => {
+  test.each([
+    "calc(var(--radius) - 2px)",
+    "calc(var(--spacing) * 4)",
+    "calc(1rem + (2px * 3))",
+    "oklch(14.5% 0 0)",
+  ])("keeps %s", (value) => {
+    expect(isTokenValue(value, isColor)).toBe(true);
+  });
+
+  test.each([
+    "calc(url(x))",
+    "calc(var(--a) + abc123)",
+    "calc(var(--a, url(x)) * 2)",
+    "calc()",
+    "calc(1px + 2px) 3px",
+    "calc(1px",
+  ])("drops %s", (value) => {
+    expect(isTokenValue(value, isColor)).toBe(false);
+  });
+});

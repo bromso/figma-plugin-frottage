@@ -36,6 +36,7 @@ import {
   readZIndex,
 } from "./styles";
 import { emptySvgReport, MAX_SVG_BYTES, SvgTooLargeError, serialiseSvg } from "./svg";
+import { readThemes, walkStyleRules } from "./themes";
 import { cleanUrl, rememberUrl } from "./urls";
 
 export type CaptureEnv = {
@@ -1409,48 +1410,46 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   // A rule only says that a name exists: which rule wins, and in which theme, is the browser's.
   const cssCustomProperties: Record<string, string> = {};
+  const authored: Record<string, string> = {};
+  const isColor = (v: string) => win.CSS.supports("color", v);
   try {
     const names = new Set<string>();
-    const appliesToRoot = (selector: string) => {
+    const written = new Map<string, string>();
+    walkStyleRules(doc, (rule) => {
+      const found = Array.from(rule.style).filter((name) => name.startsWith("--"));
+      if (found.length === 0) return;
+      let applies = false;
       try {
-        return root.matches(selector);
+        applies = root.matches(rule.selectorText);
       } catch {
-        return false; // a selector `matches` can't take
+        return; // a selector `matches` can't take
       }
-    };
-    const collect = (rules: CSSRuleList) => {
-      for (const rule of Array.from(rules)) {
-        if (rule instanceof win.CSSStyleRule) {
-          const found = Array.from(rule.style).filter((name) => name.startsWith("--"));
-          if (found.length > 0 && appliesToRoot(rule.selectorText)) {
-            for (const name of found) names.add(name);
-          }
-        }
-        const inner = (rule as { cssRules?: CSSRuleList }).cssRules;
-        if (inner) collect(inner);
+      if (!applies) return;
+      for (const name of found) {
+        names.add(name);
+        written.set(name, rule.style.getPropertyValue(name).trim());
       }
-    };
-    for (const sheet of Array.from(doc.styleSheets)) {
-      try {
-        collect(sheet.cssRules);
-      } catch {
-        // cross-origin stylesheet
-      }
-    }
+    });
     const computed = win.getComputedStyle(root);
     for (const name of names) {
       const value = computed.getPropertyValue(name).trim();
-      if (isTokenValue(value, (v) => win.CSS.supports("color", v))) {
-        cssCustomProperties[name] = value;
-      }
+      if (!isTokenValue(value, isColor)) continue;
+      cssCustomProperties[name] = value;
+      // The computed value has lost any alias or calculation, so keep what was written.
+      const text = written.get(name) ?? "";
+      if (/(?:var|calc)\(/i.test(text) && isTokenValue(text, isColor)) authored[name] = text;
     }
   } catch {
     // tokens are best effort
   }
-  const sortedTokens = Object.fromEntries(
-    Object.entries(cssCustomProperties).sort(([a], [b]) => (a < b ? -1 : 1))
-  );
-
+  const byName = (o: Record<string, string>) =>
+    Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
+  let themes: ReturnType<typeof readThemes>;
+  try {
+    themes = readThemes(doc, root, isColor);
+  } catch {
+    // themes are best effort
+  }
   const dark = win.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
   return {
     schemaVersion: 1,
@@ -1464,7 +1463,11 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       devicePixelRatio: win.devicePixelRatio,
       colorScheme: dark ? "dark" : "light",
     },
-    tokens: { cssCustomProperties: sortedTokens },
+    tokens: {
+      cssCustomProperties: byName(cssCustomProperties),
+      ...(Object.keys(authored).length > 0 ? { authored: byName(authored) } : {}),
+      ...(themes ? { themes } : {}),
+    },
     fonts: [...fonts.values()],
     assets: [],
     warnings: [...warnings.values()].map(({ first, count }) =>

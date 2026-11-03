@@ -1752,6 +1752,34 @@ test("a custom property takes the value that applies, from whichever rule sets i
   expect(props).not.toHaveProperty("--elsewhere");
 });
 
+test("authored aliases and calculations are kept, and stylesheet themes read", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/secrets.html");
+  await page.addStyleTag({
+    content: `
+      :root { --radius: 8px; --radius-sm: calc(var(--radius) - 2px); --accent: var(--brand); }
+      .dark { --background: oklch(14.5% 0 0); --url: url(x.png); }
+      @media (prefers-color-scheme: dark) { :root { --surface: #111111; } }
+    `,
+  });
+  await page.addScriptTag({ content: bundle });
+  const { tokens } = await runCapture(page, "2026-01-01T00:00:00.000Z");
+  expect(tokens.cssCustomProperties["--radius-sm"]).toBe("calc(8px - 2px)");
+  expect(tokens.authored).toEqual({
+    "--radius-sm": "calc(var(--radius) - 2px)",
+    "--accent": "var(--brand)",
+    "--brand-alias": "var(--brand)",
+    "--brand-fallback": "var(--missing, #123456)",
+  });
+  expect(tokens.themes).toEqual([
+    {
+      context: ".dark",
+      mode: "Dark",
+      properties: { "--background": "oklch(14.5% 0 0)", "--surface": "#111111" },
+    },
+  ]);
+});
+
 test("a media rule that doesn't apply leaves the value that does", async ({ page }) => {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
   await page.emulateMedia({ colorScheme: "light" });

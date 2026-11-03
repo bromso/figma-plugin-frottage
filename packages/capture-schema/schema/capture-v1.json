@@ -95,6 +95,41 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "authored": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "themes": {
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "context": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "properties": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["context", "mode", "properties"],
+            "additionalProperties": false
+          }
         }
       },
       "required": ["cssCustomProperties"],
