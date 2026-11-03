@@ -302,6 +302,55 @@ export type PlanSpacing = {
   px: number;
 };
 
+/** A variable's value in one mode: a colour in 0..1, a number, a string, or another variable's key. */
+export type PlanVarValue = (PlanRgb & { a: number }) | number | string | { alias: string };
+
+/** One variable of the Primitives or Theme collection. */
+export type PlanVariable = {
+  /** `<collection>:<name>`, so it stays the same across imports. */
+  key: string;
+  /** As `color/gray-200`, `radius/lg`, `spacing/4`, `text/sm` or `background`. */
+  name: string;
+  collection: "primitives" | "theme";
+  type: "COLOR" | "FLOAT" | "STRING";
+  /** Primitives have one; theme variables have one per mode, in `PlanLayers.modes` order. */
+  values: PlanVarValue[];
+  /** `From the site: <--property>` or `Inferred: <evidence>`. */
+  description: string;
+  /** Figma `VariableScope` names. */
+  scopes: string[];
+  /** The custom property behind it, as `--card`. */
+  cssVar?: string;
+};
+
+/** Shadows worth an effect style; each shadow's colour binds to the variable in `colorKeys`. */
+export type PlanEffectStyle = {
+  key: string;
+  name: string;
+  shadows: PlanEffect[];
+  colorKeys: (string | null)[];
+};
+
+/** A gradient worth a paint style; each stop's colour binds to the variable in `stopKeys`. */
+export type PlanGradientStyle = {
+  key: string;
+  name: string;
+  paint: Extract<PlanPaint, { type: "GRADIENT_LINEAR" | "GRADIENT_RADIAL" | "GRADIENT_ANGULAR" }>;
+  stopKeys: (string | null)[];
+};
+
+/** The page's tokens as a Primitives and a Theme collection. */
+export type PlanLayers = {
+  hostname: string;
+  /** `["Light", ...theme modes]`; `["Light"]` when there are none. */
+  modes: string[];
+  themeSource: "site" | "inferred" | "none";
+  variables: PlanVariable[];
+  effectStyles: PlanEffectStyle[];
+  gradientStyles: PlanGradientStyle[];
+  notes: { twins: [string, string][]; inferred: string[]; droppedPrimitives: number };
+};
+
 export type PlanTokens = {
   textStyles: PlanTextStyle[];
   colors: PlanColor[];
@@ -313,6 +362,8 @@ export type PlanTokens = {
   spacingRem?: boolean;
   /** The variable collection, named after the page's hostname. */
   collection: string;
+  /** The Primitives and Theme collections; absent on the single-collection path. */
+  layers?: PlanLayers;
 };
 
 /** One mode's value. `mode` is the version's index; a mode with none reads the first mode's. */

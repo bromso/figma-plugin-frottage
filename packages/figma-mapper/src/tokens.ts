@@ -23,7 +23,7 @@ export const MIN_USES = 3;
 /** Text this much larger than the page's body size is a heading even without a heading tag. */
 const HEADING_RATIO = 1.25;
 const MAX_VAR_DEPTH = 16;
-const MAX_VALUE_LENGTH = 200;
+export const MAX_VALUE_LENGTH = 200;
 const FALLBACK_COLLECTION = "Frottage";
 /** Spacing variables per file, so that a page with a huge scale can't flood a Figma file. */
 const MAX_SPACING = 200;
@@ -37,7 +37,7 @@ const ROOT_FONT_SIZE = 16;
 const PX_STEP = 0.01;
 
 /** Custom properties Figma can hold as a name. CSS allows far more, such as `.` and escapes. */
-const SAFE_PROPERTY = /^--[a-z0-9_-]+$/i;
+export const SAFE_PROPERTY = /^--[a-z0-9_-]+$/i;
 const VAR = /^var\(\s*(--[^\s,)]+)\s*(?:,(.*))?\)$/is;
 
 type Coloured = { color: PlanRgb; opacity: number; colorKey?: string };
@@ -79,7 +79,7 @@ function colorUses(op: PlanOp): Coloured[] {
 // ---------- CSS values
 
 /** Follows `var()` when it is the whole value. One inside a function stays unresolved. */
-function resolveVars(value: string, props: Record<string, string>): string | null {
+export function resolveVars(value: string, props: Record<string, string>): string | null {
   let current = value.trim();
   for (let depth = 0; depth < MAX_VAR_DEPTH; depth++) {
     const m = VAR.exec(current);
@@ -434,7 +434,7 @@ function textStyleTokens(ops: PlanOp[], root: CaptureNode, floor: number): PlanT
 
 // ---------- Plan
 
-function collectionName(url: string): string {
+export function collectionName(url: string): string {
   try {
     return new URL(url).hostname || FALLBACK_COLLECTION;
   } catch {

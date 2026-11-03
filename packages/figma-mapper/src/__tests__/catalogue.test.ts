@@ -1,0 +1,220 @@
+import { describe, expect, test } from "bun:test";
+import type { Capture } from "@repo/capture-schema";
+import { parseCssColor } from "@repo/capture-schema/css-values";
+import { buildCatalogue } from "../catalogue";
+import type { PlanVarValue } from "../plan";
+import { cap, el } from "./fixtures";
+
+/** Stock shadcn on Tailwind v4: the root's computed values, the authored ones and `.dark`. */
+function shadcn(): Capture {
+  const capture = cap(el("root", [0, 0]));
+  capture.source.url = "https://mainline.example.com/";
+  capture.tokens = {
+    cssCustomProperties: {
+      "--radius": ".625rem",
+      "--background": "oklch(1 0 0)",
+      "--foreground": "oklch(0.145 0 0)",
+      "--card": "oklch(1 0 0)",
+      "--popover": "oklch(1 0 0)",
+      "--border": "oklch(0.922 0 0)",
+      "--spacing": ".25rem",
+      "--text-sm": ".875rem",
+      "--text-sm--line-height": "calc(1.25 / .875)",
+      "--font-sans": "ui-sans-serif, system-ui, sans-serif",
+      "--font-weight-medium": "500",
+      "--tracking-tight": "-.025em",
+      "--color-gray-200": "oklch(0.928 0.006 264.531)",
+      "--color-background": "oklch(1 0 0)",
+      "--color-card": "oklch(1 0 0)",
+      "--color-popover": "oklch(1 0 0)",
+      "--radius-lg": ".625rem",
+      "--radius-md": "calc(.625rem - 2px)",
+      "--tw-shadow": "0 0 #0000",
+      "--tw-ring-color": "#fff",
+    },
+    authored: {
+      "--color-background": "var(--background)",
+      "--color-card": "var(--card)",
+      "--color-popover": "var(--popover)",
+      "--radius-lg": "var(--radius)",
+      "--radius-md": "calc(var(--radius) - 2px)",
+    },
+    themes: [
+      {
+        context: ".dark",
+        mode: "Dark",
+        properties: {
+          "--background": "oklch(0.145 0 0)",
+          "--foreground": "oklch(0.985 0 0)",
+          "--card": "oklch(0.205 0 0)",
+          "--popover": "oklch(0.205 0 0)",
+          "--border": "oklch(1 0 0 / 10%)",
+        },
+      },
+    ],
+  };
+  return capture;
+}
+
+const rgba = (css: string) => parseCssColor(css) as NonNullable<ReturnType<typeof parseCssColor>>;
+
+function expectColour(value: PlanVarValue | undefined, css: string) {
+  const want = rgba(css);
+  expect(typeof value).toBe("object");
+  const got = value as { r: number; g: number; b: number; a: number };
+  for (const c of ["r", "g", "b", "a"] as const) expect(got[c]).toBeCloseTo(want[c], 4);
+}
+
+describe("buildCatalogue", () => {
+  test("theme properties hold Light from the root and Dark from the context", () => {
+    const cat = buildCatalogue(shadcn());
+    expect(cat.modes).toEqual(["Light", "Dark"]);
+    expect(cat.themeSource).toBe("site");
+    expect(cat.hostname).toBe("mainline.example.com");
+    const dark = { background: "oklch(0.145 0 0)", card: "oklch(0.205 0 0)" } as const;
+    for (const name of ["background", "card", "popover"] as const) {
+      const v = cat.variables.find((x) => x.name === name);
+      expect(v?.collection).toBe("theme");
+      expect(v?.key).toBe(`theme:${name}`);
+      expect(v?.type).toBe("COLOR");
+      expect(v?.values).toHaveLength(2);
+      expectColour(v?.values[0], "#ffffff");
+      expectColour(v?.values[1], name === "background" ? dark.background : dark.card);
+      expect(v?.scopes).toEqual(["ALL_FILLS", "STROKE_COLOR", "EFFECT_COLOR"]);
+    }
+  });
+
+  test("descriptions name the site's property", () => {
+    const cat = buildCatalogue(shadcn());
+    expect(cat.byCssVar.get("--card")?.description).toBe("From the site: --card");
+    expect(cat.resolveRef("--radius-md")?.description).toBe("From the site: --radius-md");
+  });
+
+  test("a Dark value with alpha keeps it", () => {
+    const border = buildCatalogue(shadcn()).byCssVar.get("--border");
+    expectColour(border?.values[1], "oklch(1 0 0 / 10%)");
+    expect(border?.values[1]).toMatchObject({ a: expect.closeTo(0.1, 4) });
+  });
+
+  test("an alias of a theme property resolves to the theme variable", () => {
+    const cat = buildCatalogue(shadcn());
+    expect(cat.resolveRef("--color-card")?.key).toBe("theme:card");
+    expect(cat.resolveRef("--color-popover")?.key).toBe("theme:popover");
+    expect(cat.resolveRef("--card")?.key).toBe("theme:card");
+    // A collapsed alias is not a variable of its own.
+    expect(cat.variables.some((v) => v.cssVar === "--color-card")).toBe(false);
+  });
+
+  test("radius primitives evaluate calc() against the root", () => {
+    const md = buildCatalogue(shadcn()).resolveRef("--radius-md");
+    expect(md?.name).toBe("radius/md");
+    expect(md?.key).toBe("primitives:radius/md");
+    expect(md?.collection).toBe("primitives");
+    expect(md?.type).toBe("FLOAT");
+    expect(md?.values).toEqual([8]);
+    expect(md?.scopes).toEqual(["CORNER_RADIUS"]);
+  });
+
+  test("spacing steps are made on demand from --spacing", () => {
+    const cat = buildCatalogue(shadcn());
+    const four = cat.resolveRef("--spacing*4");
+    expect(four?.name).toBe("spacing/4");
+    expect(four?.key).toBe("primitives:spacing/4");
+    expect(four?.values).toEqual([16]);
+    expect(four?.scopes).toEqual(["GAP", "WIDTH_HEIGHT"]);
+    expect(cat.resolveRef("--spacing*4")).toBe(four);
+    expect(cat.variables).toContain(four as NonNullable<typeof four>);
+    expect(cat.resolveRef("--spacing*0.5")?.values).toEqual([2]);
+  });
+
+  test("type, font and colour primitives follow the naming rules", () => {
+    const cat = buildCatalogue(shadcn());
+    const sm = cat.resolveRef("--text-sm");
+    expect(sm?.name).toBe("text/sm");
+    expect(sm?.values).toEqual([14]);
+    expect(sm?.scopes).toEqual(["FONT_SIZE"]);
+    // The line height belongs to `text/sm`; it is not a variable of its own.
+    expect(cat.resolveRef("--text-sm--line-height")).toBeNull();
+    expect(cat.variables.some((v) => v.name.includes("line-height"))).toBe(false);
+    const sans = cat.resolveRef("--font-sans");
+    expect(sans?.name).toBe("font/sans");
+    expect(sans?.type).toBe("STRING");
+    expect(sans?.values).toEqual(["ui-sans-serif"]);
+    const medium = cat.resolveRef("--font-weight-medium");
+    expect(medium?.name).toBe("font-weight/medium");
+    expect(medium?.values).toEqual([500]);
+    // Tailwind tracking is em-relative, so it is left out.
+    expect(cat.resolveRef("--tracking-tight")).toBeNull();
+    expect(cat.resolveRef("--color-gray-200")?.name).toBe("color/gray-200");
+  });
+
+  test("Tailwind internals produce nothing", () => {
+    const cat = buildCatalogue(shadcn());
+    expect(cat.resolveRef("--tw-shadow")).toBeNull();
+    expect(cat.resolveRef("--tw-ring-color")).toBeNull();
+    expect(cat.variables.some((v) => v.cssVar?.startsWith("--tw-"))).toBe(false);
+  });
+
+  test("framework prefixes are removed from names", () => {
+    const capture = cap(el("root", [0, 0]));
+    capture.tokens.cssCustomProperties = { "--bs-primary": "#0d6efd", "--bs-border-radius": "6px" };
+    const cat = buildCatalogue(capture);
+    const primary = cat.resolveRef("--bs-primary");
+    expect(primary?.name).toBe("primary");
+    expect(primary?.description).toBe("From the site: --bs-primary");
+    expect(primary?.cssVar).toBe("--bs-primary");
+    expect(cat.resolveRef("--bs-border-radius")?.name).toBe("border/radius");
+  });
+
+  test("a theme value authored as var() of a primitive aliases it", () => {
+    const capture = cap(el("root", [0, 0]));
+    capture.tokens = {
+      cssCustomProperties: { "--color-white": "#fff", "--surface": "#fff", "--ink": "#000" },
+      authored: { "--surface": "var(--color-white)" },
+      themes: [
+        {
+          context: ".dark",
+          mode: "Dark",
+          properties: { "--surface": "var(--ink)", "--ink": "var(--color-white)" },
+        },
+      ],
+    };
+    const cat = buildCatalogue(capture);
+    const surface = cat.byCssVar.get("--surface");
+    expect(surface?.values[0]).toEqual({ alias: "primitives:color/white" });
+    // `--ink` is a theme property, so Dark resolves it in the context: white.
+    expectColour(surface?.values[1], "#ffffff");
+    expect(cat.byCssVar.get("--ink")?.values[1]).toEqual({ alias: "primitives:color/white" });
+  });
+
+  test("equal values never alias by themselves", () => {
+    const capture = cap(el("root", [0, 0]));
+    capture.tokens = {
+      cssCustomProperties: { "--color-white": "#ffffff", "--surface": "#ffffff" },
+      themes: [{ context: ".dark", mode: "Dark", properties: { "--surface": "#000000" } }],
+    };
+    const surface = buildCatalogue(capture).byCssVar.get("--surface");
+    expectColour(surface?.values[0], "#ffffff");
+  });
+
+  test("a capture with no themes has one Light mode and no theme source", () => {
+    const capture = cap(el("root", [0, 0]));
+    capture.tokens.cssCustomProperties = { "--color-primary": "#2563eb" };
+    const cat = buildCatalogue(capture);
+    expect(cat.modes).toEqual(["Light"]);
+    expect(cat.themeSource).toBe("none");
+    const primary = cat.resolveRef("--color-primary");
+    expect(primary?.collection).toBe("primitives");
+    expect(primary?.values).toHaveLength(1);
+  });
+
+  test("values that are neither colour nor length are left out", () => {
+    const capture = cap(el("root", [0, 0]));
+    capture.tokens.cssCustomProperties = {
+      "--ease": "cubic-bezier(.4, 0, .2, 1)",
+      "--leading-tight": "1.25",
+      "--indent": "2em",
+    };
+    expect(buildCatalogue(capture).variables).toEqual([]);
+  });
+});
