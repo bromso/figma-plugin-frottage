@@ -53,6 +53,7 @@ export function tokenModel(
 ) {
   const textStyles = new Map<string, Fake>();
   const paintStyles = new Map<string, Fake>();
+  const effectStyles = new Map<string, Fake>();
   const variables = new Map<string, Fake>();
   const collections = new Map<string, Fake>();
   /** Every write to a token, so a test can show that a user's were left alone. */
@@ -153,11 +154,29 @@ export function tokenModel(
     return style;
   }
 
+  /** Nodes that link a style through one of these fields. */
+  const consumersOf = (id: string, fields: string[]) => async () => {
+    called("getStyleConsumersAsync");
+    await hop();
+    return findAll((n) => fields.some((f) => n[f] === id)).map((node) => ({
+      node,
+      fields: fields.filter((f) => node[f] === id),
+    }));
+  };
+
   function makePaintStyle(name: string, paints: any[]): Fake {
     const id = `S:paint${++seq}`;
     const style: Fake = {
       id,
       type: "PAINT",
+      description: "",
+      removed: false,
+      remove() {
+        called("paintStyle.remove");
+        style.removed = true;
+        paintStyles.delete(id);
+      },
+      getStyleConsumersAsync: consumersOf(id, ["fillStyleId", "strokeStyleId"]),
       get name() {
         return name;
       },
@@ -177,6 +196,49 @@ export function tokenModel(
     pluginData(style, () => name);
     paintStyles.set(id, style);
     return style;
+  }
+
+  function makeEffectStyle(): Fake {
+    const id = `S:effect${++seq}`;
+    let effects: any[] = [];
+    const style: Fake = {
+      id,
+      type: "EFFECT",
+      name: "",
+      description: "",
+      removed: false,
+      get effects() {
+        return effects;
+      },
+      set effects(v: any[]) {
+        writes.push(`${style.name}: effects`);
+        // As on a node.
+        for (const e of v) {
+          const blur = e.type === "LAYER_BLUR" || e.type === "BACKGROUND_BLUR";
+          if (typeof e.visible !== "boolean" || (!blur && typeof e.blendMode !== "string")) {
+            throw new Error("effect needs visible and blendMode");
+          }
+          if (blur && e.blurType !== "NORMAL") throw new Error("a blur needs blurType NORMAL");
+        }
+        effects = v;
+      },
+      remove() {
+        called("effectStyle.remove");
+        style.removed = true;
+        effectStyles.delete(id);
+      },
+      getStyleConsumersAsync: consumersOf(id, ["effectStyleId"]),
+    };
+    pluginData(style, () => style.name);
+    effectStyles.set(id, style);
+    return style;
+  }
+
+  /** As Figma's: an alias to a variable it knows, of the variable's own type. */
+  function checkAlias(value: any, type: string) {
+    const target = variables.get(value.id);
+    if (!target) throw new Error("alias to an unknown variable");
+    if (target.resolvedType !== type) throw new Error("alias to a variable of another type");
   }
 
   function makeCollection(name: string, modes = ["Mode 1"]): Fake {
@@ -267,12 +329,18 @@ export function tokenModel(
         if (!collection.modes.some((m: { modeId: string }) => m.modeId === modeId)) {
           throw new Error("unknown mode");
         }
-        if (type === "FLOAT") {
+        if (value?.type === "VARIABLE_ALIAS") {
+          checkAlias(value, type);
+          valuesByMode[modeId] = { type: value.type, id: value.id };
+        } else if (type === "STRING") {
+          if (typeof value !== "string") throw new Error("needs a string");
+          valuesByMode[modeId] = value;
+        } else if (type === "FLOAT") {
           if (typeof value !== "number") throw new Error("needs a number");
           valuesByMode[modeId] = Math.fround(value);
         } else {
-          if (typeof value === "number") throw new Error("needs a colour");
-          valuesByMode[modeId] = value.type === "VARIABLE_ALIAS" ? value : stored(value);
+          if (typeof value !== "object") throw new Error("needs a colour");
+          valuesByMode[modeId] = stored(value);
         }
       },
       setVariableCodeSyntax(platform: string, value: string) {
@@ -286,6 +354,26 @@ export function tokenModel(
         variables.delete(id);
       },
     };
+    // Written like the rest, so a test can show a user's were left alone.
+    let description = "";
+    let scopes = ["ALL_SCOPES"];
+    Object.defineProperties(variable, {
+      description: {
+        get: () => description,
+        set: (v: string) => {
+          writes.push(`${variable.name}: description`);
+          description = v;
+        },
+      },
+      scopes: {
+        get: () => scopes,
+        set: (v: string[]) => {
+          writes.push(`${variable.name}: scopes`);
+          if (!Array.isArray(v) || v.length === 0) throw new Error("needs scopes");
+          scopes = [...v];
+        },
+      },
+    });
     pluginData(variable, () => variable.name);
     variables.set(id, variable);
     return variable;
@@ -306,6 +394,19 @@ export function tokenModel(
       called("createTextStyle");
       return makeTextStyle();
     },
+    async getLocalEffectStylesAsync() {
+      called("getLocalEffectStylesAsync");
+      await hop();
+      return [...effectStyles.values()];
+    },
+    createEffectStyle() {
+      called("createEffectStyle");
+      return makeEffectStyle();
+    },
+    createPaintStyle() {
+      called("createPaintStyle");
+      return makePaintStyle("", []);
+    },
     variables: {
       async getLocalVariablesAsync(type?: string) {
         called("getLocalVariablesAsync");
@@ -324,8 +425,24 @@ export function tokenModel(
       createVariable(name: string, collection: Fake, type: string) {
         called("createVariable");
         if (typeof collection === "string") throw new Error("dynamic-page needs the collection");
-        if (type !== "COLOR" && type !== "FLOAT") throw new Error("unexpected type");
+        if (!["COLOR", "FLOAT", "STRING"].includes(type)) throw new Error("unexpected type");
         return makeVariable(name, collection, type);
+      },
+      createVariableAlias(variable: Fake) {
+        called("createVariableAlias");
+        if (!variables.has(variable?.id)) throw new Error("unknown variable");
+        return { type: "VARIABLE_ALIAS", id: variable.id };
+      },
+      setBoundVariableForEffect(effect: Fake, field: string, variable: Fake) {
+        called("setBoundVariableForEffect");
+        const shadow = effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW";
+        if (!shadow || field !== "color") throw new Error("not a bindable effect field");
+        if (!variables.has(variable?.id)) throw new Error("unknown variable");
+        if (variable.resolvedType !== "COLOR") throw new Error("needs a colour variable");
+        return {
+          ...effect,
+          boundVariables: { color: { type: "VARIABLE_ALIAS", id: variable.id } },
+        };
       },
       setBoundVariableForPaint(paint: Fake, field: string, variable: Fake) {
         called("setBoundVariableForPaint");
@@ -351,6 +468,7 @@ export function tokenModel(
     writes,
     textStyles,
     paintStyles,
+    effectStyles,
     variables,
     collections,
     count: (name: string) => log.filter((x) => x === name).length,

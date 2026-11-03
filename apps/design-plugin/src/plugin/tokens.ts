@@ -11,6 +11,7 @@ import type {
   PlanTokens,
   PlanVersionTokens,
 } from "@repo/figma-mapper";
+import { createLayerSet, type LayerCounts } from "./layers";
 
 /**
  * Settles a plan's tokens against the file: Frottage's own from an earlier import, then the user's,
@@ -19,13 +20,13 @@ import type {
  * applier.
  */
 
-const NAMESPACE = "frottage";
-const VALUE_KEY = "valueKey";
+export const NAMESPACE = "frottage";
+export const VALUE_KEY = "valueKey";
 /**
  * On a collection Frottage made, holding its hostname, so that it's found under any name. Older
  * ones have none, and go by their variables' value keys.
  */
-const COLLECTION_KEY = "collection";
+export const COLLECTION_KEY = "collection";
 /** Half an 8-bit step: two colours this close are the same colour. */
 const CHANNEL_TOLERANCE = 1 / 512;
 /** Figma stores 32-bit numbers, so a size read back isn't quite the one that was set. */
@@ -47,6 +48,11 @@ export type TokenCounts = {
    * can also mean nothing needed a mode.
    */
   droppedVersions: number[];
+  /**
+   * The Primitives and Theme collections' own counts, for a plan with layers. The totals above
+   * include them.
+   */
+  layers?: LayerCounts;
 };
 
 export const NO_TOKENS: TokenCounts = {
@@ -110,9 +116,10 @@ type VariableSpec<T> = {
   cssVar?: string;
 };
 
-const near = (a: number, b: number, tolerance = NUMBER_TOLERANCE) => Math.abs(a - b) <= tolerance;
+export const near = (a: number, b: number, tolerance = NUMBER_TOLERANCE) =>
+  Math.abs(a - b) <= tolerance;
 
-function sameColor(a: RGB | RGBA, rgba: PlanColor["rgba"]): boolean {
+export function sameColor(a: RGB | RGBA, rgba: PlanColor["rgba"]): boolean {
   return (
     near(a.r, rgba.r, CHANNEL_TOLERANCE) &&
     near(a.g, rgba.g, CHANNEL_TOLERANCE) &&
@@ -324,9 +331,9 @@ function heldBy(style: TextStyle, field: TypeField["field"], look: TextLook): nu
 }
 
 /** Marks a collection as Frottage's. Failing costs little: its variables' keys still say so. */
-function tagCollection(collection: VariableCollection, hostname: string): void {
+export function tagCollection(collection: VariableCollection, tag: string): void {
   try {
-    collection.setSharedPluginData(NAMESPACE, COLLECTION_KEY, hostname);
+    collection.setSharedPluginData(NAMESPACE, COLLECTION_KEY, tag);
   } catch {
     // its variables still carry theirs
   }
@@ -367,6 +374,51 @@ function findOwnCollection(
   );
 }
 
+/**
+ * Whether each variable is held by something outside the import, which is already removed: a
+ * layer, another variable, or a style. Effect styles are read only for `withEffects`, as the
+ * single-collection path makes no variable one could hold.
+ */
+export async function usedVariables(
+  api: PluginAPI,
+  variables: Variable[],
+  withEffects = false
+): Promise<Set<string>> {
+  const ids = new Set(variables.map((v) => v.id));
+  const used = boundOnPage(api.currentPage, ids);
+  const note = (id: string | undefined) => {
+    if (id !== undefined && ids.has(id)) used.add(id);
+  };
+  for (const v of await api.variables.getLocalVariablesAsync()) {
+    if (ids.has(v.id)) continue;
+    for (const value of Object.values(v.valuesByMode)) {
+      if (typeof value !== "object" || !("type" in value)) continue;
+      if (value.type === "VARIABLE_ALIAS") note(value.id);
+    }
+  }
+  for (const style of await api.getLocalPaintStylesAsync()) {
+    for (const paint of style.paints) {
+      if (paint.type === "SOLID") note(paint.boundVariables?.color?.id);
+      else if ("gradientStops" in paint) {
+        for (const stop of paint.gradientStops) note(stop.boundVariables?.color?.id);
+      }
+    }
+  }
+  const effectStyles = withEffects ? await api.getLocalEffectStylesAsync() : [];
+  for (const style of effectStyles) {
+    for (const effect of style.effects) {
+      const shadow = effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW";
+      if (shadow) note(effect.boundVariables?.color?.id);
+    }
+  }
+  if (variables.some((v) => v.resolvedType === "FLOAT")) {
+    for (const style of await api.getLocalTextStylesAsync()) {
+      for (const alias of Object.values(style.boundVariables ?? {})) note(alias.id);
+    }
+  }
+  return used;
+}
+
 export function createTokenSet(api: PluginAPI) {
   const styleIds = new Map<string, string>();
   const colors = new Map<string, ColorBinding>();
@@ -384,6 +436,8 @@ export function createTokenSet(api: PluginAPI) {
   let modesCollection: VariableCollection | null = null;
   /** Set once the import is abandoned: nothing may be created after that. */
   let closed = false;
+  /** The Primitives and Theme collections, for a plan that has them. */
+  let layers: ReturnType<typeof createLayerSet> | null = null;
 
   function failed(n = 1) {
     counts.tokenFailures += n;
@@ -1198,31 +1252,37 @@ export function createTokenSet(api: PluginAPI) {
     variable.remove();
   }
 
-  /** Whether each variable is held by something outside the import, which is already removed. */
-  async function usedVariables(variables: Variable[]): Promise<Set<string>> {
-    const ids = new Set(variables.map((v) => v.id));
-    const used = boundOnPage(api.currentPage, ids);
-    for (const v of await api.variables.getLocalVariablesAsync()) {
-      if (ids.has(v.id)) continue;
-      for (const value of Object.values(v.valuesByMode)) {
-        if (typeof value !== "object" || !("type" in value)) continue;
-        if (value.type === "VARIABLE_ALIAS" && ids.has(value.id)) used.add(value.id);
+  /** Takes back what the single-collection path made. */
+  async function discardOwn(): Promise<void> {
+    closed = true;
+    // First: a variable a style is bound to counts as used, and would stay.
+    unbindAdopted();
+    const styles = createdStyles;
+    const variables = createdVariables;
+    const collection = createdCollection;
+    const modes = createdModes;
+    createdStyles = [];
+    createdVariables = [];
+    createdCollection = null;
+    createdModes = [];
+    for (const style of styles) {
+      try {
+        if ((await style.getStyleConsumersAsync()).length === 0) style.remove();
+      } catch {
+        // keep it
       }
     }
-    for (const style of await api.getLocalPaintStylesAsync()) {
-      for (const paint of style.paints) {
-        const id = paint.type === "SOLID" ? paint.boundVariables?.color?.id : undefined;
-        if (id !== undefined && ids.has(id)) used.add(id);
-      }
+    if (variables.length === 0 && !collection && modes.length === 0) return;
+    try {
+      const used = await usedVariables(api, variables);
+      for (const variable of variables) if (!used.has(variable.id)) variable.remove();
+      if (collection?.variableIds.length === 0) collection.remove();
+      // A variable that stays keeps the values it holds in these modes.
+      if (used.size > 0) return;
+      for (const { collection: owner, modeId } of modes) owner.removeMode(modeId);
+    } catch {
+      // keep them
     }
-    if (variables.some((v) => v.resolvedType === "FLOAT")) {
-      for (const style of await api.getLocalTextStylesAsync()) {
-        for (const alias of Object.values(style.boundVariables ?? {})) {
-          if (ids.has(alias.id)) used.add(alias.id);
-        }
-      }
-    }
-    return used;
   }
 
   return {
@@ -1241,6 +1301,9 @@ export function createTokenSet(api: PluginAPI) {
         const lengths = plan.spacing?.length ?? 0;
         failed(Math.max(plan.colors.length + lengths - colors.size - spacing.size, 1));
       }
+      if (closed || !plan.layers) return;
+      layers ??= createLayerSet(api);
+      await layers.resolve(plan.layers, options, runtime);
     },
 
     /** As `resolve`, for a set of versions: one mode for each, as far as the file allows. */
@@ -1268,45 +1331,40 @@ export function createTokenSet(api: PluginAPI) {
     },
 
     textStyleId: (key: string | undefined) => (key ? styleIds.get(key) : undefined),
-    color: (key: string | undefined) => (key ? colors.get(key) : undefined),
-    spacing: (key: string | null | undefined) => (key ? spacing.get(key) : undefined),
+    /** A layered plan's colour is always a variable, never a paint style. */
+    color(key: string | undefined): ColorBinding | undefined {
+      if (!key) return undefined;
+      const variable = layers?.variable(key);
+      return variable ? { variable } : colors.get(key);
+    },
+    spacing: (key: string | null | undefined) =>
+      key ? (layers?.variable(key) ?? spacing.get(key)) : undefined,
+    radius: (key: string | null | undefined) => (key ? layers?.variable(key) : undefined),
+    effectStyleId: (key: string | undefined) => (key ? layers?.effectStyleId(key) : undefined),
+    gradientStyleId: (key: string | undefined) => (key ? layers?.gradientStyleId(key) : undefined),
     failed,
-    counts: () => ({ ...counts }),
+    counts(): TokenCounts {
+      if (!layers) return { ...counts };
+      const own = layers.counts();
+      return {
+        ...counts,
+        variablesCreated: counts.variablesCreated + own.variablesCreated,
+        variablesReused: counts.variablesReused + own.variablesReused,
+        stylesCreated: counts.stylesCreated + own.stylesCreated,
+        tokenFailures: counts.tokenFailures + layers.failures(),
+        layers: own,
+      };
+    },
 
     /**
      * Takes back what this import made, where nothing else uses it. When usage can't be read, the
      * token stays: a leftover is reused by the next import, and a removal can't be taken back.
      */
     async discard(): Promise<void> {
-      closed = true;
-      // First: a variable a style is bound to counts as used, and would stay.
-      unbindAdopted();
-      const styles = createdStyles;
-      const variables = createdVariables;
-      const collection = createdCollection;
-      const modes = createdModes;
-      createdStyles = [];
-      createdVariables = [];
-      createdCollection = null;
-      createdModes = [];
-      for (const style of styles) {
-        try {
-          if ((await style.getStyleConsumersAsync()).length === 0) style.remove();
-        } catch {
-          // keep it
-        }
-      }
-      if (variables.length === 0 && !collection && modes.length === 0) return;
-      try {
-        const used = await usedVariables(variables);
-        for (const variable of variables) if (!used.has(variable.id)) variable.remove();
-        if (collection?.variableIds.length === 0) collection.remove();
-        // A variable that stays keeps the values it holds in these modes.
-        if (used.size > 0) return;
-        for (const { collection: owner, modeId } of modes) owner.removeMode(modeId);
-      } catch {
-        // keep them
-      }
+      // Closed now, removed last: a style made here may hold its variables.
+      layers?.close();
+      await discardOwn();
+      await layers?.discard();
     },
   };
 }
