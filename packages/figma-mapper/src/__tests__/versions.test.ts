@@ -347,7 +347,7 @@ describe("a custom property's value in a later version", () => {
   });
 
   test("blocks a value match when it can't be parsed, and gives no value", () => {
-    for (const unreadable of ["oklch(0.5 0.1 200)", "rebeccapurple", "16px"]) {
+    for (const unreadable of ["color-mix(in srgb, red, blue)", "rebeccapurple", "16px"]) {
       const r = merged({ "--bg": unreadable }, [color("#111111", "color/1")]);
       expect(r.tokens.colors[0]?.from).toEqual(["#111111", null]);
       expect(r.tokens.colors[0]?.values.map((v) => v.mode)).toEqual([0]);

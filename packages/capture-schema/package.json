@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./json-schema": "./src/json-schema.ts",
-    "./hash": "./src/hash.ts"
+    "./hash": "./src/hash.ts",
+    "./css-values": "./src/css-values.ts"
   },
   "scripts": {
     "lint": "biome check .",
