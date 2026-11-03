@@ -1780,6 +1780,25 @@ test("authored aliases and calculations are kept, and stylesheet themes read", a
   ]);
 });
 
+test("authored text follows the rule that wins, not the last one written", async ({ page }) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.emulateMedia({ media: "screen" });
+  await page.goto("/secrets.html");
+  await page.addStyleTag({
+    content: `
+      :root { --b: #000000; --a: #ffffff; --c: #ffffff; }
+      @media print { :root { --a: var(--b); } }
+      html { --c: var(--b); }
+    `,
+  });
+  await page.addScriptTag({ content: bundle });
+  const { tokens } = await runCapture(page, "2026-01-01T00:00:00.000Z");
+  expect(tokens.cssCustomProperties["--a"]).toBe("#ffffff");
+  expect(tokens.cssCustomProperties["--c"]).toBe("#ffffff");
+  expect(tokens.authored ?? {}).not.toHaveProperty("--a");
+  expect(tokens.authored ?? {}).not.toHaveProperty("--c");
+});
+
 test("a media rule that doesn't apply leaves the value that does", async ({ page }) => {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
   await page.emulateMedia({ colorScheme: "light" });

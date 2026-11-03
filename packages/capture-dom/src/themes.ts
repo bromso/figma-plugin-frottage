@@ -8,23 +8,39 @@ const MAX_THEMES = 8;
 const MAX_THEME_PROPERTIES = 2000;
 const DARK_MEDIA = "@media (prefers-color-scheme: dark)";
 
+/** A condition a rule sits in: `applies` is whether it holds in this page now. */
+export type RuleCondition = { text: string; applies: boolean };
+
 /**
- * Call `visit` for every style rule in every readable stylesheet, with the text of the `@media`
- * and `@supports` conditions it sits in. Cross-origin sheets are skipped silently.
+ * Call `visit` for every style rule in every readable stylesheet, with the conditions (`@media`,
+ * `@supports`, `@container`) it sits in. Cross-origin sheets are skipped silently.
  */
 export function walkStyleRules(
   doc: Document,
-  visit: (rule: CSSStyleRule, conditions: string[]) => void
+  visit: (rule: CSSStyleRule, conditions: RuleCondition[]) => void
 ): void {
-  const RuleType = doc.defaultView?.CSSStyleRule;
-  if (!RuleType) return;
-  const walk = (rules: CSSRuleList, conditions: string[]) => {
+  const win = doc.defaultView;
+  const RuleType = win?.CSSStyleRule;
+  if (!win || !RuleType) return;
+  const holds = (rule: { type?: number }, text: string): boolean => {
+    try {
+      if (rule.type === 4) return win.matchMedia ? win.matchMedia(text).matches : true;
+      if (rule.type === 12) return win.CSS ? win.CSS.supports(text) : true;
+    } catch {
+      // a condition the browser can't test
+    }
+    return true; // unknown kinds are assumed to hold
+  };
+  const walk = (rules: CSSRuleList, conditions: RuleCondition[]) => {
     for (const rule of Array.from(rules)) {
       if (rule instanceof RuleType) visit(rule, conditions);
       const inner = (rule as { cssRules?: CSSRuleList }).cssRules;
       if (!inner) continue;
-      const condition = (rule as { conditionText?: string }).conditionText;
-      walk(inner, condition === undefined ? conditions : [...conditions, condition]);
+      const text = (rule as { conditionText?: string }).conditionText;
+      walk(
+        inner,
+        text === undefined ? conditions : [...conditions, { text, applies: holds(rule, text) }]
+      );
     }
   };
   for (const sheet of Array.from(doc.styleSheets)) {
@@ -40,7 +56,8 @@ export function walkStyleRules(
 const ROOT_SELECTOR =
   /^(:root|html)?(?:\.([\w-]+)|\[\s*([\w-]+)\s*(?:[~|^$*]?=\s*(?:"([^"]*)"|'([^']*)'|([\w-]+)))?\s*(?:[is])?\s*\])?$/;
 
-const THEME_WORD = /dark|light|theme|mode|scheme|contrast|night/i;
+// Whole words only: `high-contrast` and `color-scheme-dark` count, `highlight` and `lightbox` do not.
+const THEME_WORD = /(?:^|[-_])(?:dark|light|theme|mode|scheme|contrast|night)(?:$|[-_])/i;
 
 function sentenceCase(name: string): string {
   const words = name.replace(/[-_]+/g, " ").trim().toLowerCase();
@@ -111,7 +128,10 @@ export function readThemes(
   try {
     walkStyleRules(doc, (rule, conditions) => {
       if (!Array.from(rule.style).some((name) => name.startsWith("--"))) return;
-      const dark = conditions.some(isDarkMedia);
+      // Only a `prefers-color-scheme: dark` block may hold a theme; print, width and feature
+      // conditions say nothing about a theme.
+      if (!conditions.every((c) => isDarkMedia(c.text))) return;
+      const dark = conditions.length > 0;
       for (const selector of splitSelectors(rule.selectorText)) {
         if (dark && /^(?::root|html)$/.test(selector)) {
           add(DARK_MEDIA, "Dark", rule);

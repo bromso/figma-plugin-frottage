@@ -9,7 +9,7 @@ import type {
 import type { Rgba } from "./color";
 import { flatChildren, insideEditable, isEditable, shadowRootOf } from "./flatten";
 import { authoredTracksReader } from "./grid";
-import { type Hover, type HoverDeps, hoverCandidates, readHover } from "./hover";
+import { type Hover, type HoverDeps, hoverCandidates, readHover, resolveVars } from "./hover";
 import {
   collapse,
   type Inherited,
@@ -1415,7 +1415,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   try {
     const names = new Set<string>();
     const written = new Map<string, string>();
-    walkStyleRules(doc, (rule) => {
+    walkStyleRules(doc, (rule, conditions) => {
+      if (!conditions.every((c) => c.applies)) return;
       const found = Array.from(rule.style).filter((name) => name.startsWith("--"));
       if (found.length === 0) return;
       let applies = false;
@@ -1437,7 +1438,12 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       cssCustomProperties[name] = value;
       // The computed value has lost any alias or calculation, so keep what was written.
       const text = written.get(name) ?? "";
-      if (/(?:var|calc)\(/i.test(text) && isTokenValue(text, isColor)) authored[name] = text;
+      if (!/(?:var|calc)\(/i.test(text) || !isTokenValue(text, isColor)) continue;
+      // Rule order alone ignores specificity and !important: keep the text only if it gives the
+      // computed value.
+      const resolved = resolveVars(text, (n) => computed.getPropertyValue(n).trim() || undefined);
+      const same = (x: string) => x.replace(/\s+/g, " ").toLowerCase();
+      if (resolved !== null && same(resolved) === same(value)) authored[name] = text;
     }
   } catch {
     // tokens are best effort

@@ -45,6 +45,26 @@ describe("readThemes", () => {
     expect(themes(".a .dark{--x:1px}")).toBeUndefined();
   });
 
+  test("matches whole words only", () => {
+    expect(
+      themes(".highlight{--x:#fff}.lightbox{--x:#fff}.modern{--x:#fff}.nightly{--x:#fff}")
+    ).toBeUndefined();
+    const found = themes(".high-contrast{--x:#fff}.color-scheme-dark{--x:#000}");
+    expect(found?.map((t) => t.mode)).toEqual(["High contrast", "Color scheme dark"]);
+  });
+
+  test("a :root prefix makes any class a context", () => {
+    expect(themes(":root.anything{--x:#fff}")?.[0]?.mode).toBe("Anything");
+  });
+
+  test("ignores theme rules under print, width and feature conditions", () => {
+    expect(
+      themes(
+        "@media print{.dark{--x:#fff}}@media (min-width: 800px){.dark{--x:#fff}}@supports not (display:grid){.dark{--x:#fff}}"
+      )
+    ).toBeUndefined();
+  });
+
   test("ignores a rule the root already matches", () => {
     expect(themes(".dark{--bg:#000}", "dark")).toBeUndefined();
     expect(themes(":root{--bg:#000}")).toBeUndefined();
