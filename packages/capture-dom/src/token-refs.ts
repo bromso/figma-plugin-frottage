@@ -282,12 +282,22 @@ export function createRefReader(
   win: Win,
   deps: RefDeps
 ): { refsFor(el: Element): TokenRefs | undefined } {
-  const startedAt = deps.now();
+  // Only time spent reading refs counts, not the rest of the capture between calls.
+  let spent = 0;
+  let since = 0;
+  const timed = <T>(read: () => T): T => {
+    since = deps.now();
+    try {
+      return read();
+    } finally {
+      spent += deps.now() - since;
+    }
+  };
   let seen = 0;
   let stopped = false;
   const overBudget = (): boolean => {
     if (stopped) return true;
-    if (seen > MAX_RULES_SEEN || deps.now() - startedAt > TIME_BUDGET_MS) {
+    if (seen > MAX_RULES_SEEN || spent + deps.now() - since > TIME_BUDGET_MS) {
       stopped = true;
       deps.report?.("token-refs-partial");
     }
@@ -297,34 +307,42 @@ export function createRefReader(
   const buckets = new Map<string, Entry[]>();
   let order = 0;
   try {
-    walkStyleRules(doc, (rule, conditions, context: RuleContext) => {
-      seen++;
-      if (overBudget()) return false;
-      if (!conditions.every((c) => c.applies)) return;
-      const decls = new Map<string, Decl>();
-      for (const name of TRACKED) {
-        const value = rule.style.getPropertyValue(name).trim();
-        if (value) {
-          decls.set(name, {
-            value,
-            important: rule.style.getPropertyPriority(name) === "important",
-          });
+    timed(() =>
+      walkStyleRules(doc, (rule, conditions, context: RuleContext) => {
+        seen++;
+        if (overBudget()) return false;
+        if (!conditions.every((c) => c.applies)) return;
+        const decls = new Map<string, Decl>();
+        for (const name of TRACKED) {
+          const value = rule.style.getPropertyValue(name).trim();
+          if (value) {
+            decls.set(name, {
+              value,
+              important: rule.style.getPropertyPriority(name) === "important",
+            });
+          }
         }
-      }
-      order++;
-      if (decls.size === 0) return;
-      const { selectors } = nestSelectors(splitSelectors(rule.selectorText), context.parents);
-      for (const selector of selectors) {
-        // A rule for a pseudo-element or for hover says nothing about the element at rest.
-        if (/::|:(?:before|after|first-line|first-letter)\b/i.test(selector)) continue;
-        if (analyse(selector).kind !== "none") continue;
-        const entry = { selector, spec: specificity(selector), layer: context.layer, order, decls };
-        const key = bucketOf(selector);
-        const list = buckets.get(key);
-        if (list) list.push(entry);
-        else buckets.set(key, [entry]);
-      }
-    });
+        order++;
+        if (decls.size === 0) return;
+        const { selectors } = nestSelectors(splitSelectors(rule.selectorText), context.parents);
+        for (const selector of selectors) {
+          // A rule for a pseudo-element or for hover says nothing about the element at rest.
+          if (/::|:(?:before|after|first-line|first-letter)\b/i.test(selector)) continue;
+          if (analyse(selector).kind !== "none") continue;
+          const entry = {
+            selector,
+            spec: specificity(selector),
+            layer: context.layer,
+            order,
+            decls,
+          };
+          const key = bucketOf(selector);
+          const list = buckets.get(key);
+          if (list) list.push(entry);
+          else buckets.set(key, [entry]);
+        }
+      })
+    );
   } catch {
     // refs are best effort
   }
@@ -478,37 +496,41 @@ export function createRefReader(
     refsFor(el: Element): TokenRefs | undefined {
       if (cache.has(el)) return cache.get(el);
       if (stopped || buckets.size === 0) return undefined;
-      let style: CSSStyleDeclaration | undefined;
-      const refs: Partial<Record<SlotName, string>> = {};
-      for (const [slotName, slot] of Object.entries(SLOTS) as Array<[SlotName, Slot]>) {
-        const decl = declFor(el, slot);
-        if (decl === undefined) return undefined;
-        const ref = decl && refOf(decl.value);
-        if (!ref) continue;
-        style ??= win.getComputedStyle(el);
-        if (agrees(ref, slotName, slot.kind, style)) refs[slotName] = ref;
-      }
-      const out: TokenRefs = {};
-      for (const key of ["background", "color", "border", "radius"] as const) {
-        if (refs[key]) out[key] = refs[key];
-      }
-      const sides = [refs.paddingTop, refs.paddingRight, refs.paddingBottom, refs.paddingLeft];
-      if (sides.some(Boolean)) {
-        out.padding = sides.map((s) => s ?? null) as NonNullable<TokenRefs["padding"]>;
-      }
-      if (refs.rowGap && refs.rowGap === refs.columnGap) out.gap = refs.rowGap;
-      for (const key of [
-        "fontSize",
-        "lineHeight",
-        "letterSpacing",
-        "fontFamily",
-        "fontWeight",
-      ] as const) {
-        if (refs[key]) out[key] = refs[key];
-      }
-      const result = Object.keys(out).length > 0 ? out : undefined;
-      cache.set(el, result);
-      return result;
+      return timed(() => read(el));
     },
   };
+
+  function read(el: Element): TokenRefs | undefined {
+    let style: CSSStyleDeclaration | undefined;
+    const refs: Partial<Record<SlotName, string>> = {};
+    for (const [slotName, slot] of Object.entries(SLOTS) as Array<[SlotName, Slot]>) {
+      const decl = declFor(el, slot);
+      if (decl === undefined) return undefined;
+      const ref = decl && refOf(decl.value);
+      if (!ref) continue;
+      style ??= win.getComputedStyle(el);
+      if (agrees(ref, slotName, slot.kind, style)) refs[slotName] = ref;
+    }
+    const out: TokenRefs = {};
+    for (const key of ["background", "color", "border", "radius"] as const) {
+      if (refs[key]) out[key] = refs[key];
+    }
+    const sides = [refs.paddingTop, refs.paddingRight, refs.paddingBottom, refs.paddingLeft];
+    if (sides.some(Boolean)) {
+      out.padding = sides.map((s) => s ?? null) as NonNullable<TokenRefs["padding"]>;
+    }
+    if (refs.rowGap && refs.rowGap === refs.columnGap) out.gap = refs.rowGap;
+    for (const key of [
+      "fontSize",
+      "lineHeight",
+      "letterSpacing",
+      "fontFamily",
+      "fontWeight",
+    ] as const) {
+      if (refs[key]) out[key] = refs[key];
+    }
+    const result = Object.keys(out).length > 0 ? out : undefined;
+    cache.set(el, result);
+    return result;
+  }
 }

@@ -262,4 +262,48 @@ describe("createRefReader", () => {
     expect(reader.refsFor($(".y"))).toBeUndefined();
     expect(warnings).toEqual(["token-refs-partial"]);
   });
+  test("only time spent reading refs counts, not the capture's work between calls", () => {
+    let t = 0;
+    const { reader, warnings, $ } = setup(
+      ".x { color: var(--a) } .y { color: var(--a) }",
+      `<div class="x"></div><div class="y"></div>`,
+      { "--a": "#ffffff" },
+      { ".x": { color: WHITE }, ".y": { color: WHITE } },
+      () => t
+    );
+    t += 5000;
+    expect(reader.refsFor($(".x"))).toEqual({ color: "--a" });
+    t += 5000;
+    expect(reader.refsFor($(".y"))).toEqual({ color: "--a" });
+    expect(warnings).toEqual([]);
+  });
+
+  test("a budget spent mid-walk keeps earlier refs and gives later nodes none", () => {
+    let t = 0;
+    let step = 0;
+    const { reader, warnings, $ } = setup(
+      ".x { color: var(--a) } .y { color: var(--a) } .z { color: var(--a) }",
+      `<div class="x"></div><div class="y"></div><div class="z"></div>`,
+      { "--a": "#ffffff" },
+      { ".x": { color: WHITE }, ".y": { color: WHITE }, ".z": { color: WHITE } },
+      () => (t += step)
+    );
+    expect(reader.refsFor($(".x"))).toEqual({ color: "--a" });
+    step = 600;
+    expect(reader.refsFor($(".y"))).toBeUndefined();
+    expect(reader.refsFor($(".z"))).toBeUndefined();
+    expect(reader.refsFor($(".x"))).toEqual({ color: "--a" });
+    expect(warnings).toEqual(["token-refs-partial"]);
+  });
+
+  test("a rule under a media query that does not apply gives no ref", () => {
+    const { reader, $ } = setup(
+      "@media print { .x { color: var(--a) } } @media screen { .y { color: var(--a) } }",
+      `<div class="x"></div><div class="y"></div>`,
+      { "--a": "#ffffff" },
+      { ".x": { color: WHITE }, ".y": { color: WHITE } }
+    );
+    expect(reader.refsFor($(".x"))).toBeUndefined();
+    expect(reader.refsFor($(".y"))).toEqual({ color: "--a" });
+  });
 });
