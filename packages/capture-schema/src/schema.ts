@@ -80,6 +80,28 @@ const hover = hoverBase.extend({
   boxShadows: z.array(boxShadow).max(MAX_HOVER_SHADOWS).optional(),
 });
 
+/** `--name`, or `--name*n` for `calc(var(--name) * n)`. */
+const ref = z
+  .string()
+  .max(80)
+  .regex(/^--[A-Za-z0-9_-]+(?:\*-?(?:\d+\.?\d*|\.\d+))?$/);
+
+/** Which custom property each property's winning rule used, where the page's value agrees. */
+const tokenRefs = z.object({
+  background: ref.optional(),
+  color: ref.optional(),
+  border: ref.optional(),
+  radius: ref.optional(),
+  // [top, right, bottom, left]
+  padding: z.tuple([ref.nullable(), ref.nullable(), ref.nullable(), ref.nullable()]).optional(),
+  gap: ref.optional(),
+  fontSize: ref.optional(),
+  lineHeight: ref.optional(),
+  letterSpacing: ref.optional(),
+  fontFamily: ref.optional(),
+  fontWeight: ref.optional(),
+});
+
 const marginAuto = z.tuple([z.boolean(), z.boolean(), z.boolean(), z.boolean()]);
 
 const layout = z.object({
@@ -162,6 +184,7 @@ const textNode = z.object({
   text: z.string(),
   lines: z.array(box),
   runs: z.array(textRun),
+  tokenRefs: tokenRefs.optional(),
 });
 
 // How a leaf sits among its siblings; left out when static or zero. Elements have `layout`.
@@ -208,6 +231,7 @@ const elementBase = z.object({
   style,
   layout,
   hover: hover.optional(),
+  tokenRefs: tokenRefs.optional(),
 });
 
 const elementNode = z.object({
@@ -229,6 +253,7 @@ export type TextNode = z.infer<typeof textNode>;
 export type ImageNode = z.infer<typeof imageNode>;
 export type SvgNode = z.infer<typeof svgNode>;
 export type PlaceholderNode = z.infer<typeof placeholderNode>;
+export type TokenRefs = z.infer<typeof tokenRefs>;
 export type ElementNode = z.infer<typeof elementBase> & {
   children: CaptureNode[];
 };

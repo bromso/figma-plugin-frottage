@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { countNodes, parseCapture } from "../index";
-import { imageStyle, minimalCapture, treeOfThree } from "./fixtures";
+import { elementNode, imageStyle, minimalCapture, textNode, treeOfThree } from "./fixtures";
 
 test("accepts a minimal valid capture", () => {
   expect(parseCapture(minimalCapture()).ok).toBe(true);
@@ -89,6 +89,38 @@ test("bounds the hover shadow list before reading it", () => {
     reason: "invalid",
   });
   expect(parseCapture(withHover({ boxShadows: many.slice(0, 8) })).ok).toBe(true);
+});
+
+test("keeps token refs on an element and a text node", () => {
+  const refs = {
+    background: "--color-card",
+    radius: "--radius-lg",
+    padding: ["--spacing*4", null, "--spacing*-0.5", "--spacing*4"] as [
+      string,
+      null,
+      string,
+      string,
+    ],
+  };
+  const text = { ...textNode("t"), tokenRefs: { color: "--foreground" } };
+  const c = { ...minimalCapture(), root: { ...elementNode("r", [text]), tokenRefs: refs } };
+  const result = parseCapture(c);
+  expect(result.ok).toBe(true);
+  if (result.ok) expect(result.capture.root).toEqual(c.root);
+});
+test("rejects a token ref that is long, malformed or a padding of the wrong length", () => {
+  const withRefs = (tokenRefs: unknown) => ({
+    ...minimalCapture(),
+    root: { ...minimalCapture().root, tokenRefs },
+  });
+  expect(parseCapture(withRefs({ color: `--${"a".repeat(79)}` })).ok).toBe(false);
+  expect(parseCapture(withRefs({ color: "red" })).ok).toBe(false);
+  expect(parseCapture(withRefs({ color: "--a*b" })).ok).toBe(false);
+  expect(parseCapture(withRefs({ padding: ["--a", "--a", "--a"] })).ok).toBe(false);
+  expect(parseCapture(withRefs({ padding: Array(100_000).fill("--a") }))).toMatchObject({
+    ok: false,
+    reason: "invalid",
+  });
 });
 
 test("a capture without version still parses", () => {

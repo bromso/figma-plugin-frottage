@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>shadcn tokens</title>
+<style>
+  @layer theme, base, components, utilities;
+
+  :root {
+    --radius: 0.625rem;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --border: oklch(0.922 0 0);
+  }
+  .dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.269 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --border: oklch(1 0 0 / 10%);
+  }
+
+  /* What Tailwind v4 emits for `@theme inline`: aliases of the shadcn variables. */
+  @layer theme {
+    :root {
+      --spacing: 0.25rem;
+      --text-sm: 0.875rem;
+      --text-sm--line-height: calc(1.25 / 0.875);
+      --font-sans: ui-sans-serif, system-ui, sans-serif;
+      --color-background: var(--background);
+      --color-foreground: var(--foreground);
+      --color-card: var(--card);
+      --color-card-foreground: var(--card-foreground);
+      --color-popover: var(--popover);
+      --color-popover-foreground: var(--popover-foreground);
+      --color-primary: var(--primary);
+      --color-primary-foreground: var(--primary-foreground);
+      --color-muted-foreground: var(--muted-foreground);
+      --color-border: var(--border);
+      --radius-lg: var(--radius);
+      --radius-md: calc(var(--radius) - 2px);
+    }
+  }
+
+  @layer base {
+    *, ::before, ::after { box-sizing: border-box; margin: 0; padding: 0; border: 0 solid; }
+    * { border-color: var(--color-border); }
+    body { background-color: var(--background); color: var(--foreground); font-family: var(--font-sans); }
+  }
+
+  @layer utilities {
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
+    .bg-background { background-color: var(--color-background); }
+    .bg-card { background-color: var(--color-card); }
+    .bg-popover { background-color: var(--color-popover); }
+    .bg-primary { background-color: var(--color-primary); }
+    .text-foreground { color: var(--color-foreground); }
+    .text-card-foreground { color: var(--color-card-foreground); }
+    .text-popover-foreground { color: var(--color-popover-foreground); }
+    .text-primary-foreground { color: var(--color-primary-foreground); }
+    .text-muted-foreground { color: var(--color-muted-foreground); }
+    .border { border-style: solid; border-width: 1px; }
+    .border-border { border-color: var(--color-border); }
+    .rounded-lg { border-radius: var(--radius-lg); }
+    .rounded-md { border-radius: var(--radius-md); }
+    .p-4 { padding: calc(var(--spacing) * 4); }
+    .p-6 { padding: calc(var(--spacing) * 6); }
+    .px-3 { padding-inline: calc(var(--spacing) * 3); }
+    .py-2 { padding-block: calc(var(--spacing) * 2); }
+    .gap-2 { gap: calc(var(--spacing) * 2); }
+    .gap-6 { gap: calc(var(--spacing) * 6); }
+    .text-sm { font-size: var(--text-sm); line-height: var(--tw-leading, var(--text-sm--line-height)); }
+    .w-64 { width: calc(var(--spacing) * 64); }
+  }
+</style>
+</head>
+<body class="bg-background">
+<main class="flex flex-col gap-6 p-6">
+  <p>Page intro</p>
+  <div class="card bg-card text-card-foreground flex flex-col gap-6 rounded-lg border border-border p-6 w-64">
+    <h3>Card title</h3>
+    <p class="text-sm text-muted-foreground">Card description</p>
+    <div class="flex gap-2">
+      <button class="bg-primary text-primary-foreground rounded-md px-3 py-2 text-sm">Save</button>
+      <button class="bg-background text-foreground rounded-md border border-border px-3 py-2 text-sm">Cancel</button>
+      <button class="bg-background text-foreground rounded-md px-3 py-2 text-sm">More</button>
+    </div>
+  </div>
+  <div class="popover bg-popover text-popover-foreground rounded-md border border-border p-4 w-64">
+    <p>Popover body</p>
+  </div>
+</main>
+</body>
+</html>

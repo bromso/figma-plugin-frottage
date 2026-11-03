@@ -89,7 +89,7 @@ export function hoverCandidates(
 // ---------- Selectors
 
 /** Split a selector list on its top-level commas. */
-function splitSelectors(text: string): string[] {
+export function splitSelectors(text: string): string[] {
   const out: string[] = [];
   let depth = 0;
   let quote = "";

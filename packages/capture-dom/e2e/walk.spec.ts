@@ -2414,3 +2414,36 @@ test("a gradient past the stop limit is cut there and still imports", async ({ p
   expect(parseCapture(c).ok).toBe(true);
   expect(c.warnings.some((w) => w.code === "gradient-stops")).toBe(true);
 });
+
+test("each element records the token its CSS used, even where tokens share a value", async ({
+  page,
+}) => {
+  const c = await capture(page, "shadcn.html");
+  expect(parseCapture(c).ok).toBe(true);
+  const byClass = (name: string) => findKind(c, "element", (n) => n.semantic.className === name);
+  const card = byClass("card");
+  const popover = byClass("popover");
+  // Both are white in light mode: only the ref tells them apart.
+  expect(card.style.backgroundColor).toEqual(popover.style.backgroundColor);
+  expect(card.tokenRefs?.background).toBe("--color-card");
+  expect(popover.tokenRefs?.background).toBe("--color-popover");
+  expect(card.tokenRefs?.radius).toBe("--radius-lg");
+  expect(card.tokenRefs?.padding).toEqual([
+    "--spacing*6",
+    "--spacing*6",
+    "--spacing*6",
+    "--spacing*6",
+  ]);
+  expect(card.tokenRefs?.gap).toBe("--spacing*6");
+  expect(card.tokenRefs?.border).toBe("--color-border");
+  const intro = findKind(c, "element", (n) =>
+    n.children.some((k) => k.kind === "text" && k.text === "Page intro")
+  );
+  expect(intro.tokenRefs?.color).toBe("--foreground");
+  expect(findText(c, "Page intro").tokenRefs?.color).toBe("--foreground");
+  expect(findText(c, "Card description").tokenRefs).toMatchObject({
+    color: "--color-muted-foreground",
+    fontSize: "--text-sm",
+  });
+  expect(c.warnings.some((w) => w.code === "token-refs-partial")).toBe(false);
+});

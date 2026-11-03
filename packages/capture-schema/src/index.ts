@@ -19,4 +19,5 @@ export {
   SCHEMA_VERSION,
   type SvgNode,
   type TextNode,
+  type TokenRefs,
 } from "./schema";

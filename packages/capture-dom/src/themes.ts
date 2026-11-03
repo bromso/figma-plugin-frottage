@@ -1,4 +1,5 @@
 import type { Capture } from "@repo/capture-schema";
+import { nestSelectors, splitSelectors as splitNested } from "./hover";
 import { isTokenValue } from "./styles";
 
 type Themes = NonNullable<Capture["tokens"]["themes"]>;
@@ -12,16 +13,32 @@ const DARK_MEDIA = "@media (prefers-color-scheme: dark)";
 export type RuleCondition = { text: string; applies: boolean };
 
 /**
+ * Where a rule sits. `layer` orders cascade layers: one index per level, by first appearance
+ * among its siblings, ending in `Infinity` for rules outside any deeper layer, so a plain
+ * comparison puts later layers after earlier ones and unlayered rules last. `parents` are the
+ * selectors of the rules a nested rule sits in, as `nestSelectors` takes them.
+ */
+export type RuleContext = { layer: number[]; parents: string[] | undefined };
+
+/**
  * Call `visit` for every style rule in every readable stylesheet, with the conditions (`@media`,
- * `@supports`, `@container`) it sits in. Cross-origin sheets are skipped silently.
+ * `@supports`, `@container`) it sits in. Cross-origin sheets are skipped silently. The walk
+ * stops when `visit` returns false.
  */
 export function walkStyleRules(
   doc: Document,
-  visit: (rule: CSSStyleRule, conditions: RuleCondition[]) => void
+  visit: (
+    rule: CSSStyleRule,
+    conditions: RuleCondition[],
+    context: RuleContext
+  ) => boolean | undefined
 ): void {
   const win = doc.defaultView;
   const RuleType = win?.CSSStyleRule;
   if (!win || !RuleType) return;
+  const LayerBlock = (win as { CSSLayerBlockRule?: typeof CSSLayerBlockRule }).CSSLayerBlockRule;
+  const LayerStatement = (win as { CSSLayerStatementRule?: typeof CSSLayerStatementRule })
+    .CSSLayerStatementRule;
   const holds = (rule: { type?: number }, text: string): boolean => {
     try {
       if (rule.type === 4) return win.matchMedia ? win.matchMedia(text).matches : true;
@@ -31,21 +48,73 @@ export function walkStyleRules(
     }
     return true; // unknown kinds are assumed to hold
   };
-  const walk = (rules: CSSRuleList, conditions: RuleCondition[]) => {
+  // Layer indices by parent path and name, in order of first appearance.
+  const layers = new Map<string, Map<string, number>>();
+  let anonymous = 0;
+  const layerIndex = (parent: number[], name: string): number => {
+    const key = parent.join(".");
+    let names = layers.get(key);
+    if (!names) {
+      names = new Map();
+      layers.set(key, names);
+    }
+    let index = names.get(name);
+    if (index === undefined) {
+      index = names.size;
+      names.set(name, index);
+    }
+    return index;
+  };
+  const layerPath = (parent: number[], dotted: string): number[] => {
+    const path = [...parent];
+    const parts = dotted ? dotted.split(".").map((p) => p.trim()) : [`\0${anonymous++}`];
+    for (const part of parts) path.push(layerIndex(path, part));
+    return path;
+  };
+  let stopped = false;
+  const walk = (
+    rules: CSSRuleList,
+    conditions: RuleCondition[],
+    layer: number[],
+    parents: string[] | undefined
+  ) => {
     for (const rule of Array.from(rules)) {
-      if (rule instanceof RuleType) visit(rule, conditions);
+      if (stopped) return;
+      if (LayerStatement && rule instanceof LayerStatement) {
+        for (const name of Array.from(rule.nameList)) layerPath(layer, name);
+        continue;
+      }
+      let inLayer = layer;
+      let inParents = parents;
+      if (rule instanceof RuleType) {
+        if (
+          visit(rule, conditions, { layer: [...layer, Number.POSITIVE_INFINITY], parents }) ===
+          false
+        ) {
+          stopped = true;
+          return;
+        }
+        if (rule.cssRules?.length) {
+          inParents = nestSelectors(splitNested(rule.selectorText), parents).selectors;
+        }
+      } else if (LayerBlock && rule instanceof LayerBlock) {
+        inLayer = layerPath(layer, rule.name);
+      }
       const inner = (rule as { cssRules?: CSSRuleList }).cssRules;
       if (!inner) continue;
       const text = (rule as { conditionText?: string }).conditionText;
       walk(
         inner,
-        text === undefined ? conditions : [...conditions, { text, applies: holds(rule, text) }]
+        text === undefined ? conditions : [...conditions, { text, applies: holds(rule, text) }],
+        inLayer,
+        inParents
       );
     }
   };
   for (const sheet of Array.from(doc.styleSheets)) {
+    if (stopped) break;
     try {
-      walk(sheet.cssRules, []);
+      walk(sheet.cssRules, [], [], undefined);
     } catch {
       // cross-origin stylesheet
     }

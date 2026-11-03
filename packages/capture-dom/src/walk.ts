@@ -5,6 +5,7 @@ import type {
   ImageNode,
   PlaceholderNode,
   TextNode,
+  TokenRefs,
 } from "@repo/capture-schema";
 import type { Rgba } from "./color";
 import { flatChildren, insideEditable, isEditable, shadowRootOf } from "./flatten";
@@ -37,6 +38,7 @@ import {
 } from "./styles";
 import { emptySvgReport, MAX_SVG_BYTES, SvgTooLargeError, serialiseSvg } from "./svg";
 import { readThemes, walkStyleRules } from "./themes";
+import { createRefReader } from "./token-refs";
 import { cleanUrl, rememberUrl } from "./urls";
 
 export type CaptureEnv = {
@@ -100,6 +102,16 @@ const KEPT_WRAPPER_TAGS = new Set([
   "svg",
   "img",
 ]);
+
+/** The refs a text node takes from the elements that hold it. */
+const TEXT_REFS = [
+  "color",
+  "fontSize",
+  "lineHeight",
+  "letterSpacing",
+  "fontFamily",
+  "fontWeight",
+] as const;
 
 const IGNORED_TAGS = new Set([
   "script",
@@ -744,6 +756,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const runs: Run[] = [];
     const rects: Rect[] = [];
     const range = doc.createRange();
+    // The elements whose style the text takes; null for generated text.
+    const sources = new Set<Element | null>();
 
     const append = (piece: string, run: Run) => {
       const start = text.length;
@@ -776,6 +790,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         rects.push(pageBox(r));
       }
       if (!any) return;
+      sources.add(node.assignedSlot ?? parentEl);
       append(piece, inherit(runOf(s, 0, 0, up.clipped), up));
     };
 
@@ -792,6 +807,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       if (!piece) return;
       const lineH = px(s.lineHeight) || px(s.fontSize) * 1.2;
       rects.push({ x: 0, y: 0, w: measure(piece, s), h: round2(lineH), gen: p.which });
+      sources.add(null);
       append(piece, inherit(runOf(s, 0, 0, up.clipped || clipsToText(s)), up));
     };
 
@@ -850,6 +866,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       }
       lines.push({ x: r.x, y: r.y, w: r.w, h: r.h });
     }
+    const refs = textRefs(sources);
     const left = Math.min(...lines.map((l) => l.x));
     const top = Math.min(...lines.map((l) => l.y));
     const right = Math.max(...lines.map((l) => l.x + l.w));
@@ -868,7 +885,20 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       text: trimmed,
       lines,
       runs: finalRuns,
+      ...(refs ? { tokenRefs: refs } : {}),
     };
+  }
+
+  /** The colour and type refs that every element holding a text agrees on. */
+  function textRefs(sources: Set<Element | null>): TokenRefs | undefined {
+    if (sources.size === 0 || sources.has(null)) return undefined;
+    const all = [...sources].map((el) => refsOf(el as Element));
+    const out: TokenRefs = {};
+    for (const key of TEXT_REFS) {
+      const first = all[0]?.[key];
+      if (first && all.every((r) => r?.[key] === first)) out[key] = first;
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
   }
 
   // ---------- Form controls
@@ -1344,6 +1374,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const hover = stored?.color ? { ...stored, restingColor: colorOf(s.color) } : stored;
     const lifted = liftedHover(el);
     if (hover || lifted) element.hover = { ...hover, ...lifted };
+    const refs = refsOf(el);
+    if (refs) element.tokenRefs = refs;
 
     const leafControl = tag === "input" || tag === "textarea" || tag === "select";
     if (isEditable(el)) {
@@ -1371,6 +1403,14 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     return [element];
   }
 
+  const refsOf = (el: Element): TokenRefs | undefined => {
+    try {
+      return refReader?.refsFor(el);
+    } catch {
+      return undefined;
+    }
+  };
+
   // Hover differences are read once, up front, from the stylesheets; the walk only looks them up.
   let hovers = new Map<Element, Hover>();
   let repeatedTags = new Set<string>();
@@ -1397,6 +1437,22 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     });
   } catch {
     warn("hover-unreadable", undefined, "Hover styles could not be read");
+  }
+
+  // Which token each property used, read from the stylesheets like hovers.
+  let refReader: ReturnType<typeof createRefReader> | undefined;
+  try {
+    refReader = createRefReader(doc, win, {
+      now: () => win.performance.now(),
+      report: (code) =>
+        warn(
+          code,
+          undefined,
+          "Reading which token each element used stopped at its time or rule limit, so later elements have none"
+        ),
+    });
+  } catch {
+    // refs are best effort
   }
 
   const [tree] = visit(root, 1, true, {

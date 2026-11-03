@@ -424,9 +424,15 @@
             "transform": "none",
             "align": "left"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--brand"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "color": "--brand"
+        }
        },
        {
         "id": "n5",
@@ -648,9 +654,15 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--muted"
+            }
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          },
          {
           "id": "n8",
@@ -773,9 +785,15 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--muted"
+            }
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          },
          {
           "id": "n10",
@@ -898,9 +916,15 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--muted"
+            }
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          },
          {
           "id": "n12",
@@ -1023,11 +1047,20 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--muted"
+            }
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "color": "--ink"
+        }
        },
        {
         "id": "n14",
@@ -1150,11 +1183,22 @@
             "transform": "none",
             "align": "center"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--surface"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--brand",
+         "color": "--surface"
+        }
        }
-      ]
+      ],
+      "tokenRefs": {
+       "background": "--surface",
+       "color": "--ink"
+      }
      },
      {
       "id": "n16",
@@ -1374,9 +1418,15 @@
             "transform": "none",
             "align": "center"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--ink"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "color": "--ink"
+        }
        },
        {
         "id": "n19",
@@ -1504,9 +1554,15 @@
             "transform": "none",
             "align": "center"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "color": "--muted"
+        }
        },
        {
         "id": "n21",
@@ -1728,9 +1784,16 @@
               "transform": "none",
               "align": "center"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--surface"
+            }
            }
-          ]
+          ],
+          "tokenRefs": {
+           "background": "--brand",
+           "color": "--surface"
+          }
          },
          {
           "id": "n24",
@@ -1853,11 +1916,21 @@
               "transform": "none",
               "align": "center"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--brand"
+            }
            }
-          ]
+          ],
+          "tokenRefs": {
+           "background": "--surface",
+           "color": "--brand"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "color": "--ink"
+        }
        },
        {
         "id": "n26",
@@ -1982,9 +2055,16 @@
            }
           ]
          }
-        ]
+        ],
+        "tokenRefs": {
+         "color": "--ink"
+        }
        }
-      ]
+      ],
+      "tokenRefs": {
+       "background": "--brand-soft",
+       "color": "--ink"
+      }
      },
      {
       "id": "n28",
@@ -2305,9 +2385,16 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--brand"
+            }
            }
           ],
+          "tokenRefs": {
+           "background": "--brand-soft",
+           "color": "--brand"
+          },
           "box": {
            "x": 93,
            "y": 667.19,
@@ -2436,9 +2523,15 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--ink"
+            }
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--ink"
+          }
          },
          {
           "id": "n34",
@@ -2560,11 +2653,21 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--muted"
+            }
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--surface",
+         "color": "--ink"
+        }
        },
        {
         "id": "n36",
@@ -2786,9 +2889,16 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--brand"
+            }
            }
           ],
+          "tokenRefs": {
+           "background": "--brand-soft",
+           "color": "--brand"
+          },
           "box": {
            "x": 485,
            "y": 667.19,
@@ -2917,9 +3027,15 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--ink"
+            }
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--ink"
+          }
          },
          {
           "id": "n41",
@@ -3041,11 +3157,21 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--muted"
+            }
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--surface",
+         "color": "--ink"
+        }
        },
        {
         "id": "n43",
@@ -3267,9 +3393,16 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--brand"
+            }
            }
           ],
+          "tokenRefs": {
+           "background": "--brand-soft",
+           "color": "--brand"
+          },
           "box": {
            "x": 877,
            "y": 667.19,
@@ -3398,9 +3531,15 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--ink"
+            }
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--ink"
+          }
          },
          {
           "id": "n48",
@@ -3522,13 +3661,26 @@
               "transform": "none",
               "align": "left"
              }
-            ]
+            ],
+            "tokenRefs": {
+             "color": "--muted"
+            }
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--surface",
+         "color": "--ink"
+        }
        }
-      ]
+      ],
+      "tokenRefs": {
+       "color": "--ink"
+      }
      },
      {
       "id": "n50",
@@ -3752,9 +3904,16 @@
             "transform": "none",
             "align": "center"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--muted"
+        }
        },
        {
         "id": "n53",
@@ -3876,9 +4035,16 @@
             "transform": "none",
             "align": "center"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--muted"
+        }
        },
        {
         "id": "n55",
@@ -4000,9 +4166,16 @@
             "transform": "none",
             "align": "center"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--muted"
+        }
        },
        {
         "id": "n57",
@@ -4124,9 +4297,16 @@
             "transform": "none",
             "align": "center"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--muted"
+        }
        },
        {
         "id": "n59",
@@ -4248,9 +4428,16 @@
             "transform": "none",
             "align": "center"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--muted"
+        }
        },
        {
         "id": "n61",
@@ -4372,9 +4559,16 @@
             "transform": "none",
             "align": "center"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--muted"
+        }
        },
        {
         "id": "n63",
@@ -4496,9 +4690,16 @@
             "transform": "none",
             "align": "center"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--muted"
+        }
        },
        {
         "id": "n65",
@@ -4620,11 +4821,22 @@
             "transform": "none",
             "align": "center"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--muted"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--muted"
+        }
        }
-      ]
+      ],
+      "tokenRefs": {
+       "background": "--surface",
+       "color": "--ink"
+      }
      },
      {
       "id": "n67",
@@ -4846,9 +5058,17 @@
             "transform": "none",
             "align": "left"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--surface"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--brand",
+         "color": "--surface",
+         "border": "--brand"
+        }
        },
        {
         "id": "n70",
@@ -4971,9 +5191,17 @@
             "transform": "none",
             "align": "left"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--brand"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--brand-soft",
+         "color": "--brand",
+         "border": "--brand-soft"
+        }
        },
        {
         "id": "n72",
@@ -5095,9 +5323,16 @@
             "transform": "none",
             "align": "left"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--ink"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--ink"
+        }
        },
        {
         "id": "n74",
@@ -5220,9 +5455,17 @@
             "transform": "none",
             "align": "left"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--brand"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--brand-soft",
+         "color": "--brand",
+         "border": "--brand-soft"
+        }
        },
        {
         "id": "n76",
@@ -5344,9 +5587,16 @@
             "transform": "none",
             "align": "left"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--ink"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--ink"
+        }
        },
        {
         "id": "n78",
@@ -5468,9 +5718,16 @@
             "transform": "none",
             "align": "left"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--ink"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--ink"
+        }
        },
        {
         "id": "n80",
@@ -5592,9 +5849,16 @@
             "transform": "none",
             "align": "left"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--ink"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--ink"
+        }
        },
        {
         "id": "n82",
@@ -5716,9 +5980,16 @@
             "transform": "none",
             "align": "left"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--ink"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--ink"
+        }
        },
        {
         "id": "n84",
@@ -5840,9 +6111,16 @@
             "transform": "none",
             "align": "left"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--ink"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--ink"
+        }
        },
        {
         "id": "n86",
@@ -5964,11 +6242,22 @@
             "transform": "none",
             "align": "left"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--ink"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "background": "--canvas",
+         "color": "--ink"
+        }
        }
-      ]
+      ],
+      "tokenRefs": {
+       "background": "--surface",
+       "color": "--ink"
+      }
      },
      {
       "id": "n88",
@@ -6209,7 +6498,10 @@
            }
           ]
          }
-        ]
+        ],
+        "tokenRefs": {
+         "color": "--line"
+        }
        },
        {
         "id": "n91",
@@ -6331,13 +6623,27 @@
             "transform": "none",
             "align": "left"
            }
-          ]
+          ],
+          "tokenRefs": {
+           "color": "--line"
+          }
          }
-        ]
+        ],
+        "tokenRefs": {
+         "color": "--line"
+        }
        }
-      ]
+      ],
+      "tokenRefs": {
+       "background": "--ink",
+       "color": "--line"
+      }
      }
-    ]
+    ],
+    "tokenRefs": {
+     "background": "--canvas",
+     "color": "--ink"
+    }
    }
   ]
  }
