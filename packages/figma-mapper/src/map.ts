@@ -409,7 +409,7 @@ export function mapCapture(
   const hashes = new Set<string>();
   const substituted = new Map<string, string>();
   const matches = new Map<string, ReturnType<typeof matchFont>>();
-  const report = {
+  const report: ImportReport = {
     nodes: 0,
     texts: 0,
     images: 0,
@@ -486,6 +486,9 @@ export function mapCapture(
     return fallbackFont;
   };
 
+  // Token refs ride on ops and runs until the tokens are bound, then go.
+  const layered = options.tokens && options.layers === true;
+
   const nameFor = (node: CaptureNode, peers: CaptureNode[]): string =>
     layerName(node, peers, { htmlNames: options.htmlNames });
 
@@ -499,6 +502,9 @@ export function mapCapture(
   ): PlanOp | null => {
     const len = node.text.length;
     if (len === 0) return null;
+    const refs = layered ? node.tokenRefs : undefined;
+    // Clipped text shows its background's colour, not the one its colour ref names.
+    const clippedRefs = refs && clip ? { ...refs, color: undefined } : refs;
     const valid: PlanRun[] = [];
     for (const r of node.runs) {
       const start = Math.max(0, Math.min(r.start, len));
@@ -518,6 +524,7 @@ export function mapCapture(
         decoration: mapDecoration(r.decoration),
         textCase: mapCase(r.transform),
         ...(href ? { href } : {}),
+        ...(refs ? { refs: clip && r.color.a === 0 ? clippedRefs : refs } : {}),
       });
     }
     // Cover the whole string with no gaps or overlaps: the applier sets every
@@ -535,6 +542,7 @@ export function mapCapture(
       opacity: seed ? (clip && seed.color.a === 0 ? 1 : seed.color.a) : 1,
       decoration: seed ? mapDecoration(seed.decoration) : "NONE",
       textCase: seed ? mapCase(seed.transform) : "ORIGINAL",
+      ...(refs ? { refs: seed && clip && seed.color.a === 0 ? clippedRefs : refs } : {}),
     });
     const runs: PlanRun[] = [];
     let cursor = 0;
@@ -674,6 +682,7 @@ export function mapCapture(
           layout,
           ...turn,
           childCount: 0, // known once the walk has seen what the children turn into
+          ...(layered && node.tokenRefs ? { refs: node.tokenRefs } : {}),
         };
         const children = visualOrder(node, node.children, layout);
         const repeated = repeatedItems(children);
@@ -781,7 +790,11 @@ export function mapCapture(
 
   report.nodes = ops.length;
   report.substitutedFonts = [...substituted].map(([from, to]) => ({ from, to }));
-  const tokens = extractTokens(capture, ops, options);
+  const tokens = extractTokens(capture, ops, options, report);
+  for (const op of ops) {
+    delete op.refs;
+    if (op.op === "text") for (const r of op.runs) delete r.refs;
+  }
   if (tokens.spacingOver) {
     report.warnings.push(
       `Only 200 spacing values became variables; ${tokens.spacingOver} more stayed ${tokens.spacingOver === 1 ? "a plain value" : "plain values"}.`

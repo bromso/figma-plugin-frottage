@@ -647,8 +647,14 @@ export async function runImports(
 
     const missing = new Map<string, string>();
     let firstPlan: Plan | undefined;
+    // A page imported on its own gets the Primitives and Theme collections; a set keeps one.
+    const alone = (o: ImportOptions) => ({ ...o, layers: true });
     for (const v of ordered) {
-      const plan = mapCapture(v.capture, available, options);
+      const plan = mapCapture(
+        v.capture,
+        available,
+        ordered.length === 1 ? alone(options) : options
+      );
       if (ordered.length === 1) firstPlan = plan;
       mergeMissing(missing, missingFonts(plan.report, available));
     }
@@ -710,7 +716,7 @@ export async function runImports(
       index += set.versions.length;
       if (signal?.aborted) return cancelled();
       // A set counts uses across its versions, in `mergeVersions`, so each plan proposes them all.
-      const planOptions = set.versions.length > 1 ? { ...options, tokenFloor: 1 } : options;
+      const planOptions = set.versions.length > 1 ? { ...options, tokenFloor: 1 } : alone(options);
       const plans = set.versions.map(
         (v) => firstPlan ?? mapCapture(v.capture, available, planOptions, overrides)
       );

@@ -1,3 +1,5 @@
+import type { TokenRefs } from "@repo/capture-schema";
+
 /** Plain-data layer plan. JSON-safe: it crosses postMessage to the sandbox. */
 
 export type FontRef = { family: string; style: string };
@@ -59,6 +61,8 @@ export type PlanRun = {
   colorKey?: string;
   /** An http(s) link for this range; absent when the text has none or hyperlinks are off. */
   href?: string;
+  /** The text node's token refs, while tokens are extracted; never in a finished plan. */
+  refs?: TokenRefs;
 };
 
 export type PlanTrack = { type: "FIXED" | "FLEX" | "HUG"; value: number };
@@ -150,6 +154,8 @@ export type PlanOp = (
       strokes: PlanStroke | null;
       /** [topLeft, topRight, bottomRight, bottomLeft]. */
       radius: [number, number, number, number];
+      /** The variable each corner is bound to, by `PlanVariable.key`; none stays a plain value. */
+      radiusKeys?: [string?, string?, string?, string?];
       opacity: number;
       effects: PlanEffect[];
       clips: boolean;
@@ -246,6 +252,8 @@ export type PlanOp = (
 ) & {
   /** How the node sits in an auto layout parent; absent under a parent with mode NONE. */
   childLayout?: PlanChildLayout;
+  /** The node's token refs, while tokens are extracted; never in a finished plan. */
+  refs?: TokenRefs;
 };
 
 export type ImportReport = {
@@ -260,6 +268,10 @@ export type ImportReport = {
   components: number;
   /** On the canvas, where one inside a definition counts for the main and for each copy of it. */
   instances: number;
+  /** Colours, corners and spacing lengths that bound to no variable, on the layered path. */
+  raw?: { colors: number; radii: number; spacing: number };
+  /** The Theme collection's modes, on the layered path. */
+  themeModes?: string[];
 };
 
 /** A value worth a variable. `key` is the value, so it stays the same across imports. */

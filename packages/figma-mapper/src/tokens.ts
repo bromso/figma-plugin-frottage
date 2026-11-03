@@ -1,7 +1,10 @@
 import type { Capture, CaptureNode } from "@repo/capture-schema";
 import { parseCssColor } from "@repo/capture-schema/css-values";
+import { bindLayers } from "./bind";
+import { buildCatalogue } from "./catalogue";
 import type { PlanOptions } from "./options";
 import type {
+  ImportReport,
   PlanColor,
   PlanLayout,
   PlanOp,
@@ -442,11 +445,34 @@ export function collectionName(url: string): string {
   }
 }
 
-/** Proposes the page's tokens, and marks the runs and paints in `ops` that use them. */
-export function extractTokens(capture: Capture, ops: PlanOp[], options: PlanOptions): PlanTokens {
+/**
+ * Proposes the page's tokens, and marks the runs and paints in `ops` that use them. With `layers`,
+ * colours and lengths bind to the Primitives and Theme collections instead, and `report` gets the
+ * raw counts and the theme's modes.
+ */
+export function extractTokens(
+  capture: Capture,
+  ops: PlanOp[],
+  options: PlanOptions,
+  report?: Pick<ImportReport, "raw" | "themeModes">
+): PlanTokens {
   const collection = collectionName(capture.source.url);
   if (!options.tokens) return { textStyles: [], colors: [], spacing: [], collection };
   const floor = options.tokenFloor ?? MIN_USES;
+  if (options.layers) {
+    const { layers, raw } = bindLayers(buildCatalogue(capture), ops);
+    if (report) {
+      report.raw = raw;
+      report.themeModes = layers.modes;
+    }
+    return {
+      textStyles: textStyleTokens(ops, capture.root, floor),
+      colors: [],
+      spacing: [],
+      collection,
+      layers,
+    };
+  }
   const spacing = spacingTokens(ops, capture.tokens.cssCustomProperties);
   return {
     textStyles: textStyleTokens(ops, capture.root, floor),
