@@ -3,6 +3,7 @@
 "@repo/capture-dom": minor
 "@repo/chrome-extension": minor
 "@repo/figma-mapper": minor
+"@repo/ui": minor
 ---
 
-The extension notices when a page has a dark theme and records which themes to import (Light, Dark or both) in each capture, and Color Mode is built from exactly those themes.
+Choose Light, Dark or both in the popup and in the plugin; Color Mode gets exactly those modes, with Dark read from the page's stylesheet.
