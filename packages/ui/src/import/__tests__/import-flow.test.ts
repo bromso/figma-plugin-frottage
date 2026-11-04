@@ -1731,6 +1731,64 @@ describe("a device set", () => {
     );
   });
 
+  test("a file in two languages lists them, the current first, and each device once", async () => {
+    // The review's plans go once it is over, so the line for other ticks is asked during it.
+    let english = "";
+    const { review } = await runDevices([languageSetFile(3)], fakePort(), (r, d) => {
+      english = r.contents?.summarize?.([true, true], [], undefined, ["en"]).collections ?? "";
+      return d;
+    });
+    expect(review?.contents?.languages).toEqual([
+      { code: "en", name: "English", on: true, current: true },
+      { code: "sv", name: "Svenska", on: true, current: false },
+    ]);
+    expect(review?.contents?.devices.map((d) => d.name)).toEqual(["Laptop", "Phone"]);
+    expect(review?.contents?.collections).toContain("Language 2");
+    expect(english).toMatch(/^Device 2 modes/);
+    expect(english).not.toContain("Language");
+  });
+
+  test("a file in one language lists none", async () => {
+    const { review } = await runDevices([devicesFile()]);
+    expect(review?.contents?.languages).toEqual([]);
+  });
+
+  test("a lone device captured in two languages is reviewed", async () => {
+    const { review } = await runDevices([languageSetFile(3, false)]);
+    expect(review?.contents?.devices.map((d) => d.name)).toEqual(["Laptop"]);
+    expect(review?.contents?.languages.map((l) => l.name)).toEqual(["English", "Svenska"]);
+  });
+
+  test("a language left unticked makes no Language collection, and its captures stay out", async () => {
+    const { port, last } = await runDevices([languageSetFile(3)], fakePort(), (_, d) => ({
+      ...d,
+      contents: d.contents && { ...d.contents, languages: ["en"] },
+    }));
+    expect(port.deviceSetMeta?.layers.collections.some((c) => c.kind === "language")).toBe(false);
+    expect(port.begins.map((b) => b.device?.mode)).toEqual(["Laptop", "Phone"]);
+    if (last.step !== "done") throw new Error(last.step);
+    expect(last.sets[0]?.notes.some((n) => n.startsWith("Language"))).toBe(false);
+  });
+
+  test("the current language can't be left out, and a device unticked goes in every language", async () => {
+    const { port } = await runDevices([languageSetFile(3)], fakePort(), (_, d) => ({
+      ...d,
+      contents: d.contents && { ...d.contents, devices: [true, false], languages: [] },
+    }));
+    expect(port.begins.map((b) => b.device?.mode)).toEqual(["Laptop"]);
+    expect(
+      port.deviceSetMeta?.layers.collections.find((c) => c.kind === "language")?.modes
+    ).toBeUndefined();
+    const both = await runDevices([languageSetFile(3)], fakePort(), (_, d) => ({
+      ...d,
+      contents: d.contents && { ...d.contents, devices: [true, false] },
+    }));
+    expect(
+      both.port.deviceSetMeta?.layers.collections.find((c) => c.kind === "language")?.modes
+    ).toEqual(["English", "Svenska"]);
+    expect(both.port.begins.map((b) => b.device?.mode)).toEqual(["Laptop"]);
+  });
+
   test("the report names the Language modes Figma added, and the ones it didn't make", async () => {
     const port = fakePort();
     port.setResult = {

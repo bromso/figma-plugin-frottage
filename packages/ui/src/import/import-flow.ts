@@ -110,21 +110,35 @@ export type ReviewThemes = { light?: { on: boolean }; dark?: { on: boolean } };
 /** The themes the user ticked, as the mapper takes them. */
 export type ThemeChoice = { light: boolean; dark: boolean };
 
+/** A language a file was captured in; the current one, the page's own, can't be unticked. */
+export type ReviewLanguage = { code: string; name: string; on: boolean; current: boolean };
+
 /**
- * What a file holds, shown before import: a device set's captures, ticked, the themes the file
- * holds, and what they make. A single capture has no devices or extras, only themes.
+ * What a file holds, shown before import: a device set's captures, ticked, the themes and the
+ * languages the file holds, and what they make. A single capture has no devices or extras, only
+ * themes. A file in several languages lists each device once, for every language.
  */
 export type ReviewContents = {
   devices: { name: string; width: number; on: boolean }[];
   extras: { breakpoint: string; width: number; on: boolean }[];
   themes: ReviewThemes;
+  /** The current language first; none unless the file holds two or more. */
+  languages: ReviewLanguage[];
   /** The collections the ticked captures make, in one line. */
   collections: string;
   placement: Placement;
   /** One warning per collection that needs more modes than the remembered limit. */
   overLimit: string[];
-  /** The line and warnings again, for other ticks: one boolean per device and per extra. */
-  summarize?: (devices: boolean[], extras: boolean[], themes?: ThemeChoice) => ContentsSummary;
+  /**
+   * The line and warnings again, for other ticks: one boolean per device and per extra, and the
+   * codes of the languages ticked.
+   */
+  summarize?: (
+    devices: boolean[],
+    extras: boolean[],
+    themes?: ThemeChoice,
+    languages?: string[]
+  ) => ContentsSummary;
 };
 
 export type ImportState =
@@ -254,6 +268,8 @@ export type ReviewDecision = {
     extras: boolean[];
     placement: Placement;
     themes?: ThemeChoice;
+    /** The codes of the languages to import; the current one is imported regardless. */
+    languages?: string[];
   };
 };
 
@@ -816,7 +832,7 @@ export function isDeviceSet(set: VersionSet): boolean {
 }
 
 /** Collections that switch by mode, listed with their counts; the rest are listed by name. */
-const SWITCHING = new Set(["device", "breakpoint", "colorMode"]);
+const SWITCHING = new Set(["device", "breakpoint", "language", "colorMode"]);
 
 /** The collections a device set's layers make, in one line, and the modes over `limit`. */
 export function summarizeLayers(layers: PlanLayers, limit: number | null): ContentsSummary {
@@ -840,6 +856,45 @@ export function summarizeLayers(layers: PlanLayers, limit: number | null): Conte
   }
   const parts = [...switching, ...(named.length > 0 ? [named.join(", ")] : [])];
   return { collections: parts.join(" · "), overLimit };
+}
+
+/**
+ * A capture of another language than the page's own, in a set that holds the page's own: the
+ * review lists it under its device and its language, not as a device of its own.
+ */
+function otherLanguage(v: LoadedFile, versions: LoadedFile[]): boolean {
+  return (
+    v.capture.language?.current === false &&
+    versions.some((w) => w.capture.language?.current === true)
+  );
+}
+
+/** The device a capture was taken on: its device id, or the width it was laid out at. */
+const deviceOf = (v: LoadedFile) => v.capture.version?.device?.id ?? `${captureWidth(v.capture)}`;
+
+/**
+ * The versions of a device set the review keeps: the ticks are for the page's own captures, and
+ * another language's capture goes with its device, when its language is ticked too.
+ */
+function keptVersions(
+  versions: LoadedFile[],
+  devices: boolean[],
+  extras: boolean[],
+  languages?: string[]
+): LoadedFile[] {
+  const own = ticked(
+    versions.filter((v) => !otherLanguage(v, versions)),
+    isExtra,
+    devices,
+    extras
+  );
+  const onDevices = new Set(own.filter((v) => !isExtra(v)).map(deviceOf));
+  return versions.filter((v) =>
+    otherLanguage(v, versions)
+      ? onDevices.has(deviceOf(v)) &&
+        (!languages || languages.includes(v.capture.language?.code ?? ""))
+      : own.includes(v)
+  );
 }
 
 /** The versions of a device set the ticks keep: one tick per device, then one per extra. */
@@ -981,7 +1036,10 @@ export async function runImports(
     const keptOf = (whole: VersionSet): VersionSet => {
       const choice = whole === firstDevices ? deviceChoice : undefined;
       return choice
-        ? { ...whole, versions: ticked(whole.versions, isExtra, choice.devices, choice.extras) }
+        ? {
+            ...whole,
+            versions: keptVersions(whole.versions, choice.devices, choice.extras, choice.languages),
+          }
         : whole;
     };
     /** The frames a set makes: a device set's ticked devices, or every version. */
@@ -1172,7 +1230,9 @@ async function reviewContents(
   // The width a capture was laid out at, as the merge places it; a device without device data
   // goes by the width its label chose, as its Device mode does.
   const width = (v: LoadedFile) => captureWidth(v.capture);
-  const devices = deviceSet ? set.versions.filter((v) => !isExtra(v)) : [];
+  const devices = deviceSet
+    ? set.versions.filter((v) => !isExtra(v) && !otherLanguage(v, set.versions))
+    : [];
   const extras = deviceSet ? set.versions.filter(isExtra) : [];
   const { shown, initial } = themeTicks((set.versions[0] as LoadedFile).capture);
   const none = { collections: "", overLimit: [] };
@@ -1191,13 +1251,14 @@ async function reviewContents(
   const summarize = (
     deviceTicks: boolean[],
     extraTicks: boolean[],
-    themes: ThemeChoice = initial
+    themes: ThemeChoice = initial,
+    languages?: string[]
   ): ContentsSummary => {
     if (!deviceSet) {
       const layers = planUnder(set.versions[0] as LoadedFile, themes).tokens.layers;
       return layers ? summarizeLayers(layers, limit) : none;
     }
-    const kept = ticked(set.versions, isExtra, deviceTicks, extraTicks);
+    const kept = keptVersions(set.versions, deviceTicks, extraTicks, languages);
     if (!kept.some((v) => !isExtra(v))) return none;
     const entries = kept.map(
       (v): DeviceEntry => ({ capture: v.capture, plan: planUnder(v, themes) })
@@ -1216,6 +1277,7 @@ async function reviewContents(
       on: true,
     })),
     themes: shown,
+    languages: deviceSet ? languagesOf(set.versions) : [],
     placement: "new-page",
     ...summarize(
       devices.map(() => true),
@@ -1223,6 +1285,19 @@ async function reviewContents(
     ),
     summarize,
   };
+}
+
+/** The languages a set's captures were taken in, the current first, all ticked; none for one. */
+function languagesOf(versions: LoadedFile[]): ReviewLanguage[] {
+  const found = new Map<string, ReviewLanguage>();
+  for (const { capture } of versions) {
+    const language = capture.language;
+    if (!language || found.has(language.code)) continue;
+    const { code, name, current } = language;
+    found.set(code, { code, name, on: true, current });
+  }
+  const all = [...found.values()].sort((a, b) => Number(b.current) - Number(a.current));
+  return all.length > 1 && all[0]?.current ? all : [];
 }
 
 /** The breakpoints of the extras the user unticked in the review. */
@@ -1243,6 +1318,9 @@ function sanitizeContents(raw: ReviewDecision["contents"]): ReviewDecision["cont
     placement: raw.placement === "current-page" ? "current-page" : "new-page",
     ...(raw.themes
       ? { themes: { light: raw.themes.light !== false, dark: raw.themes.dark !== false } }
+      : {}),
+    ...(Array.isArray(raw.languages)
+      ? { languages: raw.languages.filter((c): c is string => typeof c === "string") }
       : {}),
   };
 }

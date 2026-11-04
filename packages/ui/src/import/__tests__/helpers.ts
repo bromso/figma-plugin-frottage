@@ -482,9 +482,9 @@ export function deviceSetFile(opts: {
 /**
  * A File of one page captured in English and Svenska on a Laptop and a Phone. The Svenska Phone
  * page holds `phoneTexts` texts against English's 3, so with fewer it pairs too poorly to share
- * English's frame.
+ * English's frame. Without `phone`, the Laptop alone.
  */
-export function languageSetFile(phoneTexts = 0): File {
+export function languageSetFile(phoneTexts = 0, phone = true): File {
   const make = (device: string, width: number, code: string, texts: number) => {
     const capture = captureWithTexts(texts);
     // One page's address for all, so the import groups them as one page.
@@ -504,9 +504,9 @@ export function languageSetFile(phoneTexts = 0): File {
   const bytes = packFrottageSet(
     [
       make("Laptop", 1512, "en", 3),
-      make("Phone", 390, "en", 3),
+      ...(phone ? [make("Phone", 390, "en", 3)] : []),
       make("Laptop", 1512, "sv", 3),
-      make("Phone", 390, "sv", phoneTexts),
+      ...(phone ? [make("Phone", 390, "sv", phoneTexts)] : []),
     ],
     new Map()
   );
