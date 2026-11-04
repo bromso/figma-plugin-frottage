@@ -92,7 +92,13 @@ export function pageVersion(
   const name = device?.name ?? breakpoint ?? String(innerWidth);
   const version = normaliseVersion("viewport", typed ? `${name} ${typed}` : name);
   if (!version) return undefined;
-  return { ...version, ...(device ? { device } : breakpoint ? { breakpoint } : {}) };
+  // What media queries matched: the client width a scrollbar narrows can't say which range.
+  const width = Math.round(innerWidth);
+  return {
+    ...version,
+    ...(device ? { device } : breakpoint ? { breakpoint } : {}),
+    ...(width >= 1 && width <= 100_000 ? { width } : {}),
+  };
 }
 
 /**

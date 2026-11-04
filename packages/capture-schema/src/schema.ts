@@ -292,6 +292,8 @@ export const captureSchema = z.object({
         .optional(),
       /** The breakpoint mode name an extra capture is for. */
       breakpoint: z.string().min(1).max(40).optional(),
+      /** The width (px) the page was laid out at, `innerWidth`: what media queries matched. */
+      width: z.number().int().min(1).max(100000).optional(),
     })
     .optional(),
   /** Width boundaries (px) the page's stylesheets switch at, and how many sheets could not be read. */

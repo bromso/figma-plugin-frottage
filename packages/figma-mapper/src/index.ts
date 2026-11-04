@@ -1,6 +1,7 @@
 export { buildCatalogue, type Catalogue } from "./catalogue";
 export { extractComponents } from "./components";
 export {
+  captureWidth,
   type DeviceEntry,
   type DeviceFrame,
   type DeviceMerge,

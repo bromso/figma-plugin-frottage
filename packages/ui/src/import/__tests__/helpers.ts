@@ -425,12 +425,14 @@ export function deviceSetFile(opts: {
   devices: { name: string; width: number; height?: number }[];
   extras?: { breakpoint: string; width: number }[];
   breakpoints?: number[];
+  /** A scrollbar's width, taken off each client width; the laid-out width is recorded. */
+  scrollbar?: number;
 }): File {
   const make = (width: number) => {
     const capture = captureWithTexts(1);
     capture.source.url = opts.url ?? "https://example.com/";
     capture.source.title = "Example";
-    capture.source.viewport = { w: width, h: 800 };
+    capture.source.viewport = { w: width - (opts.scrollbar ?? 0), h: 800 };
     if (opts.breakpoints) capture.breakpoints = { widths: opts.breakpoints, unreadable: 0 };
     return capture;
   };
@@ -441,12 +443,18 @@ export function deviceSetFile(opts: {
       label: name,
       kind: "viewport",
       device: { id, name, height: height ?? 800 },
+      ...(opts.scrollbar !== undefined ? { width } : {}),
     };
     return capture;
   });
   const extras = (opts.extras ?? []).map(({ breakpoint, width }) => {
     const capture = make(width);
-    capture.version = { label: String(width), kind: "viewport", breakpoint };
+    capture.version = {
+      label: String(width),
+      kind: "viewport",
+      breakpoint,
+      ...(opts.scrollbar !== undefined ? { width } : {}),
+    };
     return capture;
   });
   // Extras first, so the import has to put them after the devices.

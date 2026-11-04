@@ -54,18 +54,23 @@ const LENGTH_SCOPES = ["WIDTH_HEIGHT"];
 const isAlias = (v: PlanVarValue): v is { alias: string } =>
   typeof v === "object" && v !== null && "alias" in v;
 
-const widthOf = (entry: DeviceEntry) => entry.capture.source.viewport.w;
-
 /**
- * The width a device goes by. A capture with no device data is named by its label, the width the
- * user chose: `viewport.w` is the client width, which a scrollbar can make narrower. A label that
- * isn't a number falls back to the client width.
+ * The width a capture was laid out at, which media queries matched: the recorded `version.width`.
+ * An older capture has none. One with no device data then goes by its label, the width the user
+ * chose, and anything else by `viewport.w`, the client width, which a scrollbar can make narrower.
  */
-export function deviceWidth(capture: Capture): number {
+export function captureWidth(capture: Capture): number {
+  const recorded = capture.version?.width;
+  if (recorded !== undefined && recorded > 0) return recorded;
   const label = capture.version?.device ? undefined : capture.version?.label;
   const n = label !== undefined && /^\d+(\.\d+)?$/.test(label.trim()) ? Number(label) : Number.NaN;
   return n > 0 ? n : Math.round(capture.source.viewport.w);
 }
+
+/** The width a device goes by, for its `device/width` and a name when it has none. */
+export const deviceWidth = captureWidth;
+
+const widthOf = (entry: DeviceEntry) => captureWidth(entry.capture);
 
 /** A device capture, or an older one with neither a device nor a breakpoint. */
 const isDevice = (entry: DeviceEntry) =>
@@ -138,18 +143,29 @@ function rangesOf(entries: DeviceEntry[], order: number[]) {
             max: boundaries[i + 1] ?? null,
           })),
         ];
+  const inRange = (w: number, range: { min: number; max: number | null }) =>
+    w >= range.min && (range.max === null || w < range.max);
+  /** An extra goes in the range it was captured for, when the page has it; else by its width. */
+  const placed = (i: number) => {
+    const e = entries[i] as DeviceEntry;
+    const named = isDevice(e) ? undefined : e.capture.version?.breakpoint;
+    const at = named === undefined ? -1 : all.findIndex((r) => r.name === named);
+    return at >= 0 ? at : all.findIndex((r) => inRange(widthOf(e), r));
+  };
   const ranges: Range[] = [];
   const missing: string[] = [];
-  for (const range of all) {
+  for (const [at, range] of all.entries()) {
     // `order` is widest first, so the first entry inside is the widest.
-    const owner = order.find((i) => {
-      const w = widthOf(entries[i] as DeviceEntry);
-      return w >= range.min && (range.max === null || w < range.max);
-    });
+    const owner = order.find((i) => placed(i) === at);
     if (owner === undefined) missing.push(range.name);
     else ranges.push({ ...range, owner });
   }
-  return { ranges, missing, breakpoints: boundaries.length > 0, fromDevices };
+  /** The Breakpoint mode an entry is in. */
+  const rangeOf = (i: number) => {
+    const name = all[placed(i)]?.name;
+    return ranges.find((r) => r.name === name);
+  };
+  return { ranges, missing, breakpoints: boundaries.length > 0, fromDevices, rangeOf };
 }
 
 type Rekey = (key: string) => string | undefined;
@@ -213,7 +229,7 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
     entries[i]?.plan.tokens.layers ?? emptyLayers(entries[i]?.plan.tokens.collection ?? "");
   const top = layersAt(primary);
 
-  const { ranges, missing, breakpoints, fromDevices } = rangesOf(entries, order);
+  const { ranges, missing, breakpoints, fromDevices, rangeOf } = rangesOf(entries, order);
   if (fromDevices) {
     report.push("This page records no breakpoints, so each device width was used as one.");
   }
@@ -524,8 +540,7 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
   };
   if (breakpoints) {
     for (const i of deviceAt) {
-      const w = widthOf(entries[i] as DeviceEntry);
-      const range = ranges.find((r) => w >= r.min && (r.max === null || w < r.max));
+      const range = rangeOf(i);
       if (!range || range.owner === i) continue;
       const owner = range.owner;
       const tokenDiffers = [...themeIn(i).keys()].some((name) => {
@@ -704,8 +719,7 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
   });
 
   const frames = deviceAt.map((i, at): DeviceFrame => {
-    const w = widthOf(entries[i] as DeviceEntry);
-    const range = ranges.find((r) => w >= r.min && (r.max === null || w < r.max));
+    const range = rangeOf(i);
     return {
       index: i,
       device: deviceNames[at] as string,

@@ -457,6 +457,44 @@ describe("mergeDevices", () => {
     expectResolves(layers, plans);
   });
 
+  test("captures go by the width they were laid out at, not their client width", () => {
+    // A classic scrollbar takes 15 px off the client width; media queries match the full width.
+    const at = (width: number, heading: number, version: Capture["version"]) =>
+      entry({ width: width - 15, heading, version: { ...version, width } as Capture["version"] });
+    const { layers, frames, report } = mergeDevices([
+      at(1512, 60, device("Laptop", 982)),
+      at(834, 48, device("Tablet portrait", 1194)),
+      at(390, 30, device("Phone portrait", 844)),
+      at(640, 32, extra("sm")),
+      at(1024, 36, extra("lg")),
+      at(1280, 40, extra("xl")),
+    ]);
+    expect([...(modesOf(layers, "Breakpoint") ?? [])].sort()).toEqual(
+      ["base", "lg", "md", "min 1400", "sm", "xl"].sort()
+    );
+    expect(report.some((line) => line.startsWith("No capture"))).toBe(false);
+    expect(report.some((line) => line.includes("shares"))).toBe(false);
+    expect(varOf(layers, "device:device/width")?.values).toEqual([1512, 834, 390]);
+    expect(frames.map((f) => f.breakpoint)).toEqual(["min 1400", "md", "base"]);
+    const size = "theme:type/heading/1/size";
+    expect(valueIn(layers, size, "md")).toBe(48);
+    expect(valueIn(layers, size, "lg")).toBe(36);
+    expect(valueIn(layers, size, "sm")).toBe(32);
+    expect(valueIn(layers, size, "xl")).toBe(40);
+  });
+
+  test("an older extra goes in the range it was captured for, whatever its client width", () => {
+    const { layers, report } = mergeDevices([
+      entry({ width: 1497, heading: 60, version: device("Laptop", 982) }),
+      entry({ width: 1009, heading: 36, version: extra("lg") }),
+      entry({ width: 375, heading: 30, version: device("Phone portrait", 844) }),
+    ]);
+    expect(modesOf(layers, "Breakpoint")).toContain("lg");
+    expect(modesOf(layers, "Breakpoint")).not.toContain("md");
+    expect(valueIn(layers, "theme:type/heading/1/size", "lg")).toBe(36);
+    expect(report).not.toContain("No capture for the lg breakpoint.");
+  });
+
   test("a capture without device data goes by its numeric label, not its client width", () => {
     const widthOnly = (label: string, width: number): Capture["version"] => ({
       label,

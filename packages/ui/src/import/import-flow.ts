@@ -3,9 +3,9 @@ import { sha256Hex } from "@repo/capture-schema/hash";
 import {
   batchOps,
   COLLECTION_NAMES,
+  captureWidth,
   DEFAULT_IMPORT_OPTIONS,
   type DeviceEntry,
-  deviceWidth,
   type FontRef,
   type ImportOptions,
   type ImportReport,
@@ -1096,9 +1096,9 @@ async function reviewContents(
   limit: number | null
 ): Promise<ReviewContents> {
   await yieldToPaint();
-  const width = (v: LoadedFile) => Math.round(v.capture.source.viewport.w);
-  // A device without device data goes by the width its label chose, as its Device mode does.
-  const named = (v: LoadedFile) => deviceWidth(v.capture);
+  // The width a capture was laid out at, as the merge places it; a device without device data
+  // goes by the width its label chose, as its Device mode does.
+  const width = (v: LoadedFile) => captureWidth(v.capture);
   const devices = set.versions.filter((v) => !isExtra(v));
   const extras = set.versions.filter(isExtra);
   const summarize = (deviceTicks: boolean[], extraTicks: boolean[]): ContentsSummary => {
@@ -1111,8 +1111,8 @@ async function reviewContents(
   };
   return {
     devices: devices.map((v) => ({
-      name: v.capture.version?.device?.name ?? String(named(v)),
-      width: named(v),
+      name: v.capture.version?.device?.name ?? String(width(v)),
+      width: width(v),
       on: true,
     })),
     extras: extras.map((v) => ({

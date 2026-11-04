@@ -257,6 +257,17 @@ describe("breakpoints and device versions", () => {
     expect(parseCapture(v({ id: "a", name: "x".repeat(41), height: 10 })).ok).toBe(false);
     expect(parseCapture(v({ id: "a", name: "A", height: -1 })).ok).toBe(false);
   });
+  test("a version records the width the page was laid out at, a whole positive number", () => {
+    const v = (width: unknown) =>
+      parseCapture(withBp({ version: { label: "lg", kind: "viewport", breakpoint: "lg", width } }));
+    const ok = v(1024);
+    expect(ok.ok).toBe(true);
+    if (ok.ok) expect(ok.capture.version?.width).toBe(1024);
+    expect(v(0).ok).toBe(false);
+    expect(v(10.5).ok).toBe(false);
+    expect(v(200000).ok).toBe(false);
+    expect(v("1024").ok).toBe(false);
+  });
   test("an older capture without them parses unchanged", () => {
     const result = parseCapture(minimalCapture());
     expect(result.ok).toBe(true);

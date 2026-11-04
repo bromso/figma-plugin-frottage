@@ -223,12 +223,12 @@ describe("normaliseVersion", () => {
 
 describe("pageVersion", () => {
   test("a viewport capture is labelled with what the page was laid out at", () => {
-    expect(pageVersion("", 1440)).toEqual({ label: "1440", kind: "viewport" });
+    expect(pageVersion("", 1440)).toEqual({ label: "1440", kind: "viewport", width: 1440 });
   });
 
   test("a width label carries the typed label", () => {
-    expect(pageVersion("Dark", 1512)).toEqual({ label: "1512 Dark", kind: "viewport" });
-    expect(pageVersion("  ", 1512)).toEqual({ label: "1512", kind: "viewport" });
+    expect(pageVersion("Dark", 1512)?.label).toBe("1512 Dark");
+    expect(pageVersion("  ", 1512)?.label).toBe("1512");
   });
 
   test("a long typed label is cut to fit", () => {
@@ -248,8 +248,8 @@ describe("pageVersion", () => {
   });
 
   test("a missing label is the width alone, at any width", () => {
-    expect(pageVersion(undefined, 393)).toEqual({ label: "393", kind: "viewport" });
-    expect(pageVersion(undefined, 1440)).toEqual({ label: "1440", kind: "viewport" });
+    expect(pageVersion(undefined, 393)?.label).toBe("393");
+    expect(pageVersion(undefined, 1440)?.label).toBe("1440");
   });
 });
 
@@ -261,6 +261,7 @@ describe("pageVersion with a device or breakpoint", () => {
       label: "Laptop",
       kind: "viewport",
       device: laptop,
+      width: 1512,
     });
   });
 
@@ -273,13 +274,22 @@ describe("pageVersion with a device or breakpoint", () => {
       label: "lg",
       kind: "viewport",
       breakpoint: "lg",
+      width: 1024,
     });
+  });
+
+  test("a version records the width the page was laid out at", () => {
+    expect(pageVersion(undefined, 1024, { breakpoint: "lg" })?.width).toBe(1024);
+    expect(pageVersion("", 1512, { device: laptop })?.width).toBe(1512);
+    expect(pageVersion("Dark", 1440)?.width).toBe(1440);
+    expect(pageVersion("", 0)?.width).toBeUndefined();
   });
 
   test("a malformed device is left out, and the width labels the capture", () => {
     expect(pageVersion("", 1440, { device: { id: "x", name: "", height: -1 } })).toEqual({
       label: "1440",
       kind: "viewport",
+      width: 1440,
     });
   });
 });

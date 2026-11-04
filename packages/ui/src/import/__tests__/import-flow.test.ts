@@ -1540,6 +1540,21 @@ describe("a device set", () => {
     expect(review?.contents?.overLimit).toEqual([]);
   });
 
+  test("the review shows the widths the captures were laid out at", async () => {
+    const file = deviceSetFile({
+      devices: [
+        { name: "Laptop", width: 1512 },
+        { name: "Phone portrait", width: 390 },
+      ],
+      extras: [{ breakpoint: "lg", width: 1024 }],
+      breakpoints: [640, 768, 1024, 1400],
+      scrollbar: 15,
+    });
+    const { review } = await runDevices([file]);
+    expect(review?.contents?.devices.map((d) => d.width)).toEqual([1512, 390]);
+    expect(review?.contents?.extras).toEqual([{ breakpoint: "lg", width: 1024, on: true }]);
+  });
+
   test("goes through beginDeviceSet with the merged layers, a frame per device", async () => {
     const { port } = await runDevices([devicesFile()]);
     expect(port.log).toContain("beginDeviceSet");
