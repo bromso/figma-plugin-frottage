@@ -14,6 +14,8 @@ export type Catalogue = {
   /** The mode the page was captured in: its computed values are that mode's. */
   activeMode: string;
   themeSource: PlanLayers["themeSource"];
+  /** What the theme choice left out, in the words the report uses. */
+  notes: string[];
   /** Every custom property that became a variable or collapsed into one. */
   byCssVar: Map<string, StagedVariable>;
   variables: StagedVariable[];
@@ -35,6 +37,7 @@ export type Catalogue = {
 };
 
 const LIGHT = "Light";
+const DARK = "Dark";
 const MAX_ALIAS_DEPTH = 16;
 /** Variables per import, so that a page with thousands of custom properties can't flood a file. */
 export const MAX_VARIABLES = 1000;
@@ -187,7 +190,10 @@ function classify(
   return null;
 }
 
-export function buildCatalogue(capture: Capture): Catalogue {
+export function buildCatalogue(
+  capture: Capture,
+  themes?: { light: boolean; dark: boolean }
+): Catalogue {
   // A hostile page can list tens of thousands: only the first in name order are read.
   // Capture lists them in name order; the order they come in is kept.
   let names = Object.keys(capture.tokens.cssCustomProperties);
@@ -200,19 +206,19 @@ export function buildCatalogue(capture: Capture): Catalogue {
   }
   const root = pick(capture.tokens.cssCustomProperties, names);
   const authored = pick(capture.tokens.authored ?? {}, Object.keys(root));
-  const themes = capture.tokens.themes ?? [];
+  const stylesheetThemes = capture.tokens.themes ?? [];
   // Authored text where there is one, so a context's change reaches what is built on it.
   const rootAuthored = { ...root, ...authored };
 
   // Contexts that share a mode share its values, the first one winning.
   const byMode = new Map<string, Record<string, string>>();
   const themeProps = new Set<string>();
-  for (const t of themes) {
+  for (const t of stylesheetThemes) {
     for (const prop of Object.keys(t.properties)) if (usable(prop)) themeProps.add(prop);
     if (t.mode === LIGHT) continue;
     byMode.set(t.mode, { ...t.properties, ...byMode.get(t.mode) });
   }
-  const modes = [LIGHT, ...byMode.keys()];
+  const allModes = [LIGHT, ...byMode.keys()];
   // In a theme the page was captured in, the root's values are that theme's: Light is what the
   // root's own rules set outside it.
   const captured = capture.tokens.activeTheme;
@@ -351,6 +357,36 @@ export function buildCatalogue(capture: Capture): Catalogue {
     if (v) byCssVar.set(prop, v);
   }
 
+  // The themes chosen at capture: a mode not chosen is dropped from every theme variable, and
+  // bindings keep naming the same variables. Neither ticked is no choice at all.
+  const choice = themes ?? capture.themeChoice;
+  const notes: string[] = [];
+  let keptModes = allModes;
+  if (choice && (choice.light || choice.dark)) {
+    const hasDark = byMode.has(DARK);
+    keptModes = allModes.filter((mode) =>
+      mode === LIGHT
+        ? choice.light || (choice.dark && !hasDark)
+        : mode === DARK
+          ? choice.dark
+          : choice.light && choice.dark
+    );
+    if (choice.dark && !hasDark) notes.push("This page has no dark theme, so only Light was made.");
+    const left = allModes.filter(
+      (mode) => mode !== LIGHT && mode !== DARK && !keptModes.includes(mode)
+    );
+    if (left.length > 0) notes.push(`Not made: ${left.join(", ")}.`);
+    if (keptModes.length < allModes.length) {
+      const at = keptModes.map((mode) => allModes.indexOf(mode));
+      for (const v of variables) {
+        if (v.collection !== "theme") continue;
+        v.values = at.map((i) => v.values[i] ?? (v.values[0] as PlanVarValue));
+      }
+    }
+  }
+  const modes = keptModes;
+  const openMode = keptModes.includes(activeMode) ? activeMode : (keptModes[0] as string);
+
   const baseOf = (prop: string) => (usable(prop) && root[prop] ? pxOf(root[prop], root) : null);
   const spacingBase = baseOf("--spacing");
   const radiusBase = baseOf("--radius");
@@ -388,8 +424,9 @@ export function buildCatalogue(capture: Capture): Catalogue {
     dropped,
     hostname: collectionName(capture.source.url),
     modes,
-    activeMode,
-    themeSource: themes.length > 0 ? "site" : "none",
+    activeMode: openMode,
+    notes,
+    themeSource: stylesheetThemes.length > 0 ? "site" : "none",
     byCssVar,
     variables,
     resolveRef(ref) {

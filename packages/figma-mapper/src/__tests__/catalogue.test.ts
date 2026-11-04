@@ -397,4 +397,74 @@ describe("buildCatalogue", () => {
     expect(cat.resolveRef("--z15")).toBeNull();
     expect(cat.dropped).toBe(10);
   });
+
+  describe("the themes chosen at capture", () => {
+    const withChoice = (light: boolean, dark: boolean) => {
+      const capture = shadcn();
+      capture.themeChoice = { light, dark };
+      return capture;
+    };
+    const bg = (cat: ReturnType<typeof buildCatalogue>) => cat.byCssVar.get("--background");
+
+    test("Light only keeps Light's values", () => {
+      const cat = buildCatalogue(withChoice(true, false));
+      expect(cat.modes).toEqual(["Light"]);
+      expect(cat.activeMode).toBe("Light");
+      expect(bg(cat)?.values).toHaveLength(1);
+      expectColour(bg(cat)?.values[0], "#ffffff");
+    });
+
+    test("Dark only is the one mode and the active one, with Dark's values", () => {
+      const cat = buildCatalogue(withChoice(false, true));
+      expect(cat.modes).toEqual(["Dark"]);
+      expect(cat.activeMode).toBe("Dark");
+      for (const v of cat.variables.filter((x) => x.collection === "theme")) {
+        expect(v.values).toHaveLength(1);
+      }
+      expectColour(bg(cat)?.values[0], "oklch(0.145 0 0)");
+      // References still reach the same theme variable.
+      expect(cat.resolveRef("--background")).toBe(bg(cat) ?? null);
+    });
+
+    test("both keep Light and Dark, and no choice leaves the modes as they are", () => {
+      expect(buildCatalogue(withChoice(true, true)).modes).toEqual(["Light", "Dark"]);
+      expect(buildCatalogue(shadcn()).modes).toEqual(["Light", "Dark"]);
+    });
+
+    test("Dark chosen on a page with no dark theme makes Light, and says so", () => {
+      const capture = withChoice(true, true);
+      capture.tokens.themes = [];
+      const cat = buildCatalogue(capture);
+      expect(cat.modes).toEqual(["Light"]);
+      expect(cat.notes).toEqual(["This page has no dark theme, so only Light was made."]);
+      const only = withChoice(false, true);
+      only.tokens.themes = [];
+      expect(buildCatalogue(only).modes).toEqual(["Light"]);
+    });
+
+    test("other stylesheet themes are not made by a single-theme choice, and named", () => {
+      const capture = withChoice(true, false);
+      capture.tokens.themes?.push({
+        context: ".theme-blue",
+        mode: "Theme blue",
+        properties: { "--card": "oklch(0.9 0.05 250)" },
+      });
+      const cat = buildCatalogue(capture);
+      expect(cat.modes).toEqual(["Light"]);
+      expect(cat.notes).toEqual(["Not made: Theme blue."]);
+      // Both ticked keeps them.
+      capture.themeChoice = { light: true, dark: true };
+      expect(buildCatalogue(capture).modes).toEqual(["Light", "Dark", "Theme blue"]);
+    });
+
+    test("the options override the capture's choice", () => {
+      const cat = buildCatalogue(withChoice(true, true), { light: false, dark: true });
+      expect(cat.modes).toEqual(["Dark"]);
+    });
+
+    test("a value fallback in Dark only compares against Dark's values", () => {
+      const cat = buildCatalogue(withChoice(false, true));
+      expect(cat.modes.indexOf(cat.activeMode)).toBe(0);
+    });
+  });
 });

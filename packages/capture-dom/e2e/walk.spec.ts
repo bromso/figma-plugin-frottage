@@ -2658,6 +2658,46 @@ for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
   });
 }
 
+test("Color Mode holds the themes chosen at capture, and layers still bind the same tokens", async ({
+  page,
+}) => {
+  const c = await captureShadcn(page, "light");
+  const choose = (light: boolean, dark: boolean) => {
+    const copy = structuredClone(c);
+    copy.themeChoice = { light, dark };
+    expect(parseCapture(copy).ok).toBe(true);
+    return mapLayered(copy);
+  };
+
+  const lightOnly = choose(true, false);
+  expect(lightOnly.layers.modes).toEqual(["Light"]);
+  expect(lightOnly.layers.activeMode).toBe("Light");
+  expect(lightOnly.values("theme:color/background")).toHaveLength(1);
+
+  const darkOnly = choose(false, true);
+  expect(darkOnly.layers.modes).toEqual(["Dark"]);
+  expect(darkOnly.layers.activeMode).toBe("Dark");
+  const [dark] = darkOnly.values("theme:color/background");
+  expect(dark?.r).toBeLessThan(0.3);
+  expect(darkOnly.byClass("card").fills[0]?.colorKey).toBe("theme:color/card");
+  expect(darkOnly.layers.collections.find((x) => x.kind === "colorMode")?.modes).toEqual(["Dark"]);
+
+  expect(choose(true, true).layers.modes).toEqual(["Light", "Dark"]);
+
+  // A page with no dark theme makes Light, and says so.
+  const plain = structuredClone(c);
+  plain.tokens.themes = [];
+  delete plain.tokens.activeTheme;
+  plain.themeChoice = { light: true, dark: true };
+  const made = mapCapture(plain, [{ family: "Inter", style: "Regular" }], {
+    ...DEFAULT_IMPORT_OPTIONS,
+    tokens: true,
+    layers: true,
+  });
+  expect(made.tokens.layers?.modes).toEqual(["Light"]);
+  expect(made.report.warnings).toContain("This page has no dark theme, so only Light was made.");
+});
+
 test("captured in a theme, Light comes from the root's own rules, by the cascade", async ({
   page,
 }) => {

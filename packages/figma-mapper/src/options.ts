@@ -20,6 +20,11 @@ export type PlanOptions = ImportOptions & {
    * Only a page imported on its own asks for it; a set of versions keeps the single collection.
    */
   layers?: boolean;
+  /**
+   * The themes Color Mode is made with. Overrides the capture's own `themeChoice`; with neither,
+   * every theme the page defines.
+   */
+  themes?: { light: boolean; dark: boolean };
 };
 
 /**

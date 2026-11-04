@@ -45,9 +45,18 @@ type Page = {
   version?: Capture["version"];
   boundaries?: number[] | null;
   props?: Record<string, string>;
+  themeChoice?: { light: boolean; dark: boolean };
 };
 
-function page({ width, heading, body = 16, version, boundaries = BOUNDARIES, props }: Page) {
+function page({
+  width,
+  heading,
+  body = 16,
+  version,
+  boundaries = BOUNDARIES,
+  props,
+  themeChoice,
+}: Page) {
   const children: CaptureNode[] = [
     card("card", { background: "--color-card", radius: "--radius-lg" }),
     ...[1, 2, 3].map((n) =>
@@ -73,6 +82,7 @@ function page({ width, heading, body = 16, version, boundaries = BOUNDARIES, pro
   capture.tokens = tokens(props);
   if (boundaries) capture.breakpoints = { widths: boundaries, unreadable: 0 };
   if (version) capture.version = version;
+  if (themeChoice) capture.themeChoice = themeChoice;
   return capture;
 }
 
@@ -178,6 +188,21 @@ const headingRuns = (plan: LayerPlan) =>
   );
 
 describe("mergeDevices", () => {
+  test("Color Mode holds the themes the first device chose", () => {
+    const dark = { light: false, dark: true };
+    const set = mainline({ themeChoice: dark });
+    const { layers } = mergeDevices(set);
+    expect(modesOf(layers, "Color Mode")).toEqual(["Dark"]);
+    expect(layers.modes).toEqual(["Dark"]);
+    expect(layers.activeMode).toBe("Dark");
+    // The first device's choice, though the widest one chose both.
+    const mixed = [
+      entry({ width: 390, heading: 30, version: device("Phone portrait", 844), themeChoice: dark }),
+      entry({ width: 1512, heading: 60, version: device("Laptop", 982) }),
+    ];
+    expect(mergeDevices(mixed).layers.modes).toEqual(["Dark"]);
+  });
+
   test("devices become Device modes with their width and nominal height", () => {
     const { layers } = mergeDevices(mainline());
     expect(modesOf(layers, "Device")).toEqual(["Laptop", "Tablet portrait", "Phone portrait"]);
