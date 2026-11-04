@@ -277,6 +277,43 @@ describe("layerCollections", () => {
     ]);
   });
 
+  test("orderVariables orders a group mixing numeric and other names the same from any input order", () => {
+    const v = (name: string, value: number | { alias: string }): PlanVariable => ({
+      key: `radius:${name}`,
+      name,
+      collection: "radius",
+      type: "FLOAT",
+      values: [value],
+      description: "",
+      scopes: ["CORNER_RADIUS"],
+    });
+    const input = [
+      v("radius/z", 1),
+      v("radius/x/1", 3),
+      v("radius/m", { alias: "radius:elsewhere" }),
+      v("radius/2", 4),
+      v("radius/a", 2),
+      v("radius/1", 2),
+      v("radius/lg", 2),
+    ];
+    const want = [
+      "radius/1",
+      "radius/x/1",
+      "radius/2",
+      "radius/z",
+      "radius/a",
+      "radius/lg",
+      "radius/m",
+    ];
+    const orders = [input, [...input].reverse()];
+    for (let i = 0; i < input.length; i++) {
+      orders.push([...input.slice(i), ...input.slice(0, i)]);
+    }
+    for (const order of orders) {
+      expect(orderVariables(order, []).map((x) => x.name)).toEqual(want);
+    }
+  });
+
   test("collections come in creation order with their modes", () => {
     const { layers } = setup();
     expect(layers.collections).toEqual([

@@ -218,8 +218,9 @@ function numberIn(name: string): number | null {
  * Variables in the order Figma shows them, smallest to largest: by collection, then within one by
  * first path segment in first-use order, a per-mode group (`md/…`, its segment one of `modes`)
  * by mode order. In a group, names ending in a number come first, ascending; the rest after, a
- * single-mode one by its value then name, one with several modes as it came. A variable that
- * aliases another of its own collection still follows it, so the alias can be made.
+ * single-mode one by its value (one without a number last) then name, one with several modes as
+ * it came. A variable that aliases another of its own collection still follows it, so the alias
+ * can be made.
  */
 export function orderVariables(variables: PlanVariable[], modes: string[] = []): PlanVariable[] {
   const byKey = new Map(variables.map((v) => [v.key, v]));
@@ -262,14 +263,18 @@ export function orderVariables(variables: PlanVariable[], modes: string[] = []):
     const multiA = a.values.length > 1;
     if (multiA !== b.values.length > 1) return multiA ? 1 : -1;
     if (multiA) return stable;
+    // A total order, so the sort gives the same result from any input order: numeric names
+    // first, ascending; then the rest by value, those without one last; ties by name.
+    const byName = a.name < b.name ? -1 : a.name > b.name ? 1 : stable;
     const na = numberIn(a.name);
     const nb = numberIn(b.name);
     if ((na === null) !== (nb === null)) return na === null ? 1 : -1;
-    if (na !== null && nb !== null) return na - nb || stable;
+    if (na !== null && nb !== null) return na - nb || byName;
     const va = numberOf(a);
     const vb = numberOf(b);
+    if ((va === null) !== (vb === null)) return va === null ? 1 : -1;
     if (va !== null && vb !== null && va !== vb) return va - vb;
-    return a.name < b.name ? -1 : a.name > b.name ? 1 : stable;
+    return byName;
   };
   const out: PlanVariable[] = [];
   const done = new Set<string>();
