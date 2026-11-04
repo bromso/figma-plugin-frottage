@@ -246,12 +246,17 @@ export function buildCatalogue(capture: Capture): Catalogue {
     let at = prop;
     for (let depth = 0; depth < MAX_ALIAS_DEPTH; depth++) {
       const next = SINGLE_VAR.exec(authored[at]?.trim() ?? "")?.[1];
-      if (!next) return null;
+      if (!next) break;
       if (themeProps.has(next)) return next;
       at = next;
     }
-    return null;
+    // Tailwind's `--color-foreground: var(--foreground)` on a page with no theme: one primitive.
+    // Other aliases, as `--radius-lg: var(--radius)`, name a step of a scale and stay their own.
+    const primitive = at !== prop && /^--color-/i.test(prop) && at !== "--spacing";
+    return primitive && usable(at) && Object.hasOwn(root, at) && !collapsesFurther(at) ? at : null;
   };
+  /** Whether a property is itself an alias, so that a chain's end is not a primitive. */
+  const collapsesFurther = (prop: string) => SINGLE_VAR.test(authored[prop]?.trim() ?? "");
 
   // Primitives.
   for (const prop of Object.keys(root)) {
@@ -264,7 +269,9 @@ export function buildCatalogue(capture: Capture): Catalogue {
 
   /** A value authored as `var()` of a primitive of the same type aliases it. */
   const aliasOf = (text: string | undefined, type: PlanVariable["type"]): PlanVarValue | null => {
-    const target = SINGLE_VAR.exec(text?.trim() ?? "")?.[1];
+    const named = SINGLE_VAR.exec(text?.trim() ?? "")?.[1];
+    // A colour alias that collapsed stands for the primitive it names.
+    const target = named && !themeProps.has(named) ? (collapsesInto(named) ?? named) : undefined;
     const v = target && !themeProps.has(target) ? byCssVar.get(target) : undefined;
     return v && v.collection === "primitives" && v.type === type ? { alias: v.key } : null;
   };
@@ -313,7 +320,8 @@ export function buildCatalogue(capture: Capture): Catalogue {
     variables.splice(0, variables.length, ...variables.filter((v) => kept.has(v)));
   }
 
-  // Aliases of theme properties, as Tailwind's `--color-card: var(--card)`, collapse into them.
+  // Aliases of theme properties, as Tailwind's `--color-card: var(--card)`, collapse into them, and
+  // colour aliases into the primitive they name.
   for (const prop of Object.keys(root)) {
     if (!usable(prop) || themeProps.has(prop)) continue;
     const target = collapsesInto(prop);

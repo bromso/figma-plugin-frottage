@@ -105,6 +105,36 @@ describe("buildCatalogue", () => {
     expect(cat.variables.some((v) => v.cssVar === "--color-card")).toBe(false);
   });
 
+  test("on a page with no theme, an alias of a primitive collapses into it", () => {
+    const capture = cap(el("root", [0, 0]));
+    capture.tokens = {
+      cssCustomProperties: {
+        "--foreground": "#111111",
+        "--color-foreground": "#111111",
+        "--color-ink": "#111111",
+      },
+      authored: {
+        "--color-foreground": "var(--foreground)",
+        "--color-ink": "var(--color-foreground)",
+      },
+    };
+    const cat = buildCatalogue(capture);
+    expect(cat.variables.map((v) => v.name)).toEqual(["foreground"]);
+    expect(cat.resolveRef("--color-foreground")?.key).toBe("primitives:foreground");
+    expect(cat.resolveRef("--color-ink")?.key).toBe("primitives:foreground");
+  });
+
+  test("a theme value authored as a collapsed colour alias aliases the primitive", () => {
+    const capture = cap(el("root", [0, 0]));
+    capture.tokens = {
+      cssCustomProperties: { "--zinc": "#111111", "--color-zinc": "#111111", "--card": "#ffffff" },
+      authored: { "--color-zinc": "var(--zinc)" },
+      themes: [{ context: ".dark", mode: "Dark", properties: { "--card": "var(--color-zinc)" } }],
+    };
+    const cat = buildCatalogue(capture);
+    expect(cat.byCssVar.get("--card")?.values[1]).toEqual({ alias: "primitives:zinc" });
+  });
+
   test("radius primitives evaluate calc() against the root", () => {
     const md = buildCatalogue(shadcn()).resolveRef("--radius-md");
     expect(md?.name).toBe("radius/md");
