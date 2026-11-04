@@ -93,6 +93,8 @@ export type SetResult = TokenCounts & {
   rootIds: string[];
   /** The sections could not be placed, so some may overlap. */
   layoutFailures: number;
+  /** A device set's versions left plain, unbound: their Device or Breakpoint mode wasn't set. */
+  plainVersions: number[];
 };
 
 /** A set of versions under way. Its finished frames and sections are held until `endSet`. */
@@ -106,6 +108,10 @@ type HeldSet = {
   section?: SectionNode;
   /** The page a device set made for itself, which goes if the set does. */
   createdPage?: PageNode;
+  /** The page the user was on before it, which a cancelled set goes back to. */
+  previousPage?: PageNode;
+  /** Device versions left plain: Figma had no room for, or refused, their modes. */
+  plain: number[];
 };
 
 type Corners = [number, number, number, number];
@@ -149,7 +155,7 @@ const CANCELLED: EndResult = {
   ...NO_TOKENS,
 };
 
-const NO_SET: SetResult = { rootIds: [], layoutFailures: 0, ...NO_TOKENS };
+const NO_SET: SetResult = { rootIds: [], layoutFailures: 0, plainVersions: [], ...NO_TOKENS };
 
 const fontKey = (f: FontRef) => `${f.family}\u0000${f.style}`;
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -278,14 +284,15 @@ export function createApplier(api: PluginAPI) {
       }
       section.discard();
     }
-    // Emptied above; a page made for the set goes with it.
-    for (const node of [held?.section, held?.createdPage]) {
-      try {
-        node?.remove();
-      } catch {
-        // already gone, or open: an empty page is harmless
-      }
+    try {
+      held?.section?.remove(); // emptied above
+    } catch {
+      // already gone
     }
+    // A page made for the set goes with it, once the user is off it.
+    const made = held?.createdPage;
+    const back = held?.previousPage;
+    if (made && back) cleaning = Promise.all([cleaning, dropPage(made, back)]);
     held = null;
     // After the mains: one would keep what it uses in use.
     if (tokens) cleaning = Promise.all([cleaning, tokens.discard()]);
@@ -323,7 +330,7 @@ export function createApplier(api: PluginAPI) {
     await cleaning;
     if (stale) api.commitUndo();
     const target = api.currentPage;
-    held = { page: target, x: clearOf(target), y: 0, finished: [] };
+    held = { page: target, x: clearOf(target), y: 0, finished: [], plain: [] };
   }
 
   /** A new page named after the site, numbered on if a page has that name already. */
@@ -352,11 +359,28 @@ export function createApplier(api: PluginAPI) {
   async function beginDeviceSet(meta: DeviceSetMeta): Promise<void> {
     const stale = active || held !== null;
     reset();
+    // A Cancel, or another import, while this waits ends it: what it made so far goes.
+    const run = generation;
     await cleaning;
+    if (run !== generation) return;
     if (stale) api.commitUndo();
     const { hostname } = meta.layers;
-    const createdPage =
-      meta.placement === "new-page" ? await createPage(hostname || meta.name) : undefined;
+    const previousPage = api.currentPage;
+    let createdPage: PageNode | undefined;
+    if (meta.placement === "new-page") {
+      createdPage = await createPage(hostname || meta.name);
+      try {
+        // Onto the new page, so that the user sees the import.
+        if (run === generation) await api.setCurrentPageAsync(createdPage);
+      } catch (e) {
+        await dropPage(createdPage, previousPage);
+        throw e;
+      }
+      if (run !== generation) {
+        await dropPage(createdPage, previousPage);
+        return;
+      }
+    }
     const target = createdPage ?? api.currentPage;
     let section: SectionNode;
     try {
@@ -367,7 +391,7 @@ export function createApplier(api: PluginAPI) {
       section.x = x;
       section.y = 0;
     } catch (e) {
-      createdPage?.remove();
+      if (createdPage) await dropPage(createdPage, previousPage);
       throw e;
     }
     const set: HeldSet = {
@@ -375,8 +399,9 @@ export function createApplier(api: PluginAPI) {
       x: SECTION_PADDING,
       y: SECTION_PADDING,
       finished: [],
+      plain: [],
       section,
-      ...(createdPage ? { createdPage } : {}),
+      ...(createdPage ? { createdPage, previousPage } : {}),
     };
     held = set;
     const own = createTokenSet(api);
@@ -389,12 +414,33 @@ export function createApplier(api: PluginAPI) {
     };
     await own.resolve(plan, meta.options, tokenRuntime());
     if (held !== set) return; // cancelled meanwhile
-    const mode = own.openingMode();
+    openOnColorMode(section);
+  }
+
+  /**
+   * Takes back a page a device set made. Figma won't remove the open page, so the user goes back
+   * to the one they were on first.
+   */
+  async function dropPage(made: PageNode, back: PageNode): Promise<void> {
+    try {
+      if (api.currentPage === made) await api.setCurrentPageAsync(back);
+      made.remove();
+    } catch {
+      // It stays, empty: the user can remove it.
+    }
+  }
+
+  /**
+   * Puts a device set's section, or the section of a device's mains, on the Color Mode the page
+   * was captured in, which every frame and main in it then reads.
+   */
+  function openOnColorMode(node: SectionNode): void {
+    const mode = tokens?.openingMode();
     if (!mode) return;
     try {
-      section.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
+      node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
     } catch {
-      own.failed();
+      tokens?.failed();
     }
   }
 
@@ -422,7 +468,9 @@ export function createApplier(api: PluginAPI) {
         solid: (color, opacity) => solidPaint(color, opacity),
         mode: setMode,
       },
-      page
+      page,
+      // A device set's mains read the Color Mode its section opens on, as their instances do.
+      set?.section ? openOnColorMode : undefined
     );
     await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
     fallbackOk = loadedFonts.has(fontKey(FALLBACK));
@@ -438,6 +486,8 @@ export function createApplier(api: PluginAPI) {
    */
   function setMode(node: FrameNode | ComponentNode): void {
     if (versionIndex === null || modeRefused) return;
+    // With tokens off nothing binds, so no mode is missed.
+    if (deviceModes && !tokens?.hasLayers()) return;
     const modes = deviceModes ? deviceSetModes(deviceModes) : [tokens?.modeOf(versionIndex)];
     if (!modes) {
       modeRefused = true;
@@ -1313,8 +1363,13 @@ export function createApplier(api: PluginAPI) {
       tracker.closeOpen();
       sliceStart = Date.now();
       if (!(await tracker.drain(overBudget, () => breathe(run)))) return CANCELLED;
+      const box = held?.section;
+      if (box && held)
+        layoutFailures += fitSection(box, [...held.finished.map((f) => f.root), done]);
       try {
-        components?.layOut(done, broken);
+        // A device set's frames sit in its section; their mains go under it, on the page.
+        const under = box ? { x: box.x + done.x, y: box.y + box.height + VERSION_GAP } : undefined;
+        components?.layOut(done, broken, under);
       } catch {
         layoutFailures++;
       }
@@ -1333,6 +1388,7 @@ export function createApplier(api: PluginAPI) {
       if (held) {
         // Kept, but only until the set is: `reset` still removes these.
         held.finished.push({ root: done, components: components as ComponentSet });
+        if (deviceModes && modeRefused && versionIndex !== null) held.plain.push(versionIndex);
         held.x = done.x + done.width + VERSION_GAP;
       } else {
         tokens = null; // keep the tokens the layers use
@@ -1409,6 +1465,7 @@ export function createApplier(api: PluginAPI) {
       ...(tokens?.counts() ?? NO_TOKENS),
       rootIds: frames.map((f) => f.id),
       layoutFailures,
+      plainVersions: [...held.plain],
     };
     held = null; // keep the frames and the sections
     tokens = null; // and the tokens they use
@@ -1418,8 +1475,12 @@ export function createApplier(api: PluginAPI) {
 
   /** Abandon the import: remove the partial root and mains, and restore the undo point. */
   async function cancel(): Promise<void> {
-    if (!active && !held) return;
-    const hadTokens = tokens !== null;
+    if (!active && !held) {
+      // A device set still opening sees this and stops.
+      generation++;
+      return;
+    }
+    const hadTokens = tokens !== null || held?.createdPage !== undefined;
     reset();
     api.commitUndo();
     if (!hadTokens) return;

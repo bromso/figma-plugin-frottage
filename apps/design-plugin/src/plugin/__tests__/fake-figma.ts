@@ -112,6 +112,7 @@ export function fakeFigma(opts: Options = {}) {
       removed: false,
       async loadAsync() {
         calls.push("page.loadAsync");
+        await held("page.loadAsync");
         loaded = true;
       },
       appendChild(child: FakeNode) {
@@ -123,6 +124,8 @@ export function fakeFigma(opts: Options = {}) {
       },
       remove() {
         calls.push("remove:PAGE");
+        // As in Figma: the open page can't be removed.
+        if (current === p) throw new Error("cannot remove the current page");
         p.removed = true;
         pages.splice(pages.indexOf(p), 1);
       },
@@ -131,6 +134,13 @@ export function fakeFigma(opts: Options = {}) {
     return p;
   }
   const storage = new Map<string, unknown>();
+  let current: FakeNode = page;
+  /** Calls a test holds open, to act while they are pending: each gets the callback that ends it. */
+  const holds = new Map<string, (done: () => void) => void>();
+  const held = async (name: string) => {
+    const hold = holds.get(name);
+    if (hold) await new Promise<void>((resolve) => hold(resolve));
+  };
   let selection: FakeNode[] = [];
   Object.defineProperty(page, "selection", {
     get: () => selection,
@@ -406,7 +416,12 @@ export function fakeFigma(opts: Options = {}) {
 
   const figma = {
     get currentPage() {
-      return page;
+      return current;
+    },
+    async setCurrentPageAsync(next: FakeNode) {
+      calls.push(`setCurrentPage:${next.name}`);
+      await held("setCurrentPageAsync");
+      current = next;
     },
     viewport: {
       scrollAndZoomIntoView(n: FakeNode[]) {
@@ -673,6 +688,11 @@ export function fakeFigma(opts: Options = {}) {
     svgSources,
     page,
     pages,
+    /** Holds every call of `name` (`page.loadAsync`, `setCurrentPageAsync`) until `hold` ends it. */
+    hold(name: string, hold: ((done: () => void) => void) | null) {
+      if (hold) holds.set(name, hold);
+      else holds.delete(name);
+    },
     storage,
     tokens,
     raw_createText: () => figma.createText() as FakeNode,

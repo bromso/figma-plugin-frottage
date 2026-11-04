@@ -1481,6 +1481,7 @@ describe("a device set", () => {
       `${TITLE} — Phone`,
     ]);
     expect(r?.rootIds).toEqual(frames.map((n: FakeNode) => n.id));
+    expect(r?.plainVersions).toEqual([]);
     for (const [i, n] of frames.entries()) {
       expect(n.width).toBe(DEVICES[i]?.w as number);
       expect(n.y).toBe(frames[0].y);
@@ -1589,7 +1590,7 @@ describe("a device set", () => {
     }
   });
 
-  test("new-page puts the section on a new page named after the site, and stays put", async () => {
+  test("new-page puts the section on a new page named after the site, and opens it", async () => {
     const f = fakeFigma();
     await importDevices(f, { placement: "new-page" });
     expect(f.pages).toHaveLength(2);
@@ -1597,7 +1598,8 @@ describe("a device set", () => {
     expect(made.name).toBe("example.com");
     expect(sectionOf(f).parent).toBe(made);
     expect(made.children).toEqual([sectionOf(f)]);
-    expect(f.figma.currentPage).toBe(f.page as unknown as PageNode);
+    expect(f.figma.currentPage).toBe(made as unknown as PageNode);
+    expect(made.selection).toEqual([sectionOf(f)]);
     expect(f.page.children.some((n: FakeNode) => n.type === "FRAME")).toBe(false);
   });
 
@@ -1625,14 +1627,105 @@ describe("a device set", () => {
       expect(f.page.children).toEqual([]);
       expect(f.tokens.collections.size).toBe(0);
       expect(f.tokens.variables.size).toBe(0);
-      expect(f.pages).toHaveLength(1);
+      // Back on the page the user was on: Figma won't remove the open page.
+      expect(f.pages).toEqual([f.page]);
+      expect(f.figma.currentPage).toBe(f.page as unknown as PageNode);
     }
+  });
+
+  /** Nothing of an import is left: no section, frame, page, collection or variable. */
+  const nothingLeft = (f: ReturnType<typeof fakeFigma>) => {
+    expect(
+      f.created.filter((n) => !n.removed && !n.parent?.removed && n.parent === f.page)
+    ).toEqual([]);
+    expect(f.pages).toEqual([f.page]);
+    expect(f.figma.currentPage).toBe(f.page as unknown as PageNode);
+    expect(f.tokens.collections.size).toBe(0);
+    expect(f.tokens.variables.size).toBe(0);
+  };
+  const open = (placement: "new-page" | "current-page") => ({
+    name: TITLE,
+    layers,
+    options: DEFAULT_IMPORT_OPTIONS,
+    placement,
+  });
+
+  test("a cancel while an earlier import is being taken back stops the set opening", async () => {
+    for (const placement of ["current-page", "new-page"] as const) {
+      const f = fakeFigma();
+      const a = createApplier(f.figma);
+      await a.beginDeviceSet(open("current-page"));
+      // Takes the first set's collections back, which it waits for before making anything.
+      const second = a.beginDeviceSet(open(placement));
+      await a.cancel();
+      await second;
+      expect(f.count("createPage")).toBe(0);
+      expect(f.created.filter((n) => n.type === "SECTION")).toHaveLength(1);
+      nothingLeft(f);
+    }
+  });
+
+  test("a cancel while the new page loads removes it and makes nothing", async () => {
+    const f = fakeFigma();
+    const a = createApplier(f.figma);
+    f.hold("page.loadAsync", (done) => {
+      void a.cancel().then(done);
+    });
+    await a.beginDeviceSet(open("new-page"));
+    expect(f.count("createPage")).toBe(1);
+    expect(f.count("createSection")).toBe(0);
+    expect(f.tokens.log).not.toContain("createVariableCollection");
+    nothingLeft(f);
+  });
+
+  test("a cancel while switching to the new page goes back and removes it", async () => {
+    const f = fakeFigma();
+    const a = createApplier(f.figma);
+    f.hold("setCurrentPageAsync", (done) => {
+      f.hold("setCurrentPageAsync", null);
+      void a.cancel().then(done);
+    });
+    await a.beginDeviceSet(open("new-page"));
+    expect(f.count("createSection")).toBe(0);
+    nothingLeft(f);
+  });
+
+  test("a device's mains sit under the section from the start, on its Color Mode", async () => {
+    const f = fakeFigma();
+    const a = createApplier(f.figma);
+    await a.beginDeviceSet({ ...open("current-page"), layers: { ...layers, activeMode: "Dark" } });
+    await a.begin({
+      ...meta,
+      version: { index: 0, label: "Desktop" },
+      device: { mode: "Desktop", breakpoint: "lg" },
+    });
+    await a.applyBatch([
+      frame("btn/n", null, {
+        name: "btn",
+        x: 0,
+        y: 0,
+        fills,
+        component: { key: "btn", name: "btn" },
+      }),
+      frame("a", null, { w: 1440, h: 800, fills }),
+    ]);
+    await a.end();
+    const section = sectionOf(f);
+    const mains = f.created.find((n) => n.type === "SECTION" && n !== section) as FakeNode;
+    // Before endSet: under the section, not near the page's origin over what is there.
+    expect(mains.y).toBeGreaterThanOrEqual(section.y + section.height);
+    expect(mains.x).toBe(section.x + section.children[0].x);
+    const colorMode = collectionNamed(f, "Color Mode");
+    expect(mains.explicitModes).toEqual({ [colorMode.id]: modeIn(colorMode, "Dark") });
+    expect(section.explicitModes).toEqual(mains.explicitModes);
+    await a.endSet();
+    expect(mains.y).toBeGreaterThanOrEqual(section.y + section.height);
   });
 
   test("a frame the file had no Breakpoint mode for stays plain; no Device mode still binds", async () => {
     // Room for two modes: Phone has no Device mode, and lg (Desktop's range) no Breakpoint mode.
     const f = fakeFigma({ modeLimit: 2 });
-    await importDevices(f);
+    const { r } = await importDevices(f);
     const device = collectionNamed(f, "Device");
     const breakpoint = collectionNamed(f, "Breakpoint");
     const [desktop, tablet, phone] = sectionOf(f).children;
@@ -1646,6 +1739,7 @@ describe("a device set", () => {
     expect(phone.fills[0].boundVariables).toBeDefined();
     expect(phone.explicitModes).toEqual({ [breakpoint.id]: modeIn(breakpoint, "base") });
     expect(f.storage.get("modeLimit")).toBe(2);
+    expect(r?.plainVersions).toEqual([0]);
   });
 
   test("a refused Device mode leaves the frame plain and counts", async () => {
@@ -1660,6 +1754,7 @@ describe("a device set", () => {
       expect(n.explicitModes).toEqual({});
     }
     expect(r?.tokenFailures).toBe(3);
+    expect(r?.plainVersions).toEqual([0, 1, 2]);
   });
 
   test("a Stage 3 set still lays its frames on the page, with no section", async () => {

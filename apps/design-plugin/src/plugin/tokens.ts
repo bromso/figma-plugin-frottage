@@ -1383,6 +1383,8 @@ export function createTokenSet(api: PluginAPI) {
     layerMode: (kind: PlanCollectionKind, name: string) => layers?.modeOf(kind, name) ?? null,
     /** The Color Mode mode a page opens in: the one it was captured in, else Light. */
     openingMode: () => layers?.openingMode() ?? null,
+    /** Whether the plan's layered collections were settled: not with tokens off. */
+    hasLayers: () => layers !== null,
     failed,
     counts(): TokenCounts {
       if (!layers) return { ...counts };

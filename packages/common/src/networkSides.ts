@@ -90,6 +90,8 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
   importEndSet(): {
     rootIds: string[];
     layoutFailures: number;
+    /** A device set's versions left plain, unbound: their Device or Breakpoint mode wasn't set. */
+    plainVersions: number[];
     stylesCreated: number;
     stylesReused: number;
     variablesCreated: number;
