@@ -1979,6 +1979,54 @@ describe("a device set", () => {
       }
     });
 
+    test("an instance text the mapper left plain drops its main's Language binding", async () => {
+      const f = fakeFigma();
+      const SHOP = { English: "Shop", Svenska: "Handla" };
+      const plan = withLanguages();
+      plan.variables.push(textVar("Main/Shop", SHOP, ["English", "Svenska"]));
+      // The main's text is bound; the override, a text of mixed styles, has no textKey.
+      const ops = (): PlanOp[] =>
+        pageOps().map((op) =>
+          op.op === "instance"
+            ? {
+                ...op,
+                overrides: op.overrides.map((o) =>
+                  o.kind === "text" ? { ...o, text: "Buy it", textKey: undefined } : o
+                ),
+              }
+            : op
+        );
+      const a = createApplier(f.figma);
+      await a.beginDeviceSet({
+        name: PAGE,
+        layers: plan,
+        options: DEFAULT_IMPORT_OPTIONS,
+        placement: "current-page",
+      });
+      for (const [index, d] of MAIN.entries()) {
+        await a.begin({
+          ...meta,
+          name: PAGE,
+          version: { index, label: d.device },
+          device: { mode: d.device, breakpoint: null },
+        });
+        await a.importTokens(
+          { textStyles: [], colors: [], collection: "example.com", layers: plan },
+          DEFAULT_IMPORT_OPTIONS
+        );
+        await a.applyBatch(ops());
+        await a.end();
+      }
+      await a.endSet();
+      const shop = languageVariable(f, "Main/Shop");
+      const main = f.created.find((n) => n.type === "COMPONENT" && !n.removed) as FakeNode;
+      expect(main.children[0].boundVariables?.characters?.id).toBe(shop.id);
+      for (const n of sectionNamed(f, PAGE).children) {
+        expect(buttonTextOf(n).characters).toBe("Buy it");
+        expect(buttonTextOf(n).boundVariables?.characters).toBeUndefined();
+      }
+    });
+
     test("the section opens on the page's own language beside Color Mode", async () => {
       const f = fakeFigma();
       await importLanguages(f);

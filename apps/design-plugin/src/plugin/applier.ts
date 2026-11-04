@@ -1185,8 +1185,11 @@ export function createApplier(api: PluginAPI) {
       }
     } else {
       if (node.type !== "TEXT") throw new Error("not text");
-      // Setting the text drops a binding the main's text had, as it should: an override with no
-      // `textKey` is one the mapper left plain, such as a text of mixed styles.
+      // An instance's text keeps its main's binding through a text edit, so a text the mapper left
+      // plain (no `textKey`, such as one of mixed styles) drops it, or it would show the main's.
+      if (!override.textKey && node.boundVariables?.characters) {
+        node.setBoundVariable("characters", null);
+      }
       const before = node.height;
       await setText(node, override, usableFont(override.runs[0]?.fontName ?? FALLBACK));
       bindText(node, override.textKey);
