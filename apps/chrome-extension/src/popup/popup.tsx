@@ -26,6 +26,7 @@ import {
   parseWidths,
   popupView,
   rerunRequest,
+  runTotal,
   themeHint,
   tickedLanguages,
   viewportAdvice,
@@ -223,6 +224,7 @@ function Popup() {
     if (tabId === null || asked.length === 0) return;
     // Asked first, so Chrome sees the click's user gesture; a refused site's languages are left out.
     let languagesToRun = askedLanguages;
+    let dropped: PageLanguage[] = [];
     setLeftOut([]);
     if (!request && languagesToRun) {
       const origins = otherOrigins(languagesToRun, tabUrl);
@@ -230,7 +232,7 @@ function Popup() {
         const granted = await chrome.permissions.request({ origins }).catch(() => false);
         if (!granted) {
           const held = await heldOrigins(origins);
-          const dropped = languagesToRun.filter((l) => {
+          dropped = languagesToRun.filter((l) => {
             const [origin] = otherOrigins([l], tabUrl);
             return origin !== undefined && !held.includes(origin);
           });
@@ -246,7 +248,7 @@ function Popup() {
     setStatus({
       state: "viewport",
       index: 1,
-      total: asked.length,
+      total: runTotal(asked, languagesToRun),
       label: widest.device?.name ?? widest.breakpoint ?? String(widest.width),
     });
     try {
@@ -258,6 +260,7 @@ function Popup() {
         ...(collapseWrappers ? { collapseWrappers: true } : {}),
         ...(askedThemes ? { themes: askedThemes } : {}),
         ...(languagesToRun ? { languages: languagesToRun } : {}),
+        ...(dropped.length > 0 ? { leftOut: dropped.map(leftOutLine) } : {}),
       });
       if (reply && !reply.ok) setStatus({ state: "error", message: reply.error });
     } catch (error) {
@@ -323,11 +326,6 @@ function Popup() {
           {run.nodeWarning && <Type className="text-muted-foreground">{run.nodeWarning}</Type>}
         </>
       )}
-      {leftOut.map((l) => (
-        <Type key={l.code} className="text-muted-foreground">
-          {leftOutLine(l)}
-        </Type>
-      ))}
       {images && <Type className="text-muted-foreground">{images.message}</Type>}
       {declined && <Type>Image access wasn't granted.</Type>}
       {status.state === "error" && (

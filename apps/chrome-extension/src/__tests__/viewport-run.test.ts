@@ -1048,6 +1048,29 @@ describe("ViewportRun with languages", () => {
     expect(t.tab.url).toBe(EN.url);
   });
 
+  test("lines the popup sent for languages it left out stay in the final status", async () => {
+    const line = "Deutsch needs access to de.example.org, so it was left out.";
+    const t = setup({
+      origin: byPage,
+      navigate: (url) => {
+        if (url === FR.url) throw new Error("The page did not finish loading");
+        return url;
+      },
+    });
+    await t.run.start(asked, { languages: [EN, SV, FR], leftOut: [line] });
+    expect(t.final().leftOut).toEqual([line, "Français couldn't be loaded, so it was left out."]);
+    expect(t.final().request.leftOut).toEqual([line]);
+  });
+
+  test("a popup's left-out line alone makes the run announce a failure", async () => {
+    const line = "Deutsch needs access to de.example.org, so it was left out.";
+    const t = setup({ origin: byPage });
+    await t.run.start(asked, { languages: [EN, SV], leftOut: [line] });
+    expect(t.final().saved).toHaveLength(5);
+    expect(t.final().leftOut).toEqual([line]);
+    expect(t.announced).toEqual([true]);
+  });
+
   test("the final status carries the languages, for a re-run", async () => {
     const t = setup({ origin: byPage });
     await t.run.start(asked, { languages: [EN, SV] });

@@ -552,6 +552,15 @@ export function captureCountLine(
   return `${total} captures: ${devices} ${devices === 1 ? "device" : "devices"} × ${languages} languages${plus}`;
 }
 
+/**
+ * How many captures a run makes: every width in the current language, and each other language at
+ * the device widths, as the run plans its passes.
+ */
+export function runTotal(asked: RunWidth[], languages?: PageLanguage[]): number {
+  const others = languages && languages.length > 1 ? languages.length - 1 : 0;
+  return asked.length + others * asked.filter((w) => !w.breakpoint).length;
+}
+
 function originOf(url: string): string | null {
   try {
     const { origin } = new URL(url);

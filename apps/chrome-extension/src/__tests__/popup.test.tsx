@@ -187,6 +187,28 @@ describe("popup languages", () => {
     expect(text()).toContain("Svenska needs access to sv.site.test, so it was left out.");
   });
 
+  test("a refused origin's line goes with the run, so it outlives the popup", async () => {
+    grant = false;
+    languages = [en, sv, de];
+    await open();
+    await press(box("language-sv"));
+    await press(box("language-de"));
+    await capture();
+    const start = sent.find((m) => m.type === "viewport-start");
+    expect(start?.leftOut).toEqual(["Svenska needs access to sv.site.test, so it was left out."]);
+    expect(codes(start)).toEqual(["en", "de"]);
+  });
+
+  test("the first progress counts every language's captures", async () => {
+    languages = [en, de];
+    await open();
+    await press(box("language-de"));
+    const total = /(\d+) captures:/.exec(text())?.[1];
+    expect(total).toBeDefined();
+    await capture();
+    expect(text()).toContain(`of ${total})`);
+  });
+
   test("a same-origin language asks for nothing", async () => {
     languages = [en, de];
     await open();

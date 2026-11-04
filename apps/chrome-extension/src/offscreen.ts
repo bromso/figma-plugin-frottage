@@ -198,6 +198,9 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
         languages = message.languages
           ?.map(cleanLanguage)
           .filter((l): l is PageLanguage => l !== undefined);
+        const leftOut = message.leftOut
+          ?.filter((line): line is string => typeof line === "string" && line.length <= 300)
+          .slice(0, 8);
         heldTab = null;
         captured = new CaptureSet();
         void viewport.start(message.runWidths ?? message.widths ?? [], {
@@ -205,6 +208,7 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
           versionLabel: typedLabel,
           ...(themeChoice ? { themes: themeChoice } : {}),
           ...(languages ? { languages } : {}),
+          ...(leftOut?.length ? { leftOut } : {}),
         });
         sendResponse({ ok: true } satisfies Reply);
       } catch (error) {

@@ -268,6 +268,8 @@ export class ViewportRun {
       themes?: { light: boolean; dark: boolean };
       /** The languages to capture, current first; more than one, or the run is of the page as it is. */
       languages?: PageLanguage[];
+      /** Lines for languages the popup left out; the run's end shows them, as the popup may close. */
+      leftOut?: string[];
     } = {}
   ): Promise<void> {
     if (this.running) throw new Error(RUN_BUSY);
@@ -287,6 +289,7 @@ export class ViewportRun {
       versionLabel: options.versionLabel ?? "",
       ...(options.themes ? { themes: { ...options.themes } } : {}),
       ...(languages ? { languages: languages.map((l) => ({ ...l })) } : {}),
+      ...(options.leftOut?.length ? { leftOut: [...options.leftOut] } : {}),
     });
   }
 
@@ -328,6 +331,7 @@ export class ViewportRun {
       nodes: 0,
       nodeLimit: false,
       blockedImages: 0,
+      ...(request.leftOut ? { leftOut: [...request.leftOut] } : {}),
       request,
     };
     try {
@@ -341,7 +345,9 @@ export class ViewportRun {
       }
       try {
         this.deps.announce(
-          done.saved.length < total || done.stopped?.startsWith(STRANDED) === true
+          done.saved.length < total ||
+            (done.leftOut?.length ?? 0) > 0 ||
+            done.stopped?.startsWith(STRANDED) === true
         );
       } catch {
         // The status is the record; a missed announcement loses nothing.

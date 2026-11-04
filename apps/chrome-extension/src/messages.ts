@@ -41,6 +41,8 @@ export type ViewportRequest = {
   themes?: { light: boolean; dark: boolean };
   /** The languages to capture, current first; sent only when more than the current one is ticked. */
   languages?: PageLanguage[];
+  /** A line for each language the popup left out because its site refused access. */
+  leftOut?: string[];
 };
 
 /** Popup to worker. */

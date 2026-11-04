@@ -51,6 +51,8 @@ export type RunStatus =
         themes?: { light: boolean; dark: boolean };
         /** Which languages to capture, current first; missing for a run of the current one only. */
         languages?: PageLanguage[];
+        /** The lines for languages the popup left out before the run began. */
+        leftOut?: string[];
       };
     };
 
