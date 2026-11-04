@@ -47,13 +47,11 @@ export type DeviceMerge = {
   frames: DeviceFrame[];
   /** Other-language captures too unlike their device's to share its frame. */
   languageFrames: (DeviceFrame & { language: string })[];
-  /** The Language modes, the current language first; empty when fewer than two are kept. */
-  languages: string[];
   report: string[];
 };
 
 /** A merge of one language's entries; `adopt` moves another plan's keys as entry `like`'s. */
-type SetMerge = Omit<DeviceMerge, "languageFrames" | "languages"> & {
+type SetMerge = Omit<DeviceMerge, "languageFrames"> & {
   adopt: (plan: LayerPlan, like: number) => LayerPlan;
 };
 
@@ -247,8 +245,6 @@ const TYPE_FIELDS = [
 export type MergeOptions = {
   /** Breakpoints whose extra capture the user left out: not reported as having none. */
   leftOut?: string[];
-  /** Language codes to keep; the current language is kept regardless. All when absent. */
-  languages?: string[];
 };
 
 function mergeSet(entries: DeviceEntry[], options: MergeOptions): SetMerge {
@@ -827,7 +823,7 @@ function sameDevice(a: Capture, b: Capture): boolean {
 }
 
 /** `<section>/<layer name>` when a text sits in a landmark or section, else its layer name. */
-function languageName(op: TextOp, byId: Map<string, PlanOp>): string {
+function variableNameOf(op: TextOp, byId: Map<string, PlanOp>): string {
   const segment = (name: string) => name.replaceAll("/", "-");
   for (let at = byId.get(op.parent), depth = 0; at && depth < 256; depth++) {
     if (isSectionName(at.name)) return `${segment(at.name)}/${segment(op.name)}`;
@@ -856,8 +852,11 @@ function textAt(key: string, path: number[], ops: PlanOp[]): TextOp | undefined 
   return at?.op === "text" ? at : undefined;
 }
 
-/** The captured text ids are only for binding; a finished plan doesn't carry them. */
-function dropSources(plans: LayerPlan[]): void {
+/**
+ * The captured text ids are only for binding; a finished plan doesn't carry them. A plan that no
+ * device merge takes drops them so too.
+ */
+export function dropSources(plans: LayerPlan[]): void {
   for (const plan of plans) {
     for (const op of plan.ops) {
       if (op.op !== "instance") continue;
@@ -875,7 +874,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     if (tagged.length > 0) {
       merge.report.push("No capture in the page's own language, so languages were left out.");
     }
-    return { ...merge, languageFrames: [], languages: [] };
+    return { ...merge, languageFrames: [] };
   }
   const codeOf = (e: DeviceEntry) => e.capture.language?.code ?? current.code;
   // The current language's entries make the frames and every value but the texts'.
@@ -886,8 +885,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
   );
   const known = new Map<string, PageLanguage>([[current.code, current]]);
   for (const l of tagged) {
-    if (known.has(l.code) || (options.languages && !options.languages.includes(l.code))) continue;
-    known.set(l.code, l);
+    if (!known.has(l.code)) known.set(l.code, l);
   }
   const codes = [...known.keys()];
   const names = uniqueLabels([...known.values()].map((l) => l.name));
@@ -992,14 +990,14 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
         const prefix = root?.op === "frame" && root.component ? `${root.component.key}/` : "";
         const id = op.id.startsWith(prefix) ? op.id.slice(prefix.length) : op.id;
         const placed = root && prefix ? { ...op, parent: root.id.slice(prefix.length) } : op;
-        const key = bind(id, op.text, () => languageName(placed, byId));
+        const key = bind(id, op.text, () => variableNameOf(placed, byId));
         if (key) op.textKey = key;
       } else if (op.op === "instance") {
         for (const over of op.overrides) {
           if (over.kind !== "text" || over.source === undefined) continue;
           const key = bind(over.source, over.text, () => {
             const main = textAt(op.key, over.path, plan.ops);
-            return languageName({ ...(main ?? { name: "Text" }), parent: op.id } as TextOp, byId);
+            return variableNameOf({ ...(main ?? { name: "Text" }), parent: op.id } as TextOp, byId);
           });
           if (key) over.textKey = key;
         }
@@ -1081,6 +1079,5 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     );
   }
 
-  const languages = names.length > 1 ? names : [];
-  return { layers, plans, frames, languageFrames, languages, report };
+  return { layers, plans, frames, languageFrames, report };
 }

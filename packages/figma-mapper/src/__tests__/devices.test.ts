@@ -663,7 +663,7 @@ test("theme notes are reported once for the set, not per device", () => {
 });
 
 test("a set with no language merges as before", () => {
-  const { layers, plans, frames, report, languageFrames, languages } = mergeDevices(mainline());
+  const { layers, plans, frames, report, languageFrames } = mergeDevices(mainline());
   // Recorded before languages were added: a set without them must merge exactly so.
   expect({
     collections: layers.collections,
@@ -678,7 +678,6 @@ test("a set with no language merges as before", () => {
     ),
   }).toMatchSnapshot();
   expect(languageFrames).toEqual([]);
-  expect(languages).toEqual([]);
 });
 
 describe("languages", () => {
@@ -744,8 +743,7 @@ describe("languages", () => {
       langEntry("sv", "Laptop", SV),
       langEntry("sv", "Phone", SV),
     ];
-    const { layers, plans, frames, languageFrames, languages } = mergeDevices(entries);
-    expect(languages).toEqual(["English", "Svenska"]);
+    const { layers, plans, frames, languageFrames } = mergeDevices(entries);
     expect(modesOf(layers, "Language")).toEqual(["English", "Svenska"]);
     const kinds = layers.collections.map((c) => c.kind);
     expect(kinds.indexOf("language")).toBe(kinds.indexOf("theme") - 1);
@@ -833,29 +831,12 @@ describe("languages", () => {
     expect(report).toContain("2 texts have no Svenska version and stay in English.");
   });
 
-  test("a language left out of the options makes no Language collection", () => {
-    const entries = [langEntry("en", "Laptop", EN), langEntry("sv", "Laptop", SV)];
-    const { layers, plans, languages } = mergeDevices(entries, { languages: ["en"] });
-    expect(layers.collections.map((c) => c.kind)).not.toContain("language");
-    expect(languages).toEqual([]);
-    expect(plans).toHaveLength(2);
-    expect(textOps(plans[0] as LayerPlan).some((op) => op.textKey !== undefined)).toBe(false);
-  });
-
-  test("the current language is kept though the options leave it out", () => {
-    const entries = [langEntry("en", "Laptop", EN), langEntry("sv", "Laptop", SV)];
-    const { layers, frames } = mergeDevices(entries, { languages: ["sv"] });
-    expect(frames.map((f) => f.index)).toEqual([0]);
-    expect(modesOf(layers, "Language")).toEqual(["English", "Svenska"]);
-  });
-
   test("a set with no capture in the page's own language merges without languages", () => {
     const entries = [langEntry("en", "Laptop", EN), langEntry("sv", "Phone", SV)];
     for (const e of entries)
       e.capture.language = { ...(e.capture.language as PageLanguage), current: false };
-    const { layers, languages, report } = mergeDevices(entries);
+    const { layers, report } = mergeDevices(entries);
     expect(layers.collections.map((c) => c.kind)).not.toContain("language");
-    expect(languages).toEqual([]);
     expect(report).toContain("No capture in the page's own language, so languages were left out.");
   });
 
