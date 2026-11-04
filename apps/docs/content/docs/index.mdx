@@ -37,9 +37,9 @@ When the popup opens, it reads the page's CSS breakpoints. If a breakpoint range
 
 The plugin shows "What's in this file" before it imports. It lists the devices and breakpoint captures with a checkbox each, the collections it will make, and a choice of New page or Current page. Once a mode limit is known, it warns when the import would exceed it.
 
-The import makes two collections. `Device` has one mode per device, with `device/width` and `device/height`. `Breakpoint` has one mode per CSS range: `base`, `sm`, `md`, `lg`, `xl`, `2xl`, or `min <width>` for other widths. It holds `breakpoint/min-width` and `breakpoint/max-width`. A value that changes by width, such as a heading size, goes Theme, then Breakpoint, then a raw value for each breakpoint.
+The import adds two collections beside the layered ones. `Device` has one mode per device, with `device/width` and `device/height`. `Breakpoint` has one mode per CSS range: `base`, `sm`, `md`, `lg`, `xl`, `2xl`, or `min <width>` for other widths. It holds `breakpoint/min-width` and `breakpoint/max-width`. A value that changes by width, such as a heading size, goes Theme, then Breakpoint, then a raw value for each breakpoint.
 
-Each device becomes one frame. The frames sit side by side in a Section. Each frame is set to its Device and Breakpoint modes, and the Section is set to the captured Color Mode. New page switches to the new page when the import ends.
+Each device becomes one frame. The frames sit side by side in a Section. Each frame is set to its Device and Breakpoint modes. The Section is set to the captured Color Mode. New page switches to the new page as the import starts. A page with no recorded breakpoints uses each device width as a breakpoint.
 
 Older files that hold several widths import the same way, with modes named by width. Files with typed theme or language labels keep the older import.
 
