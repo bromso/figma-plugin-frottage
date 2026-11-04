@@ -76,6 +76,12 @@
     .border-border { border-color: var(--color-border); }
     .rounded-lg { border-radius: var(--radius-lg); }
     .rounded-md { border-radius: var(--radius-md); }
+    /* Mainline's rounding utilities, as measured: sizes are calc()s of --radius, full is a literal. */
+    .rounded-sm { border-radius: calc(var(--radius) - 4px); }
+    .rounded-2xl { border-radius: calc(var(--radius)*2); }
+    .rounded-full { border-radius: 3.40282e38px; }
+    .rounded-t-2xl { border-top-left-radius: calc(var(--radius)*2); border-top-right-radius: calc(var(--radius)*2); }
+    .rounded-tl-sm { border-top-left-radius: calc(var(--radius) - 4px); }
     .p-4 { padding: calc(var(--spacing) * 4); }
     .p-6 { padding: calc(var(--spacing) * 6); }
     .px-3 { padding-inline: calc(var(--spacing) * 3); }
@@ -109,6 +115,9 @@
   <div class="popover bg-popover text-popover-foreground rounded-md border border-border p-4 w-64">
     <p>Popover body</p>
   </div>
+  <div class="tile bg-card rounded-2xl border border-border p-4 w-64"><p>Tile</p></div>
+  <div class="sheet bg-card rounded-t-2xl rounded-tl-sm border border-border p-4 w-64"><p>Sheet</p></div>
+  <div class="flex"><span class="pill bg-primary text-primary-foreground rounded-full px-3 py-2 text-sm">Pill</span></div>
 </main>
 </body>
 </html>

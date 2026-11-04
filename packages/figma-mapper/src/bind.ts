@@ -42,6 +42,8 @@ type Field =
       scope: string;
       value: number;
       ref?: string | null;
+      /** A corner's `rounded-<name>` class, which names its variable. */
+      name?: string | null;
       bind(key: string): void;
     };
 
@@ -162,6 +164,7 @@ function fieldsOf(op: PlanOp, out: Field[], catalogue: Catalogue, followed: Foll
           scope: "CORNER_RADIUS",
           value: px,
           ref: refs?.radius,
+          name: refs?.radiusClass?.[corner],
           bind(key) {
             op.radiusKeys ??= [undefined, undefined, undefined, undefined];
             op.radiusKeys[corner] = key;
@@ -186,7 +189,7 @@ export function bindLayers(
   catalogue: Catalogue,
   ops: PlanOp[],
   context: BindContext = {}
-): { layers: StagedLayers; raw: RawCounts } {
+): { layers: StagedLayers; raw: RawCounts; warnings: string[] } {
   // Aliases point at variables the catalogue made up front, never at a step made on demand.
   const byKey = new Map(catalogue.variables.map((v) => [v.key, v]));
   const followed = (value: PlanVarValue | undefined) => followAlias(byKey, value);
@@ -204,19 +207,43 @@ export function bindLayers(
 
   // (1) The ref, where the variable is of the field's type. A length must also hold the field's
   // value in some mode, as a frame's padding takes in its border.
-  let unbound: Field[] = [];
-  for (const field of fields) {
+  const byRef = (field: Field): boolean => {
     const v = field.ref ? catalogue.resolveRef(field.ref) : null;
     let fits = false;
     if (v && field.kind === "colors") fits = v.type === "COLOR";
     else if (v && field.kind !== "colors") fits = holds(v, field.value, followed);
     if (v && fits) bind(field, v);
-    else unbound.push(field);
+    return Boolean(v && fits);
+  };
+  let unbound: Field[] = [];
+  const named: Field[] = [];
+  for (const field of fields) {
+    if (field.kind === "radii" && field.name) named.push(field);
+    else if (!byRef(field)) unbound.push(field);
   }
 
   // Roles inferred for a page with no theme join the catalogue here, before values are matched,
   // unless some layer or text style bound to a site variable by its ref.
   if (bound.size === 0 && context.root) inferTheme(catalogue, ops, context.root);
+
+  // A corner a `rounded-<name>` class set binds to `radius/<name>`, made with the first value it
+  // meets; a corner of that name with another value is reported once and goes on as any other.
+  const warnings: string[] = [];
+  const differing = new Set<string>();
+  for (const field of named) {
+    if (field.kind !== "radii" || !field.name) continue;
+    const { variable, differs } = catalogue.namedRadius(field.name, field.value);
+    if (variable) {
+      bind(field, variable);
+      continue;
+    }
+    if (differs && !differing.has(field.name)) {
+      differing.add(field.name);
+      const label = field.name === "DEFAULT" ? "default" : field.name.replaceAll(".", "_");
+      warnings.push(`radius/${label} has different values on this page.`);
+    }
+    if (!byRef(field)) unbound.push(field);
+  }
 
   // (2) The only theme variable whose value in the mode the page was captured in is equal, (3)
   // else the only equal primitive. The page's values are that mode's, Light or not.
@@ -359,5 +386,6 @@ export function bindLayers(
       },
     },
     raw,
+    warnings,
   };
 }

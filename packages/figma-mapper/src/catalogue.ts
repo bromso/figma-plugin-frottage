@@ -20,6 +20,11 @@ export type Catalogue = {
   /** The variable a token ref (`--name` or `--name*n`) names, or null. */
   resolveRef(ref: string): StagedVariable | null;
   /**
+   * `radius/<name>` for a corner the site's `rounded-<name>` class set, made on first use with
+   * that corner's px. Null at the cap, or with `differs` when the name already holds another value.
+   */
+  namedRadius(name: string, px: number): { variable: StagedVariable | null; differs: boolean };
+  /**
    * Variables left out past `MAX_VARIABLES`, theme or primitive, including spacing steps refused
    * later by `resolveRef`. It grows as those are asked for, so read it after binding.
    */
@@ -32,8 +37,11 @@ const MAX_ALIAS_DEPTH = 16;
 export const MAX_VARIABLES = 1000;
 /** Custom properties read per import; the rest, in name order, are counted as dropped. */
 export const MAX_PROPERTIES = 5000;
-/** The largest `--spacing*n` step made on demand. */
+/** The largest `--spacing*n` or `--radius*n` step made on demand. */
 const MAX_SPACING_STEP = 1000;
+/** A corner this round or rounder, as `rounded-full`'s 3.40282e38px, is stored as this. */
+export const MAX_RADIUS = 9999;
+const RADIUS_SCOPES = ["CORNER_RADIUS"];
 /** Prefixes frameworks put on their own properties; the name is what follows. */
 const FRAMEWORK_PREFIX = /^(bs|mantine|chakra|ant)-/i;
 /** A value that is one `var()` and nothing else, with or without a fallback (one level deep). */
@@ -333,14 +341,13 @@ export function buildCatalogue(capture: Capture): Catalogue {
     if (v) byCssVar.set(prop, v);
   }
 
-  const spacingBase =
-    usable("--spacing") && root["--spacing"] ? pxOf(root["--spacing"], root) : null;
+  const baseOf = (prop: string) => (usable(prop) && root[prop] ? pxOf(root[prop], root) : null);
+  const spacingBase = baseOf("--spacing");
+  const radiusBase = baseOf("--radius");
   /** Steps refused at the cap, so each counts once. */
   const refused = new Set<string>();
-  /** `spacing/<n>`, made when a ref first asks for it. Figma names can't hold `.`. */
-  const spacingStep = (n: number): StagedVariable | null => {
-    if (spacingBase === null || !Number.isFinite(n) || n < 0 || n > MAX_SPACING_STEP) return null;
-    const name = `spacing/${String(n).replace(".", "_")}`;
+  /** A primitive made on demand, or null, counted once, at the cap. */
+  const made = (name: string, px: number, scopes: string[], from: string) => {
     const existing = byKey.get(`primitives:${name}`);
     if (existing) return existing;
     if (variables.length >= MAX_VARIABLES) {
@@ -350,14 +357,22 @@ export function buildCatalogue(capture: Capture): Catalogue {
       }
       return null;
     }
-    const px = n * spacingBase;
-    return add(
-      "primitives",
-      { name, type: "FLOAT", value: px, scopes: SPACING_SCOPES },
-      [px],
-      "--spacing"
-    );
+    return add("primitives", { name, type: "FLOAT", value: px, scopes }, [px], from);
   };
+  /** Figma names can't hold `.`. */
+  const safe = (text: string) => text.replaceAll(".", "_");
+  const stepOk = (base: number | null, n: number): base is number =>
+    base !== null && Number.isFinite(n) && n >= 0 && n <= MAX_SPACING_STEP;
+  /** `spacing/<n>`, made when a ref first asks for it. */
+  const spacingStep = (n: number): StagedVariable | null =>
+    stepOk(spacingBase, n)
+      ? made(`spacing/${safe(String(n))}`, n * spacingBase, SPACING_SCOPES, "--spacing")
+      : null;
+  /** `radius/x<n>`, for `calc(var(--radius) * n)`. */
+  const radiusStep = (n: number): StagedVariable | null =>
+    stepOk(radiusBase, n)
+      ? made(`radius/x${safe(String(n))}`, n * radiusBase, RADIUS_SCOPES, "--radius")
+      : null;
 
   const catalogue: Catalogue = {
     dropped,
@@ -373,8 +388,21 @@ export function buildCatalogue(capture: Capture): Catalogue {
       const prop = m[1] as string;
       const n = m[2] === undefined ? null : Number.parseFloat(m[2]);
       if (prop === "--spacing") return spacingStep(n ?? 1);
+      if (prop === "--radius" && n !== null && n !== 1) return radiusStep(n);
       if (n !== null && n !== 1) return null;
       return byCssVar.get(prop) ?? null;
+    },
+    namedRadius(name, px) {
+      const value = name === "full" || px >= MAX_RADIUS ? MAX_RADIUS : px;
+      const vname = `radius/${name === "DEFAULT" ? "default" : safe(name)}`;
+      const existing = byKey.get(`primitives:${vname}`);
+      if (existing) {
+        const held = existing.values[0];
+        const same = typeof held === "number" && Math.abs(held - value) <= 0.01 + 1e-9;
+        return same ? { variable: existing, differs: false } : { variable: null, differs: true };
+      }
+      const from = name === "DEFAULT" ? ".rounded" : `.rounded-${name}`;
+      return { variable: made(vname, value, RADIUS_SCOPES, from), differs: false };
     },
   };
   return catalogue;

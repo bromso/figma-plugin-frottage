@@ -2448,6 +2448,41 @@ test("each element records the token its CSS used, even where tokens share a val
   expect(c.warnings.some((w) => w.code === "token-refs-partial")).toBe(false);
 });
 
+test("each corner records the rounding class that set it, and binds to radius/<name>", async ({
+  page,
+}) => {
+  const c = await capture(page, "shadcn.html");
+  expect(parseCapture(c).ok).toBe(true);
+  const byClass = (name: string) =>
+    findKind(c, "element", (n) => (n.semantic.className ?? "").split(" ").includes(name));
+  expect(byClass("card").tokenRefs?.radiusClass).toEqual(["lg", "lg", "lg", "lg"]);
+  expect(byClass("tile").tokenRefs?.radiusClass).toEqual(["2xl", "2xl", "2xl", "2xl"]);
+  // `rounded-tl-sm` comes later than `rounded-t-2xl`, so it wins the top-left corner.
+  expect(byClass("sheet").tokenRefs?.radiusClass).toEqual(["sm", "2xl", null, null]);
+  expect(byClass("pill").tokenRefs?.radiusClass).toEqual(["full", "full", "full", "full"]);
+  // A rule of more than one class names nothing: the bare `flex` row has no corners at all.
+  expect(byClass("flex").tokenRefs?.radiusClass).toBeUndefined();
+
+  const { plan, byClass: frameOf, resolve } = mapLayered(c);
+  const end = (key: string | undefined, name: string, px: number) => {
+    expect(key).toBe(`theme:radius/${name}`);
+    const { value, chain } = resolve(key as string);
+    expect(chain.at(-1)).toBe(`radius:radius/${name}`);
+    expect(value).toBe(px);
+  };
+  for (const key of frameOf("tile").radiusKeys ?? []) end(key, "2xl", 2 * RADIUS_LG);
+  expect(frameOf("tile").radiusKeys).toHaveLength(4);
+  const sheet = frameOf("sheet").radiusKeys ?? [];
+  end(sheet[0], "sm", RADIUS_LG - 4);
+  end(sheet[1], "2xl", 2 * RADIUS_LG);
+  expect(sheet[2]).toBeUndefined();
+  expect(sheet[3]).toBeUndefined();
+  for (const key of frameOf("pill").radiusKeys ?? []) end(key, "full", 9999);
+  expect(frameOf("pill").radiusKeys).toHaveLength(4);
+  expect(plan.tokens.layers?.collections.map((x) => x.name)).toContain("Border radius");
+  expect(plan.report.warnings.filter((w) => w.includes("different values"))).toEqual([]);
+});
+
 // ---------- Theme modes, captured light or dark, through the mapper
 
 type Variant = "light" | "media-dark" | "class-dark";

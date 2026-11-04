@@ -101,6 +101,7 @@ test("keeps token refs on an element and a text node", () => {
       string,
       string,
     ],
+    radiusClass: ["2xl", "2xl", null, "DEFAULT"] as [string, string, null, string],
   };
   const text = { ...textNode("t"), tokenRefs: { color: "--foreground" } };
   const c = { ...minimalCapture(), root: { ...elementNode("r", [text]), tokenRefs: refs } };
@@ -117,6 +118,12 @@ test("rejects a token ref that is long, malformed or a padding of the wrong leng
   expect(parseCapture(withRefs({ color: "red" })).ok).toBe(false);
   expect(parseCapture(withRefs({ color: "--a*b" })).ok).toBe(false);
   expect(parseCapture(withRefs({ padding: ["--a", "--a", "--a"] })).ok).toBe(false);
+  expect(parseCapture(withRefs({ radiusClass: ["md", "md", "md"] })).ok).toBe(false);
+  expect(parseCapture(withRefs({ radiusClass: ["a".repeat(21), null, null, null] })).ok).toBe(
+    false
+  );
+  expect(parseCapture(withRefs({ radiusClass: ["Md", null, null, null] })).ok).toBe(false);
+  expect(parseCapture(withRefs({ radiusClass: ["md", null, null, "1.5"] })).ok).toBe(true);
   expect(parseCapture(withRefs({ padding: Array(100_000).fill("--a") }))).toMatchObject({
     ok: false,
     reason: "invalid",

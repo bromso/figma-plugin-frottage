@@ -77,7 +77,33 @@ const COMPUTED: Record<SlotName, string[]> = {
   fontWeight: ["font-weight"],
 };
 
-const TRACKED = [...new Set(Object.values(SLOTS).flatMap((s) => s.names))];
+/**
+ * Each corner, [top-left, top-right, bottom-right, bottom-left], for the class that rounded it.
+ * Logical corners are read as on a left-to-right page.
+ */
+const CORNERS: Slot[] = [
+  ["border-top-left-radius", "border-start-start-radius"],
+  ["border-top-right-radius", "border-start-end-radius"],
+  ["border-bottom-right-radius", "border-end-end-radius"],
+  ["border-bottom-left-radius", "border-end-start-radius"],
+].map((names) => ({ names: [...names, "border-radius"], inherits: false, kind: "length" }));
+
+const TRACKED = [...new Set([...Object.values(SLOTS), ...CORNERS].flatMap((s: Slot) => s.names))];
+
+/** Tailwind's rounding utilities: the size is group 1, none for bare `rounded`. */
+const ROUNDED = /^rounded(?:-(?:t|r|b|l|tl|tr|br|bl|s|e|ss|se|es|ee))?(?:-([a-z0-9.]+))?$/;
+const MAX_RADIUS_CLASS = 20;
+const SINGLE_CLASS = /^\.((?:[\w-]|\\[0-9a-fA-F]{1,6}\s?|\\.)+)$/;
+
+/** The radius name a selector gives: only a single class that is a rounding utility. */
+function radiusClassOf(selector: string | null): string | null {
+  const m = selector ? SINGLE_CLASS.exec(selector.trim()) : null;
+  if (!m) return null;
+  const size = ROUNDED.exec(unescapeIdent(m[1] as string));
+  if (!size) return null;
+  const name = size[1] ?? "DEFAULT";
+  return name.length <= MAX_RADIUS_CLASS ? name : null;
+}
 
 // ---------- Selectors
 
@@ -178,6 +204,8 @@ type Entry = {
 /** One declaration that reaches an element, with what orders it in the cascade. */
 type Winner = Decl & {
   name: string;
+  /** The rule's selector; null for the inline style. */
+  selector: string | null;
   inline: boolean;
   layer: number[];
   spec: number;
@@ -298,8 +326,8 @@ export function createRefReader(
         }
         if (!hit) continue;
         for (const [name, decl] of entry.decls) {
-          const { layer, spec, order } = entry;
-          out.push({ ...decl, name, inline: false, layer, spec, order });
+          const { layer, spec, order, selector } = entry;
+          out.push({ ...decl, name, selector, inline: false, layer, spec, order });
         }
       }
       if (overBudget()) return null;
@@ -313,6 +341,7 @@ export function createRefReader(
           value,
           important: inline.getPropertyPriority(name) === "important",
           name,
+          selector: null,
           inline: true,
           layer: [],
           spec: 0,
@@ -325,7 +354,7 @@ export function createRefReader(
   };
 
   /** The winning declaration for one slot on `el` itself, or null when no rule sets it. */
-  const ownWinner = (el: Element, slot: Slot): Decl | null | undefined => {
+  const ownWinner = (el: Element, slot: Slot): Winner | null | undefined => {
     const list = matchesOf(el);
     if (!list) return undefined;
     let best: Winner | null = null;
@@ -441,6 +470,13 @@ export function createRefReader(
     for (const key of ["background", "color", "border", "radius"] as const) {
       if (refs[key]) out[key] = refs[key];
     }
+    const corners: (string | null)[] = [];
+    for (const corner of CORNERS) {
+      const own = ownWinner(el, corner);
+      if (own === undefined) return undefined;
+      corners.push(radiusClassOf(own?.selector ?? null));
+    }
+    if (corners.some(Boolean)) out.radiusClass = corners as NonNullable<TokenRefs["radiusClass"]>;
     const sides = [refs.paddingTop, refs.paddingRight, refs.paddingBottom, refs.paddingLeft];
     if (sides.some(Boolean)) {
       out.padding = sides.map((s) => s ?? null) as NonNullable<TokenRefs["padding"]>;

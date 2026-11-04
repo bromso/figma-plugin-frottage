@@ -456,7 +456,7 @@ export function extractTokens(
   capture: Capture,
   ops: PlanOp[],
   options: PlanOptions,
-  report?: Pick<ImportReport, "raw" | "themeModes">
+  report?: Pick<ImportReport, "raw" | "themeModes" | "warnings">
 ): PlanTokens {
   const collection = collectionName(capture.source.url);
   if (!options.tokens) return { textStyles: [], colors: [], spacing: [], collection };
@@ -478,6 +478,7 @@ export function extractTokens(
     if (report) {
       report.raw = raw;
       report.themeModes = layers.modes;
+      report.warnings.push(...bound.warnings);
     }
     return {
       textStyles,

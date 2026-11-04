@@ -86,12 +86,21 @@ const ref = z
   .max(80)
   .regex(/^--[A-Za-z0-9_-]+(?:\*-?(?:\d+\.?\d*|\.\d+))?$/);
 
+/** A rounding utility's size, as `md` for `.rounded-md`, or `DEFAULT` for bare `.rounded`. */
+const radiusClass = z
+  .string()
+  .max(20)
+  .regex(/^(?:DEFAULT|[a-z0-9.]+)$/)
+  .nullable();
+
 /** Which custom property each property's winning rule used, where the page's value agrees. */
 const tokenRefs = z.object({
   background: ref.optional(),
   color: ref.optional(),
   border: ref.optional(),
   radius: ref.optional(),
+  // [top-left, top-right, bottom-right, bottom-left]: the class of each corner's winning rule.
+  radiusClass: z.tuple([radiusClass, radiusClass, radiusClass, radiusClass]).optional(),
   // [top, right, bottom, left]
   padding: z.tuple([ref.nullable(), ref.nullable(), ref.nullable(), ref.nullable()]).optional(),
   gap: ref.optional(),

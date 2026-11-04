@@ -1135,6 +1135,62 @@
                   "maxLength": 80,
                   "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
                 },
+                "radiusClass": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 20,
+                          "pattern": "^(?:DEFAULT|[a-z0-9.]+)$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 20,
+                          "pattern": "^(?:DEFAULT|[a-z0-9.]+)$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 20,
+                          "pattern": "^(?:DEFAULT|[a-z0-9.]+)$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 20,
+                          "pattern": "^(?:DEFAULT|[a-z0-9.]+)$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 4,
+                  "maxItems": 4
+                },
                 "padding": {
                   "type": "array",
                   "prefixItems": [
@@ -1495,6 +1551,62 @@
                   "type": "string",
                   "maxLength": 80,
                   "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "radiusClass": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 20,
+                          "pattern": "^(?:DEFAULT|[a-z0-9.]+)$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 20,
+                          "pattern": "^(?:DEFAULT|[a-z0-9.]+)$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 20,
+                          "pattern": "^(?:DEFAULT|[a-z0-9.]+)$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 20,
+                          "pattern": "^(?:DEFAULT|[a-z0-9.]+)$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 4,
+                  "maxItems": 4
                 },
                 "padding": {
                   "type": "array",

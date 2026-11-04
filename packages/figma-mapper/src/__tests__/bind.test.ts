@@ -384,3 +384,121 @@ describe("bindLayers", () => {
     expect(layers.effectStyles).toEqual([]);
   });
 });
+
+describe("radii named by the site's classes", () => {
+  type Four<T> = [T, T, T, T];
+  /** Mainline's tokens: only `--radius`, every size a class's calc() of it. */
+  const mainline = (): Capture["tokens"] => ({ cssCustomProperties: { "--radius": "8px" } });
+  const rounded = (id: string, radius: Four<number>, refs?: TokenRefs) => {
+    const base = el(id, [0, 0]);
+    return {
+      ...base,
+      style: { ...base.style, borderRadius: radius },
+      ...(refs ? { tokenRefs: refs } : {}),
+    };
+  };
+  const all = <T>(v: T): Four<T> => [v, v, v, v];
+  const chainOf = (p: LayerPlan, key: string | undefined) => {
+    const vars = p.tokens.layers?.variables ?? [];
+    let at = vars.find((v) => v.key === key);
+    const chain: string[] = [];
+    while (at) {
+      chain.push(at.key);
+      const value = at.values[0];
+      if (typeof value === "object" && value !== null && "alias" in value) {
+        const next: string = value.alias;
+        at = vars.find((v) => v.key === next);
+      } else return { value, chain };
+    }
+    return { value: undefined, chain };
+  };
+
+  test("md, 2xl and full bind to radius/<name> in Border radius through Theme tokens", () => {
+    const FULL = 3.40282e38;
+    const p = plan(
+      [
+        rounded("md", all(6), { radiusClass: all("md") }),
+        rounded("top", [16, 16, 0, 0], { radiusClass: ["2xl", "2xl", null, null] }),
+        rounded("pill", all(FULL), { radiusClass: all("full"), radius: "--radius*2" }),
+      ],
+      mainline()
+    );
+    expect(frame(p, "md").radiusKeys).toEqual(all("theme:radius/md"));
+    expect(frame(p, "top").radiusKeys).toEqual([
+      "theme:radius/2xl",
+      "theme:radius/2xl",
+      undefined,
+      undefined,
+    ]);
+    expect(frame(p, "pill").radiusKeys).toEqual(all("theme:radius/full"));
+    expect(chainOf(p, "theme:radius/md")).toEqual({
+      value: 6,
+      chain: ["theme:radius/md", "radius:radius/md"],
+    });
+    expect(chainOf(p, "theme:radius/2xl").value).toBe(16);
+    expect(chainOf(p, "theme:radius/full").value).toBe(9999);
+    const collections = p.tokens.layers?.collections.map((c) => c.name);
+    expect(collections).toContain("Border radius");
+    expect(p.tokens.layers?.variables.find((v) => v.key === "radius:radius/md")?.scopes).toEqual([
+      "CORNER_RADIUS",
+    ]);
+    expect(p.report.raw?.radii).toBe(0);
+  });
+
+  test("bare rounded is radius/default, and any corner past 9999 px is 9999", () => {
+    const p = plan(
+      [
+        rounded("a", all(4), { radiusClass: all("DEFAULT") }),
+        rounded("b", all(1e6), { radiusClass: all("huge") }),
+      ],
+      mainline()
+    );
+    expect(frame(p, "a").radiusKeys).toEqual(all("theme:radius/default"));
+    expect(chainOf(p, "theme:radius/default").value).toBe(4);
+    expect(chainOf(p, "theme:radius/huge").value).toBe(9999);
+  });
+
+  test("a literal 6 px corner with no class binds to radius/md by its unique value", () => {
+    const p = plan(
+      [rounded("md", all(6), { radiusClass: all("md") }), rounded("plain", all(6))],
+      mainline()
+    );
+    expect(frame(p, "plain").radiusKeys).toEqual(all("theme:radius/md"));
+  });
+
+  test("a name whose corners differ keeps the first value and is reported once", () => {
+    const p = plan(
+      [
+        rounded("a", all(6), { radiusClass: all("md") }),
+        rounded("b", all(7), { radiusClass: all("md") }),
+        rounded("c", all(5), { radiusClass: all("md") }),
+        rounded("d", all(16), { radiusClass: all("md"), radius: "--radius*2" }),
+      ],
+      mainline()
+    );
+    expect(frame(p, "a").radiusKeys).toEqual(all("theme:radius/md"));
+    expect(frame(p, "b").radiusKeys).toBeUndefined();
+    // One that differs goes on as a corner with no class would: here, by its ref.
+    expect(frame(p, "d").radiusKeys).toEqual(all("theme:radius/x2"));
+    expect(chainOf(p, "theme:radius/md").value).toBe(6);
+    const said = p.report.warnings.filter((w) => w.includes("radius/md"));
+    expect(said).toEqual(["radius/md has different values on this page."]);
+  });
+
+  test("a capture without radiusClass binds as before", () => {
+    const p = plan([rounded("a", all(10), { radius: "--radius-lg" })]);
+    expect(frame(p, "a").radiusKeys).toEqual(all("theme:radius/lg"));
+    const p2 = plan([rounded("b", all(6))], mainline());
+    expect(frame(p2, "b").radiusKeys).toBeUndefined();
+    expect(p2.report.raw?.radii).toBe(4);
+  });
+
+  test("--radius*2 with no class resolves to radius/x2", () => {
+    const p = plan([rounded("a", all(16), { radius: "--radius*2" })], mainline());
+    expect(frame(p, "a").radiusKeys).toEqual(all("theme:radius/x2"));
+    expect(chainOf(p, "theme:radius/x2")).toEqual({
+      value: 16,
+      chain: ["theme:radius/x2", "radius:radius/x2"],
+    });
+  });
+});
