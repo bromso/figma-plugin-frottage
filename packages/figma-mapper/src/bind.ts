@@ -98,7 +98,8 @@ function holds(v: StagedVariable | null, px: number, followed: Followed): boolea
  * The stroke a frame's padding sits inside, as CSS's border-box has it, or 0. A frame's padding
  * takes in its border, so `border p-6` is 25 px from the edge, not 24. Where the stroke is the same
  * on every side and the padding refs hold the padding without it, the padding is read inside the
- * stroke and the frame counts its strokes in its layout, so it lays out as before.
+ * stroke and the frame counts its strokes in its layout, so it lays out as before. A side whose
+ * padding is the stroke alone (CSS padding 0 inside a border) is read the same way, as 0.
  */
 function strokeInset(
   op: Extract<PlanOp, { op: "frame" }>,
@@ -107,12 +108,13 @@ function strokeInset(
 ): number {
   const { layout, strokes } = op;
   const refs = op.refs?.padding;
-  if (layout.mode === "NONE" || !strokes || !refs) return 0;
+  if (layout.mode === "NONE" || !strokes) return 0;
   const { top, right, bottom, left } = strokes.weights;
   if (!(top > 0) || ![right, bottom, left].every((w) => sameLength(w, top))) return 0;
   if (layout.padding.some((px) => px < top - PX)) return 0;
-  let inside = false;
-  for (const [side, ref] of refs.entries()) {
+  // A side whose padding is only the border (CSS padding 0) has nothing of its own to bind.
+  let inside = layout.padding.some((px) => sameLength(px, top));
+  for (const [side, ref] of (refs ?? []).entries()) {
     const v = ref ? catalogue.resolveRef(ref) : null;
     if (!v) continue;
     const px = layout.padding[side] as number;

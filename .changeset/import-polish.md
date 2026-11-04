@@ -5,3 +5,5 @@
 ---
 
 Binds corner radii to a Border radius collection named after the site's rounding classes (`radius/md`, `radius/2xl`, `radius/full`), and resolves `calc(var(--radius) * n)` refs.
+
+Counts a uniform border with no padding of its own as layout stroke, not raw spacing.

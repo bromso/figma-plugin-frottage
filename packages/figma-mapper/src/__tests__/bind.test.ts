@@ -233,6 +233,18 @@ describe("bindLayers", () => {
     } as ElementNode;
   }
 
+  /** A border and no padding: the child sits flush inside the stroke. */
+  function borderOnly(widths: [number, number, number, number]) {
+    const [t, r, b, l] = widths;
+    const node = bordered(widths);
+    const child = textNode("t", { box: { x: l, y: t, w: 68, h: 20 } });
+    return {
+      ...node,
+      children: [child],
+      box: { ...node.box, w: 68 + l + r, h: 20 + t + b },
+    } as ElementNode;
+  }
+
   test("border p-4 binds its padding inside a uniform stroke, which counts in the layout", () => {
     const p = plan([bordered([1, 1, 1, 1])]);
     const layout = frame(p, "a").layout;
@@ -242,6 +254,26 @@ describe("bindLayers", () => {
     expect("padding" in layout && layout.padding).toEqual([17, 17, 17, 17]);
     expect("strokesIncluded" in layout && layout.strokesIncluded).toBe(true);
     expect(p.report.raw?.spacing).toBe(0);
+  });
+
+  test("a border-only frame's padding is the stroke alone: nothing raw, counted in the layout", () => {
+    const node = borderOnly([1, 1, 1, 1]);
+    node.layout = { ...node.layout, padding: [0, 0, 0, 0] } as ElementNode["layout"];
+    delete (node as { tokenRefs?: unknown }).tokenRefs;
+    const p = plan([node]);
+    const layout = frame(p, "a").layout;
+    expect("strokesIncluded" in layout && layout.strokesIncluded).toBe(true);
+    expect(p.report.raw?.spacing).toBe(0);
+  });
+
+  test("a border-only frame on a non-uniform stroke stays raw", () => {
+    const node = borderOnly([1, 2, 1, 1]);
+    node.layout = { ...node.layout, padding: [0, 0, 0, 0] } as ElementNode["layout"];
+    delete (node as { tokenRefs?: unknown }).tokenRefs;
+    const p = plan([node]);
+    const layout = frame(p, "a").layout;
+    expect("strokesIncluded" in layout).toBe(false);
+    expect(p.report.raw?.spacing).toBe(4);
   });
 
   test("a stroke that differs by side leaves the padding as it was", () => {
