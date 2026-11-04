@@ -17,3 +17,5 @@ Shows Breakpoint modes and each collection's variables smallest to largest (`bas
 Names mauve, olive, mist and taupe after Tailwind 4.3, and says "color" throughout the import report.
 
 Binds an image's rounded corners to the Border radius collection as it does a frame's, and counts the ones that stay plain as raw.
+
+A corner whose CSS uses the site's own light/dark token binds to that token rather than to the rounding class's name.

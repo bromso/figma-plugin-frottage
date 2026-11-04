@@ -565,6 +565,32 @@ describe("radii named by the site's classes", () => {
     expect(p.report.raw?.radii).toBe(2);
   });
 
+  test("a ref to the site's multi-mode token beats the class name; a single-mode one doesn't", () => {
+    const tokens: Capture["tokens"] = {
+      cssCustomProperties: { "--radius": "8px", "--radius-card": "8px" },
+      themes: [{ context: ".dark", mode: "Dark", properties: { "--radius-card": "12px" } }],
+    };
+    const p = plan(
+      [
+        rounded("card", all(8), { radiusClass: all("lg"), radius: "--radius-card" }),
+        rounded("plain", all(8), { radiusClass: all("lg"), radius: "--radius" }),
+      ],
+      tokens
+    );
+    const card = frame(p, "card").radiusKeys ?? [];
+    expect(card).toHaveLength(4);
+    const vars = p.tokens.layers?.variables ?? [];
+    for (const key of card) {
+      // Theme tokens alias the Color Mode variable that switches with the mode.
+      const theme = vars.find((x) => x.key === key);
+      const alias = (theme?.values[0] as { alias?: string } | undefined)?.alias;
+      const target = vars.find((x) => x.key === alias);
+      expect(target?.collection).toBe("colorMode");
+      expect(target?.values).toEqual([8, 12]);
+    }
+    expect(frame(p, "plain").radiusKeys).toEqual(all("theme:radius/lg"));
+  });
+
   test("--radius*2 with no class resolves to radius/x2", () => {
     const p = plan([rounded("a", all(16), { radius: "--radius*2" })], mainline());
     expect(frame(p, "a").radiusKeys).toEqual(all("theme:radius/x2"));

@@ -229,11 +229,19 @@ export function bindLayers(
     if (v && fits) bind(field, v);
     return Boolean(v && fits);
   };
+  // A ref to a variable that switches with the mode is the site's own token for the corner, and
+  // beats the class that names it where it holds the corner; any other ref waits for the name.
+  const multiMode = (field: Field): boolean => {
+    const v = field.ref ? catalogue.resolveRef(field.ref) : null;
+    if (!v) return false;
+    return v.collection === "theme" || new Set(v.values.map((x) => JSON.stringify(x))).size > 1;
+  };
   let unbound: Field[] = [];
   const named: Field[] = [];
   for (const field of fields) {
-    if (field.kind === "radii" && field.name) named.push(field);
-    else if (!byRef(field)) unbound.push(field);
+    if (field.kind !== "radii" || !field.name) {
+      if (!byRef(field)) unbound.push(field);
+    } else if (!(multiMode(field) && byRef(field))) named.push(field);
   }
 
   // Roles inferred for a page with no theme join the catalogue here, before values are matched,
