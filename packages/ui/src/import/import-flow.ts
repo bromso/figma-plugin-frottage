@@ -209,6 +209,9 @@ export type ImportPort = {
 /** A device frame's Device mode, and its Breakpoint mode when the page has any. */
 type DeviceModes = { mode: string; breakpoint: string | null };
 
+/** A collection's modes as the sandbox settled them: those it has, and those added to it now. */
+type SettledModes = { kind: string; collection: string; created: string[]; added: string[] };
+
 type SetResult = {
   rootIds: string[];
   layoutFailures: number;
@@ -221,6 +224,8 @@ type SetResult = {
   tokenFailures: number;
   modes: number;
   modesDropped: number;
+  /** The layered collections' modes, for a set with layers. */
+  layers?: { modesDropped: string[]; modes: SettledModes[] };
 };
 
 /**
@@ -622,8 +627,6 @@ function devicesSpec(set: VersionSet, ctx: SetContext, placement: Placement): Se
   );
   plans.length = 0;
   const { layers } = merge;
-  const modesOf = (kind: "device" | "breakpoint") =>
-    layers.collections.find((c) => c.kind === kind)?.modes ?? [];
   return {
     members: merge.frames.map((frame) => ({
       version: set.versions[frame.index] as LoadedFile,
@@ -643,12 +646,21 @@ function devicesSpec(set: VersionSet, ctx: SetContext, placement: Placement): Se
     },
     notes(result) {
       const lines: string[] = [];
-      const devices = modesOf("device");
-      const breakpoints = modesOf("breakpoint");
+      // The modes Figma made, not the ones planned: a mode limit can leave some out.
+      const settled = result.layers?.modes ?? [];
+      const made = (kind: "device" | "breakpoint") =>
+        settled.find((m) => m.kind === kind)?.created ?? [];
+      const devices = made("device");
+      const breakpoints = made("breakpoint");
       if (devices.length > 0) lines.push(`${COLLECTION_NAMES.device}: ${devices.join(", ")}`);
       if (breakpoints.length > 0) {
         lines.push(`${COLLECTION_NAMES.breakpoint}: ${breakpoints.join(", ")}`);
       }
+      for (const { collection, added } of settled) {
+        if (added.length > 0) lines.push(`Modes added: ${collection} ${added.join(", ")}.`);
+      }
+      const dropped = [...new Set(result.layers?.modesDropped ?? [])];
+      if (dropped.length > 0) lines.push(`Not created: ${dropped.join(", ")}.`);
       lines.push(...merge.report);
       const plain = result.plainVersions?.length ?? 0;
       if (plain > 0) lines.push(plainFramesLine(plain));

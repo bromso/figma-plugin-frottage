@@ -231,7 +231,7 @@ describe("createLayerSet", () => {
     expect(themeCardVar.description).toBe("Final theme token; source: Color Mode");
     expect(themeCardVar.scopes).toEqual(["FRAME_FILL", "SHAPE_FILL"]);
 
-    expect(set.counts()).toEqual({
+    expect(set.counts()).toMatchObject({
       variablesCreated: 14,
       variablesReused: 0,
       variablesRenamed: 0,
@@ -361,7 +361,7 @@ describe("createLayerSet", () => {
       // An alias is a value to compare with, not a token in the file.
       .filter((c) => /^create(?!VariableAlias)|addMode|setValueForMode|renameMode/.test(c));
     expect(made).toEqual([]);
-    expect(set.counts()).toEqual({
+    expect(set.counts()).toMatchObject({
       variablesCreated: 0,
       variablesReused: 14,
       variablesRenamed: 0,
@@ -641,6 +641,41 @@ describe("device and breakpoint modes", () => {
     expect(set.modeOf("device", "Tablet")).not.toBeNull();
     expect(set.modeOf("device", "Phone")).toBeNull();
     expect(set.counts().modesDropped).toEqual(["Phone", "lg"]);
+  });
+
+  test("counts name each collection's modes that exist, and those added to one already there", async () => {
+    const f = fakeFigma({ modeLimit: 2 });
+    const first = await settle(f, withDevices());
+    const modes = (set: typeof first, kind: string) =>
+      set.counts().modes.find((m) => m.kind === kind);
+    expect(modes(first, "device")).toEqual({
+      kind: "device",
+      collection: "Device",
+      created: ["Desktop", "Tablet"],
+      added: [],
+    });
+    expect(modes(first, "breakpoint")?.created).toEqual(["base", "md"]);
+
+    // Again, with room: the modes left out before are added now.
+    const again = fakeFigma();
+    await settle(
+      again,
+      layers({
+        modes: ["Light", "Dark"],
+        collections: collectionsFor(["Light", "Dark"]).map((c) =>
+          c.kind === "breakpoint" ? { ...c, modes: ["base", "md"] } : c
+        ),
+        variables: [...ALL, minWidth],
+      })
+    );
+    const second = await settle(again, withDevices());
+    expect(modes(second, "breakpoint")).toEqual({
+      kind: "breakpoint",
+      collection: "Breakpoint",
+      created: ["base", "md", "lg"],
+      added: ["lg"],
+    });
+    expect(modes(second, "device")?.added).toEqual([]);
   });
 
   test("a refusal of Limited to 3 modes only stores 3, which getModeLimit gives", async () => {

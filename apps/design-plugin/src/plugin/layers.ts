@@ -38,11 +38,23 @@ export type LayerCounts = {
   variablesRenamed: number;
   /** Theme modes the file had no room for. Their values weren't written. */
   modesDropped: string[];
+  /**
+   * Per collection settled, the modes it has for the plan, and of those the ones added just now to
+   * a collection an earlier import made.
+   */
+  modes: LayerModes[];
   stylesCreated: number;
   /** The user's paint styles that raw colours linked to. */
   stylesReused: number;
   /** The file holds PR #7's `· Primitives` or `· Theme` collection for this host, left as it is. */
   legacyCollections: boolean;
+};
+
+export type LayerModes = {
+  kind: PlanCollectionKind;
+  collection: string;
+  created: string[];
+  added: string[];
 };
 
 /** Where the file's mode limit is kept, per user, once Figma has refused a mode. */
@@ -206,6 +218,7 @@ export function createLayerSet(api: PluginAPI) {
     variablesReused: 0,
     variablesRenamed: 0,
     modesDropped: [],
+    modes: [],
     stylesCreated: 0,
     stylesReused: 0,
     legacyCollections: false,
@@ -392,6 +405,12 @@ export function createLayerSet(api: PluginAPI) {
         labels,
         ...settleModes(collection, labels, fresh),
       };
+      counts.modes.push({
+        kind,
+        collection: collection.name,
+        created: labels.filter((_, i) => home.modeIds[i] != null),
+        added: fresh ? [] : labels.filter((_, i) => home.added.has(home.modeIds[i] ?? "")),
+      });
       homes.set(kind, home);
       return home;
     };
@@ -687,7 +706,11 @@ export function createLayerSet(api: PluginAPI) {
     /** The Color Mode mode a page opens in: the one it was captured in, else Light. */
     openingMode: () => themeMode(activeMode) ?? themeMode("Light"),
 
-    counts: (): LayerCounts => ({ ...counts, modesDropped: [...counts.modesDropped] }),
+    counts: (): LayerCounts => ({
+      ...counts,
+      modesDropped: [...counts.modesDropped],
+      modes: counts.modes.map((m) => ({ ...m, created: [...m.created], added: [...m.added] })),
+    }),
     failures: () => failures,
 
     /** Stops the import making anything more, ahead of `discard`. */

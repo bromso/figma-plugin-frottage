@@ -292,6 +292,20 @@ export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular"
         tokenFailures: 0,
         modes: 0,
         modesDropped: 0,
+        // A device set's collections, every mode made, as the sandbox reports them.
+        ...(port.deviceSetMeta
+          ? {
+              layers: {
+                modesDropped: [],
+                modes: port.deviceSetMeta.layers.collections.map((c) => ({
+                  kind: c.kind,
+                  collection: c.name,
+                  created: [...c.modes],
+                  added: [],
+                })),
+              },
+            }
+          : {}),
         ...port.setResult,
       };
     },

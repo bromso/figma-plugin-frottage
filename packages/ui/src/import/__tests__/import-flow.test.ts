@@ -1675,6 +1675,67 @@ describe("a device set", () => {
     ]);
   });
 
+  test("the report names the modes Figma made, and the ones it didn't", async () => {
+    const port = fakePort();
+    port.setResult = {
+      layers: {
+        modesDropped: ["Phone portrait", "base", "lg"],
+        modes: [
+          {
+            kind: "device",
+            collection: "Device",
+            created: ["Laptop", "Tablet portrait"],
+            added: [],
+          },
+          { kind: "breakpoint", collection: "Breakpoint", created: ["min 1400", "md"], added: [] },
+        ],
+      },
+    };
+    const { last } = await runDevices([devicesFile()], port);
+    if (last.step !== "done") throw new Error(last.step);
+    const notes = last.sets[0]?.notes ?? [];
+    expect(notes).toContain("Device: Laptop, Tablet portrait");
+    expect(notes).not.toContain("Device: Laptop, Tablet portrait, Phone portrait");
+    expect(notes).toContain("Breakpoint: min 1400, md");
+    expect(notes).toContain("Not created: Phone portrait, base, lg.");
+    expect(notes.some((n) => n.startsWith("Modes added"))).toBe(false);
+  });
+
+  test("a re-import names the modes it added to each collection", async () => {
+    const port = fakePort();
+    port.setResult = {
+      layers: {
+        modesDropped: [],
+        modes: [
+          {
+            kind: "device",
+            collection: "Device",
+            created: ["Laptop", "Tablet portrait", "Phone portrait"],
+            added: [],
+          },
+          {
+            kind: "breakpoint",
+            collection: "Breakpoint",
+            created: ["min 1400", "md", "base", "sm", "lg"],
+            added: ["sm", "lg"],
+          },
+          {
+            kind: "colorMode",
+            collection: "Color Mode",
+            created: ["Light", "Dark"],
+            added: ["Dark"],
+          },
+        ],
+      },
+    };
+    const { last } = await runDevices([devicesFile()], port);
+    if (last.step !== "done") throw new Error(last.step);
+    const notes = last.sets[0]?.notes ?? [];
+    expect(notes).toContain("Modes added: Breakpoint sm, lg.");
+    expect(notes).toContain("Modes added: Color Mode Dark.");
+    expect(notes.some((n) => n.startsWith("Not created"))).toBe(false);
+  });
+
   test("frames left without their modes are counted in the report", async () => {
     const port = fakePort();
     port.setResult = { plainVersions: [1] };

@@ -100,5 +100,10 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     modes: number;
     modesDropped: number;
     droppedVersions: number[];
+    /** The layered collections' modes: those each has, and those added to one already there. */
+    layers?: {
+      modesDropped: string[];
+      modes: { kind: string; collection: string; created: string[]; added: string[] }[];
+    };
   };
 }>();
