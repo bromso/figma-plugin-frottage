@@ -757,5 +757,34 @@ describe("App (themes in what's in this file)", () => {
     await user.click(screen.getByRole("checkbox", { name: "Dark" }));
     expect(screen.getByText("Tick Light, Dark or both.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Import" })).toHaveAccessibleDescription(
+      "Tick Light, Dark or both."
+    );
+  });
+
+  it("an older file with Light and another theme keeps both until a tick changes", async () => {
+    const brand = (): Capture["tokens"] => ({
+      cssCustomProperties: { "--surface": "#ffffff" },
+      themes: [{ context: ".brand", mode: "Brand", properties: { "--surface": "#123456" } }],
+    });
+    const file = () =>
+      deviceSetFile({
+        devices,
+        edit: (c) => {
+          c.tokens = brand();
+        },
+      });
+    const first = await chosen(file());
+    expect(screen.queryByRole("checkbox", { name: "Dark" })).toBeNull();
+    await first.user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(first.port.deviceSetMeta?.layers.modes).toEqual(["Light", "Brand"]);
+    cleanup();
+    const second = await chosen(file());
+    await second.user.click(screen.getByRole("checkbox", { name: "Light" }));
+    await second.user.click(screen.getByRole("checkbox", { name: "Light" }));
+    await second.user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(second.port.deviceSetMeta?.layers.modes).toEqual(["Light", "Brand"]);
   });
 });

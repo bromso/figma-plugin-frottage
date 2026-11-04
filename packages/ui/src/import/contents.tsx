@@ -102,7 +102,9 @@ export function ContentsSection({
             />
           )}
           {!choice.themes.light && !choice.themes.dark && (
-            <p className="text-figma-text-danger">Tick Light, Dark or both.</p>
+            <p id="themes-hint" className="text-figma-text-danger">
+              Tick Light, Dark or both.
+            </p>
           )}
         </fieldset>
       )}

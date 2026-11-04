@@ -298,18 +298,22 @@ function Review({
       : null
   );
   // The line and warnings follow the ticks; as shown at first until one changes.
+  const themesChanged =
+    picked !== null &&
+    contents !== undefined &&
+    (picked.themes.light !== (contents.themes.light?.on ?? false) ||
+      picked.themes.dark !== (contents.themes.dark?.on ?? false));
   const summary = useMemo(() => {
     if (!contents || !picked) return null;
     const first = { collections: contents.collections, overLimit: contents.overLimit };
     const unchanged =
       picked.devices.every((on, i) => on === contents.devices[i]?.on) &&
       picked.extras.every((on, i) => on === contents.extras[i]?.on) &&
-      picked.themes.light === (contents.themes.light?.on ?? false) &&
-      picked.themes.dark === (contents.themes.dark?.on ?? false);
+      !themesChanged;
     return unchanged
       ? first
       : (contents.summarize?.(picked.devices, picked.extras, picked.themes) ?? first);
-  }, [contents, picked]);
+  }, [contents, picked, themesChanged]);
   // A device set always shows its contents, so the options wait behind a button unless asked for.
   const [showOptions, setShowOptions] = useState(
     !contents || contents.devices.length === 0 || state.optionsOpen === true
@@ -359,13 +363,25 @@ function Review({
         </Button>
         <Button
           disabled={noDevice || noTheme}
+          aria-describedby={noTheme ? "themes-hint" : undefined}
           onClick={() =>
             onDecide({
               options,
               fonts: new Map(
                 state.missing.map((m) => [m.family, choices.get(m.family) ?? m.choice])
               ),
-              ...(picked ? { contents: picked } : {}),
+              // Themes the user left alone are not a choice: the capture's own choice, or every
+              // stylesheet mode, still applies.
+              ...(picked
+                ? {
+                    contents: {
+                      devices: picked.devices,
+                      extras: picked.extras,
+                      placement: picked.placement,
+                      ...(themesChanged ? { themes: picked.themes } : {}),
+                    },
+                  }
+                : {}),
             })
           }
         >
