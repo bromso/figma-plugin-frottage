@@ -18,13 +18,16 @@ type DoneState = Extract<ImportState, { step: "done" }>;
 const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`;
 
-/** What the theme import did, as lines. Only a page imported with layers has any. */
-function themeLines({ report, theme }: VersionResult): string[] {
+/**
+ * What the theme import did, as lines. Only a page imported with layers has any. `advise` adds how
+ * to get a dark mode, which a device set's captures can't follow as worded.
+ */
+function themeLines({ report, theme }: Pick<VersionResult, "report" | "theme">, advise = true) {
   if (!theme) return [];
   const lines: string[] = [];
   const modes = report.themeModes ?? [];
   if (modes.length > 1) lines.push(`Color Mode: ${modes.join(", ")}`);
-  else if (theme.source !== "site") {
+  else if (theme.source !== "site" && advise) {
     lines.push(
       "No theme found in the stylesheet. To add a dark mode, capture the page again in dark and import both as versions."
     );
@@ -195,6 +198,12 @@ function SetSummary({ set }: { set: SetReport }) {
           ))}
         </dl>
       )}
+      {set.theme &&
+        themeLines(set.theme, false).map((line) => (
+          <p key={line} className="text-figma-text-secondary">
+            {line}
+          </p>
+        ))}
       {set.modesDropped > 0 && (
         <p className="text-figma-text-danger">
           Figma gave {plural(set.modesDropped, "version")} no mode, so{" "}

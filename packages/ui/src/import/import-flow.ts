@@ -5,6 +5,7 @@ import {
   COLLECTION_NAMES,
   DEFAULT_IMPORT_OPTIONS,
   type DeviceEntry,
+  deviceWidth,
   type FontRef,
   type ImportOptions,
   type ImportReport,
@@ -86,6 +87,8 @@ export type SetReport = {
   layoutFailures: number;
   /** The tokens that stayed plain values in one version, in words. */
   notes: string[];
+  /** A device set's theme, reported once for its frames, which share it. */
+  theme?: Pick<VersionResult, "report" | "theme">;
 };
 
 export type FileFailure = {
@@ -536,7 +539,38 @@ type SetSpec = {
   notes(result: SetResult): string[];
   /** Whether a member left without its mode counts as a plain frame of `modesDropped`. */
   modesOwnFrames: boolean;
+  /** The frames share one theme, which the set reports once rather than each frame. */
+  sharedTheme: boolean;
 };
+
+/** The theme its frames share, reported once: their raw values summed, their notes joined. */
+function sharedTheme(kept: VersionReport[]): SetReport["theme"] {
+  const themed = kept.filter((v) => v.theme);
+  const first = themed[0];
+  if (!first?.theme) return undefined;
+  const raws = themed.flatMap((v) => (v.report.raw ? [v.report.raw] : []));
+  const raw =
+    raws.length > 0
+      ? {
+          ...raws[0],
+          colors: raws.reduce((n, r) => n + r.colors, 0),
+          radii: raws.reduce((n, r) => n + r.radii, 0),
+          spacing: raws.reduce((n, r) => n + r.spacing, 0),
+        }
+      : undefined;
+  const themes = themed.map((v) => v.theme as ThemeReport);
+  return {
+    report: { ...first.report, ...(raw ? { raw } : {}) },
+    theme: {
+      ...first.theme,
+      twins: Math.max(...themes.map((t) => t.twins)),
+      inferred: [...new Set(themes.flatMap((t) => t.inferred))],
+      variablesRenamed: Math.max(...themes.map((t) => t.variablesRenamed)),
+      modesDropped: [...new Set(themes.flatMap((t) => t.modesDropped))],
+      legacyCollections: themes.some((t) => t.legacyCollections),
+    },
+  };
+}
 
 /** A version named by its size first, since the page title is the same for all of a file. */
 const nameOf = (v: LoadedFile) => {
@@ -569,6 +603,7 @@ function modesSpec(set: VersionSet, ctx: SetContext): SetSpec {
     },
     notes: () => merged.report,
     modesOwnFrames: true,
+    sharedTheme: false,
   };
 }
 
@@ -620,6 +655,7 @@ function devicesSpec(set: VersionSet, ctx: SetContext, placement: Placement): Se
       return lines;
     },
     modesOwnFrames: false,
+    sharedTheme: true,
   };
 }
 
@@ -697,6 +733,8 @@ async function importSet(
     const result = await port.endSet();
     open = false;
     if (kept.length === 0) return { versions: [], report: null, cancelled: false };
+    const theme = spec.sharedTheme ? sharedTheme(kept) : undefined;
+    if (spec.sharedTheme) for (const version of kept) delete version.theme;
     return {
       versions: kept,
       cancelled: false,
@@ -712,6 +750,7 @@ async function importSet(
         tokenFailures: result.tokenFailures,
         layoutFailures: result.layoutFailures,
         notes: spec.notes(result),
+        ...(theme ? { theme } : {}),
       },
     };
   } catch (error) {
@@ -890,6 +929,22 @@ export async function runImports(
 
     let overrides: Record<string, string> | undefined;
     let deviceChoice: ReviewDecision["contents"];
+    /** A set as it imports: without the captures the user unticked, of the set the review showed. */
+    const keptOf = (whole: VersionSet): VersionSet => {
+      const choice = whole === firstDevices ? deviceChoice : undefined;
+      return choice
+        ? { ...whole, versions: ticked(whole.versions, isExtra, choice.devices, choice.extras) }
+        : whole;
+    };
+    /** The frames a set makes: a device set's ticked devices, or every version. */
+    const framesOf = (whole: VersionSet) => {
+      const { versions } = keptOf(whole);
+      return isDeviceSet(whole) ? versions.filter((v) => !isExtra(v)).length : versions.length;
+    };
+    /** Progress counts frames, so extras and unticked devices are left out of it. */
+    const countFrames = () => {
+      counted = sets.reduce((sum, whole) => sum + framesOf(whole), 0);
+    };
     if (session && (missing.size > 0 || session.forceReview || contents)) {
       const families = [...new Set(available.map((f) => f.family))];
       const reviewFonts: ReviewFont[] = [];
@@ -909,6 +964,7 @@ export async function runImports(
       const decision = await session.decide();
       if (!decision) return onState({ step: "idle" });
       if (contents) deviceChoice = sanitizeContents(decision.contents);
+      countFrames();
       // The review is gone: show progress at once, with a Cancel that works.
       onState(working(1, ordered[0]?.name ?? ""));
       options = sanitizeOptions(decision.options);
@@ -951,20 +1007,14 @@ export async function runImports(
       return again.assets;
     };
     const placement = deviceChoice?.placement ?? "new-page";
+    countFrames();
     let index = 0;
     for (const whole of sets) {
-      const firstFile = index + 1;
-      index += whole.versions.length;
-      if (signal?.aborted) return cancelled();
       const devices = isDeviceSet(whole);
-      // The captures the user unticked are left out, of the set the review showed.
-      const choice = devices && whole === firstDevices ? deviceChoice : undefined;
-      const set = choice
-        ? {
-            ...whole,
-            versions: ticked(whole.versions, isExtra, choice.devices, choice.extras),
-          }
-        : whole;
+      const set = keptOf(whole);
+      const firstFile = index + 1;
+      index += framesOf(whole);
+      if (signal?.aborted) return cancelled();
       // With every device unticked there is nothing to make.
       if (devices && !set.versions.some((v) => !isExtra(v))) continue;
       // A set counts uses across its versions, in `mergeVersions`, so each plan proposes them all.
@@ -1047,6 +1097,8 @@ async function reviewContents(
 ): Promise<ReviewContents> {
   await yieldToPaint();
   const width = (v: LoadedFile) => Math.round(v.capture.source.viewport.w);
+  // A device without device data goes by the width its label chose, as its Device mode does.
+  const named = (v: LoadedFile) => deviceWidth(v.capture);
   const devices = set.versions.filter((v) => !isExtra(v));
   const extras = set.versions.filter(isExtra);
   const summarize = (deviceTicks: boolean[], extraTicks: boolean[]): ContentsSummary => {
@@ -1059,8 +1111,8 @@ async function reviewContents(
   };
   return {
     devices: devices.map((v) => ({
-      name: v.capture.version?.device?.name ?? v.capture.version?.label ?? String(width(v)),
-      width: width(v),
+      name: v.capture.version?.device?.name ?? String(named(v)),
+      width: named(v),
       on: true,
     })),
     extras: extras.map((v) => ({

@@ -643,5 +643,21 @@ describe("App (a device set)", () => {
     expect(screen.getByText("Device: Laptop, Tablet portrait, Phone portrait")).toBeInTheDocument();
     expect(screen.getByText("Breakpoint: base, md, lg, min 1400")).toBeInTheDocument();
     expect(screen.getByText("No capture for the sm breakpoint.")).toBeInTheDocument();
+    // The dark-mode advice is worded for a single page, so a device set leaves it out.
+    expect(screen.queryByText(/No theme found/)).toBeNull();
+  });
+
+  it("names a width-only device by its label once, though its client width differs", async () => {
+    await chosen(
+      fakePort(),
+      setFile({
+        widths: [1512, 834],
+        edit: (capture) => {
+          capture.source.viewport.w -= 15;
+        },
+      })
+    );
+    expect(screen.getByRole("checkbox", { name: "1512" })).toBeChecked();
+    expect(screen.queryByRole("checkbox", { name: /1497/ })).toBeNull();
   });
 });

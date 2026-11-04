@@ -456,4 +456,20 @@ describe("mergeDevices", () => {
     ).toBe(true);
     expectResolves(layers, plans);
   });
+
+  test("a capture without device data goes by its numeric label, not its client width", () => {
+    const widthOnly = (label: string, width: number): Capture["version"] => ({
+      label,
+      kind: "viewport",
+    });
+    // A classic scrollbar makes the client width 15 px narrower than the width chosen.
+    const { layers, frames } = mergeDevices([
+      entry({ width: 1497, heading: 60, version: widthOnly("1512", 1497) }),
+      entry({ width: 819, heading: 48, version: widthOnly("834", 819) }),
+      entry({ width: 390, heading: 30, version: widthOnly("Phone", 390) }),
+    ]);
+    expect(modesOf(layers, "Device")).toEqual(["1512", "834", "390"]);
+    expect(varOf(layers, "device:device/width")?.values).toEqual([1512, 834, 390]);
+    expect(frames.map((f) => f.device)).toEqual(["1512", "834", "390"]);
+  });
 });

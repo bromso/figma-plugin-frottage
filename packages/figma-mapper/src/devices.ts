@@ -56,6 +56,17 @@ const isAlias = (v: PlanVarValue): v is { alias: string } =>
 
 const widthOf = (entry: DeviceEntry) => entry.capture.source.viewport.w;
 
+/**
+ * The width a device goes by. A capture with no device data is named by its label, the width the
+ * user chose: `viewport.w` is the client width, which a scrollbar can make narrower. A label that
+ * isn't a number falls back to the client width.
+ */
+export function deviceWidth(capture: Capture): number {
+  const label = capture.version?.device ? undefined : capture.version?.label;
+  const n = label !== undefined && /^\d+(\.\d+)?$/.test(label.trim()) ? Number(label) : Number.NaN;
+  return n > 0 ? n : Math.round(capture.source.viewport.w);
+}
+
 /** A device capture, or an older one with neither a device nor a breakpoint. */
 const isDevice = (entry: DeviceEntry) =>
   entry.capture.version?.device !== undefined || entry.capture.version?.breakpoint === undefined;
@@ -213,7 +224,7 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
   const deviceNames = uniqueLabels(
     deviceAt.map((i) => {
       const e = entries[i] as DeviceEntry;
-      return e.capture.version?.device?.name ?? String(widthOf(e));
+      return e.capture.version?.device?.name ?? String(deviceWidth(e.capture));
     })
   );
 
@@ -572,7 +583,7 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
           fixed(
             "device",
             "device/width",
-            deviceAt.map((i) => widthOf(entries[i] as DeviceEntry)),
+            deviceAt.map((i) => deviceWidth((entries[i] as DeviceEntry).capture)),
             "The width the device was captured at"
           ),
           fixed(

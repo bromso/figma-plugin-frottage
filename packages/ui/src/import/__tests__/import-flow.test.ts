@@ -1495,7 +1495,8 @@ describe("a device set", () => {
   async function runDevices(
     files: File[],
     port = fakePort(),
-    edit: (review: Review, decision: ReviewDecision) => ReviewDecision = (_, d) => d
+    edit: (review: Review, decision: ReviewDecision) => ReviewDecision = (_, d) => d,
+    signal?: AbortSignal
   ) {
     const states: ImportState[] = [];
     let review: Review | undefined;
@@ -1521,7 +1522,7 @@ describe("a device set", () => {
         return edit(review, decision);
       },
     };
-    await runImports(files, port, (s) => states.push(s), session);
+    await runImports(files, port, (s) => states.push(s), session, signal);
     return { port, states, review, last: states.at(-1) as ImportState };
   }
 
@@ -1682,5 +1683,86 @@ describe("a device set", () => {
     await runImports([devicesFile()], port, (s) => states.push(s), confirm(null));
     expect(port.log).not.toContain("beginDeviceSet");
     expect(states.at(-1)).toEqual({ step: "idle" });
+  });
+
+  test("a width-only capture goes by its label, though a scrollbar narrowed its client width", async () => {
+    const file = setFile({
+      widths: [1512, 834, 390],
+      edit: (capture) => {
+        capture.source.viewport.w -= 15;
+      },
+    });
+    const { review, port } = await runDevices([file]);
+    expect(review?.contents?.devices).toEqual([
+      { name: "1512", width: 1512, on: true },
+      { name: "834", width: 834, on: true },
+      { name: "390", width: 390, on: true },
+    ]);
+    expect(port.deviceSetMeta?.layers.collections.find((c) => c.kind === "device")?.modes).toEqual([
+      "1512",
+      "834",
+      "390",
+    ]);
+    expect(port.begins.map((b) => b.device?.mode)).toEqual(["1512", "834", "390"]);
+  });
+
+  test("the theme is reported once, for the set, not under each frame", async () => {
+    const { last } = await runDevices([devicesFile()]);
+    if (last.step !== "done") throw new Error(last.step);
+    expect(last.versions.every((v) => v.theme === undefined)).toBe(true);
+    expect(last.sets[0]?.theme?.theme?.source).toBeDefined();
+  });
+
+  test("progress counts the device frames only, and ends at the last of them", async () => {
+    const files = (states: ImportState[]) =>
+      states.flatMap((s) => (s.step === "working" && s.total > 0 ? [s.file] : []));
+    const all = files((await runDevices([devicesFile()])).states);
+    expect(all.every((f) => f.total === 3)).toBe(true);
+    expect(all.at(-1)?.index).toBe(3);
+    const two = await runDevices([devicesFile()], fakePort(), (_, d) => ({
+      ...d,
+      contents: { devices: [true, false, true], extras: [true], placement: "new-page" },
+    }));
+    const some = files(two.states);
+    expect(some.every((f) => f.total === 2)).toBe(true);
+    expect(some.at(-1)?.index).toBe(2);
+  });
+
+  test("Cancel after beginDeviceSet cancels the sandbox and imports nothing more", async () => {
+    const port = fakePort();
+    const controller = new AbortController();
+    const open = port.beginDeviceSet.bind(port);
+    port.beginDeviceSet = async (meta) => {
+      await open(meta);
+      controller.abort();
+    };
+    const { last } = await runDevices([devicesFile()], port, (_, d) => d, controller.signal);
+    expect(port.log).toContain("cancel");
+    expect(port.log).not.toContain("begin");
+    expect(port.log).not.toContain("endSet");
+    expect(last).toEqual({ step: "idle" });
+  });
+
+  test("a failed device frame is named and the others import", async () => {
+    const port = fakePort();
+    port.failVersion = 1;
+    const { last } = await runDevices([devicesFile()], port);
+    if (last.step !== "done") throw new Error(last.step);
+    expect(last.failures.map((f) => f.name)).toEqual(["Tablet portrait · Example"]);
+    expect(last.versions.map((v) => v.label)).toEqual(["Laptop", "Phone portrait"]);
+    expect(port.log).toContain("endSet");
+  });
+
+  test("a beginDeviceSet that throws fails the set's frames and creates nothing", async () => {
+    const port = fakePort();
+    port.failOn = "beginSet";
+    const { last } = await runDevices([devicesFile()], port);
+    expect(port.log).not.toContain("begin");
+    expect(port.log).toContain("cancel");
+    if (last.step !== "error") throw new Error(last.step);
+    for (const name of ["Laptop", "Tablet portrait", "Phone portrait"]) {
+      expect(last.message).toContain(`${name} · Example`);
+    }
+    expect(last.message).not.toContain("1024");
   });
 });
