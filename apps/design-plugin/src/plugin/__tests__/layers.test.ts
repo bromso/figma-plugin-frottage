@@ -159,6 +159,7 @@ describe("createLayerSet", () => {
     expect(set.counts()).toEqual({
       variablesCreated: 4,
       variablesReused: 0,
+      variablesRenamed: 0,
       modesDropped: [],
       stylesCreated: 2,
     });
@@ -212,6 +213,7 @@ describe("createLayerSet", () => {
     expect(set.counts()).toEqual({
       variablesCreated: 0,
       variablesReused: 4,
+      variablesRenamed: 0,
       modesDropped: [],
       stylesCreated: 0,
     });
@@ -231,11 +233,13 @@ describe("createLayerSet", () => {
     const second = variableNamed(f, "card (2)");
     expect(set.variable(card.key)).toBe(second);
     expect(set.counts().variablesCreated).toBe(1);
+    expect(set.counts().variablesRenamed).toBe(1);
     expect(set.counts().variablesReused).toBe(3);
     // A third import with the same change takes the second.
     const again = await settle(f, layers({ variables: [changed, border, gray, radius] }));
     expect(again.variable(card.key)).toBe(second);
     expect(again.counts().variablesCreated).toBe(0);
+    expect(again.counts().variablesRenamed).toBe(0);
   });
 
   test("a user's collection of the same name is untouched", async () => {
@@ -344,7 +348,13 @@ describe("the token set with layers", () => {
     expect(tokens.counts()).toMatchObject({
       variablesCreated: 4,
       stylesCreated: 2,
-      layers: { variablesCreated: 4, variablesReused: 0, modesDropped: [], stylesCreated: 2 },
+      layers: {
+        variablesCreated: 4,
+        variablesReused: 0,
+        variablesRenamed: 0,
+        modesDropped: [],
+        stylesCreated: 2,
+      },
     });
     await tokens.discard();
     expect(f.tokens.variables.size).toBe(0);

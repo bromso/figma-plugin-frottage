@@ -28,6 +28,8 @@ import {
 export type LayerCounts = {
   variablesCreated: number;
   variablesReused: number;
+  /** Of those created, the ones numbered `(2)` because a variable of that name held other values. */
+  variablesRenamed: number;
   /** Theme modes the file had no room for. Their values weren't written. */
   modesDropped: string[];
   stylesCreated: number;
@@ -134,6 +136,7 @@ export function createLayerSet(api: PluginAPI) {
   const counts: LayerCounts = {
     variablesCreated: 0,
     variablesReused: 0,
+    variablesRenamed: 0,
     modesDropped: [],
     stylesCreated: 0,
   };
@@ -337,6 +340,7 @@ export function createLayerSet(api: PluginAPI) {
       if (!variable) return;
       variables.set(token.key, variable);
       counts.variablesCreated++;
+      if (variable.name !== token.name) counts.variablesRenamed++;
     };
 
     /** Binds a colour to its variable. A refused binding stays plain. */

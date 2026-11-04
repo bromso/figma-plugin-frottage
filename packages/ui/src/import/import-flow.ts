@@ -45,6 +45,20 @@ export type VersionResult = {
   variablesCreated: number;
   variablesReused: number;
   tokenFailures: number;
+  /** What the theme import did, for a page imported on its own with layers. */
+  theme?: ThemeReport;
+};
+
+/** The theme side of a layered import: the plan's notes and what the sandbox did about them. */
+export type ThemeReport = {
+  source: "site" | "inferred" | "none";
+  /** The colours that are near twins of another. */
+  twins: number;
+  inferred: string[];
+  /** Variables created as `name (2)` because a variable of that name held other values. */
+  variablesRenamed: number;
+  /** Theme modes the file had no room for. */
+  modesDropped: string[];
 };
 
 export type VersionReport = VersionResult & { name: string; label: string };
@@ -144,6 +158,7 @@ export type ImportPort = {
     variablesCreated?: number;
     variablesReused?: number;
     tokenFailures?: number;
+    layers?: { variablesRenamed: number; modesDropped: string[] };
   }>;
   endSet(): Promise<SetResult>;
   /** Takes back the import in hand: a whole set, when one is open. */
@@ -320,10 +335,22 @@ type VersionContext = {
 /** The sandbox's end() result and the plan's report, as the screen shows them. */
 function versionResult(
   report: ImportReport,
-  result: Awaited<ReturnType<ImportPort["end"]>>
+  result: Awaited<ReturnType<ImportPort["end"]>>,
+  layers?: PlanTokens["layers"]
 ): VersionResult {
   return {
     report,
+    ...(layers
+      ? {
+          theme: {
+            source: layers.themeSource,
+            twins: new Set(layers.notes.twins.flat()).size,
+            inferred: layers.notes.inferred,
+            variablesRenamed: result.layers?.variablesRenamed ?? 0,
+            modesDropped: result.layers?.modesDropped ?? [],
+          },
+        }
+      : {}),
     failedOps: result.failedOps,
     missingImages: result.missingImages ?? 0,
     rewrappedTexts: result.rewrappedTexts ?? 0,
@@ -406,7 +433,7 @@ export async function importVersion(
     if (!result.rootId) throw new Error("Nothing was created");
     begun = false;
     onState({ step: "working", done: before + plan.ops.length, total, file });
-    return { ...versionResult(plan.report, result), ...version };
+    return { ...versionResult(plan.report, result, plan.tokens.layers), ...version };
   } catch (error) {
     if (begun && !inSet) {
       try {
