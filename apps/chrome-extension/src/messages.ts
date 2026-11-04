@@ -1,3 +1,4 @@
+import type { PageLanguage } from "@repo/capture-schema";
 import type { RunStatus } from "./capture-run";
 import type { ChunkMessage } from "./chunks";
 import type { RunWidth } from "./plan-widths";
@@ -100,5 +101,7 @@ export type Reply =
       breakpoints?: number[];
       /** Whether the page defines a dark theme, answering `breakpoints`. */
       dark?: boolean;
+      /** The languages the page is offered in, answering `breakpoints`. */
+      languages?: PageLanguage[];
     }
   | { ok: false; error: string };

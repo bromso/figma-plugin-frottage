@@ -413,3 +413,6 @@ export const parts = {
   svg: svgNode,
   placeholder: placeholderNode,
 };
+
+/** A language the captured page is offered in; the capture's `language` (when set) has this shape. */
+export type PageLanguage = { code: string; name: string; url: string; current: boolean };
