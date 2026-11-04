@@ -15,6 +15,7 @@ import {
   isRestrictedUrl,
   LABEL_MAX,
   NO_DARK_HINT,
+  NO_LIGHT_HINT,
   NO_THEME_HINT,
   nodeAdvice,
   normaliseVersion,
@@ -24,6 +25,7 @@ import {
   parseWidths,
   popupView,
   rerunRequest,
+  themeHint,
   viewportAdvice,
   viewportStatusLabel,
 } from "../page";
@@ -671,6 +673,20 @@ describe("theme hints", () => {
   test("say it exactly", () => {
     expect(NO_DARK_HINT).toBe("This page has no dark theme.");
     expect(NO_THEME_HINT).toBe("Tick Light, Dark or both.");
+  });
+});
+
+describe("themeHint", () => {
+  test("says nothing while a box is ticked", () => {
+    expect(themeHint({ light: true, dark: false }, true)).toBeNull();
+    expect(themeHint({ light: false, dark: true }, false)).toBeNull();
+  });
+  test("asks for Light alone when Dark can't be ticked", () => {
+    expect(NO_LIGHT_HINT).toBe("Tick Light.");
+    expect(themeHint({ light: false, dark: false }, false)).toBe("Tick Light.");
+  });
+  test("asks for Light, Dark or both when Dark can be ticked", () => {
+    expect(themeHint({ light: false, dark: false }, true)).toBe(NO_THEME_HINT);
   });
 });
 

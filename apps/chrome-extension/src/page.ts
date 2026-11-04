@@ -340,6 +340,19 @@ export function canCapture(state: {
 
 export const NO_DARK_HINT = "This page has no dark theme.";
 export const NO_THEME_HINT = "Tick Light, Dark or both.";
+export const NO_LIGHT_HINT = "Tick Light.";
+
+/**
+ * The hint for when neither box is ticked, which disables Capture; null while one is ticked. With
+ * Dark disabled, only Light can be ticked, so the hint says just that.
+ */
+export function themeHint(
+  themes: { light: boolean; dark: boolean },
+  darkEnabled: boolean
+): string | null {
+  if (themes.light || themes.dark) return null;
+  return darkEnabled ? NO_THEME_HINT : NO_LIGHT_HINT;
+}
 
 /**
  * The Light and Dark boxes as the popup first shows them. Light is ticked; Dark is ticked when the

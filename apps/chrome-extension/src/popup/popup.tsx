@@ -16,12 +16,12 @@ import {
   initialThemes,
   isRestrictedUrl,
   NO_DARK_HINT,
-  NO_THEME_HINT,
   nodeAdvice,
   parseChoices,
   parseWidths,
   popupView,
   rerunRequest,
+  themeHint,
   viewportAdvice,
   viewportStatusLabel,
   type WidthChoice,
@@ -63,13 +63,11 @@ function Popup() {
   const [tabRead, setTabRead] = useState(false);
   const [statusRead, setStatusRead] = useState(false);
 
-  // Which themes to import; Dark is off and locked until the probe says the page has one.
+  // Which themes to import; Dark starts unticked but can be ticked until the probe says the page has none.
   const [themes, setThemes] = useState(() => initialThemes(undefined).themes);
   const [darkEnabled, setDarkEnabled] = useState(true);
   // Set once the user ticks a box, so a late probe reply doesn't overwrite the choice.
   const touched = useRef(false);
-  const themesRef = useRef(themes);
-  themesRef.current = themes;
 
   // The size for each device, remembered between opens.
   const [choices, setChoices] = useState<WidthChoice[]>(loadChoices);
@@ -103,15 +101,13 @@ function Popup() {
           chrome.runtime.sendMessage({ target: "sw", type: "breakpoints", tabId: tab.id }).then(
             (reply?: Reply) => {
               if (reply?.ok && reply.breakpoints) setBreakpoints(reply.breakpoints);
-              const start = applyProbe(themesRef.current, touched.current, reply);
-              setThemes(start.themes);
-              setDarkEnabled(start.darkEnabled);
+              setThemes((cur) => applyProbe(cur, touched.current, reply).themes);
+              setDarkEnabled(initialThemes(reply).darkEnabled);
               setBreakpointsRead(true);
             },
             () => {
-              const start = applyProbe(themesRef.current, touched.current, undefined);
-              setThemes(start.themes);
-              setDarkEnabled(start.darkEnabled);
+              setThemes((cur) => applyProbe(cur, touched.current, undefined).themes);
+              setDarkEnabled(initialThemes(undefined).darkEnabled);
               setBreakpointsRead(true);
             }
           );
@@ -155,6 +151,7 @@ function Popup() {
   });
   const plan = planWidths(devices, breakpoints);
   const wanted = plan.widths;
+  const noThemeHint = themeHint(themes, darkEnabled);
   const extras = extrasLine(plan.extras);
 
   function editChoice(index: number, change: Partial<WidthChoice>) {
@@ -411,9 +408,9 @@ function Popup() {
               {NO_DARK_HINT}
             </Type>
           )}
-          {!themes.light && !themes.dark && (
-            <Type size="xsmall" className="text-muted-foreground">
-              {NO_THEME_HINT}
+          {noThemeHint && (
+            <Type id="theme-none-hint" size="xsmall" className="text-muted-foreground">
+              {noThemeHint}
             </Type>
           )}
         </fieldset>
@@ -445,6 +442,7 @@ function Popup() {
         <Button
           className="w-full"
           onClick={() => captureWidths()}
+          aria-describedby={noThemeHint ? "theme-none-hint" : undefined}
           disabled={
             !canCapture({ restricted, tabId, sizes: wanted.length, breakpointsRead, themes })
           }
