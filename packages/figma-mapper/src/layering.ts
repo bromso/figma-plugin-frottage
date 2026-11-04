@@ -257,7 +257,10 @@ export function layerCollections(layers: StagedLayers, plan: LayeringPlan): Plan
         const c = p.values[0];
         return typeof c === "object" && !isAlias(c) && sameColour(c, value);
       });
-      if (same.length === 1) return { alias: same[0].key };
+      if (same.length > 0) {
+        same.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+        return { alias: same[0].key };
+      }
       if (moved.size >= MAX_VARIABLES) {
         dropped++;
         return value;
@@ -270,9 +273,10 @@ export function layerCollections(layers: StagedLayers, plan: LayeringPlan): Plan
         collection: "palette",
         type: "COLOR",
         values: [value],
-        description: `From the site: ${v.cssVar ?? `--${v.name}`} (${layers.modes[i] ?? BASE_MODE})`,
+        description: `${
+          v.cssVar ? `From the site: ${v.cssVar}` : `Inferred: value of ${v.name}`
+        } (${layers.modes[i] ?? BASE_MODE})`,
         scopes: v.scopes,
-        ...(v.cssVar ? { cssVar: v.cssVar } : {}),
       };
       moved.set(entry.key, entry);
       palette.push(entry);

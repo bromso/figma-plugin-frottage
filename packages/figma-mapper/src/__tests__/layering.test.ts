@@ -393,6 +393,7 @@ describe("layerCollections", () => {
       expect(entry.name).toMatch(/^gray\/\d+$/);
       expect(entry.values).toEqual([oklchDark]);
       expect(entry.description).toBe("From the site: --background (Dark)");
+      expect(entry.cssVar).toBeUndefined();
       expect(get(out, "colorMode:color/background").values[1]).toEqual({ alias: entry.key });
       expect(get(out, "colorMode:color/foreground").values[0]).toEqual({ alias: entry.key });
     });
@@ -410,9 +411,48 @@ describe("layerCollections", () => {
       for (const v of out.variables.filter((x) => x.collection === "colorMode")) {
         for (const value of v.values) {
           expect(value).toHaveProperty("alias");
-          expect((value as { alias: string }).alias.startsWith("palette:")).toBe(true);
+          const alias = (value as { alias: string }).alias;
+          expect(alias.startsWith("palette:") || alias.startsWith("colorMode:")).toBe(true);
         }
       }
+    });
+
+    test("a variable without a cssVar gets an Inferred description", () => {
+      const layers = colours();
+      const bg = layers.variables.find(
+        (v) => v.key === "theme:background"
+      ) as PlanVariable<StagedCollection>;
+      delete bg.cssVar;
+      const out = run(layers);
+      const key = (get(out, "colorMode:color/background").values[1] as { alias: string }).alias;
+      expect(get(out, key).description).toBe("Inferred: value of color/background (Dark)");
+    });
+
+    test("several palette colours with the value alias the first by name", () => {
+      const layers = colours();
+      layers.variables.unshift(
+        variable("primitives", "color/zeta", "COLOR", [white], COLOR_SCOPES),
+        variable("primitives", "color/alpha", "COLOR", [white], COLOR_SCOPES)
+      );
+      const out = run(layers);
+      expect(get(out, "colorMode:color/background").values[0]).toEqual({ alias: "palette:alpha" });
+    });
+
+    test("an alias to another Color Mode variable stays", () => {
+      const layers = colours();
+      layers.variables.push(
+        variable(
+          "theme",
+          "accent",
+          "COLOR",
+          [{ alias: "theme:background" }, { alias: "theme:background" }],
+          COLOR_SCOPES
+        )
+      );
+      const out = run(layers);
+      expect(get(out, "colorMode:color/accent").values[0]).toEqual({
+        alias: "colorMode:color/background",
+      });
     });
 
     test("at the cap a value stays literal and is counted", () => {
