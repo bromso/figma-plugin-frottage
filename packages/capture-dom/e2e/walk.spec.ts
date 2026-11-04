@@ -11,7 +11,13 @@ import {
   type ElementNode,
   parseCapture,
 } from "@repo/capture-schema";
-import { DEFAULT_IMPORT_OPTIONS, mapCapture } from "@repo/figma-mapper";
+import {
+  DEFAULT_IMPORT_OPTIONS,
+  type DeviceEntry,
+  type LayerPlan,
+  mapCapture,
+  mergeDevices,
+} from "@repo/figma-mapper";
 
 // Bundle the walker once into an IIFE global (`globalThis.__frottageCapture`), so it runs in the
 // page exactly as the extension would inject it. Playwright runs under Node, so the bundle is built
@@ -2725,4 +2731,50 @@ test("captured in a theme, Light comes from the root's own rules, by the cascade
 test("the page's width breakpoints are recorded on the capture", async ({ page }) => {
   const c = await capture(page, "shadcn.html");
   expect(c.breakpoints).toEqual({ widths: [640, 768, 1024, 1280, 1400], unreadable: 0 });
+});
+
+test("an English and a Swedish page bind their texts to one Language collection", async ({
+  page,
+}) => {
+  const languages = {
+    en: { code: "en", name: "English", url: "http://localhost:4173/lang-en.html" },
+    sv: { code: "sv", name: "Svenska", url: "http://localhost:4173/lang-sv.html" },
+  };
+  const devices = [
+    { id: "laptop", name: "Laptop", width: 1280, height: 800 },
+    { id: "phone", name: "Phone", width: 390, height: 844 },
+  ];
+  const entries: DeviceEntry[] = [];
+  for (const code of ["en", "sv"] as const) {
+    for (const d of devices) {
+      await page.setViewportSize({ width: d.width, height: d.height });
+      const c = await capture(page, `lang-${code}.html`);
+      c.version = {
+        label: d.name,
+        kind: "viewport",
+        width: d.width,
+        device: { id: d.id, name: d.name, height: d.height },
+      };
+      c.language = { ...languages[code], current: code === "en" };
+      const plan = mapCapture(c, [{ family: "Arial", style: "Regular" }], {
+        ...DEFAULT_IMPORT_OPTIONS,
+        components: false,
+        layers: true,
+      });
+      entries.push({ capture: c, plan });
+    }
+  }
+  const { layers, plans, frames, languageFrames } = mergeDevices(entries);
+  expect(frames.map((f) => f.device)).toEqual(["Laptop", "Phone"]);
+  expect(languageFrames).toEqual([]);
+  expect(layers.collections.find((c) => c.kind === "language")?.modes).toEqual([
+    "English",
+    "Svenska",
+  ]);
+  const keyOf = (plan: LayerPlan, text: string) =>
+    plan.ops.flatMap((op) => (op.op === "text" && op.text === text ? [op.textKey] : []))[0];
+  const key = keyOf(plans[0] as LayerPlan, "Learn more");
+  expect(layers.variables.find((v) => v.key === key)?.values).toEqual(["Learn more", "Läs mer"]);
+  // The phone's frame binds the same variable.
+  expect(keyOf(plans[1] as LayerPlan, "Learn more")).toBe(key as string);
 });

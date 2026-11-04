@@ -85,6 +85,7 @@ const CREATION_ORDER: PlanCollectionKind[] = [
   "device",
   "breakpoint",
   "colorMode",
+  "language",
   "theme",
 ];
 const ONE_MODE: Record<PlanCollectionKind, string> = {
@@ -95,6 +96,7 @@ const ONE_MODE: Record<PlanCollectionKind, string> = {
   device: "Default",
   breakpoint: "base",
   colorMode: "Light",
+  language: "Default",
   theme: "Default",
 };
 

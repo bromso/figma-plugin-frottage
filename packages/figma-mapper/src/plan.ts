@@ -197,6 +197,8 @@ export type PlanOp = (
        * can pass with a different line count.
        */
       lineCount: number;
+      /** The Language variable its characters are bound to, by `PlanVariable.key`. */
+      textKey?: string;
     }
   | {
       op: "image";
@@ -340,7 +342,7 @@ export type PlanVarValue = (PlanRgb & { a: number }) | number | string | { alias
 
 /**
  * The collections an import makes, in the order they are created. Device and Breakpoint come only
- * from a set of device captures.
+ * from a set of device captures, and Language from a set captured in several languages.
  */
 export type PlanCollectionKind =
   | "palette"
@@ -350,6 +352,7 @@ export type PlanCollectionKind =
   | "device"
   | "breakpoint"
   | "colorMode"
+  | "language"
   | "theme";
 
 /** One collection: its kind, its name in the file, and its modes. */

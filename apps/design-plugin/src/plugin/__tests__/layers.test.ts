@@ -26,6 +26,7 @@ const NAMES = {
   device: "Device",
   breakpoint: "Breakpoint",
   colorMode: "Color Mode",
+  language: "Language",
   theme: "Theme",
 } as const;
 
