@@ -1299,7 +1299,7 @@ describe("a text style's bindings on the layered path", () => {
   const variable = (name: string, type: "FLOAT" | "STRING", value: number | string) => ({
     key: `primitives:${name}`,
     name,
-    collection: "primitives" as const,
+    collection: "typography" as const,
     type,
     values: [value],
     description: `From the site: --${name.replace("/", "-")}`,
@@ -1323,6 +1323,7 @@ describe("a text style's bindings on the layered path", () => {
         hostname: "example.com",
         modes: ["Light"],
         themeSource: "none",
+        collections: [],
         variables: [size, leading, family, weight],
         effectStyles: [],
         gradientStyles: [],

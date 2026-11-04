@@ -1,6 +1,6 @@
 import type { CaptureNode } from "@repo/capture-schema";
 import { type Catalogue, COLOR_SCOPES, followAlias, MAX_VARIABLES } from "./catalogue";
-import type { PlanOp, PlanRgb, PlanVariable } from "./plan";
+import type { PlanOp, PlanRgb, StagedVariable } from "./plan";
 import { headedTexts } from "./tokens";
 
 /**
@@ -223,7 +223,7 @@ export function inferTheme(catalogue: Catalogue, ops: PlanOp[], root: CaptureNod
       const value = v.values[0];
       return isColour(value) && sameColour(value, role.colour);
     });
-    const alias = equal.length === 1 ? (equal[0] as PlanVariable) : null;
+    const alias = equal.length === 1 ? (equal[0] as StagedVariable) : null;
     catalogue.variables.push({
       key: `theme:${role.name}`,
       name: role.name,
@@ -242,9 +242,9 @@ export function inferTheme(catalogue: Catalogue, ops: PlanOp[], root: CaptureNod
  * Pairs of opaque colour variables of one collection whose values lie within 0.02 of each other
  * in OKLab in every mode, without being equal. Both get a `Near twin of` line, naming the first.
  */
-export function nearTwins(variables: PlanVariable[]): [string, string][] {
+export function nearTwins(variables: StagedVariable[]): [string, string][] {
   const byKey = new Map(variables.map((v) => [v.key, v]));
-  type Entry = { v: PlanVariable; labs: { L: number; a: number; b: number }[] };
+  type Entry = { v: StagedVariable; labs: { L: number; a: number; b: number }[] };
   const entries: Entry[] = [];
   for (const v of variables) {
     if (v.type !== "COLOR") continue;
@@ -253,7 +253,7 @@ export function nearTwins(variables: PlanVariable[]): [string, string][] {
     entries.push({ v, labs: values.map(oklab) });
   }
   const pairs: [string, string][] = [];
-  const twinOf = new Map<PlanVariable, PlanVariable>();
+  const twinOf = new Map<StagedVariable, StagedVariable>();
   for (let i = 0; i < entries.length; i++) {
     const x = entries[i] as Entry;
     for (let j = i + 1; j < entries.length; j++) {

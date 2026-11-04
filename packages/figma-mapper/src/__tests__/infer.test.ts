@@ -4,7 +4,7 @@ import { parseCssColor } from "@repo/capture-schema/css-values";
 import { nearTwins, primitiveName } from "../infer";
 import { mapCapture } from "../map";
 import { DEFAULT_IMPORT_OPTIONS } from "../options";
-import type { LayerPlan, PlanOp, PlanVariable } from "../plan";
+import type { LayerPlan, PlanOp, StagedVariable } from "../plan";
 import { cap, el, inter, run, textNode } from "./fixtures";
 
 type FrameOp = Extract<PlanOp, { op: "frame" }>;
@@ -61,8 +61,9 @@ function plainPage(foreground = 90): CaptureNode[] {
   ];
 }
 
+/** The semantic colours: PR #7's theme variables, now in Color Mode. */
 const theme = (p: LayerPlan) =>
-  p.tokens.layers?.variables.filter((v) => v.collection === "theme") ?? [];
+  p.tokens.layers?.variables.filter((v) => v.collection === "colorMode") ?? [];
 
 const frame = (p: LayerPlan, id: string) =>
   p.ops.find((o): o is FrameOp => o.op === "frame" && o.id === id) as FrameOp;
@@ -72,12 +73,17 @@ describe("inferTheme", () => {
     const p = plan(plainPage());
     const layers = p.tokens.layers;
     expect(layers?.themeSource).toBe("inferred");
-    expect(theme(p).map((v) => v.name)).toEqual(["background", "foreground", "border", "primary"]);
+    expect(theme(p).map((v) => v.name)).toEqual([
+      "color/background",
+      "color/foreground",
+      "color/border",
+      "color/primary",
+    ]);
     expect(layers?.notes.inferred).toEqual(["background", "foreground", "border", "primary"]);
     for (const v of theme(p)) expect(v.description).toStartWith("Inferred: ");
-    const fg = theme(p).find((v) => v.name === "foreground");
+    const fg = theme(p).find((v) => v.name === "color/foreground");
     expect(fg?.description).toBe("Inferred: used on 90% of body text");
-    expect(theme(p).find((v) => v.name === "border")?.description).toBe(
+    expect(theme(p).find((v) => v.name === "color/border")?.description).toBe(
       "Inferred: used on 100% of bordered frames"
     );
     expect(layers?.modes).toEqual(["Light"]);
@@ -87,11 +93,13 @@ describe("inferTheme", () => {
   test("layers bind to the inferred roles", () => {
     const p = plan(plainPage());
     const fill = frame(p, "btn1").fills[0] as { colorKey?: string };
-    expect(fill.colorKey).toBe("theme:primary");
-    expect(frame(p, "b1").strokes?.colorKey).toBe("theme:border");
-    expect((frame(p, "root").fills[0] as { colorKey?: string }).colorKey).toBe("theme:background");
+    expect(fill.colorKey).toBe("theme:color/primary");
+    expect(frame(p, "b1").strokes?.colorKey).toBe("theme:color/border");
+    expect((frame(p, "root").fills[0] as { colorKey?: string }).colorKey).toBe(
+      "theme:color/background"
+    );
     const t = p.ops.find((o) => o.op === "text" && o.id === "t1");
-    expect(t?.op === "text" && t.runs[0]?.colorKey).toBe("theme:foreground");
+    expect(t?.op === "text" && t.runs[0]?.colorKey).toBe("theme:color/foreground");
   });
 
   test("with 40% text coverage no foreground is inferred", () => {
@@ -100,13 +108,13 @@ describe("inferTheme", () => {
       text("t2", "#737373", 30),
       text("t3", "#a3a3a3", 30),
     ]);
-    expect(theme(p).map((v) => v.name)).not.toContain("foreground");
-    expect(theme(p).map((v) => v.name)).toContain("background");
+    expect(theme(p).map((v) => v.name)).not.toContain("color/foreground");
+    expect(theme(p).map((v) => v.name)).toContain("color/background");
   });
 
   test("a second text colour with lower contrast is muted-foreground", () => {
     const p = plan([text("t1", "#111111", 70), text("t2", "#737373", 30)]);
-    const muted = theme(p).find((v) => v.name === "muted-foreground");
+    const muted = theme(p).find((v) => v.name === "color/muted-foreground");
     expect(muted?.description).toBe("Inferred: used on 30% of body text");
   });
 
@@ -116,7 +124,7 @@ describe("inferTheme", () => {
       themes: [{ context: ".dark", mode: "Dark", properties: { "--card": "#000000" } }],
     });
     expect(p.tokens.layers?.themeSource).toBe("site");
-    expect(theme(p).map((v) => v.name)).toEqual(["card"]);
+    expect(theme(p).map((v) => v.name)).toEqual(["color/card"]);
     expect(p.tokens.layers?.notes.inferred).toEqual([]);
   });
 
@@ -130,11 +138,11 @@ describe("inferTheme", () => {
   test("a repeated colour that fills no role becomes a primitive named by family and step", () => {
     const green = ["g1", "g2", "g3"].map((id) => text(id, "#16a34a", 1));
     const p = plan([...plainPage(), ...green]);
-    const v = p.tokens.layers?.variables.find((x) => x.collection === "primitives");
-    expect(v?.name).toBe("color/green-350");
+    const v = p.tokens.layers?.variables.find((x) => x.collection === "palette");
+    expect(v?.name).toBe("green/350");
     expect(v?.description).toStartWith("Inferred: ");
     const t = p.ops.find((o) => o.op === "text" && o.id === "g1");
-    expect(t?.op === "text" && t.runs[0]?.colorKey).toBe("primitives:color/green-350");
+    expect(t?.op === "text" && t.runs[0]?.colorKey).toBe("theme:color/green/350");
     // Only the two greys used once stay raw.
     expect(p.report.raw?.colors).toBe(2);
   });
@@ -156,7 +164,7 @@ describe("primitiveName", () => {
 });
 
 describe("nearTwins", () => {
-  const colour = (name: string, css: string): PlanVariable => ({
+  const colour = (name: string, css: string): StagedVariable => ({
     key: `primitives:${name}`,
     name,
     collection: "primitives",
@@ -185,10 +193,15 @@ describe("nearTwins", () => {
       { cssCustomProperties: { "--color-brand": "#2563eb", "--color-brand-alt": "#2564ea" } }
     );
     const keys = p.tokens.layers?.variables.map((v) => v.key);
-    expect(keys).toEqual(["primitives:color/brand", "primitives:color/brand-alt"]);
-    expect(p.tokens.layers?.notes.twins).toEqual([
-      ["primitives:color/brand", "primitives:color/brand-alt"],
+    expect(keys).toEqual([
+      "palette:brand",
+      "palette:brand-alt",
+      "theme:color/brand",
+      "theme:color/brand-alt",
     ]);
+    expect(p.tokens.layers?.notes.twins).toEqual([["palette:brand", "palette:brand-alt"]]);
+    const brand = p.tokens.layers?.variables.find((v) => v.key === "palette:brand");
+    expect(brand?.description).toBe("From the site: --color-brand\nNear twin of brand-alt");
   });
 
   test("translucent colours and identical ones are not near twins", () => {

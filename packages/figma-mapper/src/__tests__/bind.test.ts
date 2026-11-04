@@ -86,14 +86,14 @@ describe("bindLayers", () => {
       painted("a", "oklch(1 0 0)", { background: "--color-card" }),
       painted("b", "oklch(1 0 0)", { background: "--color-popover" }),
     ]);
-    expect(fillOf(p, "a").colorKey).toBe("theme:card");
-    expect(fillOf(p, "b").colorKey).toBe("theme:popover");
+    expect(fillOf(p, "a").colorKey).toBe("theme:color/card");
+    expect(fillOf(p, "b").colorKey).toBe("theme:color/popover");
     expect(p.tokens.layers?.modes).toEqual(["Light", "Dark"]);
   });
 
   test("a colour equal to exactly one theme Light value binds to it", () => {
     const p = plan([painted("a", "oklch(0.145 0 0)")]);
-    expect(fillOf(p, "a").colorKey).toBe("theme:foreground");
+    expect(fillOf(p, "a").colorKey).toBe("theme:color/foreground");
     expect(p.report.raw?.colors).toBe(0);
   });
 
@@ -109,10 +109,10 @@ describe("bindLayers", () => {
     tokens.base = light;
     // The dark background, with no ref: equal to exactly one theme variable's Dark value.
     const p = plan([painted("a", "oklch(0.145 0 0)")], tokens);
-    expect(fillOf(p, "a").colorKey).toBe("theme:background");
+    expect(fillOf(p, "a").colorKey).toBe("theme:color/background");
     expect(p.tokens.layers?.activeMode).toBe("Dark");
     // Light is the light page's: white.
-    const bg = p.tokens.layers?.variables.find((v) => v.key === "theme:background");
+    const bg = p.tokens.layers?.variables.find((v) => v.key === "colorMode:color/background");
     expect(bg?.values[0]).toMatchObject({ r: expect.closeTo(1, 4), g: expect.closeTo(1, 4) });
   });
 
@@ -133,7 +133,7 @@ describe("bindLayers", () => {
     for (const id of ["a", "b", "c"]) expect(fillOf(p, id).colorKey).toBe(key);
     expect(fillOf(p, "once").colorKey).toBeUndefined();
     // A bound colour keeps its variable.
-    expect(fillOf(p, "card").colorKey).toBe("theme:card");
+    expect(fillOf(p, "card").colorKey).toBe("theme:color/card");
     expect(p.tokens.layers?.styleColors).toEqual([
       { key, rgba: { ...rgbOf(blue), a: 1 }, uses: 3 },
     ]);
@@ -160,7 +160,7 @@ describe("bindLayers", () => {
     };
     const p = plan([node]);
     const stroke = frame(p, "a").strokes;
-    expect(stroke?.colorKey).toBe("theme:border");
+    expect(stroke?.colorKey).toBe("theme:color/border");
     expect(stroke?.opacity).toBeCloseTo(0.1, 4);
   });
 
@@ -172,7 +172,7 @@ describe("bindLayers", () => {
       tokenRefs: { radius: "--radius-lg" },
     };
     const p = plan([node]);
-    const key = "primitives:radius/lg";
+    const key = "theme:radius/lg";
     expect(frame(p, "a").radiusKeys).toEqual([key, key, key, key]);
     expect(p.report.raw?.radii).toBe(0);
   });
@@ -196,9 +196,13 @@ describe("bindLayers", () => {
     };
     const p = plan([node]);
     const layout = frame(p, "a").layout;
-    const key = "primitives:spacing/4";
+    const key = "theme:spacing/4";
     expect("spacingKeys" in layout && layout.spacingKeys?.padding).toEqual([key, key, key, key]);
-    expect(p.tokens.layers?.variables.find((v) => v.key === key)?.values).toEqual([16]);
+    const raw = p.tokens.layers?.variables.find((v) => v.key === "spacing:spacing/4");
+    expect(raw?.values).toEqual([16]);
+    expect(p.tokens.layers?.variables.find((v) => v.key === key)?.values).toEqual([
+      { alias: "spacing:spacing/4" },
+    ]);
   });
 
   /** A p-4 column with a border of these widths on each side, [top, right, bottom, left]. */
@@ -230,7 +234,7 @@ describe("bindLayers", () => {
   test("border p-4 binds its padding inside a uniform stroke, which counts in the layout", () => {
     const p = plan([bordered([1, 1, 1, 1])]);
     const layout = frame(p, "a").layout;
-    const key = "primitives:spacing/4";
+    const key = "theme:spacing/4";
     expect("spacingKeys" in layout && layout.spacingKeys?.padding).toEqual([key, key, key, key]);
     // The padding stays the inset from each edge; the applier takes the stroke out of it.
     expect("padding" in layout && layout.padding).toEqual([17, 17, 17, 17]);
@@ -258,7 +262,7 @@ describe("bindLayers", () => {
     };
     const p = plan([radiusOf("plain"), radiusOf("named", { radius: "--blur-sm" })], tokens);
     expect(frame(p, "plain").radiusKeys).toBeUndefined();
-    const key = "primitives:blur/sm";
+    const key = "theme:blur/sm";
     expect(frame(p, "named").radiusKeys).toEqual([key, key, key, key]);
     expect(p.report.raw?.radii).toBe(4);
   });
@@ -282,7 +286,7 @@ describe("bindLayers", () => {
     });
     const p = plan([text]);
     const op = p.ops.find((o) => o.op === "text");
-    expect(op?.op === "text" && op.runs[0]?.colorKey).toBe("theme:foreground");
+    expect(op?.op === "text" && op.runs[0]?.colorKey).toBe("theme:color/foreground");
   });
 
   test("only primitives that are bound stay; the rest are dropped and counted", () => {
@@ -302,7 +306,7 @@ describe("bindLayers", () => {
     };
     const p = plan([node], tokens);
     const keys = p.tokens.layers?.variables.map((v) => v.key);
-    expect(keys).toEqual(["primitives:radius/lg", "theme:card"]);
+    expect(keys).toEqual(["radius:radius/lg", "colorMode:color/card", "theme:radius/lg"]);
     expect(p.tokens.layers?.notes.droppedPrimitives).toBe(1);
   });
 
@@ -313,7 +317,7 @@ describe("bindLayers", () => {
       themes: [{ context: ".dark", mode: "Dark", properties: { "--card": "var(--gray-900)" } }],
     };
     const p = plan([], tokens);
-    expect(p.tokens.layers?.variables.map((v) => v.key)).toContain("primitives:gray-900");
+    expect(p.tokens.layers?.variables.map((v) => v.key)).toContain("palette:gray/900");
     expect(p.tokens.layers?.notes.droppedPrimitives).toBe(0);
   });
 

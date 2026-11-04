@@ -21,7 +21,7 @@ const GRAY: Rgba = { r: 0.875, g: 0.875, b: 0.75, a: 1 };
 const gray: PlanVariable = {
   key: "primitives:color/gray-200",
   name: "color/gray-200",
-  collection: "primitives",
+  collection: "palette",
   type: "COLOR",
   values: [GRAY],
   description: "From the site: --gray-200",
@@ -31,7 +31,7 @@ const gray: PlanVariable = {
 const radius: PlanVariable = {
   key: "primitives:radius/lg",
   name: "radius/lg",
-  collection: "primitives",
+  collection: "radius",
   type: "FLOAT",
   values: [8],
   description: "From the site: --radius",
@@ -41,7 +41,7 @@ const radius: PlanVariable = {
 const card: PlanVariable = {
   key: "theme:card",
   name: "card",
-  collection: "theme",
+  collection: "colorMode",
   type: "COLOR",
   values: [WHITE, NIGHT],
   description: "From the site: --card",
@@ -51,7 +51,7 @@ const card: PlanVariable = {
 const border: PlanVariable = {
   key: "theme:border",
   name: "border",
-  collection: "theme",
+  collection: "colorMode",
   type: "COLOR",
   values: [{ alias: gray.key }, { alias: gray.key }],
   description: "Inferred: the colour of most borders\nNear twin of input",
@@ -93,6 +93,7 @@ const layers = (over: Partial<PlanLayers> = {}): PlanLayers => ({
   hostname: "example.com",
   modes: ["Light", "Dark"],
   themeSource: "site",
+  collections: [],
   variables: [card, border, gray, radius],
   effectStyles: [shadow],
   gradientStyles: [gradient],

@@ -1,5 +1,6 @@
 import type {
   ImportOptions,
+  PlanCollectionKind,
   PlanEffect,
   PlanEffectStyle,
   PlanGradientStyle,
@@ -39,7 +40,21 @@ export type LayerCounts = {
   stylesReused: number;
 };
 
-type Kind = PlanVariable["collection"];
+/**
+ * PR #7's two collections, which the layered plan still settles into until the sandbox makes the
+ * six: Color Mode in Theme, every other collection in Primitives, in plan order so aliases resolve.
+ */
+type Kind = "primitives" | "theme";
+const homeKind = (collection: PlanCollectionKind): Kind =>
+  collection === "colorMode" ? "theme" : "primitives";
+const CREATION_ORDER: PlanCollectionKind[] = [
+  "palette",
+  "spacing",
+  "radius",
+  "typography",
+  "colorMode",
+  "theme",
+];
 
 /** A collection this import writes to, with the names taken in it and each plan mode's id. */
 type Home = {
@@ -390,7 +405,7 @@ export function createLayerSet(api: PluginAPI) {
       const [lead] = token.values;
       if (lead === undefined) throw new Error("no value");
       const first = figmaValue(lead);
-      if (token.collection === "primitives" && token.type === "COLOR" && theirs.size > 0) {
+      if (token.collection === "palette" && token.type === "COLOR" && theirs.size > 0) {
         const match = theirColour(first);
         if (match) {
           variables.set(token.key, match);
@@ -398,7 +413,7 @@ export function createLayerSet(api: PluginAPI) {
           return;
         }
       }
-      const home = homeOf(token.collection);
+      const home = homeOf(homeKind(token.collection));
       const wants = new Map<string, VariableValue>();
       for (const [i, modeId] of home.modeIds.entries()) {
         const value = token.values[i];
@@ -486,11 +501,10 @@ export function createLayerSet(api: PluginAPI) {
     }
 
     try {
-      // Primitives first, so that the theme's aliases have them to point at.
-      const order = [
-        ...plan.variables.filter((v) => v.collection === "primitives"),
-        ...plan.variables.filter((v) => v.collection === "theme"),
-      ];
+      // Lower collections first, so that the aliases above have them to point at.
+      const order = CREATION_ORDER.flatMap((kind) =>
+        plan.variables.filter((v) => v.collection === kind)
+      );
       for (const token of order) {
         if (!(await pause())) return;
         try {

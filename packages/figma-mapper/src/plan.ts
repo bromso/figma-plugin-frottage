@@ -281,7 +281,7 @@ export type ImportReport = {
   instances: number;
   /** Colours, corners and spacing lengths that bound to no variable, on the layered path. */
   raw?: { colors: number; radii: number; spacing: number };
-  /** The Theme collection's modes, on the layered path. */
+  /** The Color Mode collection's modes, on the layered path. */
   themeModes?: string[];
 };
 
@@ -336,17 +336,38 @@ export type PlanSpacing = {
 /** A variable's value in one mode: a colour in 0..1, a number, a string, or another variable's key. */
 export type PlanVarValue = (PlanRgb & { a: number }) | number | string | { alias: string };
 
-/** One variable of the Primitives or Theme collection. */
-export type PlanVariable = {
+/** The collections a single-page import makes, in the order they are created. */
+export type PlanCollectionKind =
+  | "palette"
+  | "spacing"
+  | "radius"
+  | "typography"
+  | "colorMode"
+  | "theme";
+
+/** One collection: its kind, its name in the file, and its modes. */
+export type PlanCollection = { kind: PlanCollectionKind; name: string; modes: string[] };
+
+/** PR #7's two collections, as the catalogue and binding build them before they are layered. */
+export type StagedCollection = "primitives" | "theme";
+
+/** A variable of PR #7's two collections, as the catalogue builds it. */
+export type StagedVariable = PlanVariable<StagedCollection>;
+
+/** One variable of a collection. */
+export type PlanVariable<K extends string = PlanCollectionKind> = {
   /** `<collection>:<name>`, so it stays the same across imports. */
   key: string;
-  /** As `color/gray-200`, `radius/lg`, `spacing/4`, `text/sm` or `background`. */
+  /** As `gray/200`, `radius/lg`, `spacing/4`, `text/sm` or `color/background`. */
   name: string;
-  collection: "primitives" | "theme";
+  collection: K;
   type: "COLOR" | "FLOAT" | "STRING";
-  /** Primitives have one; theme variables have one per mode, in `PlanLayers.modes` order. */
+  /** One per mode of its collection, in that collection's mode order. */
   values: PlanVarValue[];
-  /** `From the site: <--property>` or `Inferred: <evidence>`. */
+  /**
+   * `From the site: <--property>`, `Inferred: <evidence>`, or on a Theme token
+   * `Final theme token; source: <collection name>`.
+   */
   description: string;
   /** Figma `VariableScope` names. */
   scopes: string[];
@@ -370,14 +391,20 @@ export type PlanGradientStyle = {
   stopKeys: (string | null)[];
 };
 
-/** The page's tokens as a Primitives and a Theme collection. */
+/**
+ * The page's tokens as layered collections: raw values (Palette, Spacing, Border radius,
+ * Typography), the switching Color Mode, and the final Theme that layers bind to.
+ */
 export type PlanLayers = {
   hostname: string;
-  /** `["Light", ...theme modes]`; `["Light"]` when there are none. */
+  /** Color Mode's modes: `["Light", ...theme modes]`; `["Light"]` when there are none. */
   modes: string[];
-  /** The mode the page was captured in, which a page opens in. Light when absent. */
+  /** The Color Mode the page was captured in, which a page opens in. Light when absent. */
   activeMode?: string;
   themeSource: "site" | "inferred" | "none";
+  /** In creation order; an empty collection is left out, except Theme. */
+  collections: PlanCollection[];
+  /** Grouped by collection, in `collections` order. */
   variables: PlanVariable[];
   effectStyles: PlanEffectStyle[];
   gradientStyles: PlanGradientStyle[];
@@ -388,6 +415,11 @@ export type PlanLayers = {
   styleColors?: PlanStyleColor[];
   /** Near twins by key; the inferred roles' names; primitives left out. */
   notes: { twins: [string, string][]; inferred: string[]; droppedPrimitives: number };
+};
+
+/** The layers as PR #7's Primitives and Theme collections, before `layerCollections`. */
+export type StagedLayers = Omit<PlanLayers, "collections" | "variables"> & {
+  variables: PlanVariable<StagedCollection>[];
 };
 
 /** A raw colour a user's paint style may hold. `key` is `paint:#rrggbb`, as its paints have it. */
@@ -404,7 +436,7 @@ export type PlanTokens = {
   spacingRem?: boolean;
   /** The variable collection, named after the page's hostname. */
   collection: string;
-  /** The Primitives and Theme collections; absent on the single-collection path. */
+  /** The layered collections; absent on the single-collection path. */
   layers?: PlanLayers;
 };
 

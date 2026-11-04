@@ -2,6 +2,7 @@ import type { Capture, CaptureNode } from "@repo/capture-schema";
 import { parseCssColor } from "@repo/capture-schema/css-values";
 import { bindLayers } from "./bind";
 import { buildCatalogue } from "./catalogue";
+import { layerCollections } from "./layering";
 import type { PlanOptions } from "./options";
 import type {
   ImportReport,
@@ -448,8 +449,8 @@ export function collectionName(url: string): string {
 
 /**
  * Proposes the page's tokens, and marks the runs and paints in `ops` that use them. With `layers`,
- * colours and lengths bind to the Primitives and Theme collections instead, and `report` gets the
- * raw counts and the theme's modes.
+ * colours, lengths and text styles bind to the final Theme of the layered collections instead, and
+ * `report` gets the raw counts and Color Mode's modes.
  */
 export function extractTokens(
   capture: Capture,
@@ -465,12 +466,15 @@ export function extractTokens(
     // Bound while the runs still hold their refs.
     const textStyles = textStyleTokens(ops, capture.root, floor);
     const keep = bindTextStyles(textStyles, ops, catalogue);
-    const { layers, raw } = bindLayers(catalogue, ops, {
+    const bound = bindLayers(catalogue, ops, {
       root: capture.root,
       props: capture.tokens.cssCustomProperties,
       keep,
       floor,
     });
+    const { raw } = bound;
+    // Reads keys, not refs: every binding moves to its final Theme token.
+    const layers = layerCollections(bound.layers, { ops, textStyles });
     if (report) {
       report.raw = raw;
       report.themeModes = layers.modes;

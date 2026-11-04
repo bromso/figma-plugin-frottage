@@ -9,7 +9,7 @@ import type {
   PlanRgb,
   PlanRun,
   PlanTextStyle,
-  PlanVariable,
+  StagedVariable,
 } from "./plan";
 import { MAX_VALUE_LENGTH, MIN_USES, resolveVars } from "./tokens";
 
@@ -243,14 +243,14 @@ export function bindTextStyles(
       else runs.set(r.styleKey, [r]);
     }
   }
-  const holds = (v: PlanVariable, wanted: number | null) =>
+  const holds = (v: StagedVariable, wanted: number | null) =>
     v.type === "FLOAT" &&
     wanted !== null &&
     v.values.some((value) => {
       const n = followAlias(byKey, value);
       return typeof n === "number" && near(n, wanted, PX);
     });
-  const fits = (field: TypeField, v: PlanVariable, style: PlanTextStyle): boolean => {
+  const fits = (field: TypeField, v: StagedVariable, style: PlanTextStyle): boolean => {
     switch (field) {
       case "fontSize":
         return holds(v, style.fontSize);

@@ -2,14 +2,14 @@ import type { CaptureNode } from "@repo/capture-schema";
 import { type Catalogue, COLOR_SCOPES, followAlias, MAX_VARIABLES } from "./catalogue";
 import { inferTheme, nearTwins, primitiveName, sameColour } from "./infer";
 import type {
-  PlanLayers,
   PlanLayout,
   PlanOp,
   PlanRgb,
   PlanStyleColor,
-  PlanVariable,
   PlanVarValue,
   SpacingKeys,
+  StagedLayers,
+  StagedVariable,
 } from "./plan";
 import { effectStyles, gradientStyles } from "./styles-tokens";
 import { colorKeyOf, MIN_USES, rgbaOf } from "./tokens";
@@ -53,7 +53,7 @@ const sameLength = (a: number, b: number) => Math.abs(a - b) <= PX + EPSILON;
  * Whether a value alone may bind a field to `v`: only where its name gave it the field's scope. A
  * length named for nothing, as `--blur-sm`, is in every scope, and binds only by a ref.
  */
-const accepts = (v: PlanVariable, scope: string) => v.scopes.includes(scope);
+const accepts = (v: StagedVariable, scope: string) => v.scopes.includes(scope);
 
 /**
  * A colour to bind. The paint keeps its captured opacity: the applier sets 1 only once the variable,
@@ -78,7 +78,7 @@ function colourField(
 type Followed = (value: PlanVarValue | undefined) => PlanVarValue | null;
 
 /** Whether some mode of `v` holds `px`. */
-function holds(v: PlanVariable | null, px: number, followed: Followed): boolean {
+function holds(v: StagedVariable | null, px: number, followed: Followed): boolean {
   if (v?.type !== "FLOAT") return false;
   return v.values.some((value) => {
     const n = followed(value);
@@ -186,7 +186,7 @@ export function bindLayers(
   catalogue: Catalogue,
   ops: PlanOp[],
   context: BindContext = {}
-): { layers: PlanLayers; raw: RawCounts } {
+): { layers: StagedLayers; raw: RawCounts } {
   // Aliases point at variables the catalogue made up front, never at a step made on demand.
   const byKey = new Map(catalogue.variables.map((v) => [v.key, v]));
   const followed = (value: PlanVarValue | undefined) => followAlias(byKey, value);
@@ -197,7 +197,7 @@ export function bindLayers(
   for (const op of ops) fieldsOf(op, fields, catalogue, followed);
 
   const bound = new Set<string>(context.keep);
-  const bind = (field: Field, v: PlanVariable) => {
+  const bind = (field: Field, v: StagedVariable) => {
     field.bind(v.key);
     bound.add(v.key);
   };
@@ -221,7 +221,7 @@ export function bindLayers(
   // (2) The only theme variable whose value in the mode the page was captured in is equal, (3)
   // else the only equal primitive. The page's values are that mode's, Light or not.
   const active = Math.max(0, catalogue.modes.indexOf(catalogue.activeMode));
-  const equal = (field: Field, v: PlanVariable): boolean => {
+  const equal = (field: Field, v: StagedVariable): boolean => {
     if (!accepts(v, field.scope)) return false;
     const held = followed(v.values[active] ?? v.values[0]);
     if (held === null) return false;
@@ -230,8 +230,8 @@ export function bindLayers(
   };
   const theme = catalogue.variables.filter((v) => v.collection === "theme");
   const primitives = catalogue.variables.filter((v) => v.collection === "primitives");
-  const only = (field: Field, among: PlanVariable[]) => {
-    let found: PlanVariable | null = null;
+  const only = (field: Field, among: StagedVariable[]) => {
+    let found: StagedVariable | null = null;
     for (const v of among) {
       if (!equal(field, v)) continue;
       if (found) return null;
@@ -266,7 +266,7 @@ export function bindLayers(
       const value = rgbaOf(key);
       const name = primitiveName(value, names);
       names.add(name);
-      const v: PlanVariable = {
+      const v: StagedVariable = {
         key: `primitives:${name}`,
         name,
         collection: "primitives",
@@ -286,7 +286,7 @@ export function bindLayers(
   }
 
   // Pages repeat few values, so each is looked up once.
-  const matches = new Map<string, PlanVariable | null>();
+  const matches = new Map<string, StagedVariable | null>();
   const raw: RawCounts = { colors: 0, radii: 0, spacing: 0 };
   const stayed: Field[] = [];
   for (const field of unbound) {

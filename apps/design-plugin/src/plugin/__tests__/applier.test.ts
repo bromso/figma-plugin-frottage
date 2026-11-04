@@ -1040,7 +1040,7 @@ describe("binding to the Primitives and Theme collections", () => {
   const radius: PlanVariable = {
     key: "primitives:radius/lg",
     name: "radius/lg",
-    collection: "primitives",
+    collection: "radius",
     type: "FLOAT",
     values: [8],
     description: "From the site: --radius",
@@ -1051,7 +1051,7 @@ describe("binding to the Primitives and Theme collections", () => {
   const card: PlanVariable = {
     key: "theme:card",
     name: "card",
-    collection: "theme",
+    collection: "colorMode",
     type: "COLOR",
     values: [WHITE, SHADE],
     description: "From the site: --card",
@@ -1080,6 +1080,7 @@ describe("binding to the Primitives and Theme collections", () => {
     hostname: "example.com",
     modes: ["Light", "Dark"],
     themeSource: "site",
+    collections: [],
     variables: [card, radius],
     effectStyles: [{ key: "shadow:sm", name: "shadow/sm", shadows: [shadow], colorKeys: [null] }],
     gradientStyles: [

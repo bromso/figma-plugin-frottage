@@ -1,6 +1,6 @@
 import type { Capture } from "@repo/capture-schema";
 import { evalLength, parseCssColor } from "@repo/capture-schema/css-values";
-import type { PlanLayers, PlanVariable, PlanVarValue } from "./plan";
+import type { PlanLayers, PlanVarValue, StagedVariable } from "./plan";
 import { collectionName, MAX_VALUE_LENGTH, resolveVars, SAFE_PROPERTY } from "./tokens";
 
 /**
@@ -15,10 +15,10 @@ export type Catalogue = {
   activeMode: string;
   themeSource: PlanLayers["themeSource"];
   /** Every custom property that became a variable or collapsed into one. */
-  byCssVar: Map<string, PlanVariable>;
-  variables: PlanVariable[];
+  byCssVar: Map<string, StagedVariable>;
+  variables: StagedVariable[];
   /** The variable a token ref (`--name` or `--name*n`) names, or null. */
-  resolveRef(ref: string): PlanVariable | null;
+  resolveRef(ref: string): StagedVariable | null;
   /**
    * Variables left out past `MAX_VARIABLES`, theme or primitive, including spacing steps refused
    * later by `resolveRef`. It grows as those are asked for, so read it after binding.
@@ -50,7 +50,7 @@ const SPACING_SCOPES = ["GAP", "WIDTH_HEIGHT"];
 
 type Spec = {
   name: string;
-  type: PlanVariable["type"];
+  type: StagedVariable["type"];
   value: PlanVarValue;
   scopes: string[];
 };
@@ -78,7 +78,7 @@ export const bareName = (prop: string) => prop.slice(2).replace(FRAMEWORK_PREFIX
 
 /** A variable's value with its alias followed, or null. */
 export function followAlias(
-  byKey: Map<string, PlanVariable>,
+  byKey: Map<string, StagedVariable>,
   value: PlanVarValue | undefined
 ): PlanVarValue | null {
   let at = value;
@@ -217,12 +217,12 @@ export function buildCatalogue(capture: Capture): Catalogue {
     ])
   );
 
-  const variables: PlanVariable[] = [];
-  const byKey = new Map<string, PlanVariable>();
-  const byCssVar = new Map<string, PlanVariable>();
+  const variables: StagedVariable[] = [];
+  const byKey = new Map<string, StagedVariable>();
+  const byCssVar = new Map<string, StagedVariable>();
 
   const add = (
-    collection: PlanVariable["collection"],
+    collection: StagedVariable["collection"],
     spec: Spec,
     values: PlanVarValue[],
     from: string,
@@ -230,7 +230,7 @@ export function buildCatalogue(capture: Capture): Catalogue {
   ) => {
     let name = spec.name;
     for (let n = 2; byKey.has(`${collection}:${name}`); n++) name = `${spec.name}-${n}`;
-    const v: PlanVariable = {
+    const v: StagedVariable = {
       key: `${collection}:${name}`,
       name,
       collection,
@@ -272,7 +272,7 @@ export function buildCatalogue(capture: Capture): Catalogue {
   }
 
   /** A value authored as `var()` of a primitive of the same type aliases it. */
-  const aliasOf = (text: string | undefined, type: PlanVariable["type"]): PlanVarValue | null => {
+  const aliasOf = (text: string | undefined, type: StagedVariable["type"]): PlanVarValue | null => {
     const named = SINGLE_VAR.exec(text?.trim() ?? "")?.[1];
     // A colour alias that collapsed stands for the primitive it names.
     const target = named && !themeProps.has(named) ? (collapsesInto(named) ?? named) : undefined;
@@ -338,7 +338,7 @@ export function buildCatalogue(capture: Capture): Catalogue {
   /** Steps refused at the cap, so each counts once. */
   const refused = new Set<string>();
   /** `spacing/<n>`, made when a ref first asks for it. Figma names can't hold `.`. */
-  const spacingStep = (n: number): PlanVariable | null => {
+  const spacingStep = (n: number): StagedVariable | null => {
     if (spacingBase === null || !Number.isFinite(n) || n < 0 || n > MAX_SPACING_STEP) return null;
     const name = `spacing/${String(n).replace(".", "_")}`;
     const existing = byKey.get(`primitives:${name}`);
