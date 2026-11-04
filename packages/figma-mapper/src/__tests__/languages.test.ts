@@ -69,6 +69,33 @@ describe("pairTexts", () => {
     expect(r.pairs.get("a")).toBe("Priser");
   });
 
+  test("links pair whatever their trailing slash", () => {
+    const base = page(
+      el("n", [0, 0], [t("a", "Home", "https://x.com/en/"), t("b", "A", "https://x.com/en/a/")])
+    );
+    const other = page(
+      el(
+        "w",
+        [0, 0],
+        [
+          el(
+            "n",
+            [0, 0],
+            [t("x", "Hem", "https://x.com/sv/"), t("y", "B", "https://x.com/sv/a/")],
+            tagged("nav")
+          ),
+        ]
+      )
+    );
+    const map = languageHrefMap([
+      { code: "en", name: "English", url: "https://x.com/en", current: true },
+      { code: "sv", name: "Svenska", url: "https://x.com/sv", current: false },
+    ]);
+    const r = pairTexts(base, other, map);
+    expect(r.pairs.get("a")).toBe("Hem");
+    expect(r.pairs.get("b")).toBe("B");
+  });
+
   test("a bold run marks the text mixed", () => {
     const base = page(
       el(

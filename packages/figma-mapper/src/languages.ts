@@ -42,14 +42,23 @@ function walk(root: CaptureNode): { node: TextNode; path: string }[] {
   return out;
 }
 
+/** Every text id of a tree with its path, walking the tree once. */
+export function textPaths(root: CaptureNode): Map<string, string> {
+  return new Map(walk(root).map((t) => [t.node.id, t.path]));
+}
+
 /**
  * The `/`-joined steps from the root to a text, each `tag.className#n` for an element
  * (`n` counts siblings with the same tag and class) and `text#n` for a text. Node ids
- * are a per-capture counter, so only a path lines up across two captures.
+ * are a per-capture counter, so only a path lines up across two captures. It walks the
+ * tree on each call; use `textPaths` for many ids.
  */
 export function textPath(root: CaptureNode, id: string): string | null {
   return walk(root).find((t) => t.node.id === id)?.path ?? null;
 }
+
+/** A URL without its trailing slash, so `/en/` and `/en` compare equal. */
+const trim = (url: string) => url.replace(/\/+$/, "");
 
 const counts = (t: TextNode) => t.visible && t.text.trim() !== "";
 const linkOf = (t: TextNode) => t.runs.find((r) => r.href)?.href;
@@ -88,14 +97,19 @@ export function pairTexts(
     if (o && !usedOther.has(o.id)) bind(b.node, o);
   }
 
+  // Other link texts still unpaired, by their mapped target, in document order.
+  const byTarget = new Map<string, TextNode[]>();
+  for (const o of otherTexts) {
+    const href = linkOf(o.node);
+    if (!href || usedOther.has(o.node.id)) continue;
+    const key = trim(hrefMap(href));
+    byTarget.set(key, [...(byTarget.get(key) ?? []), o.node]);
+  }
   for (const b of baseTexts) {
     const target = linkOf(b.node);
     if (!target || pairs.has(b.node.id)) continue;
-    const o = otherTexts.find(
-      (c) =>
-        !usedOther.has(c.node.id) && linkOf(c.node) && hrefMap(linkOf(c.node) as string) === target
-    );
-    if (o) bind(b.node, o.node);
+    const o = byTarget.get(trim(target))?.find((c) => !usedOther.has(c.id));
+    if (o) bind(b.node, o);
   }
 
   return {
@@ -106,8 +120,6 @@ export function pairTexts(
     rate: baseTexts.length === 0 ? 1 : pairs.size / baseTexts.length,
   };
 }
-
-const trim = (url: string) => url.replace(/\/+$/, "");
 
 /**
  * Turns a URL from another language's page into the base language's. An exact pair
