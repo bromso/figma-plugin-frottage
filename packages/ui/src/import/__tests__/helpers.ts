@@ -118,8 +118,9 @@ export function frottageFile(texts: number, version = 1, name = "page.frottage")
 }
 
 /** A File of `count` copies of one custom element, each holding a text layer. */
-export function repeatedFile(count: number): File {
+export function repeatedFile(count: number, language?: Capture["language"]): File {
   const capture = captureWithTexts(0);
+  if (language) capture.language = language;
   const cards = Array.from({ length: count }, (_, i) => {
     const card = element(`c${i}`, [text(`t${i}`)]);
     return { ...card, semantic: { tag: "x-card" } } as CaptureNode;

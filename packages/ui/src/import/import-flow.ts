@@ -7,6 +7,7 @@ import {
   DEFAULT_IMPORT_OPTIONS,
   type DeviceEntry,
   type DeviceFrame,
+  dropSources,
   type FontRef,
   type ImportOptions,
   type ImportReport,
@@ -1140,6 +1141,8 @@ export async function runImports(
       const plans = set.versions.map(
         (v) => firstPlan ?? mapCapture(v.capture, available, planOptions, overrides)
       );
+      // Only a device merge binds texts by their captured ids.
+      if (!devices) dropSources(plans);
 
       if (set.versions.length > 1 || devices) {
         onState(working(firstFile, set.versions[0]?.name ?? ""));

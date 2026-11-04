@@ -24,6 +24,7 @@ import {
   imageFile,
   languageSetFile,
   namedFile,
+  repeatedFile,
   setFile,
   setFileWithImage,
   versionFile,
@@ -117,6 +118,16 @@ describe("runImports", () => {
       variablesReused: 4,
       tokenFailures: 5,
     });
+  });
+
+  test("a lone capture in a language sends no captured text ids", async () => {
+    const port = fakePort();
+    const language = { code: "en", name: "English", url: "https://example.com/", current: true };
+    await runImports([repeatedFile(3, language)], port, () => {});
+    const ops = port.batches.flat();
+    const overrides = ops.flatMap((op) => (op.op === "instance" ? op.overrides : []));
+    expect(overrides.some((o) => o.kind === "text")).toBe(true);
+    expect(JSON.stringify(ops)).not.toContain('"source"');
   });
 
   test("the done state carries the component counts", async () => {
