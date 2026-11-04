@@ -16,7 +16,13 @@ function parse(href: string, here: string): URL | undefined {
   }
 }
 
-const withoutHash = (url: string) => url.split("#")[0];
+/** A URL without its hash or a trailing path slash, for telling whether two are the same page. */
+function samePage(url: string): string {
+  const u = new URL(url);
+  u.hash = "";
+  if (u.pathname.length > 1) u.pathname = u.pathname.replace(/\/+$/, "");
+  return u.href;
+}
 const primary = (code: string) => code.toLowerCase().split("-")[0];
 
 /** Codes lowercase, deduped by code (first wins), only http(s) URLs. */
@@ -78,12 +84,17 @@ export function findLanguages(doc: Document, here: string): PageLanguage[] {
     .map((read) => read(doc, here))
     .find((languages) => languages.length >= 2);
   if (!found) return [];
-  const bare = withoutHash(here);
-  const htmlLang = doc.documentElement.getAttribute("lang");
+  const bare = samePage(here);
+  const htmlLang = doc.documentElement.getAttribute("lang")?.trim().toLowerCase();
   const current =
-    found.find((l) => withoutHash(l.url) === bare) ??
-    (htmlLang ? found.find((l) => primary(l.code) === primary(htmlLang)) : undefined);
-  const ordered = current ? [current, ...found.filter((l) => l !== current)] : found;
+    found.find((l) => samePage(l.url) === bare) ??
+    (htmlLang
+      ? (found.find((l) => l.code === htmlLang) ??
+        found.find((l) => primary(l.code) === primary(htmlLang)))
+      : undefined);
+  // Without a current language the capture cannot be labelled, so none is offered.
+  if (!current) return [];
+  const ordered = [current, ...found.filter((l) => l !== current)];
   return ordered.slice(0, MAX_LANGUAGES).map((l) => ({
     code: l.code,
     name: languageName(l.code),

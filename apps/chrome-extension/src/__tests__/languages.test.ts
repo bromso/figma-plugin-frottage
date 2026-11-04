@@ -45,6 +45,7 @@ describe("findLanguages", () => {
       "",
       `<a hreflang="de" href="/deutsch">DE</a><a lang="fr" href="/francais">FR</a><a hreflang="es" href="https://other.test/">ES</a>`
     );
+    doc.documentElement.setAttribute("lang", "de");
     const found = findLanguages(doc, "https://site.test/");
     expect(found.map((l) => l.code)).toEqual(["de", "fr"]);
   });
@@ -58,6 +59,35 @@ describe("findLanguages", () => {
       codes.map((c) => `<link rel="alternate" hreflang="${c}" href="/${c}/">`).join("")
     );
     expect(findLanguages(doc, "https://site.test/en/")).toHaveLength(8);
+  });
+});
+
+describe("findLanguages, the current language", () => {
+  const alternates = (codes: string[]) =>
+    codes.map((c) => `<link rel="alternate" hreflang="${c}" href="/${c}/">`).join("");
+  test("a trailing slash and a hash do not tell pages apart, a query does", () => {
+    const doc = page(alternates(["en", "sv"]));
+    expect(findLanguages(doc, "https://site.test/en#top")[0]).toMatchObject({
+      code: "en",
+      current: true,
+    });
+    expect(findLanguages(doc, "https://site.test/sv")[0]).toMatchObject({
+      code: "sv",
+      current: true,
+    });
+    expect(findLanguages(doc, "https://site.test/en/?x=1")).toEqual([]);
+  });
+  test("the html lang matches exactly before by primary subtag", () => {
+    const doc = page(alternates(["en-gb", "en-us"]));
+    doc.documentElement.setAttribute("lang", "en-US");
+    expect(findLanguages(doc, "https://site.test/x")[0]).toMatchObject({
+      code: "en-us",
+      current: true,
+    });
+  });
+  test("no way to tell the current language gives none", () => {
+    const doc = page("", `<a hreflang="de" href="/de">DE</a><a hreflang="fr" href="/fr">FR</a>`);
+    expect(findLanguages(doc, "https://site.test/")).toEqual([]);
   });
 });
 

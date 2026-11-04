@@ -45,13 +45,15 @@ describe("probePage languages", () => {
       '<style>@media (min-width: 640px){a{color:red}}</style><link rel="alternate" hreflang="en" href="/en/"><link rel="alternate" hreflang="sv" href="/sv/">';
     const found = probePage(doc, doc.documentElement, isColor, "https://site.test/en/");
     expect(found.languages?.map((l) => l.code)).toEqual(["en", "sv"]);
-    const bad = probePage(doc, doc.documentElement, isColor, {
-      toString() {
-        throw new Error("no");
-      },
-    } as unknown as string);
+    // A head whose reads throw: the language read fails, the others do not use it.
+    const head = doc.head;
+    head.querySelectorAll = () => {
+      throw new Error("no");
+    };
+    const bad = probePage(doc, doc.documentElement, isColor, "https://site.test/en/");
     expect(bad.languages).toEqual([]);
     expect(bad.widths).toEqual([640]);
+    expect(bad.dark).toBe(false);
   });
 });
 
