@@ -170,6 +170,7 @@ function Popup() {
     runWidths?: RunWidth[];
     collapseWrappers: boolean;
     versionLabel: string;
+    themes?: { light: boolean; dark: boolean };
   }) {
     const version = normaliseVersion(versionKind, versionLabel);
     const {
@@ -177,6 +178,7 @@ function Popup() {
       runWidths,
       collapseWrappers,
       versionLabel: label,
+      themes,
     } = request ?? {
       widths: wanted.map((w) => w.width),
       runWidths: wanted,
@@ -203,6 +205,7 @@ function Popup() {
         ...(runWidths ? { runWidths } : { widths }),
         ...(collapseWrappers ? { collapseWrappers: true } : {}),
         ...(label ? { versionLabel: label } : {}),
+        ...(themes ? { themes } : {}),
       });
       if (reply && !reply.ok) setStatus({ state: "error", message: reply.error });
     } catch (error) {

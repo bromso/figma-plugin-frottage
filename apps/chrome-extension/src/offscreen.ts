@@ -11,7 +11,7 @@ import {
   type Reply,
   type SwMessage,
 } from "./messages";
-import { captureFilename } from "./page";
+import { captureFilename, cleanThemes } from "./page";
 import type { HeldTab } from "./tab-hold";
 import { CaptureGate, startRefusal, ViewportRun } from "./viewport-run";
 
@@ -76,6 +76,7 @@ const run: CaptureRun = new CaptureRun({
 let viewportTab = 0;
 let collapseWrappers = false;
 let typedLabel = "";
+let themeChoice: { light: boolean; dark: boolean } | undefined;
 let heldTab: HeldTab | null = null;
 
 function held(): HeldTab {
@@ -140,6 +141,7 @@ const viewport: ViewportRun = new ViewportRun({
         tabId: viewportTab,
         ...(collapseWrappers ? { collapseWrappers: true } : {}),
         ...(typedLabel ? { versionLabel: typedLabel } : {}),
+        ...(themeChoice ? { themes: themeChoice } : {}),
         ...(item.device ? { device: item.device } : {}),
         ...(item.breakpoint ? { breakpoint: item.breakpoint } : {}),
       } satisfies SwMessage)
@@ -177,11 +179,13 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
         viewportTab = message.tabId;
         collapseWrappers = message.collapseWrappers === true;
         typedLabel = message.versionLabel ?? "";
+        themeChoice = cleanThemes(message.themes);
         heldTab = null;
         captured = new CaptureSet();
         void viewport.start(message.runWidths ?? message.widths ?? [], {
           collapseWrappers,
           versionLabel: typedLabel,
+          ...(themeChoice ? { themes: themeChoice } : {}),
         });
         sendResponse({ ok: true } satisfies Reply);
       } catch (error) {

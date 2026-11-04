@@ -5,6 +5,7 @@ import {
   canCapture,
   captureFilename,
   captureLabel,
+  cleanThemes,
   DEVICE_HEIGHTS,
   DEVICES,
   friendlyError,
@@ -577,5 +578,20 @@ describe("canCapture", () => {
     expect(canCapture({ ...ready, restricted: null })).toBe(false);
     expect(canCapture({ ...ready, tabId: null })).toBe(false);
     expect(canCapture({ ...ready, sizes: 0 })).toBe(false);
+  });
+});
+
+describe("cleanThemes", () => {
+  test("keeps a pair of booleans", () => {
+    expect(cleanThemes({ light: false, dark: true, extra: 1 })).toEqual({
+      light: false,
+      dark: true,
+    });
+  });
+  test("anything else is no choice", () => {
+    expect(cleanThemes(undefined)).toBeUndefined();
+    expect(cleanThemes({ light: "yes", dark: true })).toBeUndefined();
+    expect(cleanThemes({ light: true })).toBeUndefined();
+    expect(cleanThemes(null)).toBeUndefined();
   });
 });

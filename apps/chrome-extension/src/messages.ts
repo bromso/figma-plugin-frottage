@@ -36,6 +36,8 @@ export type ViewportRequest = {
   widths?: number[];
   collapseWrappers?: boolean;
   versionLabel?: string;
+  /** Which themes to import, when the page has a choice. */
+  themes?: { light: boolean; dark: boolean };
 };
 
 /** Popup to worker. */
@@ -49,6 +51,8 @@ export type SwMessage =
       /** The device or breakpoint this capture of a run is for. */
       device?: RunWidth["device"];
       breakpoint?: string;
+      /** Which themes the capture records as the ones to import. */
+      themes?: { light: boolean; dark: boolean };
     }
   | ({ target: "sw"; type: "viewport-start" } & ViewportRequest)
   /** Reads the page's breakpoints for the popup. */
@@ -94,5 +98,7 @@ export type Reply =
       width?: number;
       /** The page's breakpoints, answering `breakpoints`. */
       breakpoints?: number[];
+      /** Whether the page defines a dark theme, answering `breakpoints`. */
+      dark?: boolean;
     }
   | { ok: false; error: string };

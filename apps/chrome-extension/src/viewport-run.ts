@@ -148,7 +148,11 @@ export class ViewportRun {
    */
   start(
     widths: (number | RunWidth)[],
-    options: { collapseWrappers?: boolean; versionLabel?: string } = {}
+    options: {
+      collapseWrappers?: boolean;
+      versionLabel?: string;
+      themes?: { light: boolean; dark: boolean };
+    } = {}
   ): Promise<void> {
     if (this.running) throw new Error(RUN_BUSY);
     this.running = true;
@@ -161,6 +165,7 @@ export class ViewportRun {
       ...(named ? { runWidths: items.map((w) => ({ ...w })) } : {}),
       collapseWrappers: options.collapseWrappers === true,
       versionLabel: options.versionLabel ?? "",
+      ...(options.themes ? { themes: { ...options.themes } } : {}),
     });
   }
 

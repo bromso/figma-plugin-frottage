@@ -11,7 +11,7 @@ import pkg from "../package.json";
 import { assetChunks, splitIntoChunks } from "./chunks";
 import { fetchViaWorker, imagePortName, makeFetchBytes } from "./image-fetch";
 import { CAPTURE_PORT, type PageMessage } from "./messages";
-import { pageVersion } from "./page";
+import { cleanThemes, pageVersion } from "./page";
 
 /** The offscreen timeout is 60 s; stay well inside it. */
 const HEARTBEAT_MS = 10_000;
@@ -23,6 +23,7 @@ type RunWindow = Window & {
   __frottageVersionLabel?: string;
   __frottageDevice?: unknown;
   __frottageBreakpoint?: unknown;
+  __frottageThemes?: unknown;
 };
 
 // `void`: the script's completion value is undefined, so executeScript does not wait on the run.
@@ -37,6 +38,8 @@ void (async () => {
     device: win.__frottageDevice,
     breakpoint: win.__frottageBreakpoint,
   });
+  const themeChoice = cleanThemes(win.__frottageThemes);
+  win.__frottageThemes = undefined;
   win.__frottageVersionLabel = undefined;
   win.__frottageDevice = undefined;
   win.__frottageBreakpoint = undefined;
@@ -63,6 +66,7 @@ void (async () => {
         el instanceof HTMLElement ? chrome.dom.openOrClosedShadowRoot(el) : null,
     });
     if (version) capture.version = version;
+    if (themeChoice) capture.themeChoice = themeChoice;
     // Images are fetched in the page first, so they obey the page's CORS rules. When the run was
     // told the optional host permission is held, a failed fetch is retried by the worker, one port
     // per image; otherwise, or if that fails too, the image becomes a placeholder. The request

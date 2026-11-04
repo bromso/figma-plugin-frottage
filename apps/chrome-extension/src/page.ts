@@ -71,6 +71,14 @@ function cleanDevice(device: unknown): VersionDevice | undefined {
   return { id, name, height };
 }
 
+/** The themes a capture is for, as the format stores them, or undefined when not a pair of booleans. */
+export function cleanThemes(themes: unknown): { light: boolean; dark: boolean } | undefined {
+  if (!themes || typeof themes !== "object") return undefined;
+  const { light, dark } = themes as Record<string, unknown>;
+  if (typeof light !== "boolean" || typeof dark !== "boolean") return undefined;
+  return { light, dark };
+}
+
 /**
  * The version a capture records, in the page: a viewport labelled with the device's name, or the
  * breakpoint's for an extra capture, or else the width the page was laid out at, which only the
@@ -382,13 +390,20 @@ export function viewportStatusLabel(status: RunStatus & { state: "viewport" }): 
 export function rerunRequest(
   status: RunStatus & { state: "viewport-done" },
   collapseWrappers: boolean = status.request.collapseWrappers
-): { widths: number[]; runWidths?: RunWidth[]; collapseWrappers: boolean; versionLabel: string } {
+): {
+  widths: number[];
+  runWidths?: RunWidth[];
+  collapseWrappers: boolean;
+  versionLabel: string;
+  themes?: { light: boolean; dark: boolean };
+} {
   const { runWidths } = status.request;
   return {
     ...status.request,
     widths: [...status.request.widths],
     ...(runWidths ? { runWidths: runWidths.map((w) => ({ ...w })) } : {}),
     collapseWrappers,
+    ...(status.request.themes ? { themes: { ...status.request.themes } } : {}),
   };
 }
 

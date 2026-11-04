@@ -9,8 +9,9 @@ import {
   type Reply,
   type SwMessage,
 } from "./messages";
-import { pageOrigin } from "./page";
+import { cleanThemes, pageOrigin } from "./page";
 import type { RunWidth } from "./plan-widths";
+import { probeReply } from "./probe";
 import { type HoldApi, holdTab, releaseTab } from "./tab-hold";
 import { resizeWindow, type WindowsApi } from "./viewport-run";
 
@@ -93,7 +94,8 @@ async function startCapture(
   tabId: number,
   collapseWrappers: boolean,
   versionLabel: string,
-  named: { device?: RunWidth["device"]; breakpoint?: string }
+  named: { device?: RunWidth["device"]; breakpoint?: string },
+  themes?: { light: boolean; dark: boolean }
 ): Promise<Reply> {
   const runId = crypto.randomUUID();
   const started = await toOffscreen({
@@ -112,7 +114,8 @@ async function startCapture(
         imageAccess: boolean,
         label: string,
         device: RunWidth["device"] | null,
-        breakpoint: string | null
+        breakpoint: string | null,
+        themes: { light: boolean; dark: boolean } | null
       ) => {
         const win = window as unknown as {
           __frottageRunId?: string;
@@ -121,6 +124,7 @@ async function startCapture(
           __frottageVersionLabel?: string;
           __frottageDevice?: RunWidth["device"];
           __frottageBreakpoint?: string;
+          __frottageThemes?: { light: boolean; dark: boolean };
         };
         win.__frottageRunId = id;
         win.__frottageCollapse = collapse;
@@ -128,6 +132,7 @@ async function startCapture(
         win.__frottageVersionLabel = label;
         win.__frottageDevice = device ?? undefined;
         win.__frottageBreakpoint = breakpoint ?? undefined;
+        win.__frottageThemes = themes ?? undefined;
       },
       // `null`, not undefined: the arguments are sent as JSON.
       args: [
@@ -137,6 +142,7 @@ async function startCapture(
         versionLabel,
         named.device ?? null,
         named.breakpoint ?? null,
+        themes ?? null,
       ],
     });
     await chrome.scripting.executeScript({ target: { tabId }, files: ["capture-entry.js"] });
@@ -179,10 +185,16 @@ function answer(call: () => Promise<Reply>, sendResponse: (reply: Reply) => void
 chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse) => {
   if (message?.target !== "sw") return;
   if (message.type === "start") {
-    startCapture(message.tabId, message.collapseWrappers === true, message.versionLabel ?? "", {
-      device: message.device,
-      breakpoint: message.breakpoint,
-    }).then(sendResponse, (e) => sendResponse({ ok: false, error: errorText(e) }));
+    startCapture(
+      message.tabId,
+      message.collapseWrappers === true,
+      message.versionLabel ?? "",
+      {
+        device: message.device,
+        breakpoint: message.breakpoint,
+      },
+      cleanThemes(message.themes)
+    ).then(sendResponse, (e) => sendResponse({ ok: false, error: errorText(e) }));
     return true;
   }
   if (message.type === "download") {
@@ -231,11 +243,7 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
           return found;
         },
       });
-      const found = frame?.result as { widths?: unknown } | undefined;
-      const widths = Array.isArray(found?.widths)
-        ? found.widths.filter((w): w is number => Number.isInteger(w))
-        : [];
-      return { ok: true, breakpoints: widths };
+      return { ok: true, ...probeReply(frame?.result) };
     }, sendResponse);
   }
   if (message.type === "hold-tab") {
