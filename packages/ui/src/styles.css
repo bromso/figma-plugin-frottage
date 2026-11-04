@@ -27,7 +27,7 @@
 /* ============================================================
    UI3 tokens. Each binds to the variable Figma injects
    (--figma-color-*) with the kit's value as fallback, so inside
-   Figma colours track the user's theme live and outside Figma
+   Figma colors track the user's theme live and outside Figma
    (Storybook, tests) the fallback palette applies.
    Never define --figma-color-* here: Figma owns those names.
    Which names Figma injects, and which stay static, is recorded in
@@ -166,7 +166,7 @@ html.figma-dark {
 }
 
 @theme inline {
-  /* shadcn colour tokens */
+  /* shadcn color tokens */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

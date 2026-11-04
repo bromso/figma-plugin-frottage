@@ -94,6 +94,53 @@ export function fakeFigma(opts: Options = {}) {
     return out;
   }
   page.findAll = findAll;
+  page.name = "Page 1";
+  /** Every page in the file, the first the one open; `createPage` adds one, unloaded. */
+  const pages: FakeNode[] = [page];
+  function newPage(): FakeNode {
+    const kids: FakeNode[] = [];
+    let loaded = false;
+    const p: FakeNode = {
+      id: `page${pages.length + 1}`,
+      type: "PAGE",
+      name: "",
+      kids,
+      get children() {
+        return [...kids];
+      },
+      selection: [],
+      removed: false,
+      async loadAsync() {
+        calls.push("page.loadAsync");
+        await held("page.loadAsync");
+        loaded = true;
+      },
+      appendChild(child: FakeNode) {
+        // Measured under `dynamic-page`: a new page must be loaded before it is used.
+        if (!loaded) throw new Error("page not loaded");
+        detach(child);
+        child.parent = p;
+        kids.push(child);
+      },
+      remove() {
+        calls.push("remove:PAGE");
+        // As in Figma: the open page can't be removed.
+        if (current === p) throw new Error("cannot remove the current page");
+        p.removed = true;
+        pages.splice(pages.indexOf(p), 1);
+      },
+    };
+    pages.push(p);
+    return p;
+  }
+  const storage = new Map<string, unknown>();
+  let current: FakeNode = page;
+  /** Calls a test holds open, to act while they are pending: each gets the callback that ends it. */
+  const holds = new Map<string, (done: () => void) => void>();
+  const held = async (name: string) => {
+    const hold = holds.get(name);
+    if (hold) await new Promise<void>((resolve) => hold(resolve));
+  };
   let selection: FakeNode[] = [];
   Object.defineProperty(page, "selection", {
     get: () => selection,
@@ -369,13 +416,36 @@ export function fakeFigma(opts: Options = {}) {
 
   const figma = {
     get currentPage() {
-      return page;
+      return current;
+    },
+    async setCurrentPageAsync(next: FakeNode) {
+      calls.push(`setCurrentPage:${next.name}`);
+      await held("setCurrentPageAsync");
+      current = next;
     },
     viewport: {
       scrollAndZoomIntoView(n: FakeNode[]) {
         calls.push("scrollAndZoomIntoView");
         if (opts.viewportThrows) throw new Error("page switched");
         (figma as any).zoomed = n;
+      },
+    },
+    root: {
+      get children() {
+        return [...pages];
+      },
+    },
+    createPage() {
+      calls.push("createPage");
+      return newPage();
+    },
+    clientStorage: {
+      async getAsync(key: string) {
+        return storage.get(key);
+      },
+      async setAsync(key: string, value: unknown) {
+        calls.push(`clientStorage.set:${key}`);
+        storage.set(key, value);
       },
     },
     commitUndo() {
@@ -617,6 +687,13 @@ export function fakeFigma(opts: Options = {}) {
     created,
     svgSources,
     page,
+    pages,
+    /** Holds every call of `name` (`page.loadAsync`, `setCurrentPageAsync`) until `hold` ends it. */
+    hold(name: string, hold: ((done: () => void) => void) | null) {
+      if (hold) holds.set(name, hold);
+      else holds.delete(name);
+    },
+    storage,
     tokens,
     raw_createText: () => figma.createText() as FakeNode,
   };

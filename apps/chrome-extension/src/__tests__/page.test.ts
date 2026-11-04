@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   allowAccessAndRecapture,
+  BREAKPOINT_WAIT_MS,
+  canCapture,
   captureFilename,
   captureLabel,
+  DEVICE_HEIGHTS,
   DEVICES,
   friendlyError,
   imageAdvice,
@@ -222,12 +225,12 @@ describe("normaliseVersion", () => {
 
 describe("pageVersion", () => {
   test("a viewport capture is labelled with what the page was laid out at", () => {
-    expect(pageVersion("", 1440)).toEqual({ label: "1440", kind: "viewport" });
+    expect(pageVersion("", 1440)).toEqual({ label: "1440", kind: "viewport", width: 1440 });
   });
 
   test("a width label carries the typed label", () => {
-    expect(pageVersion("Dark", 1512)).toEqual({ label: "1512 Dark", kind: "viewport" });
-    expect(pageVersion("  ", 1512)).toEqual({ label: "1512", kind: "viewport" });
+    expect(pageVersion("Dark", 1512)?.label).toBe("1512 Dark");
+    expect(pageVersion("  ", 1512)?.label).toBe("1512");
   });
 
   test("a long typed label is cut to fit", () => {
@@ -247,8 +250,64 @@ describe("pageVersion", () => {
   });
 
   test("a missing label is the width alone, at any width", () => {
-    expect(pageVersion(undefined, 393)).toEqual({ label: "393", kind: "viewport" });
-    expect(pageVersion(undefined, 1440)).toEqual({ label: "1440", kind: "viewport" });
+    expect(pageVersion(undefined, 393)?.label).toBe("393");
+    expect(pageVersion(undefined, 1440)?.label).toBe("1440");
+  });
+});
+
+describe("pageVersion with a device or breakpoint", () => {
+  const laptop = { id: "laptop", name: "Laptop", height: 982 };
+
+  test("a device capture is labelled with the device's name and holds the device", () => {
+    expect(pageVersion("", 1512, { device: laptop })).toEqual({
+      label: "Laptop",
+      kind: "viewport",
+      device: laptop,
+      width: 1512,
+    });
+  });
+
+  test("a typed label follows the device's name", () => {
+    expect(pageVersion("Dark", 1600, { device: laptop })?.label).toBe("Laptop Dark");
+  });
+
+  test("an extra capture is labelled with its breakpoint", () => {
+    expect(pageVersion(undefined, 1024, { breakpoint: "lg" })).toEqual({
+      label: "lg",
+      kind: "viewport",
+      breakpoint: "lg",
+      width: 1024,
+    });
+  });
+
+  test("a version records the width the page was laid out at", () => {
+    expect(pageVersion(undefined, 1024, { breakpoint: "lg" })?.width).toBe(1024);
+    expect(pageVersion("", 1512, { device: laptop })?.width).toBe(1512);
+    expect(pageVersion("Dark", 1440)?.width).toBe(1440);
+    expect(pageVersion("", 0)?.width).toBeUndefined();
+  });
+
+  test("a malformed device is left out, and the width labels the capture", () => {
+    expect(pageVersion("", 1440, { device: { id: "x", name: "", height: -1 } })).toEqual({
+      label: "1440",
+      kind: "viewport",
+      width: 1440,
+    });
+  });
+});
+
+describe("DEVICE_HEIGHTS", () => {
+  test("every device has its nominal height", () => {
+    expect(DEVICE_HEIGHTS).toEqual({
+      tv: 2160,
+      desktop: 900,
+      laptop: 982,
+      "tablet-landscape": 834,
+      "tablet-portrait": 1194,
+      "phone-landscape": 390,
+      "phone-portrait": 844,
+      watch: 242,
+    });
   });
 });
 
@@ -446,6 +505,19 @@ describe("rerunRequest", () => {
     });
   });
 
+  test("a re-run repeats the devices and breakpoints the run was asked", () => {
+    const runWidths = [
+      { width: 1512, device: { id: "laptop" as const, name: "Laptop", height: 982 } },
+      { width: 1024, breakpoint: "lg" },
+    ];
+    expect(rerunRequest({ ...done, request: { ...done.request, runWidths } })).toEqual({
+      widths: [1512, 390],
+      runWidths,
+      collapseWrappers: true,
+      versionLabel: "Dark",
+    });
+  });
+
   test("a re-run can turn wrappers off or on without losing the rest", () => {
     expect(
       rerunRequest({ ...done, request: { ...done.request, collapseWrappers: false } }, true)
@@ -457,6 +529,12 @@ describe("viewportStatusLabel", () => {
   test("names the width and place in the run", () => {
     expect(viewportStatusLabel({ state: "viewport", index: 2, total: 3, label: "1440" })).toBe(
       "Capturing 1440 (2 of 3)…"
+    );
+  });
+
+  test("names the device", () => {
+    expect(viewportStatusLabel({ state: "viewport", index: 1, total: 6, label: "Laptop" })).toBe(
+      "Capturing Laptop (1 of 6)…"
     );
   });
 });
@@ -483,5 +561,21 @@ describe("a label in a filename", () => {
     ["a tilde", "Dark~mode"],
   ])("%s separates words", (_, label) => {
     expect(part(label)).toBe("-Dark-mode.frottage");
+  });
+});
+
+describe("canCapture", () => {
+  const ready = { restricted: false, tabId: 1, sizes: 3, breakpointsRead: true };
+
+  test("waits for the page's breakpoints, for at most 1.5 s", () => {
+    expect(canCapture(ready)).toBe(true);
+    expect(canCapture({ ...ready, breakpointsRead: false })).toBe(false);
+    expect(BREAKPOINT_WAIT_MS).toBe(1500);
+  });
+
+  test("needs a tab that can be captured and a size", () => {
+    expect(canCapture({ ...ready, restricted: null })).toBe(false);
+    expect(canCapture({ ...ready, tabId: null })).toBe(false);
+    expect(canCapture({ ...ready, sizes: 0 })).toBe(false);
   });
 });

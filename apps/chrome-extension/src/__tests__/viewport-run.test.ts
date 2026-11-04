@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { NO_ROOM, type RunStatus } from "../capture-run";
 import { pageOrigin } from "../page";
+import type { RunWidth } from "../plan-widths";
 import type { ReleaseOutcome } from "../tab-hold";
 import {
   CaptureGate,
@@ -62,6 +63,7 @@ function setup(over: Over = {}) {
   const fake = fakeWindows({ width: over.width ?? 1728, maxWidth: over.maxWidth });
   const statuses: RunStatus[] = [];
   const captures: string[] = [];
+  const items: RunWidth[] = [];
   const events: string[] = [];
   const announced: boolean[] = [];
   for (const width of over.refuse ?? []) fake.refuse.add(width);
@@ -89,15 +91,17 @@ function setup(over: Over = {}) {
       events.push("announce");
       announced.push(failed);
     },
-    capture: async () => {
-      const label = String(fake.win.width);
-      captures.push(label);
+    capture: async (item) => {
+      items.push(item);
+      // Like the page: a device or breakpoint names the capture, otherwise its width does.
+      const label = item.device?.name ?? item.breakpoint ?? String(fake.win.width);
+      captures.push(String(fake.win.width));
       const scripted = over.capture?.(label, run, captures.length);
       if (scripted) return scripted;
       return {
         ok: true,
         label,
-        width: Number(label) - (over.scrollbar ?? 0),
+        width: fake.win.width - (over.scrollbar ?? 0),
         nodes: over.nodes?.(captures.length) ?? 0,
         nodeLimit: false,
         blockedImages: 0,
@@ -121,7 +125,7 @@ function setup(over: Over = {}) {
     if (status?.state !== "viewport-done") throw new Error("the run did not finish");
     return status;
   };
-  return { run, fake, statuses, captures, events, announced, final };
+  return { run, fake, statuses, captures, items, events, announced, final };
 }
 
 const put = (label: string) => ({ label, width: Number(label) });
@@ -720,6 +724,66 @@ describe("startRefusal", () => {
 
   test("nothing is refused when nothing is running", () => {
     expect(startRefusal({ capturing: false, viewportRunning: false })).toBeNull();
+  });
+});
+
+describe("ViewportRun with devices and breakpoints", () => {
+  const LAPTOP = { id: "laptop" as const, name: "Laptop", height: 982 };
+  const PHONE = { id: "phone-portrait" as const, name: "Phone portrait", height: 844 };
+  const asked: RunWidth[] = [
+    { width: 390, device: PHONE },
+    { width: 1512, device: LAPTOP },
+    { width: 1024, breakpoint: "lg" },
+  ];
+
+  test("each capture gets its device or breakpoint, widest first", async () => {
+    const t = setup();
+    await t.run.start(asked);
+    expect(t.items).toEqual([
+      { width: 1512, device: LAPTOP },
+      { width: 1024, breakpoint: "lg" },
+      { width: 390, device: PHONE },
+    ]);
+    expect(t.final().saved).toEqual([
+      { label: "Laptop", width: 1512 },
+      { label: "lg", width: 1024 },
+      { label: "Phone portrait", width: 390 },
+    ]);
+    expect(t.final().mismatched).toEqual([]);
+  });
+
+  test("progress names the device", async () => {
+    const t = setup();
+    await t.run.start(asked);
+    expect(t.statuses.slice(0, 4)).toEqual([
+      { state: "viewport", index: 1, total: 3, label: "Laptop" },
+      { state: "viewport", index: 1, total: 3, label: "Laptop" },
+      { state: "viewport", index: 2, total: 3, label: "lg" },
+      { state: "viewport", index: 3, total: 3, label: "Phone portrait" },
+    ]);
+  });
+
+  test("a named capture's real width is the page's, so a short window is a mismatch", async () => {
+    const t = setup({ maxWidth: 1400 });
+    await t.run.start([{ width: 1512, device: LAPTOP }]);
+    expect(t.final().mismatched).toEqual([{ requested: 1512, width: 1400 }]);
+  });
+
+  test("a classic scrollbar is not a mismatch for a named capture", async () => {
+    const t = setup({ scrollbar: 15 });
+    await t.run.start([{ width: 1512, device: LAPTOP }]);
+    expect(t.final().mismatched).toEqual([]);
+  });
+
+  test("the final status carries the devices and breakpoints, for a re-run", async () => {
+    const t = setup();
+    await t.run.start(asked, { versionLabel: "Dark" });
+    expect(t.final().request).toEqual({
+      widths: [390, 1512, 1024],
+      runWidths: asked,
+      collapseWrappers: false,
+      versionLabel: "Dark",
+    });
   });
 });
 

@@ -21,7 +21,7 @@ function splitTop(value: string, separator: "," | " "): string[] {
 
 type Color = { r: number; g: number; b: number; a: number };
 
-/** Computed colours arrive as rgb() or rgba(); hex and `transparent` cover authored values. */
+/** Computed colors arrive as rgb() or rgba(); hex and `transparent` cover authored values. */
 function parseColor(token: string): Color | null {
   const t = token.trim().toLowerCase();
   if (t === "transparent") return { r: 0, g: 0, b: 0, a: 0 };

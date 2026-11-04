@@ -6,6 +6,7 @@ set -euo pipefail
 
 plugin=apps/design-plugin/dist/plugin.js
 page=apps/chrome-extension/dist/capture-entry.js
+breakpoints=apps/chrome-extension/dist/breakpoints-entry.js
 offscreen=$(ls apps/chrome-extension/dist/offscreen-*.js)
 
 zod='ZodError|zod'
@@ -35,5 +36,7 @@ refuse "$plugin" "$fflate" fflate
 refuse "$plugin" "$noble" noble
 refuse "$page" "$zod" zod
 refuse "$page" "$fflate" fflate
+refuse "$breakpoints" "$zod" zod
+refuse "$breakpoints" "$fflate" fflate
 
 echo "Bundle boundaries hold"

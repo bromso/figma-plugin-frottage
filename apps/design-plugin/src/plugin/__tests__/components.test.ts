@@ -1070,7 +1070,7 @@ test("a section laid out as planned counts no failure", async () => {
 const BLUE = { r: 0, g: 0, b: 1 };
 const blueFill = [{ type: "SOLID" as const, color: BLUE, opacity: 1 }];
 
-/** `x-card` with one label, a hover on its background and label colour, and `n` instances. */
+/** `x-card` with one label, a hover on its background and label color, and `n` instances. */
 const hovered = (n = 1, hover: PlanHoverPatch[] | undefined = undefined): PlanOp[] => [
   main("x-card", {
     childCount: 1,
@@ -1101,7 +1101,7 @@ test("the applier makes a State set with Default and Hover", async () => {
   expect(r).toMatchObject({ hoverVariants: 1, hoverFailures: 0, layoutFailures: 0 });
 });
 
-test("a text colour patch reaches the hover variant's label only", async () => {
+test("a text color patch reaches the hover variant's label only", async () => {
   const { f } = await imported(hovered());
   const [dflt, hover] = (setsOf(f)[0] as FakeNode).children as [FakeNode, FakeNode];
   const fills = (n: FakeNode) =>
@@ -1273,7 +1273,7 @@ test("one failed variant does not stop the next component's", async () => {
   expect(ofType(f, "COMPONENT_SET")).toHaveLength(1);
 });
 
-test("a text colour patch with ranges recolours only those ranges", async () => {
+test("a text color patch with ranges recolors only those ranges", async () => {
   const { f } = await imported(
     hovered(1, [
       {

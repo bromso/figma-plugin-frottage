@@ -10,6 +10,7 @@ import {
   type SwMessage,
 } from "./messages";
 import { pageOrigin } from "./page";
+import type { RunWidth } from "./plan-widths";
 import { type HoldApi, holdTab, releaseTab } from "./tab-hold";
 import { resizeWindow, type WindowsApi } from "./viewport-run";
 
@@ -91,7 +92,8 @@ const hasImageAccess = (): Promise<boolean> =>
 async function startCapture(
   tabId: number,
   collapseWrappers: boolean,
-  versionLabel: string
+  versionLabel: string,
+  named: { device?: RunWidth["device"]; breakpoint?: string }
 ): Promise<Reply> {
   const runId = crypto.randomUUID();
   const started = await toOffscreen({
@@ -104,19 +106,38 @@ async function startCapture(
     await chrome.scripting.executeScript({
       target: { tabId },
       // The run's settings travel with its id; the worker keeps nothing between messages.
-      func: (id: string, collapse: boolean, imageAccess: boolean, label: string) => {
+      func: (
+        id: string,
+        collapse: boolean,
+        imageAccess: boolean,
+        label: string,
+        device: RunWidth["device"] | null,
+        breakpoint: string | null
+      ) => {
         const win = window as unknown as {
           __frottageRunId?: string;
           __frottageCollapse?: boolean;
           __frottageImageAccess?: boolean;
           __frottageVersionLabel?: string;
+          __frottageDevice?: RunWidth["device"];
+          __frottageBreakpoint?: string;
         };
         win.__frottageRunId = id;
         win.__frottageCollapse = collapse;
         win.__frottageImageAccess = imageAccess;
         win.__frottageVersionLabel = label;
+        win.__frottageDevice = device ?? undefined;
+        win.__frottageBreakpoint = breakpoint ?? undefined;
       },
-      args: [runId, collapseWrappers, await hasImageAccess(), versionLabel],
+      // `null`, not undefined: the arguments are sent as JSON.
+      args: [
+        runId,
+        collapseWrappers,
+        await hasImageAccess(),
+        versionLabel,
+        named.device ?? null,
+        named.breakpoint ?? null,
+      ],
     });
     await chrome.scripting.executeScript({ target: { tabId }, files: ["capture-entry.js"] });
     return { ok: true };
@@ -158,10 +179,10 @@ function answer(call: () => Promise<Reply>, sendResponse: (reply: Reply) => void
 chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse) => {
   if (message?.target !== "sw") return;
   if (message.type === "start") {
-    startCapture(message.tabId, message.collapseWrappers === true, message.versionLabel ?? "").then(
-      sendResponse,
-      (e) => sendResponse({ ok: false, error: errorText(e) })
-    );
+    startCapture(message.tabId, message.collapseWrappers === true, message.versionLabel ?? "", {
+      device: message.device,
+      breakpoint: message.breakpoint,
+    }).then(sendResponse, (e) => sendResponse({ ok: false, error: errorText(e) }));
     return true;
   }
   if (message.type === "download") {
@@ -191,6 +212,30 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
         func: () => window.innerWidth,
       });
       return { ok: true, width: frame?.result };
+    }, sendResponse);
+  }
+  if (message.type === "breakpoints") {
+    // The popup's toolbar click granted `activeTab`. A restricted page refuses, and the popup
+    // then plans no extra captures.
+    return answer(async () => {
+      await chrome.scripting.executeScript({
+        target: { tabId: message.tabId },
+        files: ["breakpoints-entry.js"],
+      });
+      const [frame] = await chrome.scripting.executeScript({
+        target: { tabId: message.tabId },
+        func: () => {
+          const win = window as unknown as { __frottageBreakpoints?: unknown };
+          const found = win.__frottageBreakpoints;
+          win.__frottageBreakpoints = undefined;
+          return found;
+        },
+      });
+      const found = frame?.result as { widths?: unknown } | undefined;
+      const widths = Array.isArray(found?.widths)
+        ? found.widths.filter((w): w is number => Number.isInteger(w))
+        : [];
+      return { ok: true, breakpoints: widths };
     }, sendResponse);
   }
   if (message.type === "hold-tab") {

@@ -17,6 +17,7 @@ import {
 } from "../import-flow";
 import {
   captureWithTexts,
+  deviceSetFile,
   fakePort,
   fontFile,
   frottageFile,
@@ -888,9 +889,14 @@ describe("mergeMissing", () => {
 });
 
 describe("a set of versions", () => {
-  const wide = (over = {}) => versionFile({ name: "wide", width: 1512, label: "1512", ...over });
-  const mid = (over = {}) => versionFile({ name: "mid", width: 1000, label: "1000", ...over });
-  const narrow = (over = {}) => versionFile({ name: "narrow", width: 834, label: "834", ...over });
+  // Theme versions keep the Stage 3 path: one collection, a mode per version.
+  const theme = { kind: "theme" } as const;
+  const wide = (over = {}) =>
+    versionFile({ name: "wide", width: 1512, label: "1512", ...theme, ...over });
+  const mid = (over = {}) =>
+    versionFile({ name: "mid", width: 1000, label: "1000", ...theme, ...over });
+  const narrow = (over = {}) =>
+    versionFile({ name: "narrow", width: 834, label: "834", ...theme, ...over });
 
   async function runSet(files: File[], port = fakePort(), controller = new AbortController()) {
     const states: ImportState[] = [];
@@ -1280,7 +1286,8 @@ describe("a file holding several captures", () => {
     expect(done.versions).toHaveLength(3);
     expect(done.versions.map((v) => v.label)).toEqual(["1512", "1000", "834"]);
     expect(done.sets).toHaveLength(1);
-    expect(port.log.filter((l) => l === "beginSet")).toHaveLength(1);
+    // Widths alone are devices, named by width.
+    expect(port.log.filter((l) => l === "beginDeviceSet")).toHaveLength(1);
     expect(port.log.filter((l) => l === "begin")).toHaveLength(3);
   });
 
@@ -1468,5 +1475,381 @@ describe("images between files", () => {
     }
     expect(maps.length).toBeGreaterThan(0);
     expect(heldWhenSecondRead).toBe(0);
+  });
+});
+
+describe("a device set", () => {
+  /** Laptop, Tablet portrait and Phone portrait, and an extra capture for lg. */
+  const devicesFile = () =>
+    deviceSetFile({
+      devices: [
+        { name: "Tablet portrait", width: 834, height: 1194 },
+        { name: "Laptop", width: 1512, height: 982 },
+        { name: "Phone portrait", width: 390, height: 844 },
+      ],
+      extras: [{ breakpoint: "lg", width: 1024 }],
+      breakpoints: [640, 768, 1024, 1400],
+    });
+  type Review = Extract<ImportState, { step: "review" }>;
+  /** Runs the drop, deciding the review with `edit` applied to what it showed. */
+  async function runDevices(
+    files: File[],
+    port = fakePort(),
+    edit: (review: Review, decision: ReviewDecision) => ReviewDecision = (_, d) => d,
+    signal?: AbortSignal
+  ) {
+    const states: ImportState[] = [];
+    let review: Review | undefined;
+    const session: ReviewSession = {
+      forceReview: false,
+      async decide() {
+        review = states.find((s): s is Review => s.step === "review");
+        if (!review) throw new Error("no review");
+        const contents = review.contents;
+        const decision: ReviewDecision = {
+          options: review.options,
+          fonts: new Map(),
+          ...(contents
+            ? {
+                contents: {
+                  devices: contents.devices.map((d) => d.on),
+                  extras: contents.extras.map((e) => e.on),
+                  placement: contents.placement,
+                },
+              }
+            : {}),
+        };
+        return edit(review, decision);
+      },
+    };
+    await runImports(files, port, (s) => states.push(s), session, signal);
+    return { port, states, review, last: states.at(-1) as ImportState };
+  }
+
+  test("always reviews, listing devices widest first, then the extras, all ticked", async () => {
+    const { review } = await runDevices([devicesFile()]);
+    expect(review?.contents?.devices).toEqual([
+      { name: "Laptop", width: 1512, on: true },
+      { name: "Tablet portrait", width: 834, on: true },
+      { name: "Phone portrait", width: 390, on: true },
+    ]);
+    expect(review?.contents?.extras).toEqual([{ breakpoint: "lg", width: 1024, on: true }]);
+    expect(review?.contents?.placement).toBe("new-page");
+    expect(review?.contents?.collections).toMatch(/^Device 3 modes · Breakpoint 4 · /);
+    expect(review?.contents?.collections).toMatch(/Theme$/);
+    expect(review?.contents?.overLimit).toEqual([]);
+  });
+
+  test("the review shows the widths the captures were laid out at", async () => {
+    const file = deviceSetFile({
+      devices: [
+        { name: "Laptop", width: 1512 },
+        { name: "Phone portrait", width: 390 },
+      ],
+      extras: [{ breakpoint: "lg", width: 1024 }],
+      breakpoints: [640, 768, 1024, 1400],
+      scrollbar: 15,
+    });
+    const { review } = await runDevices([file]);
+    expect(review?.contents?.devices.map((d) => d.width)).toEqual([1512, 390]);
+    expect(review?.contents?.extras).toEqual([{ breakpoint: "lg", width: 1024, on: true }]);
+  });
+
+  test("goes through beginDeviceSet with the merged layers, a frame per device", async () => {
+    const { port } = await runDevices([devicesFile()]);
+    expect(port.log).toContain("beginDeviceSet");
+    expect(port.log).not.toContain("beginSet");
+    expect(port.log).not.toContain("modes");
+    expect(port.deviceSetMeta?.placement).toBe("new-page");
+    expect(port.deviceSetMeta?.name).toBe("Example");
+    expect(port.deviceSetMeta?.layers.collections.find((c) => c.kind === "device")?.modes).toEqual([
+      "Laptop",
+      "Tablet portrait",
+      "Phone portrait",
+    ]);
+    expect(port.begins.map((b) => [b.version, b.device])).toEqual([
+      [
+        { index: 0, label: "Laptop" },
+        { mode: "Laptop", breakpoint: "min 1400" },
+      ],
+      [
+        { index: 1, label: "Tablet portrait" },
+        { mode: "Tablet portrait", breakpoint: "md" },
+      ],
+      [
+        { index: 2, label: "Phone portrait" },
+        { mode: "Phone portrait", breakpoint: "base" },
+      ],
+    ]);
+    // Each device sends its plan's tokens, layers included, so its text styles bind.
+    expect(port.tokensCalls).toHaveLength(3);
+    expect(port.tokensCalls.every((t) => t.layers === port.deviceSetMeta?.layers)).toBe(true);
+    expect(port.log.at(-1)).toBe("endSet");
+  });
+
+  test("an unticked device is left out of the merge and makes no frame", async () => {
+    const { port } = await runDevices([devicesFile()], fakePort(), (_, d) => ({
+      ...d,
+      contents: { devices: [true, false, true], extras: [true], placement: "new-page" },
+    }));
+    expect(port.deviceSetMeta?.layers.collections.find((c) => c.kind === "device")?.modes).toEqual([
+      "Laptop",
+      "Phone portrait",
+    ]);
+    expect(port.begins.map((b) => b.device?.mode)).toEqual(["Laptop", "Phone portrait"]);
+  });
+
+  test("an unticked extra gives no Breakpoint values", async () => {
+    const { port } = await runDevices([devicesFile()], fakePort(), (_, d) => ({
+      ...d,
+      contents: { devices: [true, true, true], extras: [false], placement: "new-page" },
+    }));
+    const breakpoint = port.deviceSetMeta?.layers.collections.find((c) => c.kind === "breakpoint");
+    expect(breakpoint?.modes).toEqual(["base", "md", "min 1400"]);
+  });
+
+  test("an unticked extra's breakpoint isn't reported as having no capture", async () => {
+    const { last } = await runDevices([devicesFile()], fakePort(), (_, d) => ({
+      ...d,
+      contents: { devices: [true, true, true], extras: [false], placement: "new-page" },
+    }));
+    if (last.step !== "done") throw new Error(last.step);
+    const notes = last.sets[0]?.notes ?? [];
+    expect(notes).not.toContain("No capture for the lg breakpoint.");
+    expect(notes).toContain("No capture for the sm breakpoint.");
+  });
+
+  test("the review's summary follows the ticks", async () => {
+    let collections = "";
+    await runDevices([devicesFile()], fakePort(), (review, d) => {
+      collections = review.contents?.summarize?.([true, false, true], [true]).collections ?? "";
+      return d;
+    });
+    expect(collections).toMatch(/^Device 2 modes · Breakpoint 3 · /);
+  });
+
+  test("Current page reaches beginDeviceSet", async () => {
+    const { port } = await runDevices([devicesFile()], fakePort(), (_, d) => ({
+      ...d,
+      contents: { devices: [true, true, true], extras: [true], placement: "current-page" },
+    }));
+    expect(port.deviceSetMeta?.placement).toBe("current-page");
+  });
+
+  test("a remembered mode limit warns for each collection over it", async () => {
+    const port = fakePort();
+    port.modeLimit = 2;
+    const { review } = await runDevices([devicesFile()], port);
+    expect(review?.contents?.overLimit).toContain(
+      "Device needs 3 modes. This file allows 2, so 1 will be left out."
+    );
+    expect(review?.contents?.overLimit).toContain(
+      "Breakpoint needs 4 modes. This file allows 2, so 2 will be left out."
+    );
+  });
+
+  test("an older width-only file takes the new path, with Device modes named by width", async () => {
+    const { port } = await runDevices([setFile({ widths: [834, 1512, 390] })]);
+    expect(port.log).toContain("beginDeviceSet");
+    expect(port.log).not.toContain("modes");
+    expect(port.deviceSetMeta?.layers.collections.find((c) => c.kind === "device")?.modes).toEqual([
+      "1512",
+      "834",
+      "390",
+    ]);
+    expect(port.begins.map((b) => b.device?.mode)).toEqual(["1512", "834", "390"]);
+  });
+
+  test("a file of theme versions keeps the Stage 3 path", async () => {
+    const { port, review } = await runDevices([
+      versionFile({ name: "light", label: "Light", kind: "theme" }),
+      versionFile({ name: "dark", label: "Dark", kind: "theme" }),
+    ]);
+    // No font is missing, so a theme set has no review.
+    expect(review).toBeUndefined();
+    expect(port.log).toContain("beginSet");
+    expect(port.log).toContain("modes");
+    expect(port.log).not.toContain("beginDeviceSet");
+  });
+
+  test("the set's report names its Device and Breakpoint modes and the ranges left out", async () => {
+    const { last } = await runDevices([devicesFile()]);
+    if (last.step !== "done") throw new Error(last.step);
+    const notes = last.sets[0]?.notes ?? [];
+    expect(notes).toContain("Device: Laptop, Tablet portrait, Phone portrait");
+    expect(notes).toContain("Breakpoint: base, md, lg, min 1400");
+    expect(notes).toContain("No capture for the sm breakpoint.");
+    expect(last.versions.map((v) => v.label)).toEqual([
+      "Laptop",
+      "Tablet portrait",
+      "Phone portrait",
+    ]);
+  });
+
+  test("the report names the modes Figma made, and the ones it didn't", async () => {
+    const port = fakePort();
+    port.setResult = {
+      layers: {
+        modesDropped: ["Phone portrait", "base", "lg"],
+        modes: [
+          {
+            kind: "device",
+            collection: "Device",
+            created: ["Laptop", "Tablet portrait"],
+            added: [],
+          },
+          { kind: "breakpoint", collection: "Breakpoint", created: ["min 1400", "md"], added: [] },
+        ],
+      },
+    };
+    const { last } = await runDevices([devicesFile()], port);
+    if (last.step !== "done") throw new Error(last.step);
+    const notes = last.sets[0]?.notes ?? [];
+    expect(notes).toContain("Device: Laptop, Tablet portrait");
+    expect(notes).not.toContain("Device: Laptop, Tablet portrait, Phone portrait");
+    expect(notes).toContain("Breakpoint: min 1400, md");
+    expect(notes).toContain("Not created: Phone portrait, base, lg.");
+    expect(notes.some((n) => n.startsWith("Modes added"))).toBe(false);
+  });
+
+  test("a re-import names the modes it added to each collection", async () => {
+    const port = fakePort();
+    port.setResult = {
+      layers: {
+        modesDropped: [],
+        modes: [
+          {
+            kind: "device",
+            collection: "Device",
+            created: ["Laptop", "Tablet portrait", "Phone portrait"],
+            added: [],
+          },
+          {
+            kind: "breakpoint",
+            collection: "Breakpoint",
+            created: ["min 1400", "md", "base", "sm", "lg"],
+            added: ["sm", "lg"],
+          },
+          {
+            kind: "colorMode",
+            collection: "Color Mode",
+            created: ["Light", "Dark"],
+            added: ["Dark"],
+          },
+        ],
+      },
+    };
+    const { last } = await runDevices([devicesFile()], port);
+    if (last.step !== "done") throw new Error(last.step);
+    const notes = last.sets[0]?.notes ?? [];
+    expect(notes).toContain("Modes added: Breakpoint sm, lg.");
+    expect(notes).toContain("Modes added: Color Mode Dark.");
+    expect(notes.some((n) => n.startsWith("Not created"))).toBe(false);
+  });
+
+  test("frames left without their modes are counted in the report", async () => {
+    const port = fakePort();
+    port.setResult = { plainVersions: [1] };
+    const one = await runDevices([devicesFile()], port);
+    if (one.last.step !== "done") throw new Error(one.last.step);
+    expect(one.last.sets[0]?.notes).toContain(
+      "1 frame couldn't get its device or breakpoint modes and keeps its captured values, not linked to variables."
+    );
+    const two = fakePort();
+    two.setResult = { plainVersions: [1, 2] };
+    const both = await runDevices([devicesFile()], two);
+    if (both.last.step !== "done") throw new Error(both.last.step);
+    expect(both.last.sets[0]?.notes).toContain(
+      "2 frames couldn't get their device or breakpoint modes and keep their captured values, not linked to variables."
+    );
+  });
+
+  test("Cancel in the review creates nothing", async () => {
+    const port = fakePort();
+    const states: ImportState[] = [];
+    await runImports([devicesFile()], port, (s) => states.push(s), confirm(null));
+    expect(port.log).not.toContain("beginDeviceSet");
+    expect(states.at(-1)).toEqual({ step: "idle" });
+  });
+
+  test("a width-only capture goes by its label, though a scrollbar narrowed its client width", async () => {
+    const file = setFile({
+      widths: [1512, 834, 390],
+      edit: (capture) => {
+        capture.source.viewport.w -= 15;
+      },
+    });
+    const { review, port } = await runDevices([file]);
+    expect(review?.contents?.devices).toEqual([
+      { name: "1512", width: 1512, on: true },
+      { name: "834", width: 834, on: true },
+      { name: "390", width: 390, on: true },
+    ]);
+    expect(port.deviceSetMeta?.layers.collections.find((c) => c.kind === "device")?.modes).toEqual([
+      "1512",
+      "834",
+      "390",
+    ]);
+    expect(port.begins.map((b) => b.device?.mode)).toEqual(["1512", "834", "390"]);
+  });
+
+  test("the theme is reported once, for the set, not under each frame", async () => {
+    const { last } = await runDevices([devicesFile()]);
+    if (last.step !== "done") throw new Error(last.step);
+    expect(last.versions.every((v) => v.theme === undefined)).toBe(true);
+    expect(last.sets[0]?.theme?.theme?.source).toBeDefined();
+  });
+
+  test("progress counts the device frames only, and ends at the last of them", async () => {
+    const files = (states: ImportState[]) =>
+      states.flatMap((s) => (s.step === "working" && s.total > 0 ? [s.file] : []));
+    const all = files((await runDevices([devicesFile()])).states);
+    expect(all.every((f) => f.total === 3)).toBe(true);
+    expect(all.at(-1)?.index).toBe(3);
+    const two = await runDevices([devicesFile()], fakePort(), (_, d) => ({
+      ...d,
+      contents: { devices: [true, false, true], extras: [true], placement: "new-page" },
+    }));
+    const some = files(two.states);
+    expect(some.every((f) => f.total === 2)).toBe(true);
+    expect(some.at(-1)?.index).toBe(2);
+  });
+
+  test("Cancel after beginDeviceSet cancels the sandbox and imports nothing more", async () => {
+    const port = fakePort();
+    const controller = new AbortController();
+    const open = port.beginDeviceSet.bind(port);
+    port.beginDeviceSet = async (meta) => {
+      await open(meta);
+      controller.abort();
+    };
+    const { last } = await runDevices([devicesFile()], port, (_, d) => d, controller.signal);
+    expect(port.log).toContain("cancel");
+    expect(port.log).not.toContain("begin");
+    expect(port.log).not.toContain("endSet");
+    expect(last).toEqual({ step: "idle" });
+  });
+
+  test("a failed device frame is named and the others import", async () => {
+    const port = fakePort();
+    port.failVersion = 1;
+    const { last } = await runDevices([devicesFile()], port);
+    if (last.step !== "done") throw new Error(last.step);
+    expect(last.failures.map((f) => f.name)).toEqual(["Tablet portrait · Example"]);
+    expect(last.versions.map((v) => v.label)).toEqual(["Laptop", "Phone portrait"]);
+    expect(port.log).toContain("endSet");
+  });
+
+  test("a beginDeviceSet that throws fails the set's frames and creates nothing", async () => {
+    const port = fakePort();
+    port.failOn = "beginSet";
+    const { last } = await runDevices([devicesFile()], port);
+    expect(port.log).not.toContain("begin");
+    expect(port.log).toContain("cancel");
+    if (last.step !== "error") throw new Error(last.step);
+    for (const name of ["Laptop", "Tablet portrait", "Phone portrait"]) {
+      expect(last.message).toContain(`${name} · Example`);
+    }
+    expect(last.message).not.toContain("1024");
   });
 });

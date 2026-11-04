@@ -81,7 +81,7 @@ describe("nestSelectors", () => {
 });
 
 describe("parseAuthoredBoxShadows", () => {
-  test("reads hex, named and function colours", () => {
+  test("reads hex, named and function colors", () => {
     expect(parseAuthoredBoxShadows("0 2px 4px #000")?.[0]?.color).toEqual({
       r: 0,
       g: 0,

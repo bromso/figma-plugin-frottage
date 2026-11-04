@@ -150,9 +150,9 @@ function svgs(c: Capture) {
 /**
  * The snapshot keeps only what is the same on every machine:
  * - structure: kind, tag, role, heading level, landmark, href, alt, children, ids, paintOrder
- * - text content, plus run offsets, weight, style, size, lineHeight, letterSpacing, colour,
+ * - text content, plus run offsets, weight, style, size, lineHeight, letterSpacing, color,
  *   decoration, transform and align (all come from CSS, not from text metrics)
- * - element style and layout values: colours, gradients, borders, radii, shadows, filters,
+ * - element style and layout values: colors, gradients, borders, radii, shadows, filters,
  *   overflow, display, padding, margin, flex values
  * - box values only for squares of 8px or more (fixed CSS sizes such as the 44px icon) and for
  *   images, whose width and height attributes fix them; every other box is dropped, placeholders
@@ -788,11 +788,11 @@ test("inline SVG is stored as markup with currentColor resolved", async ({ page 
   expect(svg.markup).toContain("<svg");
   expect(svg.markup).not.toContain("currentColor");
   expect(svg.markup).not.toContain("<script");
-  // The page's brand colour (#0d9488) is inlined as the stroke.
+  // The page's brand color (#0d9488) is inlined as the stroke.
   expect(svg.markup).toMatch(/stroke="#0d9488"/i);
 });
 
-test("computed colours, classes and gradients are inlined and the page CSS is not needed", async ({
+test("computed colors, classes and gradients are inlined and the page CSS is not needed", async ({
   page,
 }) => {
   const c = await capture(page, "svg.html");
@@ -841,7 +841,7 @@ test("hostile SVG markup loses scripts, handlers and external references", async
   ]) {
     expect(markup).not.toContain(bad);
   }
-  // The inline style survives as computed colour.
+  // The inline style survives as computed color.
   expect(markup).toMatch(/fill="#010203"/i);
   expect(JSON.stringify(c)).not.toContain("SECRET-TOKEN");
 });
@@ -1699,7 +1699,7 @@ test("the links fixture still parses, with its pseudo-elements", async ({ page }
 
 // ---------- Custom properties
 
-test("only colours and lengths are kept from :root, with var() chains resolved", async ({
+test("only colors and lengths are kept from :root, with var() chains resolved", async ({
   page,
 }) => {
   const c = await capture(page, "secrets.html");
@@ -1876,7 +1876,7 @@ test("a pseudo-element keeps its z-index, so an underlay stays under the text", 
   expect(under[0]).toBe(pseudo("zq-pill")?.id);
 });
 
-test("transparent text fill outside a clip takes the stroke colour, else the text colour", async ({
+test("transparent text fill outside a clip takes the stroke color, else the text color", async ({
   page,
 }) => {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
@@ -1906,7 +1906,7 @@ test("transparent text fill outside a clip takes the stroke colour, else the tex
   expect(warned[0]?.detail).toContain("(3 times)");
 });
 
-test("background-clip: text is captured and the text paints with the first gradient colour", async ({
+test("background-clip: text is captured and the text paints with the first gradient color", async ({
   page,
 }) => {
   const c = await capture(page, "gradient-text.html");
@@ -1928,11 +1928,11 @@ test("background-clip: text is captured and the text paints with the first gradi
   };
   expect(fillsOf(heading("h1").id)).toEqual([]);
   expect(fillsOf(heading("p").id)).toHaveLength(1);
-  const colours = plan.ops.flatMap((o) =>
+  const colors = plan.ops.flatMap((o) =>
     o.op === "text" ? [o.runs[0]?.color, o.runs[0]?.opacity] : []
   );
   // h1: -webkit-text-fill-color transparent over a red-to-blue gradient; h2: color transparent over green.
-  expect(colours.slice(0, 4)).toEqual([{ r: 1, g: 0, b: 0 }, 1, { r: 0, g: 128 / 255, b: 0 }, 1]);
+  expect(colors.slice(0, 4)).toEqual([{ r: 1, g: 0, b: 0 }, 1, { r: 0, g: 128 / 255, b: 0 }, 1]);
 });
 
 // ---------- Hover
@@ -1966,7 +1966,7 @@ test("a var() value is resolved, with its fallback", async ({ page }) => {
   expect(hover?.backgroundColor).toEqual(rgb(0, 0, 0, 0.5));
 });
 
-test("a colour hover carries the resting colour, and other hovers do not", async ({ page }) => {
+test("a color hover carries the resting color, and other hovers do not", async ({ page }) => {
   const c = await capture(page, "hover.html");
   near(hoverOf(c, "x-btn", "vars")?.restingColor?.r, 0x11 / 255);
   expect(hoverOf(c, "x-btn", "vars")?.restingColor?.a).toBe(1);
@@ -2103,7 +2103,7 @@ test("a rule with an unsupported property keeps what it can and is counted", asy
   const pill = hoverOf(c, "x-pill", "a");
   expect(pill?.color?.g).toBeCloseTo(0.6, 2);
   expect(JSON.stringify(pill)).not.toContain("transform");
-  // currentcolor can't be pinned down, so the earlier rule's green stays; the colour beside it is read
+  // currentcolor can't be pinned down, so the earlier rule's green stays; the color beside it is read
   const cur = hoverOf(c, "x-pill", "cur");
   expect(cur?.color?.g).toBeCloseTo(0.6, 2);
   near(cur?.backgroundColor?.r, 0xab / 255);
@@ -2239,7 +2239,7 @@ test.describe("hover on what merges into text", () => {
   const arial = [{ family: "Arial", style: "Regular" }];
   const redHover = { r: 1, g: 0, b: 0, a: 1 };
 
-  test("an anchor that is all of its parent's text lifts its hover, with its own colour", async ({
+  test("an anchor that is all of its parent's text lifts its hover, with its own color", async ({
     page,
   }) => {
     const c = await plain(
@@ -2305,7 +2305,7 @@ test.describe("hover on what merges into text", () => {
     expect(c.warnings.find((w) => w.code === "hover-partial")?.detail).toContain("(2 times)");
   });
 
-  test("links in a nested list do not recolour what holds them", async ({ page }) => {
+  test("links in a nested list do not recolor what holds them", async ({ page }) => {
     const c = await plain(
       page,
       `<style>x-nav { display: block } x-nav a { color: rgb(51, 51, 51) } x-nav a:hover { color: red }</style>
@@ -2319,7 +2319,7 @@ test.describe("hover on what merges into text", () => {
     expect(elements(c, "ul").every((n) => !n.hover)).toBe(true);
   });
 
-  test("only colour and decoration lift; box changes are counted", async ({ page }) => {
+  test("only color and decoration lift; box changes are counted", async ({ page }) => {
     const c = await plain(
       page,
       `<style>x-btn { display: block; padding: 8px } x-btn a { color: inherit }
@@ -2448,6 +2448,65 @@ test("each element records the token its CSS used, even where tokens share a val
   expect(c.warnings.some((w) => w.code === "token-refs-partial")).toBe(false);
 });
 
+test("each corner records the rounding class that set it, and binds to radius/<name>", async ({
+  page,
+}) => {
+  const c = await capture(page, "shadcn.html");
+  expect(parseCapture(c).ok).toBe(true);
+  const byClass = (name: string) =>
+    findKind(c, "element", (n) => (n.semantic.className ?? "").split(" ").includes(name));
+  expect(byClass("card").tokenRefs?.radiusClass).toEqual(["lg", "lg", "lg", "lg"]);
+  expect(byClass("tile").tokenRefs?.radiusClass).toEqual(["2xl", "2xl", "2xl", "2xl"]);
+  // `rounded-tl-sm` comes later than `rounded-t-2xl`, so it wins the top-left corner.
+  expect(byClass("sheet").tokenRefs?.radiusClass).toEqual(["sm", "2xl", null, null]);
+  expect(byClass("pill").tokenRefs?.radiusClass).toEqual(["full", "full", "full", "full"]);
+  // An element no rounding class reaches, as the `flex` row around the pill, has no names.
+  expect(byClass("flex").tokenRefs?.radiusClass).toBeUndefined();
+  // A variant names the same token at its breakpoint; a class whose value isn't the corner's, none.
+  expect(byClass("chip").tokenRefs?.radiusClass).toEqual(["xl", "xl", "xl", "xl"]);
+  expect(byClass("stale").tokenRefs?.radiusClass).toBeUndefined();
+
+  const { plan, byClass: frameOf, resolve } = mapLayered(c);
+  const end = (key: string | undefined, name: string, px: number) => {
+    expect(key).toBe(`theme:radius/${name}`);
+    const { value, chain } = resolve(key as string);
+    expect(chain.at(-1)).toBe(`radius:radius/${name}`);
+    expect(value).toBe(px);
+  };
+  for (const key of frameOf("tile").radiusKeys ?? []) end(key, "2xl", 2 * RADIUS_LG);
+  expect(frameOf("tile").radiusKeys).toHaveLength(4);
+  const sheet = frameOf("sheet").radiusKeys ?? [];
+  end(sheet[0], "sm", RADIUS_LG - 4);
+  end(sheet[1], "2xl", 2 * RADIUS_LG);
+  expect(sheet[2]).toBeUndefined();
+  expect(sheet[3]).toBeUndefined();
+  for (const key of frameOf("pill").radiusKeys ?? []) end(key, "full", 9999);
+  expect(frameOf("pill").radiusKeys).toHaveLength(4);
+  expect(plan.tokens.layers?.collections.map((x) => x.name)).toContain("Border radius");
+  expect(plan.report.warnings.filter((w) => w.includes("different values"))).toEqual([]);
+});
+
+test("an image's corners record their rounding class and bind to radius/<name>", async ({
+  page,
+}) => {
+  const c = await capture(page, "shadcn.html");
+  expect(parseCapture(c).ok).toBe(true);
+  const hero = findKind(c, "image", (n) => n.semantic.className === "hero");
+  expect(hero.tokenRefs?.radiusClass).toEqual(["2xl", "2xl", "2xl", "2xl"]);
+  // Assets are not under test: the mapper makes an image op only for an image it has bytes for.
+  hero.assetHash = "hero";
+  const { plan } = mapLayered(c);
+  const op = plan.ops.find((o) => o.op === "image" && o.id === hero.id) as
+    | { radiusKeys?: (string | undefined)[] }
+    | undefined;
+  expect(op?.radiusKeys).toEqual([
+    "theme:radius/2xl",
+    "theme:radius/2xl",
+    "theme:radius/2xl",
+    "theme:radius/2xl",
+  ]);
+});
+
 // ---------- Theme modes, captured light or dark, through the mapper
 
 type Variant = "light" | "media-dark" | "class-dark";
@@ -2485,6 +2544,8 @@ type MappedFrame = {
   };
 };
 
+const RADIUS_LG = 10;
+
 function mapLayered(c: Capture) {
   const plan = mapCapture(c, [{ family: "Inter", style: "Regular" }], {
     ...DEFAULT_IMPORT_OPTIONS,
@@ -2505,12 +2566,30 @@ function mapLayered(c: Capture) {
     );
     return plan.ops.find((o) => o.op === "frame" && o.id === node.id) as unknown as MappedFrame;
   };
-  const values = (key: string) => {
+  const variable = (key: string) => {
     const v = layers.variables.find((x) => x.key === key);
     if (!v) throw new Error(`no variable ${key}`);
-    return v.values as { r: number; g: number; b: number; a: number }[];
+    return v;
   };
-  return { plan, layers, byClass, byText, values };
+  /** A key followed through its `{ alias }` chain: the final value and the keys passed. Color Mode picks by mode. */
+  const resolve = (key: string, mode = 0) => {
+    const chain = [key];
+    let at = variable(key);
+    for (let i = 0; i < 10; i++) {
+      const value = at.values[at.collection === "colorMode" ? mode : 0] as unknown;
+      if (typeof value === "object" && value !== null && "alias" in value) {
+        const next = (value as { alias: string }).alias;
+        chain.push(next);
+        at = variable(next);
+      } else return { value, chain };
+    }
+    throw new Error(`alias loop at ${key}`);
+  };
+  const values = (key: string) =>
+    layers.modes.map(
+      (_, i) => resolve(key, i).value as { r: number; g: number; b: number; a: number }
+    );
+  return { plan, layers, byClass, byText, values, resolve };
 }
 
 for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
@@ -2523,7 +2602,7 @@ for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
     expect(c.tokens.activeTheme).toBe(dark ? "Dark" : undefined);
     expect(c.tokens.themes?.map((t) => t.mode)).toEqual(["Dark"]);
 
-    const { layers, byClass, byText, values } = mapLayered(c);
+    const { layers, byClass, byText, values, resolve } = mapLayered(c);
     expect(layers.modes).toEqual(["Light", "Dark"]);
     expect(layers.activeMode).toBe(dark ? "Dark" : "Light");
     expect(layers.themeSource).toBe("site");
@@ -2531,7 +2610,7 @@ for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
     // Light is the light page's whichever way it was captured; Dark the dark one's.
     const white = { r: 1, g: 1, b: 1, a: 1 };
     for (const name of ["background", "card", "popover"]) {
-      const [light, darkValue] = values(`theme:${name}`);
+      const [light, darkValue] = values(`theme:color/${name}`);
       expect(light).toMatchObject({
         r: expect.closeTo(white.r, 3),
         g: expect.closeTo(white.g, 3),
@@ -2539,29 +2618,43 @@ for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
       });
       expect(darkValue?.r).toBeLessThan(0.3);
     }
-    // In Dark, card, popover and background are three colours.
-    const darks = ["background", "card", "popover"].map((n) => values(`theme:${n}`)[1]?.r);
+    // A color passes Theme, then Color Mode, then Palette: each layer aliases the one before.
+    for (const name of ["background", "card", "popover", "border"]) {
+      const kinds = resolve(`theme:color/${name}`).chain.map((k) => k.split(":")[0]);
+      expect(kinds).toEqual(["theme", "colorMode", "palette"]);
+    }
+    // In Dark, card, popover and background are three colors.
+    const darks = ["background", "card", "popover"].map((n) => values(`theme:color/${n}`)[1]?.r);
     expect(new Set(darks.map((r) => r?.toFixed(3))).size).toBe(3);
-    expect(values("theme:border")[1]?.a).toBeCloseTo(0.1, 2);
+    expect(values("theme:color/border")[1]?.a).toBeCloseTo(0.1, 2);
 
     const card = byClass("card");
     const popover = byClass("popover");
-    expect(byClass("bg-background").fills[0]?.colorKey).toBe("theme:background");
-    expect(card.fills[0]?.colorKey).toBe("theme:card");
-    expect(popover.fills[0]?.colorKey).toBe("theme:popover");
-    expect(card.strokes?.colorKey).toBe("theme:border");
-    expect(card.radiusKeys).toEqual(Array(4).fill("primitives:radius/lg"));
+    expect(byClass("bg-background").fills[0]?.colorKey).toBe("theme:color/background");
+    expect(card.fills[0]?.colorKey).toBe("theme:color/card");
+    expect(popover.fills[0]?.colorKey).toBe("theme:color/popover");
+    expect(card.strokes?.colorKey).toBe("theme:color/border");
+    // Radius and spacing bind to Theme tokens whose chains end in the raw collections.
+    const end = (key: string | null | undefined, collection: string, px: number) => {
+      const { value, chain } = resolve(key as string);
+      expect(key?.startsWith("theme:")).toBe(true);
+      expect(chain.at(-1)?.startsWith(`${collection}:`)).toBe(true);
+      expect(value).toBe(px);
+    };
+    for (const key of card.radiusKeys ?? []) end(key, "radius", RADIUS_LG);
+    expect(card.radiusKeys).toHaveLength(4);
 
     // Padding inside a border binds too: `border p-6` is 25 px from the edge, 24 inside the stroke.
-    const six = "primitives:spacing/6";
-    expect(card.layout.spacingKeys?.padding).toEqual([six, six, six, six]);
+    const six = card.layout.spacingKeys?.padding ?? [];
+    expect(six).toHaveLength(4);
+    for (const key of six) end(key, "spacing", 24);
     expect(card.layout.padding).toEqual([25, 25, 25, 25]);
     expect(card.layout.strokesIncluded).toBe(true);
-    const four = "primitives:spacing/4";
-    expect(popover.layout.spacingKeys?.padding).toEqual([four, four, four, four]);
+    for (const key of popover.layout.spacingKeys?.padding ?? []) end(key, "spacing", 16);
+    expect(popover.layout.spacingKeys?.padding).toHaveLength(4);
     const cancel = byText("Cancel");
-    const [two, three] = ["primitives:spacing/2", "primitives:spacing/3"];
-    expect(cancel.layout.spacingKeys?.padding).toEqual([two, three, two, three]);
+    const pad = cancel.layout.spacingKeys?.padding ?? [];
+    for (const [i, px] of [8, 12, 8, 12].entries()) end(pad[i], "spacing", px);
   });
 }
 
@@ -2587,4 +2680,9 @@ test("captured in a theme, Light comes from the root's own rules, by the cascade
   expect(tokens.cssCustomProperties["--x"]).toBe("#000000");
   expect(tokens.activeTheme).toBe("Night theme");
   expect(tokens.base).toEqual({ "--x": "#111111", "--y": "#333333", "--z": "#777777" });
+});
+
+test("the page's width breakpoints are recorded on the capture", async ({ page }) => {
+  const c = await capture(page, "shadcn.html");
+  expect(c.breakpoints).toEqual({ widths: [640, 768, 1024, 1280, 1400], unreadable: 0 });
 });

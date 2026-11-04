@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { type ContentsChoice, ContentsSection } from "./import/contents";
 import { FontTable } from "./import/font-table";
 import {
   failuresHeading,
@@ -17,25 +18,28 @@ type DoneState = Extract<ImportState, { step: "done" }>;
 const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`;
 
-/** What the theme import did, as lines. Only a page imported with layers has any. */
-function themeLines({ report, theme }: VersionResult): string[] {
+/**
+ * What the theme import did, as lines. Only a page imported with layers has any. `advise` adds how
+ * to get a dark mode, which a device set's captures can't follow as worded.
+ */
+function themeLines({ report, theme }: Pick<VersionResult, "report" | "theme">, advise = true) {
   if (!theme) return [];
   const lines: string[] = [];
   const modes = report.themeModes ?? [];
-  if (modes.length > 1) lines.push(`Theme modes: ${modes.join(", ")}`);
-  else if (theme.source !== "site") {
+  if (modes.length > 1) lines.push(`Color Mode: ${modes.join(", ")}`);
+  else if (theme.source !== "site" && advise) {
     lines.push(
       "No theme found in the stylesheet. To add a dark mode, capture the page again in dark and import both as versions."
     );
   }
   if (theme.inferred.length > 0) lines.push(`Inferred from use: ${theme.inferred.join(", ")}`);
   if (theme.twins > 0) {
-    lines.push(`${theme.twins} colours are near twins of another and were kept separate.`);
+    lines.push(`${theme.twins} colors are near twins of another and were kept separate.`);
   }
   const { raw } = report;
   if (raw && raw.colors + raw.radii + raw.spacing > 0) {
     lines.push(
-      `Raw values left unbound: ${plural(raw.colors, "colour")}, ${plural(raw.radii, "radius", "radii")}, ${raw.spacing} spacing`
+      `Raw values left unbound: ${plural(raw.colors, "color")}, ${plural(raw.radii, "radius", "radii")}, ${raw.spacing} spacing`
     );
   }
   if (theme.modesDropped.length > 0) {
@@ -46,6 +50,11 @@ function themeLines({ report, theme }: VersionResult): string[] {
       theme.variablesRenamed === 1
         ? "1 variable had changed values and was added as a new one."
         : `${theme.variablesRenamed} variables had changed values and were added as new ones.`
+    );
+  }
+  if (theme.legacyCollections) {
+    lines.push(
+      "This file has collections from an earlier Frottage version. They were left as they are."
     );
   }
   return lines;
@@ -189,6 +198,12 @@ function SetSummary({ set }: { set: SetReport }) {
           ))}
         </dl>
       )}
+      {set.theme &&
+        themeLines(set.theme, false).map((line) => (
+          <p key={line} className="text-figma-text-secondary">
+            {line}
+          </p>
+        ))}
       {set.modesDropped > 0 && (
         <p className="text-figma-text-danger">
           Figma gave {plural(set.modesDropped, "version")} no mode, so{" "}
@@ -268,6 +283,28 @@ function Review({
   const headingRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => headingRef.current?.focus(), []);
   const [choices, setChoices] = useState<ReadonlyMap<string, string>>(new Map());
+  const { contents } = state;
+  const [picked, setPicked] = useState<ContentsChoice | null>(() =>
+    contents
+      ? {
+          devices: contents.devices.map((d) => d.on),
+          extras: contents.extras.map((e) => e.on),
+          placement: contents.placement,
+        }
+      : null
+  );
+  // The line and warnings follow the ticks; as shown at first until one changes.
+  const summary = useMemo(() => {
+    if (!contents || !picked) return null;
+    const first = { collections: contents.collections, overLimit: contents.overLimit };
+    const unchanged =
+      picked.devices.every((on, i) => on === contents.devices[i]?.on) &&
+      picked.extras.every((on, i) => on === contents.extras[i]?.on);
+    return unchanged ? first : (contents.summarize?.(picked.devices, picked.extras) ?? first);
+  }, [contents, picked]);
+  // A device set always shows its contents, so the options wait behind a button unless asked for.
+  const [showOptions, setShowOptions] = useState(!contents || state.optionsOpen === true);
+  const noDevice = picked !== null && !picked.devices.some(Boolean);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">
@@ -277,10 +314,24 @@ function Review({
         data-testid="review-scroll"
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto"
       >
-        {state.hostname && (
+        {contents && picked && summary && (
+          <ContentsSection
+            contents={contents}
+            choice={picked}
+            summary={summary}
+            onChange={setPicked}
+          />
+        )}
+        {state.hostname && showOptions && (
           <p className="text-figma-text-secondary">Settings for {state.hostname}</p>
         )}
-        <OptionsSheet options={options} onChange={setOptions} />
+        {showOptions ? (
+          <OptionsSheet options={options} onChange={setOptions} />
+        ) : (
+          <Button variant="secondary" className="self-start" onClick={() => setShowOptions(true)}>
+            Options
+          </Button>
+        )}
         {state.missing.length > 0 && (
           <FontTable
             fonts={state.missing}
@@ -295,12 +346,14 @@ function Review({
           Cancel
         </Button>
         <Button
+          disabled={noDevice}
           onClick={() =>
             onDecide({
               options,
               fonts: new Map(
                 state.missing.map((m) => [m.family, choices.get(m.family) ?? m.choice])
               ),
+              ...(picked ? { contents: picked } : {}),
             })
           }
         >
@@ -481,7 +534,7 @@ function App({ port }: { port?: ImportPort }) {
 
       {state.step === "done" && (
         <>
-          {state.versions.length > 1 || state.failures.length > 0 ? (
+          {state.versions.length > 1 || state.failures.length > 0 || state.sets.length > 0 ? (
             <VersionsReport state={state} headingRef={headingRef} />
           ) : (
             <Report state={state} headingRef={headingRef} />

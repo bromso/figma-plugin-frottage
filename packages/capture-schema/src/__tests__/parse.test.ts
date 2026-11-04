@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { countNodes, parseCapture } from "../index";
 import { elementNode, imageStyle, minimalCapture, textNode, treeOfThree } from "./fixtures";
 
@@ -76,7 +76,7 @@ test("accepts hover differences on an element and keeps them", () => {
   const result = parseCapture(withHover(hover));
   expect(result.ok && (result.capture.root as any).hover).toEqual(hover);
 });
-test("rejects a hover with a bad colour, opacity or shadow", () => {
+test("rejects a hover with a bad color, opacity or shadow", () => {
   expect(parseCapture(withHover({ backgroundColor: { r: 2, g: 0, b: 0, a: 1 } })).ok).toBe(false);
   expect(parseCapture(withHover({ opacity: 3 })).ok).toBe(false);
   expect(parseCapture(withHover({ boxShadows: [{ ...shadow, x: "no" }] })).ok).toBe(false);
@@ -101,6 +101,7 @@ test("keeps token refs on an element and a text node", () => {
       string,
       string,
     ],
+    radiusClass: ["2xl", "2xl", null, "DEFAULT"] as [string, string, null, string],
   };
   const text = { ...textNode("t"), tokenRefs: { color: "--foreground" } };
   const c = { ...minimalCapture(), root: { ...elementNode("r", [text]), tokenRefs: refs } };
@@ -117,10 +118,50 @@ test("rejects a token ref that is long, malformed or a padding of the wrong leng
   expect(parseCapture(withRefs({ color: "red" })).ok).toBe(false);
   expect(parseCapture(withRefs({ color: "--a*b" })).ok).toBe(false);
   expect(parseCapture(withRefs({ padding: ["--a", "--a", "--a"] })).ok).toBe(false);
+  expect(parseCapture(withRefs({ radiusClass: ["md", "md", "md"] })).ok).toBe(false);
+  expect(parseCapture(withRefs({ radiusClass: ["a".repeat(21), null, null, null] })).ok).toBe(
+    false
+  );
+  expect(parseCapture(withRefs({ radiusClass: ["Md", null, null, null] })).ok).toBe(false);
+  expect(parseCapture(withRefs({ radiusClass: ["md", null, null, "1.5"] })).ok).toBe(true);
   expect(parseCapture(withRefs({ padding: Array(100_000).fill("--a") }))).toMatchObject({
     ok: false,
     reason: "invalid",
   });
+});
+
+test("an image keeps its token refs, and malformed ones are refused", () => {
+  const image = (tokenRefs: unknown) => ({
+    ...minimalCapture(),
+    root: {
+      ...elementNode("r"),
+      children: [
+        {
+          id: "i",
+          kind: "image",
+          box: { x: 0, y: 0, w: 10, h: 10 },
+          paintOrder: 0,
+          visible: true,
+          opacity: 1,
+          blendMode: "normal",
+          semantic: { tag: "img" },
+          ...imageStyle,
+          fit: "cover",
+          objectPosition: "50% 50%",
+          tokenRefs,
+        },
+      ],
+    },
+  });
+  const refs = { radius: "--radius*2", radiusClass: ["2xl", "2xl", "2xl", "2xl"] };
+  const result = parseCapture(image(refs));
+  expect(result.ok).toBe(true);
+  if (result.ok) {
+    const node = (result.capture.root as { children: Array<{ tokenRefs?: unknown }> }).children[0];
+    expect(node?.tokenRefs).toEqual(refs);
+  }
+  expect(parseCapture(image({ radiusClass: ["md", "md", "md"] })).ok).toBe(false);
+  expect(parseCapture(image({ radius: "red" })).ok).toBe(false);
 });
 
 test("a capture without version still parses", () => {
@@ -225,4 +266,52 @@ test("a theme's mode over 40 characters or context over 200 is refused", () => {
   expect(parseCapture(withTheme({ mode: "m".repeat(40), context: "c".repeat(200) })).ok).toBe(true);
   expect(parseCapture(withTheme({ mode: "m".repeat(41) })).ok).toBe(false);
   expect(parseCapture(withTheme({ context: "c".repeat(201) })).ok).toBe(false);
+});
+
+describe("breakpoints and device versions", () => {
+  const withBp = (extra: Record<string, unknown>) => ({ ...minimalCapture(), ...extra });
+  test("a capture with breakpoints, device and breakpoint parses", () => {
+    const input = withBp({
+      breakpoints: { widths: [640, 1024], unreadable: 1 },
+      version: {
+        label: "Tablet",
+        kind: "viewport",
+        device: { id: "tablet-portrait", name: "Tablet portrait", height: 1194 },
+        breakpoint: "md",
+      },
+    });
+    const result = parseCapture(input);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.capture.breakpoints).toEqual({ widths: [640, 1024], unreadable: 1 });
+      expect(result.capture.version?.device?.height).toBe(1194);
+      expect(result.capture.version?.breakpoint).toBe("md");
+    }
+  });
+  test("nine widths, a long name or a negative height are refused", () => {
+    const nine = Array.from({ length: 9 }, (_, i) => i + 1);
+    expect(parseCapture(withBp({ breakpoints: { widths: nine, unreadable: 0 } })).ok).toBe(false);
+    expect(parseCapture(withBp({ breakpoints: { widths: [20000], unreadable: 0 } })).ok).toBe(
+      false
+    );
+    const v = (device: unknown) => withBp({ version: { label: "A", kind: "viewport", device } });
+    expect(parseCapture(v({ id: "a", name: "x".repeat(41), height: 10 })).ok).toBe(false);
+    expect(parseCapture(v({ id: "a", name: "A", height: -1 })).ok).toBe(false);
+  });
+  test("a version records the width the page was laid out at, a whole positive number", () => {
+    const v = (width: unknown) =>
+      parseCapture(withBp({ version: { label: "lg", kind: "viewport", breakpoint: "lg", width } }));
+    const ok = v(1024);
+    expect(ok.ok).toBe(true);
+    if (ok.ok) expect(ok.capture.version?.width).toBe(1024);
+    expect(v(0).ok).toBe(false);
+    expect(v(10.5).ok).toBe(false);
+    expect(v(200000).ok).toBe(false);
+    expect(v("1024").ok).toBe(false);
+  });
+  test("an older capture without them parses unchanged", () => {
+    const result = parseCapture(minimalCapture());
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.capture.breakpoints).toBeUndefined();
+  });
 });

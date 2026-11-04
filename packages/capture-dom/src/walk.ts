@@ -7,6 +7,7 @@ import type {
   TextNode,
   TokenRefs,
 } from "@repo/capture-schema";
+import { readBreakpoints } from "./breakpoints";
 import type { Rgba } from "./color";
 import { flatChildren, insideEditable, isEditable, shadowRootOf } from "./flatten";
 import { authoredTracksReader } from "./grid";
@@ -352,8 +353,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   // ---------- Text
 
   /**
-   * The colour text is painted in: `-webkit-text-fill-color` wins over `color` and defaults to it.
-   * A clear fill shows only its outline, or the background of a clip, and Figma text has one colour.
+   * The color text is painted in: `-webkit-text-fill-color` wins over `color` and defaults to it.
+   * A clear fill shows only its outline, or the background of a clip, and Figma text has one color.
    */
   function paintedColor(style: CSSStyleDeclaration, clipped: boolean): Rgba {
     const fill = colorOf(style.getPropertyValue("-webkit-text-fill-color") || style.color);
@@ -366,7 +367,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       warn(
         "text-fill-transparent",
         undefined,
-        "Text with a transparent fill was imported filled with its stroke or text colour"
+        "Text with a transparent fill was imported filled with its stroke or text color"
       );
     }
     return shown;
@@ -636,7 +637,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   /**
    * A merged element has no node to keep a hover on, so one that is all of its parent's text hands
-   * its colour and decoration to the parent, with the colour its own text rests at. What it does to
+   * its color and decoration to the parent, with the color its own text rests at. What it does to
    * its own box would land on the parent's, so that is counted. The elements it read go in
    * `liftedHovers`; any other merged hover is lost, and counted.
    */
@@ -889,7 +890,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
   }
 
-  /** The colour and type refs that every element holding a text agrees on. */
+  /** The color and type refs that every element holding a text agrees on. */
   function textRefs(sources: Set<Element | null>): TokenRefs | undefined {
     if (sources.size === 0 || sources.has(null)) return undefined;
     const all = [...sources].map((el) => refsOf(el as Element));
@@ -1062,7 +1063,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   }
 
   const warnStops = (nodeId: string) =>
-    warn("gradient-stops", nodeId, "A gradient was cut off at the limit on colour stops");
+    warn("gradient-stops", nodeId, "A gradient was cut off at the limit on color stops");
 
   /** `warn`, counted `count` times. */
   function warnEach(count: number, code: string, nodeId: string, detail: string) {
@@ -1093,7 +1094,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     common: Omit<ImageNode, "kind" | "fit" | "objectPosition" | "borders" | "borderRadius">,
     sourceUrl: string | undefined,
     s: CSSStyleDeclaration,
-    box: Box
+    box: Box,
+    el: Element
   ): ImageNode {
     const fitRaw = s.objectFit;
     const fit: ImageNode["fit"] =
@@ -1111,6 +1113,14 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       borders: readBorders(s),
       borderRadius: readRadii(s, box.w, box.h),
     };
+    // Only the corners' refs: an image's fill is its picture, and its strokes bind by value.
+    const refs = refsOf(el);
+    if (refs?.radius || refs?.radiusClass) {
+      node.tokenRefs = {
+        ...(refs.radius ? { radius: refs.radius } : {}),
+        ...(refs.radiusClass ? { radiusClass: refs.radiusClass } : {}),
+      };
+    }
     if (sourceUrl) rememberUrl(node, sourceUrl);
     return node;
   }
@@ -1337,7 +1347,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         const v = el as HTMLVideoElement;
         // A poster is an image like any other: collectAssets fetches it, or turns it into a
         // placeholder when it cannot be read.
-        if (v.poster) return [imageNode(leaf, v.poster, s, box)];
+        if (v.poster) return [imageNode(leaf, v.poster, s, box, el)];
         return [placeholder(leaf, "video", v.currentSrc || undefined)];
       }
       if (tag === "iframe") {
@@ -1351,7 +1361,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         if (img.complete && img.naturalWidth === 0) {
           return [placeholder(leaf, "blocked-image", sourceUrl)];
         }
-        return [imageNode(leaf, sourceUrl, s, box)];
+        return [imageNode(leaf, sourceUrl, s, box, el)];
       }
     }
 
@@ -1370,7 +1380,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     // Overflow on these two propagates to the viewport instead of clipping the element itself.
     if (el === root || el === doc.body) element.style.overflow = "visible";
     const stored = hovers.get(el);
-    // What text inherits at rest, so the mapper can tell it from text with a colour of its own.
+    // What text inherits at rest, so the mapper can tell it from text with a color of its own.
     const hover = stored?.color ? { ...stored, restingColor: colorOf(s.color) } : stored;
     const lifted = liftedHover(el);
     if (hover || lifted) element.hover = { ...hover, ...lifted };
@@ -1512,6 +1522,12 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   } catch {
     // themes are best effort
   }
+  let breakpoints: ReturnType<typeof readBreakpoints> = { widths: [], unreadable: 0 };
+  try {
+    breakpoints = readBreakpoints(doc);
+  } catch {
+    // breakpoints are best effort
+  }
   const dark = win.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
   return {
     schemaVersion: 1,
@@ -1532,6 +1548,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       ...(themes.activeTheme ? { activeTheme: themes.activeTheme } : {}),
       ...(themes.base ? { base: byName(themes.base) } : {}),
     },
+    ...(breakpoints.widths.length > 0 || breakpoints.unreadable > 0 ? { breakpoints } : {}),
     fonts: [...fonts.values()],
     assets: [],
     warnings: [...warnings.values()].map(({ first, count }) =>

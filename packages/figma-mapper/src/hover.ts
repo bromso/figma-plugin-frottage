@@ -12,7 +12,7 @@ export type HoverPatch = {
   effects?: PlanEffect[];
   textColor?: Color;
   ranges?: [number, number][];
-  /** The colour text inherits at rest, so `ranges` can be found again in another text. */
+  /** The color text inherits at rest, so `ranges` can be found again in another text. */
   resting?: Color;
   decoration?: PlanRun["decoration"];
 };
@@ -43,7 +43,7 @@ function boxPatch(node: ElementNode, hover: Hover, op: PlanOp, onLost: () => voi
   const clipped = (style.backgroundClip ?? "").split(/[\s,]+/).includes("text");
   const bg = hover.backgroundColor;
   if (bg && !clipped && !sameColor(bg, style.backgroundColor)) {
-    // The background colour is the lowest fill, and only there when it was painted at all.
+    // The background color is the lowest fill, and only there when it was painted at all.
     const rest = style.backgroundColor.a > 0 ? op.fills.slice(1) : op.fills;
     const solid: PlanPaint = { type: "SOLID", color: rgb(bg), opacity: bg.a };
     patch.fills = bg.a > 0 ? [solid, ...rest] : rest;
@@ -54,7 +54,7 @@ function boxPatch(node: ElementNode, hover: Hover, op: PlanOp, onLost: () => voi
   if (edge && stroke && !sameColor(edge, { ...stroke.color, a: stroke.opacity })) {
     patch.strokeColor = edge;
   } else if (edge && !stroke && hasBorder(style)) {
-    // A border that paints nothing at rest has no stroke for a patch to recolour.
+    // A border that paints nothing at rest has no stroke for a patch to recolor.
     onLost();
   }
 
@@ -76,7 +76,7 @@ function boxPatch(node: ElementNode, hover: Hover, op: PlanOp, onLost: () => voi
 
 type Inherited = { color?: Color; resting?: Color; decoration?: string };
 
-/** The ranges of runs coloured `resting`, or all runs when it is unknown, that are not `color` yet. */
+/** The ranges of runs colored `resting`, or all runs when it is unknown, that are not `color` yet. */
 export function inheritedRanges(
   runs: Extract<PlanOp, { op: "text" }>["runs"],
   color: Color,
@@ -95,7 +95,7 @@ export function inheritedRanges(
 }
 
 /**
- * What `:hover` changes, per op id, compared with the look the plan already has. A colour or
+ * What `:hover` changes, per op id, compared with the look the plan already has. A color or
  * decoration on a hovered element reaches the text below it, until a deeper element sets its own.
  * Hovering something inside also hovers what holds it, so what a holder sets is kept below.
  * `onLost` hears of each layer a hover changes that no patch can reach.
@@ -143,7 +143,7 @@ export function hoverPatches(
       }
       if (Object.keys(patch).length > 0) out.set(node.id, patch);
     } else if (node.kind === "svg" && inherited.color) {
-      // Colours are written out in the markup, so a vector drawn in the resting colour keeps it.
+      // Colors are written out in the markup, so a vector drawn in the resting color keeps it.
       const { resting } = inherited;
       if (!resting || node.markup.includes(cssRgb(resting))) onLost();
     }

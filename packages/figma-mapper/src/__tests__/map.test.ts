@@ -137,7 +137,7 @@ describe("mapCapture", () => {
     const { ops } = mapCapture(nested({ parent: [0, 0], child: [0, 0] }), inter);
     expect(ops[0]?.name).toBe("Div");
   });
-  test("transparent backgrounds get no fill; colours become solid paints", () => {
+  test("transparent backgrounds get no fill; colors become solid paints", () => {
     const c = cap(
       el(
         "root",
@@ -986,7 +986,7 @@ describe("gradients", () => {
     expect(t(g, 0, 1)).toBeCloseTo(0, 6);
     expect(t(g, 1, 0)).toBeCloseTo(1, 6);
   });
-  test("stops carry their colour, alpha and position", () => {
+  test("stops carry their color, alpha and position", () => {
     const g = planWith([linear(90)]).fills[0] as Grad;
     expect(g.stops).toEqual(stops);
   });
@@ -1029,7 +1029,7 @@ describe("gradients", () => {
     expect(r0[0] * 0.5 + r0[1] * 0.5 + r0[2]).toBeCloseTo(0.5, 9);
     expect(r1[0] * 0.5 + r1[1] * 0.5 + r1[2]).toBeCloseTo(0.5, 9);
   });
-  test("layers stay in order with images and colour", () => {
+  test("layers stay in order with images and color", () => {
     const { fills } = planWith(
       [
         linear(90, "top"),
@@ -1062,7 +1062,7 @@ describe("gradients", () => {
     expect((fills[0] as Grad).stops.map((s) => s.position)).toEqual([0, 1]);
     expect(plan.report.warnings.join(" ")).toMatch(/repeating/i);
   });
-  test("background-clip: text puts no background on the frame and colours transparent text", () => {
+  test("background-clip: text puts no background on the frame and colors transparent text", () => {
     const base = el("x", [0, 0]).style;
     const c = cap(
       el(
@@ -1091,7 +1091,7 @@ describe("gradients", () => {
       { type: "linear-gradient", css: "linear-gradient()", angle: 90, stops },
     ]);
     expect((fills[0] as Grad).stops).toHaveLength(256);
-    expect(plan.report.warnings.join(" ")).toMatch(/more than 256 colour stops/);
+    expect(plan.report.warnings.join(" ")).toMatch(/more than 256 color stops/);
   });
   describe("transparent text clipped to a background", () => {
     type Background = ElementNode["style"]["backgroundImages"][number];
@@ -1130,10 +1130,10 @@ describe("gradients", () => {
       const { paint } = clippedRun({ backgroundImages: [none, linear(90)] });
       expect(paint).toMatchObject({ color: { r: 1, g: 0, b: 0 }, opacity: 1 });
     });
-    test("takes the background colour when no gradient shows", () => {
+    test("takes the background color when no gradient shows", () => {
       const { paint, warnings } = clippedRun({ backgroundColor: { r: 0, g: 1, b: 0, a: 1 } });
       expect(paint).toMatchObject({ color: { r: 0, g: 1, b: 0 }, opacity: 1 });
-      expect(warnings.join(" ")).toMatch(/background colour/);
+      expect(warnings.join(" ")).toMatch(/background color/);
     });
     test("comes out black on an image, with a warning", () => {
       const image: Background = { type: "image", css: "url()", assetHash: "h" };
@@ -1145,7 +1145,7 @@ describe("gradients", () => {
       expect(clippedRun({}).paint).toMatchObject({ opacity: 0 });
     });
   });
-  test("opaque text under a clipped element keeps its colour", () => {
+  test("opaque text under a clipped element keeps its color", () => {
     const base = el("x", [0, 0]).style;
     const c = cap(
       el("root", [0, 0], [textNode("t", { runs: [run()] })], {
@@ -1155,7 +1155,7 @@ describe("gradients", () => {
     const text = mapCapture(c, inter).ops.find((o) => o.op === "text") as TextPlanOp;
     expect(text.runs[0]).toMatchObject({ color: { r: 0, g: 0, b: 0 }, opacity: 1 });
   });
-  test("a transparent stop takes its neighbour's colour, so it does not fade through black", () => {
+  test("a transparent stop takes its neighbour's color, so it does not fade through black", () => {
     const clear = { r: 0, g: 0, b: 0, a: 0 };
     const g = planWith([
       {
@@ -1237,7 +1237,7 @@ describe("filters", () => {
     ]);
   });
   test("drop-shadow(1px 2px 3px red) is a drop shadow of radius 6", () => {
-    // Computed style puts the colour first.
+    // Computed style puts the color first.
     const effects = frame(
       styled({ filters: ["drop-shadow(rgb(255, 0, 0) 1px 2px 3px)"] }),
       "root"
@@ -1251,7 +1251,7 @@ describe("filters", () => {
         spread: 0,
       },
     ]);
-    // And the authored order, colour last.
+    // And the authored order, color last.
     expect(
       frame(styled({ filters: ["drop-shadow(1px 2px 3px rgba(0, 0, 255, 0.5))"] }), "root")
         .effects[0]

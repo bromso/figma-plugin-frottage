@@ -167,7 +167,7 @@ function colorValue(value: string): { value: string; alpha: number } | null {
   if (local) return { value: `url(${local[1]})`, alpha: 1 };
   if (/url\(/i.test(v)) return { value: "none", alpha: 1 };
   const c = parseComputedColor(v);
-  // Never omit a paint: an unreadable colour keeps a plain keyword, else becomes none.
+  // Never omit a paint: an unreadable color keeps a plain keyword, else becomes none.
   if (!c) return { value: /^[a-z]+$/i.test(v) ? v.toLowerCase() : "none", alpha: 1 };
   return { value: `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`, alpha: c.a };
 }
@@ -243,7 +243,7 @@ function inlineStyle(st: State, orig: Element, clone: Element, s: CSSStyleDeclar
   }
   if (!LEAVES.has(tag)) return;
 
-  // `fill="currentColor"` written on the target reads the <use>'s colour, not the sprite's.
+  // `fill="currentColor"` written on the target reads the <use>'s color, not the sprite's.
   const colorOfSource = () => f.fromStyle?.color;
   const paint = (prop: "fill" | "stroke") => {
     let raw = read(prop);

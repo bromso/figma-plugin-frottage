@@ -11,7 +11,7 @@ export type PlanPaint =
       type: "SOLID";
       color: PlanRgb;
       opacity: number;
-      /** The colour token to bind, when this colour became one. */
+      /** The color token to bind, when this color became one. */
       colorKey?: string;
     }
   | { type: "IMAGE"; hash: string; fit: "FILL" | "FIT" | "CROP" | "TILE" }
@@ -25,11 +25,11 @@ export type PlanPaint =
       gradientStyleKey?: string;
     };
 
-/** Per-side weights; one colour (the most common among drawn sides). */
+/** Per-side weights; one color (the most common among drawn sides). */
 export type PlanStroke = {
   color: PlanRgb;
   opacity: number;
-  /** The colour token to bind, when this colour became one. */
+  /** The color token to bind, when this color became one. */
   colorKey?: string;
   weights: { top: number; right: number; bottom: number; left: number };
 };
@@ -59,7 +59,7 @@ export type PlanRun = {
   textCase: "ORIGINAL" | "UPPER" | "LOWER" | "TITLE";
   /** The text style to link, when this run's type became one. */
   styleKey?: string;
-  /** The colour token to bind, when this colour became one. */
+  /** The color token to bind, when this color became one. */
   colorKey?: string;
   /** An http(s) link for this range; absent when the text has none or hyperlinks are off. */
   href?: string;
@@ -142,9 +142,9 @@ export type PlanHoverPatch = {
   strokeColor?: PlanRgb & { a: number };
   opacity?: number;
   effects?: PlanEffect[];
-  /** Text layers: the colour of the runs in `ranges`, or of the whole text without them. */
+  /** Text layers: the color of the runs in `ranges`, or of the whole text without them. */
   textColor?: PlanRgb & { a: number };
-  /** [start, end) character ranges that take `textColor`; the runs with a colour of their own stay. */
+  /** [start, end) character ranges that take `textColor`; the runs with a color of their own stay. */
   ranges?: [number, number][];
   decoration?: PlanRun["decoration"];
 };
@@ -212,6 +212,8 @@ export type PlanOp = (
       opacity: number;
       /** [topLeft, topRight, bottomRight, bottomLeft]. */
       radius: [number, number, number, number];
+      /** The variable each corner is bound to, by `PlanVariable.key`; none stays a plain value. */
+      radiusKeys?: [string?, string?, string?, string?];
       strokes: PlanStroke | null;
       /** Clockwise degrees as in CSS, about the box centre; absent when not rotated. */
       rotation?: number;
@@ -279,9 +281,9 @@ export type ImportReport = {
   components: number;
   /** On the canvas, where one inside a definition counts for the main and for each copy of it. */
   instances: number;
-  /** Colours, corners and spacing lengths that bound to no variable, on the layered path. */
+  /** Colors, corners and spacing lengths that bound to no variable, on the layered path. */
   raw?: { colors: number; radii: number; spacing: number };
-  /** The Theme collection's modes, on the layered path. */
+  /** The Color Mode collection's modes, on the layered path. */
   themeModes?: string[];
 };
 
@@ -333,20 +335,56 @@ export type PlanSpacing = {
   px: number;
 };
 
-/** A variable's value in one mode: a colour in 0..1, a number, a string, or another variable's key. */
+/** A variable's value in one mode: a color in 0..1, a number, a string, or another variable's key. */
 export type PlanVarValue = (PlanRgb & { a: number }) | number | string | { alias: string };
 
-/** One variable of the Primitives or Theme collection. */
-export type PlanVariable = {
+/**
+ * The collections an import makes, in the order they are created. Device and Breakpoint come only
+ * from a set of device captures.
+ */
+export type PlanCollectionKind =
+  | "palette"
+  | "spacing"
+  | "radius"
+  | "typography"
+  | "device"
+  | "breakpoint"
+  | "colorMode"
+  | "theme";
+
+/** One collection: its kind, its name in the file, and its modes. */
+export type PlanCollection = {
+  kind: PlanCollectionKind;
+  name: string;
+  /** In display order: Breakpoint's smallest to largest. */
+  modes: string[];
+  /**
+   * Which modes to keep first under a file's mode limit, when that differs from `modes`: the
+   * frames' Breakpoint modes lead, so every frame keeps its own.
+   */
+  priority?: string[];
+};
+
+/** PR #7's two collections, as the catalogue and binding build them before they are layered. */
+export type StagedCollection = "primitives" | "theme";
+
+/** A variable of PR #7's two collections, as the catalogue builds it. */
+export type StagedVariable = PlanVariable<StagedCollection>;
+
+/** One variable of a collection. */
+export type PlanVariable<K extends string = PlanCollectionKind> = {
   /** `<collection>:<name>`, so it stays the same across imports. */
   key: string;
-  /** As `color/gray-200`, `radius/lg`, `spacing/4`, `text/sm` or `background`. */
+  /** As `gray/200`, `radius/lg`, `spacing/4`, `text/sm` or `color/background`. */
   name: string;
-  collection: "primitives" | "theme";
+  collection: K;
   type: "COLOR" | "FLOAT" | "STRING";
-  /** Primitives have one; theme variables have one per mode, in `PlanLayers.modes` order. */
+  /** One per mode of its collection, in that collection's mode order. */
   values: PlanVarValue[];
-  /** `From the site: <--property>` or `Inferred: <evidence>`. */
+  /**
+   * `From the site: <--property>`, `Inferred: <evidence>`, or on a Theme token
+   * `Final theme token; source: <collection name>`.
+   */
   description: string;
   /** Figma `VariableScope` names. */
   scopes: string[];
@@ -354,7 +392,7 @@ export type PlanVariable = {
   cssVar?: string;
 };
 
-/** Shadows worth an effect style; each shadow's colour binds to the variable in `colorKeys`. */
+/** Shadows worth an effect style; each shadow's color binds to the variable in `colorKeys`. */
 export type PlanEffectStyle = {
   key: string;
   name: string;
@@ -362,7 +400,7 @@ export type PlanEffectStyle = {
   colorKeys: (string | null)[];
 };
 
-/** A gradient worth a paint style; each stop's colour binds to the variable in `stopKeys`. */
+/** A gradient worth a paint style; each stop's color binds to the variable in `stopKeys`. */
 export type PlanGradientStyle = {
   key: string;
   name: string;
@@ -370,19 +408,25 @@ export type PlanGradientStyle = {
   stopKeys: (string | null)[];
 };
 
-/** The page's tokens as a Primitives and a Theme collection. */
+/**
+ * The page's tokens as layered collections: raw values (Palette, Spacing, Border radius,
+ * Typography), the switching Color Mode, and the final Theme that layers bind to.
+ */
 export type PlanLayers = {
   hostname: string;
-  /** `["Light", ...theme modes]`; `["Light"]` when there are none. */
+  /** Color Mode's modes: `["Light", ...theme modes]`; `["Light"]` when there are none. */
   modes: string[];
-  /** The mode the page was captured in, which a page opens in. Light when absent. */
+  /** The Color Mode the page was captured in, which a page opens in. Light when absent. */
   activeMode?: string;
   themeSource: "site" | "inferred" | "none";
+  /** In creation order; an empty collection is left out, except Theme. */
+  collections: PlanCollection[];
+  /** Grouped by collection, in `collections` order. */
   variables: PlanVariable[];
   effectStyles: PlanEffectStyle[];
   gradientStyles: PlanGradientStyle[];
   /**
-   * Opaque colours no variable took that repeat: the sandbox links their paints to the user's
+   * Opaque colors no variable took that repeat: the sandbox links their paints to the user's
    * matching solid paint style, with local styles on, and leaves them plain otherwise.
    */
   styleColors?: PlanStyleColor[];
@@ -390,7 +434,12 @@ export type PlanLayers = {
   notes: { twins: [string, string][]; inferred: string[]; droppedPrimitives: number };
 };
 
-/** A raw colour a user's paint style may hold. `key` is `paint:#rrggbb`, as its paints have it. */
+/** The layers as PR #7's Primitives and Theme collections, before `layerCollections`. */
+export type StagedLayers = Omit<PlanLayers, "collections" | "variables"> & {
+  variables: PlanVariable<StagedCollection>[];
+};
+
+/** A raw color a user's paint style may hold. `key` is `paint:#rrggbb`, as its paints have it. */
 export type PlanStyleColor = { key: string; rgba: PlanRgb & { a: number }; uses: number };
 
 export type PlanTokens = {
@@ -404,14 +453,14 @@ export type PlanTokens = {
   spacingRem?: boolean;
   /** The variable collection, named after the page's hostname. */
   collection: string;
-  /** The Primitives and Theme collections; absent on the single-collection path. */
+  /** The layered collections; absent on the single-collection path. */
   layers?: PlanLayers;
 };
 
 /** One mode's value. `mode` is the version's index; a mode with none reads the first mode's. */
 export type ModeValue<T> = { mode: number; value: T };
 
-/** A colour across versions. `key` is its values by mode plus its name. */
+/** A color across versions. `key` is its values by mode plus its name. */
 export type PlanModeColor = {
   key: string;
   /** From the first version that has it. A proposal, as on `PlanColor`. */

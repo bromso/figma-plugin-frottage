@@ -76,15 +76,15 @@ describe("effect styles", () => {
     expect(p.tokens.layers?.effectStyles.map((s) => s.name)).toEqual(["shadow/sm"]);
   });
 
-  test("a shadow colour binds to the colour variable equal to it", () => {
+  test("a shadow color binds to the color variable equal to it", () => {
     const one = [{ ...(SHADOW[0] as (typeof SHADOW)[number]), color: rgba("#111111") }];
     const p = plan(
       ["a", "b", "c"].map((id) => shadowed(id, one)),
       { "--color-ink": "#111111" }
     );
     const style = p.tokens.layers?.effectStyles[0];
-    expect(style?.colorKeys).toEqual(["primitives:color/ink"]);
-    expect(p.tokens.layers?.variables.map((v) => v.key)).toContain("primitives:color/ink");
+    expect(style?.colorKeys).toEqual(["theme:color/ink"]);
+    expect(p.tokens.layers?.variables.map((v) => v.key)).toContain("palette:ink");
   });
 });
 
@@ -95,7 +95,7 @@ describe("gradient styles", () => {
     expect(styles).toHaveLength(1);
     expect(styles[0]?.name).toBe("gradient/1");
     expect(styles[0]?.paint.type).toBe("GRADIENT_LINEAR");
-    expect(styles[0]?.stopKeys).toEqual(["primitives:color/blue", null]);
+    expect(styles[0]?.stopKeys).toEqual(["theme:color/blue", null]);
     const fill = frame(p, "a").fills.find((f) => f.type === "GRADIENT_LINEAR");
     expect(fill && "gradientStyleKey" in fill && fill.gradientStyleKey).toBe(styles[0]?.key);
     expect(styles[0]?.paint).not.toHaveProperty("gradientStyleKey");
@@ -129,16 +129,16 @@ describe("text style bindings", () => {
   test("runs that all use --text-sm bind fontSize, and a line-height ratio stays unbound", () => {
     const p = plan(texts({ fontSize: "--text-sm", lineHeight: "--leading-normal" }), TYPE);
     const style = p.tokens.textStyles[0];
-    expect(style?.bind).toEqual({ fontSize: "primitives:text/sm" });
-    expect(p.tokens.layers?.variables.map((v) => v.key)).toContain("primitives:text/sm");
+    expect(style?.bind).toEqual({ fontSize: "theme:text/sm" });
+    expect(p.tokens.layers?.variables.map((v) => v.key)).toContain("typography:text/sm");
   });
 
   test("family and weight bind when they match the style's font", () => {
     const refs = { fontFamily: "--font-sans", fontWeight: "--font-weight-semibold" };
     const p = plan(texts(refs, 600), TYPE);
     expect(p.tokens.textStyles[0]?.bind).toEqual({
-      fontFamily: "primitives:font/sans",
-      fontWeight: "primitives:font-weight/semibold",
+      fontFamily: "theme:font/sans",
+      fontWeight: "theme:font-weight/semibold",
     });
   });
 

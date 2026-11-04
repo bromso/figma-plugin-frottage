@@ -86,12 +86,21 @@ const ref = z
   .max(80)
   .regex(/^--[A-Za-z0-9_-]+(?:\*-?(?:\d+\.?\d*|\.\d+))?$/);
 
+/** A rounding utility's size, as `md` for `.rounded-md`, or `DEFAULT` for bare `.rounded`. */
+const radiusClass = z
+  .string()
+  .max(20)
+  .regex(/^(?:DEFAULT|[a-z0-9.]+)$/)
+  .nullable();
+
 /** Which custom property each property's winning rule used, where the page's value agrees. */
 const tokenRefs = z.object({
   background: ref.optional(),
   color: ref.optional(),
   border: ref.optional(),
   radius: ref.optional(),
+  // [top-left, top-right, bottom-right, bottom-left]: the class of each corner's winning rule.
+  radiusClass: z.tuple([radiusClass, radiusClass, radiusClass, radiusClass]).optional(),
   // [top, right, bottom, left]
   padding: z.tuple([ref.nullable(), ref.nullable(), ref.nullable(), ref.nullable()]).optional(),
   gap: ref.optional(),
@@ -205,6 +214,7 @@ const imageNode = z.object({
   borders,
   // [topLeft, topRight, bottomRight, bottomLeft]
   borderRadius: four,
+  tokenRefs: tokenRefs.optional(),
 });
 
 const svgNode = z.object({
@@ -263,6 +273,7 @@ const MAX_THEMES = 8;
 const MAX_THEME_PROPERTIES = 2000;
 const MAX_MODE_LENGTH = 40;
 const MAX_CONTEXT_LENGTH = 200;
+const MAX_BREAKPOINTS = 8;
 
 export const captureSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
@@ -281,6 +292,25 @@ export const captureSchema = z.object({
     .object({
       label: z.string().min(1).max(40),
       kind: z.enum(["viewport", "theme", "language"]),
+      /** The device a viewport capture is for: a nominal height is reference data only. */
+      device: z
+        .object({
+          id: z.string().min(1).max(40),
+          name: z.string().min(1).max(40),
+          height: z.number().positive().max(100000),
+        })
+        .optional(),
+      /** The breakpoint mode name an extra capture is for. */
+      breakpoint: z.string().min(1).max(40).optional(),
+      /** The width (px) the page was laid out at, `innerWidth`: what media queries matched. */
+      width: z.number().int().min(1).max(100000).optional(),
+    })
+    .optional(),
+  /** Width boundaries (px) the page's stylesheets switch at, and how many sheets could not be read. */
+  breakpoints: z
+    .object({
+      widths: z.array(z.number().int().min(1).max(10000)).max(MAX_BREAKPOINTS),
+      unreadable: z.number().int().min(0),
     })
     .optional(),
   tokens: z.object({

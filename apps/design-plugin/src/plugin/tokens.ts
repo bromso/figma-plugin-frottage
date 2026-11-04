@@ -2,6 +2,7 @@ import type {
   FontRef,
   ImportOptions,
   ModeValue,
+  PlanCollectionKind,
   PlanColor,
   PlanModeColor,
   PlanModeSpacing,
@@ -27,7 +28,7 @@ export const VALUE_KEY = "valueKey";
  * ones have none, and go by their variables' value keys.
  */
 export const COLLECTION_KEY = "collection";
-/** Half an 8-bit step: two colours this close are the same colour. */
+/** Half an 8-bit step: two colors this close are the same color. */
 export const CHANNEL_TOLERANCE = 1 / 512;
 /** Figma stores 32-bit numbers, so a size read back isn't quite the one that was set. */
 const NUMBER_TOLERANCE = 1e-4;
@@ -49,8 +50,7 @@ export type TokenCounts = {
    */
   droppedVersions: number[];
   /**
-   * The Primitives and Theme collections' own counts, for a plan with layers. The totals above
-   * include them.
+   * The layered collections' own counts, for a plan with layers. The totals above include them.
    */
   layers?: LayerCounts;
 };
@@ -211,7 +211,7 @@ function sameTextStyle(style: TextStyle, token: TextLook): boolean {
   );
 }
 
-/** The colour of a paint style that paints the same as a plain opaque colour would, else null. */
+/** The color of a paint style that paints the same as a plain opaque color would, else null. */
 export function solidColorOf(style: PaintStyle): RGB | null {
   const [paint, ...rest] = style.paints;
   const plain =
@@ -223,7 +223,7 @@ export function solidColorOf(style: PaintStyle): RGB | null {
   return plain ? paint.color : null;
 }
 
-/** The default mode's colour, or null for an alias: what it points at is matched on its own. */
+/** The default mode's color, or null for an alias: what it points at is matched on its own. */
 function colorOf(variable: Variable, modes: Map<string, string>): RGBA | null {
   const mode = modes.get(variable.variableCollectionId);
   const value = mode === undefined ? undefined : variable.valuesByMode[mode];
@@ -421,6 +421,8 @@ export async function usedVariables(
 
 export function createTokenSet(api: PluginAPI) {
   const styleIds = new Map<string, string>();
+  /** Text style keys already settled, or tried and failed. */
+  const triedStyles = new Set<string>();
   const colors = new Map<string, ColorBinding>();
   const spacing = new Map<string, Variable>();
   const counts = { ...NO_TOKENS };
@@ -438,7 +440,7 @@ export function createTokenSet(api: PluginAPI) {
   let modesCollection: VariableCollection | null = null;
   /** Set once the import is abandoned: nothing may be created after that. */
   let closed = false;
-  /** The Primitives and Theme collections, for a plan that has them. */
+  /** The layered collections, for a plan that has them. */
   let layers: ReturnType<typeof createLayerSet> | null = null;
 
   function failed(n = 1) {
@@ -485,11 +487,14 @@ export function createTokenSet(api: PluginAPI) {
     useLocal: boolean,
     runtime: TokenRuntime
   ): Promise<void> {
-    if (tokens.length === 0) return;
+    // A device set's devices share their styles: the first to bring one settles it.
+    const fresh = tokens.filter((t) => !triedStyles.has(t.key));
+    for (const token of fresh) triedStyles.add(token.key);
+    if (fresh.length === 0) return;
     const existing = await api.getLocalTextStylesAsync();
     const taken = new Set(existing.map((s) => s.name));
     const own = byOwnKey(existing);
-    for (const token of tokens) {
+    for (const token of fresh) {
       if (runtime.overBudget()) await runtime.breathe();
       // Linking a style needs its font, so a font that won't load rules out even an exact match.
       const ready = await runtime.ensureFont(token.fontName);
@@ -957,7 +962,7 @@ export function createTokenSet(api: PluginAPI) {
       counts.variablesCreated++;
     };
 
-    /** Frottage's own, as a flat colour can't be: a length has no user's variable to take. */
+    /** Frottage's own, as a flat color can't be: a length has no user's variable to take. */
     const settleSpacing = async (token: PlanModeSpacing): Promise<void> => {
       const first = token.values[0]?.value;
       if (first === undefined) throw new Error("no value");
@@ -1325,8 +1330,12 @@ export function createTokenSet(api: PluginAPI) {
         failed(Math.max(plan.colors.length + lengths - colors.size - spacing.size, 1));
       }
       if (closed || !plan.layers) return;
-      layers ??= createLayerSet(api);
-      await layers.resolve(plan.layers, options, runtime);
+      // Once: a device set resolves its merged layers before its first device, whose own
+      // tokens then bring only their text styles.
+      if (!layers) {
+        layers = createLayerSet(api);
+        await layers.resolve(plan.layers, options, runtime);
+      }
       if (!closed) await bindStyles(layers, runtime);
     },
 
@@ -1355,7 +1364,7 @@ export function createTokenSet(api: PluginAPI) {
     },
 
     textStyleId: (key: string | undefined) => (key ? styleIds.get(key) : undefined),
-    /** A layered plan's colour is a variable, or for a raw one the user's matching paint style. */
+    /** A layered plan's color is a variable, or for a raw one the user's matching paint style. */
     color(key: string | undefined): ColorBinding | undefined {
       if (!key) return undefined;
       const variable = layers?.variable(key);
@@ -1368,10 +1377,14 @@ export function createTokenSet(api: PluginAPI) {
     radius: (key: string | null | undefined) => (key ? layers?.variable(key) : undefined),
     effectStyleId: (key: string | undefined) => (key ? layers?.effectStyleId(key) : undefined),
     gradientStyleId: (key: string | undefined) => (key ? layers?.gradientStyleId(key) : undefined),
-    /** A Theme mode by its label, or null without layers or room for it. */
+    /** A Color Mode mode by its label, or null without layers or room for it. */
     themeMode: (name: string) => layers?.themeMode(name) ?? null,
-    /** The Theme mode a page opens in: the one it was captured in, else Light. */
+    /** A layered collection's mode by its label, or null without layers or room for it. */
+    layerMode: (kind: PlanCollectionKind, name: string) => layers?.modeOf(kind, name) ?? null,
+    /** The Color Mode mode a page opens in: the one it was captured in, else Light. */
     openingMode: () => layers?.openingMode() ?? null,
+    /** Whether the plan's layered collections were settled: not with tokens off. */
+    hasLayers: () => layers !== null,
     failed,
     counts(): TokenCounts {
       if (!layers) return { ...counts };

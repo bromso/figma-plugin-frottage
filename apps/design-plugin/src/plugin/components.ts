@@ -61,7 +61,9 @@ export function createComponentSet(
   api: PluginAPI,
   rootName: string,
   paint: HoverPaint,
-  page: PageNode
+  page: PageNode,
+  /** Readies the section when it is made, such as a device set's Color Mode. */
+  prepare?: (section: SectionNode) => void
 ) {
   const mains = new Map<string, ComponentNode>();
   const hovers = new Map<string, PlanHoverPatch[]>();
@@ -124,6 +126,7 @@ export function createComponentSet(
         // A section takes the viewer's theme, and page components are mostly dark text on light.
         section.fills = [{ type: "SOLID", color: { r: 0.9, g: 0.9, b: 0.9 } }];
         if (section.parent !== page) page.appendChild(section);
+        prepare?.(section);
       }
       section.appendChild(node);
       mains.set(key, node);
@@ -137,7 +140,12 @@ export function createComponentSet(
      * section around them, to the right of `root`. A `broken` main lost layers, so its patches would
      * land on the wrong ones.
      */
-    layOut(root: { x: number; y: number; width: number }, broken: ReadonlySet<string>) {
+    layOut(
+      root: { x: number; y: number; width: number },
+      broken: ReadonlySet<string>,
+      /** Where the section goes, if not to the right of `root`. */
+      at?: { x: number; y: number }
+    ) {
       if (!section) return;
       let failed = false;
       const placed: (ComponentNode | ComponentSetNode)[] = [];
@@ -180,8 +188,8 @@ export function createComponentSet(
         }
       }
       section.resizeWithoutConstraints(right + PADDING, y + rowHeight + PADDING);
-      section.x = root.x + root.width + SECTION_GAP;
-      section.y = root.y;
+      section.x = at ? at.x : root.x + root.width + SECTION_GAP;
+      section.y = at ? at.y : root.y;
       // The caller counts it once; what could be placed has been.
       if (failed) throw new Error("some components could not be placed");
     },

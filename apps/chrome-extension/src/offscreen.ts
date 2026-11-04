@@ -132,7 +132,7 @@ const viewport: ViewportRun = new ViewportRun({
       } satisfies SwMessage)
       .catch(() => {});
   },
-  capture: () =>
+  capture: (item) =>
     gate.run(() =>
       chrome.runtime.sendMessage({
         target: "sw",
@@ -140,6 +140,8 @@ const viewport: ViewportRun = new ViewportRun({
         tabId: viewportTab,
         ...(collapseWrappers ? { collapseWrappers: true } : {}),
         ...(typedLabel ? { versionLabel: typedLabel } : {}),
+        ...(item.device ? { device: item.device } : {}),
+        ...(item.breakpoint ? { breakpoint: item.breakpoint } : {}),
       } satisfies SwMessage)
     ),
   pageWidth: async () => {
@@ -177,7 +179,7 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
         typedLabel = message.versionLabel ?? "";
         heldTab = null;
         captured = new CaptureSet();
-        void viewport.start(message.widths, {
+        void viewport.start(message.runWidths ?? message.widths ?? [], {
           collapseWrappers,
           versionLabel: typedLabel,
         });

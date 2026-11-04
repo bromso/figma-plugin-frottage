@@ -124,7 +124,7 @@ describe("buildCatalogue", () => {
     expect(cat.resolveRef("--color-ink")?.key).toBe("primitives:foreground");
   });
 
-  test("a theme value authored as a collapsed colour alias aliases the primitive", () => {
+  test("a theme value authored as a collapsed color alias aliases the primitive", () => {
     const capture = cap(el("root", [0, 0]));
     capture.tokens = {
       cssCustomProperties: { "--zinc": "#111111", "--color-zinc": "#111111", "--card": "#ffffff" },
@@ -157,7 +157,7 @@ describe("buildCatalogue", () => {
     expect(cat.resolveRef("--spacing*0.5")?.values).toEqual([2]);
   });
 
-  test("type, font and colour primitives follow the naming rules", () => {
+  test("type, font and color primitives follow the naming rules", () => {
     const cat = buildCatalogue(shadcn());
     const sm = cat.resolveRef("--text-sm");
     expect(sm?.name).toBe("text/sm");
@@ -290,7 +290,7 @@ describe("buildCatalogue", () => {
     expect(primary?.values).toHaveLength(1);
   });
 
-  test("values that are neither colour nor length are left out", () => {
+  test("values that are neither color nor length are left out", () => {
     const capture = cap(el("root", [0, 0]));
     capture.tokens.cssCustomProperties = {
       "--ease": "cubic-bezier(.4, 0, .2, 1)",
@@ -300,7 +300,7 @@ describe("buildCatalogue", () => {
     expect(buildCatalogue(capture).variables).toEqual([]);
   });
 
-  test("a value named like an Object.prototype member is just not a colour", () => {
+  test("a value named like an Object.prototype member is just not a color", () => {
     const capture = cap(el("root", [0, 0]));
     capture.tokens.cssCustomProperties = {
       "--a": "constructor",

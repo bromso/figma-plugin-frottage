@@ -6,7 +6,7 @@ import { buildCatalogue } from "../catalogue";
 import { mapCapture } from "../map";
 import { DEFAULT_IMPORT_OPTIONS } from "../options";
 import type { LayerPlan, PlanOp } from "../plan";
-import { cap, el, inter, run, textNode } from "./fixtures";
+import { cap, el, imageStyle, inter, run, textNode } from "./fixtures";
 
 type FrameOp = Extract<PlanOp, { op: "frame" }>;
 
@@ -86,18 +86,18 @@ describe("bindLayers", () => {
       painted("a", "oklch(1 0 0)", { background: "--color-card" }),
       painted("b", "oklch(1 0 0)", { background: "--color-popover" }),
     ]);
-    expect(fillOf(p, "a").colorKey).toBe("theme:card");
-    expect(fillOf(p, "b").colorKey).toBe("theme:popover");
+    expect(fillOf(p, "a").colorKey).toBe("theme:color/card");
+    expect(fillOf(p, "b").colorKey).toBe("theme:color/popover");
     expect(p.tokens.layers?.modes).toEqual(["Light", "Dark"]);
   });
 
-  test("a colour equal to exactly one theme Light value binds to it", () => {
+  test("a color equal to exactly one theme Light value binds to it", () => {
     const p = plan([painted("a", "oklch(0.145 0 0)")]);
-    expect(fillOf(p, "a").colorKey).toBe("theme:foreground");
+    expect(fillOf(p, "a").colorKey).toBe("theme:color/foreground");
     expect(p.report.raw?.colors).toBe(0);
   });
 
-  test("on a page captured dark, a colour binds by its Dark value and the page opens in Dark", () => {
+  test("on a page captured dark, a color binds by its Dark value and the page opens in Dark", () => {
     const tokens = shadcnTokens();
     const dark = tokens.themes?.[0]?.properties ?? {};
     const light: Record<string, string> = {};
@@ -109,18 +109,20 @@ describe("bindLayers", () => {
     tokens.base = light;
     // The dark background, with no ref: equal to exactly one theme variable's Dark value.
     const p = plan([painted("a", "oklch(0.145 0 0)")], tokens);
-    expect(fillOf(p, "a").colorKey).toBe("theme:background");
+    expect(fillOf(p, "a").colorKey).toBe("theme:color/background");
     expect(p.tokens.layers?.activeMode).toBe("Dark");
     // Light is the light page's: white.
-    const bg = p.tokens.layers?.variables.find((v) => v.key === "theme:background");
-    expect(bg?.values[0]).toMatchObject({ r: expect.closeTo(1, 4), g: expect.closeTo(1, 4) });
+    const bg = p.tokens.layers?.variables.find((v) => v.key === "colorMode:color/background");
+    const lightKey = (bg?.values[0] as { alias: string } | undefined)?.alias;
+    const held = p.tokens.layers?.variables.find((v) => v.key === lightKey);
+    expect(held?.values[0]).toMatchObject({ r: expect.closeTo(1, 4), g: expect.closeTo(1, 4) });
   });
 
   test("a page captured light opens in Light", () => {
     expect(plan([painted("a", "oklch(1 0 0)")]).tokens.layers?.activeMode).toBe("Light");
   });
 
-  test("an unbound colour used three times is offered to the user's paint styles", () => {
+  test("an unbound color used three times is offered to the user's paint styles", () => {
     const blue = "#2563eb";
     const p = plan([
       painted("a", blue),
@@ -132,8 +134,8 @@ describe("bindLayers", () => {
     const key = "paint:#2563eb";
     for (const id of ["a", "b", "c"]) expect(fillOf(p, id).colorKey).toBe(key);
     expect(fillOf(p, "once").colorKey).toBeUndefined();
-    // A bound colour keeps its variable.
-    expect(fillOf(p, "card").colorKey).toBe("theme:card");
+    // A bound color keeps its variable.
+    expect(fillOf(p, "card").colorKey).toBe("theme:color/card");
     expect(p.tokens.layers?.styleColors).toEqual([
       { key, rgba: { ...rgbOf(blue), a: 1 }, uses: 3 },
     ]);
@@ -141,7 +143,7 @@ describe("bindLayers", () => {
     expect(p.report.raw?.colors).toBe(4);
   });
 
-  test("a colour equal to two theme variables and with no ref stays raw", () => {
+  test("a color equal to two theme variables and with no ref stays raw", () => {
     const tokens = shadcnTokens();
     delete tokens.cssCustomProperties["--background"];
     delete tokens.cssCustomProperties["--color-background"];
@@ -160,7 +162,7 @@ describe("bindLayers", () => {
     };
     const p = plan([node]);
     const stroke = frame(p, "a").strokes;
-    expect(stroke?.colorKey).toBe("theme:border");
+    expect(stroke?.colorKey).toBe("theme:color/border");
     expect(stroke?.opacity).toBeCloseTo(0.1, 4);
   });
 
@@ -172,7 +174,7 @@ describe("bindLayers", () => {
       tokenRefs: { radius: "--radius-lg" },
     };
     const p = plan([node]);
-    const key = "primitives:radius/lg";
+    const key = "theme:radius/lg";
     expect(frame(p, "a").radiusKeys).toEqual([key, key, key, key]);
     expect(p.report.raw?.radii).toBe(0);
   });
@@ -196,9 +198,13 @@ describe("bindLayers", () => {
     };
     const p = plan([node]);
     const layout = frame(p, "a").layout;
-    const key = "primitives:spacing/4";
+    const key = "theme:spacing/4";
     expect("spacingKeys" in layout && layout.spacingKeys?.padding).toEqual([key, key, key, key]);
-    expect(p.tokens.layers?.variables.find((v) => v.key === key)?.values).toEqual([16]);
+    const raw = p.tokens.layers?.variables.find((v) => v.key === "spacing:spacing/4");
+    expect(raw?.values).toEqual([16]);
+    expect(p.tokens.layers?.variables.find((v) => v.key === key)?.values).toEqual([
+      { alias: "spacing:spacing/4" },
+    ]);
   });
 
   /** A p-4 column with a border of these widths on each side, [top, right, bottom, left]. */
@@ -227,15 +233,47 @@ describe("bindLayers", () => {
     } as ElementNode;
   }
 
+  /** A border and no padding: the child sits flush inside the stroke. */
+  function borderOnly(widths: [number, number, number, number]) {
+    const [t, r, b, l] = widths;
+    const node = bordered(widths);
+    const child = textNode("t", { box: { x: l, y: t, w: 68, h: 20 } });
+    return {
+      ...node,
+      children: [child],
+      box: { ...node.box, w: 68 + l + r, h: 20 + t + b },
+    } as ElementNode;
+  }
+
   test("border p-4 binds its padding inside a uniform stroke, which counts in the layout", () => {
     const p = plan([bordered([1, 1, 1, 1])]);
     const layout = frame(p, "a").layout;
-    const key = "primitives:spacing/4";
+    const key = "theme:spacing/4";
     expect("spacingKeys" in layout && layout.spacingKeys?.padding).toEqual([key, key, key, key]);
     // The padding stays the inset from each edge; the applier takes the stroke out of it.
     expect("padding" in layout && layout.padding).toEqual([17, 17, 17, 17]);
     expect("strokesIncluded" in layout && layout.strokesIncluded).toBe(true);
     expect(p.report.raw?.spacing).toBe(0);
+  });
+
+  test("a border-only frame's padding is the stroke alone: nothing raw, counted in the layout", () => {
+    const node = borderOnly([1, 1, 1, 1]);
+    node.layout = { ...node.layout, padding: [0, 0, 0, 0] } as ElementNode["layout"];
+    delete (node as { tokenRefs?: unknown }).tokenRefs;
+    const p = plan([node]);
+    const layout = frame(p, "a").layout;
+    expect("strokesIncluded" in layout && layout.strokesIncluded).toBe(true);
+    expect(p.report.raw?.spacing).toBe(0);
+  });
+
+  test("a border-only frame on a non-uniform stroke stays raw", () => {
+    const node = borderOnly([1, 2, 1, 1]);
+    node.layout = { ...node.layout, padding: [0, 0, 0, 0] } as ElementNode["layout"];
+    delete (node as { tokenRefs?: unknown }).tokenRefs;
+    const p = plan([node]);
+    const layout = frame(p, "a").layout;
+    expect("strokesIncluded" in layout).toBe(false);
+    expect(p.report.raw?.spacing).toBe(4);
   });
 
   test("a stroke that differs by side leaves the padding as it was", () => {
@@ -258,7 +296,7 @@ describe("bindLayers", () => {
     };
     const p = plan([radiusOf("plain"), radiusOf("named", { radius: "--blur-sm" })], tokens);
     expect(frame(p, "plain").radiusKeys).toBeUndefined();
-    const key = "primitives:blur/sm";
+    const key = "theme:blur/sm";
     expect(frame(p, "named").radiusKeys).toEqual([key, key, key, key]);
     expect(p.report.raw?.radii).toBe(4);
   });
@@ -275,14 +313,14 @@ describe("bindLayers", () => {
     expect(p.report.raw?.radii).toBe(4);
   });
 
-  test("a text run binds through its node's colour ref", () => {
+  test("a text run binds through its node's color ref", () => {
     const text = textNode("t", {
       runs: [run({ color: rgba("oklch(0.145 0 0)") })],
       tokenRefs: { color: "--foreground" },
     });
     const p = plan([text]);
     const op = p.ops.find((o) => o.op === "text");
-    expect(op?.op === "text" && op.runs[0]?.colorKey).toBe("theme:foreground");
+    expect(op?.op === "text" && op.runs[0]?.colorKey).toBe("theme:color/foreground");
   });
 
   test("only primitives that are bound stay; the rest are dropped and counted", () => {
@@ -302,7 +340,13 @@ describe("bindLayers", () => {
     };
     const p = plan([node], tokens);
     const keys = p.tokens.layers?.variables.map((v) => v.key);
-    expect(keys).toEqual(["primitives:radius/lg", "theme:card"]);
+    expect(keys).toEqual([
+      "palette:gray/50",
+      "palette:gray/800",
+      "radius:radius/lg",
+      "colorMode:color/card",
+      "theme:radius/lg",
+    ]);
     expect(p.tokens.layers?.notes.droppedPrimitives).toBe(1);
   });
 
@@ -313,11 +357,11 @@ describe("bindLayers", () => {
       themes: [{ context: ".dark", mode: "Dark", properties: { "--card": "var(--gray-900)" } }],
     };
     const p = plan([], tokens);
-    expect(p.tokens.layers?.variables.map((v) => v.key)).toContain("primitives:gray-900");
+    expect(p.tokens.layers?.variables.map((v) => v.key)).toContain("palette:gray/900");
     expect(p.tokens.layers?.notes.droppedPrimitives).toBe(0);
   });
 
-  test("the layered path leaves colours and spacing empty and reports the modes", () => {
+  test("the layered path leaves colors and spacing empty and reports the modes", () => {
     const p = plan([painted("a", "oklch(1 0 0)", { background: "--color-card" })]);
     expect(p.tokens.colors).toEqual([]);
     expect(p.tokens.spacing).toEqual([]);
@@ -370,5 +414,189 @@ describe("bindLayers", () => {
     expect(raw).toEqual({ colors: 0, radii: 0, spacing: 0 });
     expect(layers.themeSource).toBe("site");
     expect(layers.effectStyles).toEqual([]);
+  });
+});
+
+describe("radii named by the site's classes", () => {
+  type Four<T> = [T, T, T, T];
+  /** Mainline's tokens: only `--radius`, every size a class's calc() of it. */
+  const mainline = (): Capture["tokens"] => ({ cssCustomProperties: { "--radius": "8px" } });
+  const rounded = (id: string, radius: Four<number>, refs?: TokenRefs) => {
+    const base = el(id, [0, 0]);
+    return {
+      ...base,
+      style: { ...base.style, borderRadius: radius },
+      ...(refs ? { tokenRefs: refs } : {}),
+    };
+  };
+  const all = <T>(v: T): Four<T> => [v, v, v, v];
+  const chainOf = (p: LayerPlan, key: string | undefined) => {
+    const vars = p.tokens.layers?.variables ?? [];
+    let at = vars.find((v) => v.key === key);
+    const chain: string[] = [];
+    while (at) {
+      chain.push(at.key);
+      const value = at.values[0];
+      if (typeof value === "object" && value !== null && "alias" in value) {
+        const next: string = value.alias;
+        at = vars.find((v) => v.key === next);
+      } else return { value, chain };
+    }
+    return { value: undefined, chain };
+  };
+
+  test("md, 2xl and full bind to radius/<name> in Border radius through Theme tokens", () => {
+    const FULL = 3.40282e38;
+    const p = plan(
+      [
+        rounded("md", all(6), { radiusClass: all("md") }),
+        rounded("top", [16, 16, 0, 0], { radiusClass: ["2xl", "2xl", null, null] }),
+        rounded("pill", all(FULL), { radiusClass: all("full"), radius: "--radius*2" }),
+      ],
+      mainline()
+    );
+    expect(frame(p, "md").radiusKeys).toEqual(all("theme:radius/md"));
+    expect(frame(p, "top").radiusKeys).toEqual([
+      "theme:radius/2xl",
+      "theme:radius/2xl",
+      undefined,
+      undefined,
+    ]);
+    expect(frame(p, "pill").radiusKeys).toEqual(all("theme:radius/full"));
+    expect(chainOf(p, "theme:radius/md")).toEqual({
+      value: 6,
+      chain: ["theme:radius/md", "radius:radius/md"],
+    });
+    expect(chainOf(p, "theme:radius/2xl").value).toBe(16);
+    expect(chainOf(p, "theme:radius/full").value).toBe(9999);
+    const collections = p.tokens.layers?.collections.map((c) => c.name);
+    expect(collections).toContain("Border radius");
+    expect(p.tokens.layers?.variables.find((v) => v.key === "radius:radius/md")?.scopes).toEqual([
+      "CORNER_RADIUS",
+    ]);
+    expect(p.report.raw?.radii).toBe(0);
+  });
+
+  test("bare rounded is radius/default, and any corner past 9999 px is 9999", () => {
+    const p = plan(
+      [
+        rounded("a", all(4), { radiusClass: all("DEFAULT") }),
+        rounded("b", all(1e6), { radiusClass: all("huge") }),
+      ],
+      mainline()
+    );
+    expect(frame(p, "a").radiusKeys).toEqual(all("theme:radius/default"));
+    expect(chainOf(p, "theme:radius/default").value).toBe(4);
+    expect(chainOf(p, "theme:radius/huge").value).toBe(9999);
+  });
+
+  test("a literal 6 px corner with no class binds to radius/md by its unique value", () => {
+    const p = plan(
+      [rounded("md", all(6), { radiusClass: all("md") }), rounded("plain", all(6))],
+      mainline()
+    );
+    expect(frame(p, "plain").radiusKeys).toEqual(all("theme:radius/md"));
+  });
+
+  test("a name whose corners differ keeps the first value and is reported once", () => {
+    const p = plan(
+      [
+        rounded("a", all(6), { radiusClass: all("md") }),
+        rounded("b", all(7), { radiusClass: all("md") }),
+        rounded("c", all(5), { radiusClass: all("md") }),
+        rounded("d", all(16), { radiusClass: all("md"), radius: "--radius*2" }),
+      ],
+      mainline()
+    );
+    expect(frame(p, "a").radiusKeys).toEqual(all("theme:radius/md"));
+    expect(frame(p, "b").radiusKeys).toBeUndefined();
+    // One that differs goes on as a corner with no class would: here, by its ref.
+    expect(frame(p, "d").radiusKeys).toEqual(all("theme:radius/x2"));
+    expect(chainOf(p, "theme:radius/md").value).toBe(6);
+    const said = p.report.warnings.filter((w) => w.includes("radius/md"));
+    expect(said).toEqual(["radius/md has different values on this page."]);
+  });
+
+  test("a capture without radiusClass binds as before", () => {
+    const p = plan([rounded("a", all(10), { radius: "--radius-lg" })]);
+    expect(frame(p, "a").radiusKeys).toEqual(all("theme:radius/lg"));
+    const p2 = plan([rounded("b", all(6))], mainline());
+    expect(frame(p2, "b").radiusKeys).toBeUndefined();
+    expect(p2.report.raw?.radii).toBe(4);
+  });
+
+  const picture = (id: string, radius: Four<number>, refs?: TokenRefs): CaptureNode => ({
+    id,
+    kind: "image",
+    box: { x: 0, y: 0, w: 50, h: 50 },
+    paintOrder: 0,
+    visible: true,
+    opacity: 1,
+    blendMode: "normal",
+    semantic: { tag: "img" },
+    assetHash: `hash-${id}`,
+    fit: "cover",
+    objectPosition: "50% 50%",
+    ...imageStyle,
+    borderRadius: radius,
+    ...(refs ? { tokenRefs: refs } : {}),
+  });
+  const imageOp = (p: LayerPlan, id: string) =>
+    p.ops.find((o) => o.op === "image" && o.id === id) as Extract<PlanOp, { op: "image" }>;
+
+  test("an image's corners bind like a frame's: by class, then by ref", () => {
+    const p = plan(
+      [
+        picture("hero", all(16), { radiusClass: all("2xl") }),
+        picture("byRef", all(24), { radius: "--radius*3" }),
+      ],
+      mainline()
+    );
+    expect(imageOp(p, "hero").radiusKeys).toEqual(all("theme:radius/2xl"));
+    expect(chainOf(p, "theme:radius/2xl").value).toBe(16);
+    expect(imageOp(p, "byRef").radiusKeys).toEqual(all("theme:radius/x3"));
+    expect(p.report.raw?.radii).toBe(0);
+    expect(imageOp(p, "hero")).not.toHaveProperty("refs");
+  });
+
+  test("an image corner nothing binds is counted raw", () => {
+    const p = plan([picture("odd", [13, 13, 0, 0])], mainline());
+    expect(imageOp(p, "odd").radiusKeys).toBeUndefined();
+    expect(p.report.raw?.radii).toBe(2);
+  });
+
+  test("a ref to the site's multi-mode token beats the class name; a single-mode one doesn't", () => {
+    const tokens: Capture["tokens"] = {
+      cssCustomProperties: { "--radius": "8px", "--radius-card": "8px" },
+      themes: [{ context: ".dark", mode: "Dark", properties: { "--radius-card": "12px" } }],
+    };
+    const p = plan(
+      [
+        rounded("card", all(8), { radiusClass: all("lg"), radius: "--radius-card" }),
+        rounded("plain", all(8), { radiusClass: all("lg"), radius: "--radius" }),
+      ],
+      tokens
+    );
+    const card = frame(p, "card").radiusKeys ?? [];
+    expect(card).toHaveLength(4);
+    const vars = p.tokens.layers?.variables ?? [];
+    for (const key of card) {
+      // Theme tokens alias the Color Mode variable that switches with the mode.
+      const theme = vars.find((x) => x.key === key);
+      const alias = (theme?.values[0] as { alias?: string } | undefined)?.alias;
+      const target = vars.find((x) => x.key === alias);
+      expect(target?.collection).toBe("colorMode");
+      expect(target?.values).toEqual([8, 12]);
+    }
+    expect(frame(p, "plain").radiusKeys).toEqual(all("theme:radius/lg"));
+  });
+
+  test("--radius*2 with no class resolves to radius/x2", () => {
+    const p = plan([rounded("a", all(16), { radius: "--radius*2" })], mainline());
+    expect(frame(p, "a").radiusKeys).toEqual(all("theme:radius/x2"));
+    expect(chainOf(p, "theme:radius/x2")).toEqual({
+      value: 16,
+      chain: ["theme:radius/x2", "radius:radius/x2"],
+    });
   });
 });

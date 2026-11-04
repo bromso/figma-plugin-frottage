@@ -259,7 +259,7 @@ describe("the signature", () => {
 
   test("different text style means a different signature", () => {
     const p = plan(
-      ["size", "colour"].flatMap((_, n) =>
+      ["size", "color"].flatMap((_, n) =>
         [0, 1].map((i) =>
           tagged("x-tag", `e${n}${i}`, [
             label(`t${n}${i}`, "Same", n === 0 ? { size: 12 } : { size: 12, color: red }),
@@ -940,12 +940,12 @@ describe("hover patches", () => {
     expect(hoverOf(p)).toEqual([{ path: [0], textColor: blue, ranges: [[0, 3]] }]);
   });
 
-  test("a colour hover with no resting colour recolours all the text, as older captures had it", () => {
+  test("a color hover with no resting color recolors all the text, as older captures had it", () => {
     const p = plan([button("a", { color: blue }), button("b")], hoverOn);
     expect(hoverOf(p)).toEqual([{ path: [0], textColor: blue, ranges: [[0, 3]] }]);
   });
 
-  test("an own-coloured label under a hovered link stays", () => {
+  test("an own-colored label under a hovered link stays", () => {
     const own = label("own", "Own", { color: red });
     const link = hovering(painted(tagged("x-btn", "a", [label("t1", "Top"), own]), red), {
       color: blue,
@@ -959,7 +959,7 @@ describe("hover patches", () => {
     expect(hoverOf(p)).toEqual([{ path: [0], textColor: blue, ranges: [[0, 3]] }]);
   });
 
-  test("a two-run text recolours only the run that inherits", () => {
+  test("a two-run text recolors only the run that inherits", () => {
     const mixed = (id: string) =>
       textNode(id, {
         text: "Buy now",
@@ -973,7 +973,7 @@ describe("hover patches", () => {
     expect(hoverOf(p)).toEqual([{ path: [0], textColor: blue, ranges: [[0, 3]] }]);
   });
 
-  test("a deeper element's own colour hover wins", () => {
+  test("a deeper element's own color hover wins", () => {
     const inner = hovering(tagged("span", "in", [label("tin", "Deep")]), { color: red });
     const outer = hovering(painted(tagged("x-btn", "a", [label("t1", "Top"), inner]), red), {
       color: blue,
@@ -1088,7 +1088,7 @@ describe("hover patches", () => {
         { path: [0], textColor: blue, ranges: [[0, 3]] },
       ]);
     });
-    test("text the main already shows in that colour takes no colour patch", () => {
+    test("text the main already shows in that color takes no color patch", () => {
       const same = (id: string, color: typeof blue) => {
         const text = textNode(`t${id}`, {
           text: "Mix",
@@ -1155,20 +1155,20 @@ describe("hover patches", () => {
       return { ...node, style: { ...node.style, borders } };
     };
 
-    test("a border colour on a border that paints nothing at rest is counted", () => {
+    test("a border color on a border that paints nothing at rest is counted", () => {
       const p = plan([bordered("a", { borderColor: blue }), bordered("b")], hoverOn);
       expect(lost(p)).toEqual([
         "Hover changes on 1 layer have no place in Figma and were left out.",
       ]);
     });
-    test("a border colour with no border at all changes nothing, so it is not counted", () => {
+    test("a border color with no border at all changes nothing, so it is not counted", () => {
       const p = plan([button("a", { borderColor: blue }), button("b")], hoverOn);
       expect(lost(p)).toEqual([]);
     });
-    test("a text colour on an SVG drawn in that colour is counted", () => {
-      const drawn = (id: string, colour: string, hover?: ElementNode["hover"]) =>
+    test("a text color on an SVG drawn in that color is counted", () => {
+      const drawn = (id: string, color: string, hover?: ElementNode["hover"]) =>
         painted(
-          tagged("x-btn", id, [svg(`${id}s`, `<svg><path fill="${colour}"/></svg>`)], {
+          tagged("x-btn", id, [svg(`${id}s`, `<svg><path fill="${color}"/></svg>`)], {
             ...(hover ? { hover } : {}),
           }),
           red

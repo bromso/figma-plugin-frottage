@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { evalLength, parseCssColor } from "../css-values";
+import { breakpointName, evalLength, parseCssColor } from "../css-values";
 
 const near = (a: number, b: number) => Math.abs(a - b) <= 1 / 255;
 
@@ -85,5 +85,22 @@ describe("evalLength", () => {
   test("is null for a var loop", () => {
     expect(evalLength("var(--a)", { "--a": "var(--b)", "--b": "var(--a)" })).toBeNull();
     expect(evalLength("var(--a)", { "--a": "var(--a)" })).toBeNull();
+  });
+});
+
+describe("breakpointName", () => {
+  test("Tailwind's default boundaries keep Tailwind's names", () => {
+    expect([640, 768, 1024, 1280, 1536].map(breakpointName)).toEqual([
+      "sm",
+      "md",
+      "lg",
+      "xl",
+      "2xl",
+    ]);
+  });
+
+  test("any other boundary is named by its width", () => {
+    expect(breakpointName(1400)).toBe("min 1400");
+    expect(breakpointName(600)).toBe("min 600");
   });
 });

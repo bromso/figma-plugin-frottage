@@ -1,6 +1,16 @@
 export { buildCatalogue, type Catalogue } from "./catalogue";
 export { extractComponents } from "./components";
+export {
+  captureWidth,
+  type DeviceEntry,
+  type DeviceFrame,
+  type DeviceMerge,
+  deviceWidth,
+  type MergeOptions,
+  mergeDevices,
+} from "./devices";
 export { matchFont } from "./fonts";
+export { COLLECTION_NAMES, COLLECTION_ORDER, layerCollections, paletteName } from "./layering";
 export { inferChildLayout, inferLayout } from "./layout";
 export { batchOps, type MissingFont, mapCapture, missingFonts } from "./map";
 export { isReadableName, layerName } from "./names";
@@ -11,6 +21,8 @@ export type {
   LayerPlan,
   ModeValue,
   PlanChildLayout,
+  PlanCollection,
+  PlanCollectionKind,
   PlanColor,
   PlanEffect,
   PlanEffectStyle,
@@ -36,5 +48,8 @@ export type {
   PlanVarValue,
   PlanVersionTokens,
   SpacingKeys,
+  StagedCollection,
+  StagedLayers,
+  StagedVariable,
 } from "./plan";
 export { mergeVersions, stripTokens, type TokenVersion } from "./versions";

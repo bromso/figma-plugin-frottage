@@ -46,7 +46,7 @@ describe("isTokenValue", () => {
   });
 });
 
-describe("isTokenValue with calc and modern colours", () => {
+describe("isTokenValue with calc and modern colors", () => {
   test.each([
     "calc(var(--radius) - 2px)",
     "calc(var(--spacing) * 4)",

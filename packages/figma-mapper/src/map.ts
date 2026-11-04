@@ -104,7 +104,7 @@ const RADIAL_FARTHEST_CORNER: Transform = (() => {
 // Only a centred ellipse sized to the farthest corner, which is CSS's default, is exact.
 function isDefaultRadial(css: string): boolean {
   const head = css.slice(css.indexOf("(") + 1).trimStart();
-  // A colour first means the browser wrote no shape, size or position.
+  // A color first means the browser wrote no shape, size or position.
   if (!/^(ellipse|circle|closest|farthest|at\b|[\d.])/i.test(head)) return true;
   const spec = head.split(/,(?![^(]*\))/)[0]?.trim() ?? "";
   return /^(ellipse|farthest-corner|ellipse farthest-corner)(\s+at\s+(center|50%\s+50%))?$/i.test(
@@ -143,7 +143,7 @@ function isPattern(size: string | undefined, w: number, h: number): boolean {
 
 /**
  * CSS blends premultiplied and Figma straight, so a clear stop would fade through black. A clear
- * stop takes the colour of its nearest visible neighbour; between two different colours it takes
+ * stop takes the color of its nearest visible neighbour; between two different colors it takes
  * the previous one and a twin at the same position takes the next.
  */
 function unpremultiply(stops: Stop[]): Stop[] {
@@ -184,7 +184,7 @@ function mapGradient(
 ): GradientPaint | null {
   const kind = img.type as keyof typeof GRADIENT_TYPES;
   if (!img.stops || img.stops.length === 0) {
-    warn(`A ${kind} with no readable colour stops was left out.`);
+    warn(`A ${kind} with no readable color stops was left out.`);
     return null;
   }
   if (isPattern(img.size, w, h)) {
@@ -192,7 +192,7 @@ function mapGradient(
     return null;
   }
   if (img.stops.length > MAX_STOPS) {
-    warn(`A ${kind} had more than ${MAX_STOPS} colour stops; the rest were left out.`);
+    warn(`A ${kind} had more than ${MAX_STOPS} color stops; the rest were left out.`);
   }
   let stops: Stop[] = img.stops
     .slice(0, MAX_STOPS)
@@ -208,7 +208,7 @@ function mapGradient(
     warn(`A repeating ${kind} was imported as its first cycle only.`);
   }
   if (stops.some((s) => s.position < 0 || s.position > 1)) {
-    warn(`A ${kind} had colour stops outside 0% to 100%; they were moved to the edge.`);
+    warn(`A ${kind} had color stops outside 0% to 100%; they were moved to the edge.`);
     stops = stops.map((s) => ({ ...s, position: Math.min(1, Math.max(0, s.position)) }));
   }
   stops = unpremultiply(stops);
@@ -233,8 +233,8 @@ const clipsToText = (style: ElementNode["style"]): boolean =>
   (style.backgroundClip ?? "").split(/[\s,]+/).includes("text");
 
 /**
- * The one colour clipped text takes, which is all Figma text can hold, and what the report says of
- * it: the first stop that shows, then the background colour, then black for an image.
+ * The one color clipped text takes, which is all Figma text can hold, and what the report says of
+ * it: the first stop that shows, then the background color, then black for an image.
  */
 function clippedTextColor(
   style: ElementNode["style"]
@@ -244,14 +244,14 @@ function clippedTextColor(
     if (stop) {
       return {
         color: rgb(stop.color),
-        warning: "Text with a background clip was imported with the first colour of its gradient.",
+        warning: "Text with a background clip was imported with the first color of its gradient.",
       };
     }
   }
   if (style.backgroundColor.a > 0) {
     return {
       color: rgb(style.backgroundColor),
-      warning: "Text with a background clip was imported with its background colour.",
+      warning: "Text with a background clip was imported with its background color.",
     };
   }
   if (!style.backgroundImages.some((layer) => layer.type === "image")) return undefined;
@@ -503,7 +503,7 @@ export function mapCapture(
     const len = node.text.length;
     if (len === 0) return null;
     const refs = layered ? node.tokenRefs : undefined;
-    // Clipped text shows its background's colour, not the one its colour ref names.
+    // Clipped text shows its background's color, not the one its color ref names.
     const clippedRefs = refs && clip ? { ...refs, color: undefined } : refs;
     const valid: PlanRun[] = [];
     for (const r of node.runs) {
@@ -518,7 +518,7 @@ export function mapCapture(
         fontSize: r.size,
         lineHeight: r.lineHeight,
         letterSpacing: r.letterSpacing,
-        // Text clipped to a background is transparent; it takes the background's one colour.
+        // Text clipped to a background is transparent; it takes the background's one color.
         color: clip && r.color.a === 0 ? clip : rgb(r.color),
         opacity: clip && r.color.a === 0 ? 1 : r.color.a,
         decoration: mapDecoration(r.decoration),
@@ -613,7 +613,7 @@ export function mapCapture(
     siblings: Siblings | undefined;
     /** What the parent's children turned into, for numbering repeated items. */
     peers: CaptureNode[];
-    /** The colour for transparent text, from an ancestor with `background-clip: text`. */
+    /** The color for transparent text, from an ancestor with `background-clip: text`. */
     clip?: PlanRgb;
   };
   const stack: Item[] = [
@@ -732,6 +732,7 @@ export function mapCapture(
             radius: [...node.borderRadius] as [number, number, number, number],
             strokes: mapStroke(node.borders),
             ...rotationOf(node),
+            ...(layered && node.tokenRefs ? { refs: node.tokenRefs } : {}),
           };
         } else {
           op = placeholder(

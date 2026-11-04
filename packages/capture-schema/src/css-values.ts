@@ -191,7 +191,7 @@ function fromHex(text: string): Rgba | null {
 }
 
 /**
- * Parse a CSS colour into unit-range sRGB. rgb, hsl, hwb, lab, lch, oklab, oklch,
+ * Parse a CSS color into unit-range sRGB. rgb, hsl, hwb, lab, lch, oklab, oklch,
  * color(srgb | srgb-linear | display-p3), hex and transparent are converted arithmetically; anything
  * else is null.
  */
@@ -340,4 +340,22 @@ export function evalLength(
   if (text === null) return null;
   const flat = text.replace(/\bcalc\(/gi, "(");
   return evalExpression(flat, rootPx)?.n ?? null;
+}
+
+/** Tailwind's default `min-width` boundaries, by width. */
+const TAILWIND_BREAKPOINTS: Record<number, string> = {
+  640: "sm",
+  768: "md",
+  1024: "lg",
+  1280: "xl",
+  1536: "2xl",
+};
+
+/**
+ * The Breakpoint mode name for the range that starts at `min`: Tailwind's name when the boundary
+ * is its default, otherwise `min <width>`. The range below the first boundary is `base`, which
+ * callers name themselves.
+ */
+export function breakpointName(min: number): string {
+  return TAILWIND_BREAKPOINTS[min] ?? `min ${min}`;
 }

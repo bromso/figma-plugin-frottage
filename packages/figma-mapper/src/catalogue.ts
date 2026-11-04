@@ -1,6 +1,6 @@
 import type { Capture } from "@repo/capture-schema";
 import { evalLength, parseCssColor } from "@repo/capture-schema/css-values";
-import type { PlanLayers, PlanVariable, PlanVarValue } from "./plan";
+import type { PlanLayers, PlanVarValue, StagedVariable } from "./plan";
 import { collectionName, MAX_VALUE_LENGTH, resolveVars, SAFE_PROPERTY } from "./tokens";
 
 /**
@@ -15,10 +15,18 @@ export type Catalogue = {
   activeMode: string;
   themeSource: PlanLayers["themeSource"];
   /** Every custom property that became a variable or collapsed into one. */
-  byCssVar: Map<string, PlanVariable>;
-  variables: PlanVariable[];
+  byCssVar: Map<string, StagedVariable>;
+  variables: StagedVariable[];
   /** The variable a token ref (`--name` or `--name*n`) names, or null. */
-  resolveRef(ref: string): PlanVariable | null;
+  resolveRef(ref: string): StagedVariable | null;
+  /**
+   * `radius/<name>` for a corner the site's `rounded-<name>` class set, made on first use with
+   * that corner's px. Null at the cap, or with `differs` when the name already holds another value.
+   */
+  namedRadius(
+    name: string,
+    px: number
+  ): { variable: StagedVariable | null; differs: boolean; name: string };
   /**
    * Variables left out past `MAX_VARIABLES`, theme or primitive, including spacing steps refused
    * later by `resolveRef`. It grows as those are asked for, so read it after binding.
@@ -32,8 +40,18 @@ const MAX_ALIAS_DEPTH = 16;
 export const MAX_VARIABLES = 1000;
 /** Custom properties read per import; the rest, in name order, are counted as dropped. */
 export const MAX_PROPERTIES = 5000;
-/** The largest `--spacing*n` step made on demand. */
+/** The largest `--spacing*n` or `--radius*n` step made on demand. */
 const MAX_SPACING_STEP = 1000;
+/** A corner this round or rounder, as `rounded-full`'s 3.40282e38px, is stored as this. */
+export const MAX_RADIUS = 9999;
+const RADIUS_SCOPES = ["CORNER_RADIUS"];
+const RADIUS_DIFFERS = " has different values on this page.";
+
+/** The report line for a radius name whose corners hold different values. */
+export const radiusDiffers = (name: string) => `${name}${RADIUS_DIFFERS}`;
+/** Whether a report line is one `radiusDiffers` made. */
+export const isRadiusDiffers = (line: string) =>
+  line.startsWith("radius/") && line.endsWith(RADIUS_DIFFERS);
 /** Prefixes frameworks put on their own properties; the name is what follows. */
 const FRAMEWORK_PREFIX = /^(bs|mantine|chakra|ant)-/i;
 /** A value that is one `var()` and nothing else, with or without a fallback (one level deep). */
@@ -50,7 +68,7 @@ const SPACING_SCOPES = ["GAP", "WIDTH_HEIGHT"];
 
 type Spec = {
   name: string;
-  type: PlanVariable["type"];
+  type: StagedVariable["type"];
   value: PlanVarValue;
   scopes: string[];
 };
@@ -78,7 +96,7 @@ export const bareName = (prop: string) => prop.slice(2).replace(FRAMEWORK_PREFIX
 
 /** A variable's value with its alias followed, or null. */
 export function followAlias(
-  byKey: Map<string, PlanVariable>,
+  byKey: Map<string, StagedVariable>,
   value: PlanVarValue | undefined
 ): PlanVarValue | null {
   let at = value;
@@ -129,7 +147,7 @@ function lengthScopes(bare: string): string[] {
 
 /**
  * What a property's value makes, named by the primitive rules, or by its bare name in the theme.
- * Null for a value that is neither colour nor length (nor a weight or family where the name says so).
+ * Null for a value that is neither color nor length (nor a weight or family where the name says so).
  */
 function classify(
   prop: string,
@@ -146,10 +164,10 @@ function classify(
   const grouped = (group: string, tail: string) =>
     theme ? bare : tail ? `${group}/${tail}` : group;
 
-  const colour = colourOf(value, props);
-  if (colour) {
+  const color = colourOf(value, props);
+  if (color) {
     const name = theme || first !== "color" || !rest ? bare : `color/${rest}`;
-    return { name, type: "COLOR", value: colour, scopes: COLOR_SCOPES };
+    return { name, type: "COLOR", value: color, scopes: COLOR_SCOPES };
   }
   if (/^font-weight-./i.test(bare)) {
     const n = numberOf(value, props);
@@ -217,12 +235,12 @@ export function buildCatalogue(capture: Capture): Catalogue {
     ])
   );
 
-  const variables: PlanVariable[] = [];
-  const byKey = new Map<string, PlanVariable>();
-  const byCssVar = new Map<string, PlanVariable>();
+  const variables: StagedVariable[] = [];
+  const byKey = new Map<string, StagedVariable>();
+  const byCssVar = new Map<string, StagedVariable>();
 
   const add = (
-    collection: PlanVariable["collection"],
+    collection: StagedVariable["collection"],
     spec: Spec,
     values: PlanVarValue[],
     from: string,
@@ -230,7 +248,7 @@ export function buildCatalogue(capture: Capture): Catalogue {
   ) => {
     let name = spec.name;
     for (let n = 2; byKey.has(`${collection}:${name}`); n++) name = `${spec.name}-${n}`;
-    const v: PlanVariable = {
+    const v: StagedVariable = {
       key: `${collection}:${name}`,
       name,
       collection,
@@ -272,9 +290,9 @@ export function buildCatalogue(capture: Capture): Catalogue {
   }
 
   /** A value authored as `var()` of a primitive of the same type aliases it. */
-  const aliasOf = (text: string | undefined, type: PlanVariable["type"]): PlanVarValue | null => {
+  const aliasOf = (text: string | undefined, type: StagedVariable["type"]): PlanVarValue | null => {
     const named = SINGLE_VAR.exec(text?.trim() ?? "")?.[1];
-    // A colour alias that collapsed stands for the primitive it names.
+    // A color alias that collapsed stands for the primitive it names.
     const target = named && !themeProps.has(named) ? (collapsesInto(named) ?? named) : undefined;
     const v = target && !themeProps.has(target) ? byCssVar.get(target) : undefined;
     return v && v.collection === "primitives" && v.type === type ? { alias: v.key } : null;
@@ -325,7 +343,7 @@ export function buildCatalogue(capture: Capture): Catalogue {
   }
 
   // Aliases of theme properties, as Tailwind's `--color-card: var(--card)`, collapse into them, and
-  // colour aliases into the primitive they name.
+  // color aliases into the primitive they name.
   for (const prop of Object.keys(root)) {
     if (!usable(prop) || themeProps.has(prop)) continue;
     const target = collapsesInto(prop);
@@ -333,14 +351,13 @@ export function buildCatalogue(capture: Capture): Catalogue {
     if (v) byCssVar.set(prop, v);
   }
 
-  const spacingBase =
-    usable("--spacing") && root["--spacing"] ? pxOf(root["--spacing"], root) : null;
+  const baseOf = (prop: string) => (usable(prop) && root[prop] ? pxOf(root[prop], root) : null);
+  const spacingBase = baseOf("--spacing");
+  const radiusBase = baseOf("--radius");
   /** Steps refused at the cap, so each counts once. */
   const refused = new Set<string>();
-  /** `spacing/<n>`, made when a ref first asks for it. Figma names can't hold `.`. */
-  const spacingStep = (n: number): PlanVariable | null => {
-    if (spacingBase === null || !Number.isFinite(n) || n < 0 || n > MAX_SPACING_STEP) return null;
-    const name = `spacing/${String(n).replace(".", "_")}`;
+  /** A primitive made on demand, or null, counted once, at the cap. */
+  const made = (name: string, px: number, scopes: string[], from: string) => {
     const existing = byKey.get(`primitives:${name}`);
     if (existing) return existing;
     if (variables.length >= MAX_VARIABLES) {
@@ -350,14 +367,22 @@ export function buildCatalogue(capture: Capture): Catalogue {
       }
       return null;
     }
-    const px = n * spacingBase;
-    return add(
-      "primitives",
-      { name, type: "FLOAT", value: px, scopes: SPACING_SCOPES },
-      [px],
-      "--spacing"
-    );
+    return add("primitives", { name, type: "FLOAT", value: px, scopes }, [px], from);
   };
+  /** Figma names can't hold `.`. */
+  const safe = (text: string) => text.replaceAll(".", "_");
+  const stepOk = (base: number | null, n: number): base is number =>
+    base !== null && Number.isFinite(n) && n >= 0 && n <= MAX_SPACING_STEP;
+  /** `spacing/<n>`, made when a ref first asks for it. */
+  const spacingStep = (n: number): StagedVariable | null =>
+    stepOk(spacingBase, n)
+      ? made(`spacing/${safe(String(n))}`, n * spacingBase, SPACING_SCOPES, "--spacing")
+      : null;
+  /** `radius/x<n>`, for `calc(var(--radius) * n)`. */
+  const radiusStep = (n: number): StagedVariable | null =>
+    stepOk(radiusBase, n)
+      ? made(`radius/x${safe(String(n))}`, n * radiusBase, RADIUS_SCOPES, "--radius")
+      : null;
 
   const catalogue: Catalogue = {
     dropped,
@@ -373,8 +398,21 @@ export function buildCatalogue(capture: Capture): Catalogue {
       const prop = m[1] as string;
       const n = m[2] === undefined ? null : Number.parseFloat(m[2]);
       if (prop === "--spacing") return spacingStep(n ?? 1);
+      if (prop === "--radius" && n !== null && n !== 1) return radiusStep(n);
       if (n !== null && n !== 1) return null;
       return byCssVar.get(prop) ?? null;
+    },
+    namedRadius(name, px) {
+      const value = name === "full" || px >= MAX_RADIUS ? MAX_RADIUS : px;
+      const vname = `radius/${name === "DEFAULT" ? "default" : safe(name)}`;
+      const existing = byKey.get(`primitives:${vname}`);
+      if (existing) {
+        const held = existing.values[0];
+        const same = typeof held === "number" && Math.abs(held - value) <= 0.01 + 1e-9;
+        return { variable: same ? existing : null, differs: !same, name: vname };
+      }
+      const from = name === "DEFAULT" ? ".rounded" : `.rounded-${name}`;
+      return { variable: made(vname, value, RADIUS_SCOPES, from), differs: false, name: vname };
     },
   };
   return catalogue;

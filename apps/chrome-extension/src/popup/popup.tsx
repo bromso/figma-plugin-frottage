@@ -18,6 +18,8 @@ import type { RunStatus } from "../capture-run";
 import type { PopupMessage, Reply } from "../messages";
 import {
   allowAccessAndRecapture,
+  BREAKPOINT_WAIT_MS,
+  canCapture,
   captureLabel,
   DEVICES,
   friendlyError,
@@ -34,6 +36,7 @@ import {
   viewportStatusLabel,
   type WidthChoice,
 } from "../page";
+import { extrasLine, planWidths, type RunWidth } from "../plan-widths";
 
 const dark = window.matchMedia("(prefers-color-scheme: dark)");
 const applyTheme = () => document.documentElement.classList.toggle("dark", dark.matches);
@@ -77,6 +80,11 @@ function Popup() {
   // The size for each device, remembered between opens.
   const [choices, setChoices] = useState<WidthChoice[]>(loadChoices);
 
+  // The page's breakpoints, read once on open; none when the page can't be read.
+  const [breakpoints, setBreakpoints] = useState<number[]>([]);
+  // Capture waits for them, or for BREAKPOINT_WAIT_MS, so the extras they call for are planned.
+  const [breakpointsRead, setBreakpointsRead] = useState(false);
+
   // Whether the optional image permission is held; read when a run finishes with blocked images.
   const [declined, setDeclined] = useState(false);
   const [accessHeld, setAccessHeld] = useState<boolean | null>(null);
@@ -89,13 +97,28 @@ function Popup() {
   useEffect(() => {
     // The badge says a run ended; opening the popup is the look it asked for.
     chrome.action.setBadgeText({ text: "" }).catch(() => {});
+    const giveUp = setTimeout(() => setBreakpointsRead(true), BREAKPOINT_WAIT_MS);
     chrome.tabs.query({ active: true, currentWindow: true }).then(
       ([tab]) => {
         setTabId(tab?.id ?? null);
-        setRestricted(isRestrictedUrl(tab?.url));
+        const offLimits = isRestrictedUrl(tab?.url);
+        setRestricted(offLimits);
         setTabRead(true);
+        // The toolbar click that opened the popup granted `activeTab`. A refusal plans no extras.
+        if (tab?.id !== undefined && !offLimits) {
+          chrome.runtime.sendMessage({ target: "sw", type: "breakpoints", tabId: tab.id }).then(
+            (reply?: Reply) => {
+              if (reply?.ok && reply.breakpoints) setBreakpoints(reply.breakpoints);
+              setBreakpointsRead(true);
+            },
+            () => setBreakpointsRead(true)
+          );
+        } else setBreakpointsRead(true);
       },
-      () => setTabRead(true)
+      () => {
+        setTabRead(true);
+        setBreakpointsRead(true);
+      }
     );
     // A run that is going, or that finished while the popup was closed, is shown; the offscreen
     // document clears a finished one when read.
@@ -113,14 +136,24 @@ function Popup() {
       sendResponse({ received: true });
     };
     chrome.runtime.onMessage.addListener(onMessage);
-    return () => chrome.runtime.onMessage.removeListener(onMessage);
+    return () => {
+      clearTimeout(giveUp);
+      chrome.runtime.onMessage.removeListener(onMessage);
+    };
   }, []);
 
   // Whether Cancel was clicked.
   const [stopping, setStopping] = useState(false);
   const results = useRef<HTMLDivElement>(null);
 
-  const wanted = parseWidths(choices.filter((c) => c.on).map((c) => c.text));
+  const devices = DEVICES.flatMap((device, index) => {
+    const choice = choices[index];
+    const [width] = choice.on ? parseWidths([choice.text]) : [];
+    return width === undefined ? [] : [{ width, id: device.id, name: device.name }];
+  });
+  const plan = planWidths(devices, breakpoints);
+  const wanted = plan.widths;
+  const extras = extrasLine(plan.extras);
 
   function editChoice(index: number, change: Partial<WidthChoice>) {
     const next = choices.map((c, i) => (i === index ? { ...c, ...change } : c));
@@ -134,34 +167,40 @@ function Popup() {
 
   async function captureWidths(request?: {
     widths: number[];
+    runWidths?: RunWidth[];
     collapseWrappers: boolean;
     versionLabel: string;
   }) {
     const version = normaliseVersion(versionKind, versionLabel);
     const {
       widths,
+      runWidths,
       collapseWrappers,
       versionLabel: label,
     } = request ?? {
-      widths: wanted,
+      widths: wanted.map((w) => w.width),
+      runWidths: wanted,
       collapseWrappers: false,
       versionLabel: version?.label ?? "",
     };
-    if (tabId === null || widths.length === 0) return;
+    // A re-run of a status from an older build has plain widths only.
+    const asked: RunWidth[] = runWidths ?? widths.map((width) => ({ width }));
+    if (tabId === null || asked.length === 0) return;
+    const widest = asked.reduce((a, b) => (b.width > a.width ? b : a));
     setStopping(false);
     setDeclined(false);
     setStatus({
       state: "viewport",
       index: 1,
-      total: widths.length,
-      label: String(widths[0]),
+      total: asked.length,
+      label: widest.device?.name ?? widest.breakpoint ?? String(widest.width),
     });
     try {
       const reply: Reply | undefined = await chrome.runtime.sendMessage({
         target: "sw",
         type: "viewport-start",
         tabId,
-        widths,
+        ...(runWidths ? { runWidths } : { widths }),
         ...(collapseWrappers ? { collapseWrappers: true } : {}),
         ...(label ? { versionLabel: label } : {}),
       });
@@ -328,6 +367,7 @@ function Popup() {
             })}
           </div>
         </fieldset>
+        {extras && <Type className="text-muted-foreground">{extras}</Type>}
         <Type size="xsmall" className="text-muted-foreground">
           Widths from 120 to 3840. Your tab moves to a small window for each size, then comes back.
           Leave the window alone while it runs.
@@ -396,7 +436,7 @@ function Popup() {
         <Button
           className="w-full"
           onClick={() => captureWidths()}
-          disabled={restricted === null || tabId === null || wanted.length === 0}
+          disabled={!canCapture({ restricted, tabId, sizes: wanted.length, breakpointsRead })}
         >
           {captureLabel(wanted.length)}
         </Button>

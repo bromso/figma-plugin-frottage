@@ -2,6 +2,7 @@ import type { Capture, CaptureNode } from "@repo/capture-schema";
 import { parseCssColor } from "@repo/capture-schema/css-values";
 import { bindLayers } from "./bind";
 import { buildCatalogue } from "./catalogue";
+import { layerCollections } from "./layering";
 import type { PlanOptions } from "./options";
 import type {
   ImportReport,
@@ -18,7 +19,7 @@ import type {
 import { bindTextStyles } from "./styles-tokens";
 
 /**
- * Finds the values a page repeats and proposes them as text styles and colour variables. Only the
+ * Finds the values a page repeats and proposes them as text styles and color variables. Only the
  * sandbox can read the file, so names here are proposals and the sandbox settles them.
  */
 
@@ -53,11 +54,11 @@ const hexByte = (n: number) =>
 
 const hexOf = (r: number, g: number, b: number) => `#${hexByte(r)}${hexByte(g)}${hexByte(b)}`;
 
-/** Wide-gamut pages give fractional channels; the key is their nearest 8-bit colour. */
+/** Wide-gamut pages give fractional channels; the key is their nearest 8-bit color. */
 export const colorKeyOf = ({ r, g, b }: PlanRgb) => hexOf(r * 255, g * 255, b * 255);
 
 /**
- * A colour key's value, so a token's doesn't depend on which use came first. Only a value read from
+ * A color key's value, so a token's doesn't depend on which use came first. Only a value read from
  * a custom property can have alpha, as `#rrggbbaa`.
  */
 export function rgbaOf(key: string): PlanColor["rgba"] {
@@ -96,7 +97,7 @@ export function resolveVars(value: string, props: Record<string, string>): strin
   return null;
 }
 
-/** A CSS colour as a hex key: `#rrggbb`, and `#rrggbbaa` when not opaque. Null for anything else. */
+/** A CSS color as a hex key: `#rrggbb`, and `#rrggbbaa` when not opaque. Null for anything else. */
 function colorKeyOfCss(value: string): string | null {
   const text = value.trim().toLowerCase();
   if (text === "white") return "#ffffff";
@@ -118,7 +119,7 @@ function tokenName(prop: string): string | null {
   return `color/${bare.replace("-", "/")}`;
 }
 
-/** The colour a custom property resolves to as a colour key, or null. Opaque ones are token keys. */
+/** The color a custom property resolves to as a color key, or null. Opaque ones are token keys. */
 export function cssColorOf(prop: string, props: Record<string, string>): string | null {
   const raw = Object.hasOwn(props, prop) ? props[prop] : undefined;
   if (raw === undefined || raw.length > MAX_VALUE_LENGTH) return null;
@@ -128,7 +129,7 @@ export function cssColorOf(prop: string, props: Record<string, string>): string 
 
 type CssName = { name: string; cssVar: string };
 
-/** Which custom properties hold each colour, the shortest name first. */
+/** Which custom properties hold each color, the shortest name first. */
 function cssNamesByColor(props: Record<string, string>): Map<string, CssName[]> {
   const out = new Map<string, CssName[]>();
   for (const cssVar of Object.keys(props)) {
@@ -294,13 +295,13 @@ function spacingTokens(
   return { tokens: kept.map((k) => k.token), over: found.length - kept.length, rem };
 }
 
-// ---------- Colours
+// ---------- Colors
 
 function colorTokens(ops: PlanOp[], props: Record<string, string>, floor: number): PlanColor[] {
   const uses = new Map<string, Coloured[]>();
   for (const op of ops) {
     for (const use of colorUses(op)) {
-      // Alpha colours stay plain: a variable would carry a value the paint's opacity also sets.
+      // Alpha colors stay plain: a variable would carry a value the paint's opacity also sets.
       if (use.opacity !== 1) continue;
       const key = colorKeyOf(use.color);
       const list = uses.get(key);
@@ -330,7 +331,7 @@ function colorTokens(ops: PlanOp[], props: Record<string, string>, floor: number
   };
   return repeated.map(([key, list]) => {
     for (const use of list) use.colorKey = key;
-    // A colour that lost its name to another still has its custom property.
+    // A color that lost its name to another still has its custom property.
     const css = named.get(key) ?? cssNames.get(key)?.[0];
     return {
       key,
@@ -448,14 +449,14 @@ export function collectionName(url: string): string {
 
 /**
  * Proposes the page's tokens, and marks the runs and paints in `ops` that use them. With `layers`,
- * colours and lengths bind to the Primitives and Theme collections instead, and `report` gets the
- * raw counts and the theme's modes.
+ * colors, lengths and text styles bind to the final Theme of the layered collections instead, and
+ * `report` gets the raw counts and Color Mode's modes.
  */
 export function extractTokens(
   capture: Capture,
   ops: PlanOp[],
   options: PlanOptions,
-  report?: Pick<ImportReport, "raw" | "themeModes">
+  report?: Pick<ImportReport, "raw" | "themeModes" | "warnings">
 ): PlanTokens {
   const collection = collectionName(capture.source.url);
   if (!options.tokens) return { textStyles: [], colors: [], spacing: [], collection };
@@ -465,15 +466,19 @@ export function extractTokens(
     // Bound while the runs still hold their refs.
     const textStyles = textStyleTokens(ops, capture.root, floor);
     const keep = bindTextStyles(textStyles, ops, catalogue);
-    const { layers, raw } = bindLayers(catalogue, ops, {
+    const bound = bindLayers(catalogue, ops, {
       root: capture.root,
       props: capture.tokens.cssCustomProperties,
       keep,
       floor,
     });
+    const { raw } = bound;
+    // Reads keys, not refs: every binding moves to its final Theme token.
+    const layers = layerCollections(bound.layers, { ops, textStyles });
     if (report) {
       report.raw = raw;
       report.themeModes = layers.modes;
+      report.warnings.push(...bound.warnings);
     }
     return {
       textStyles,

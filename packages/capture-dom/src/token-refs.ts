@@ -77,7 +77,41 @@ const COMPUTED: Record<SlotName, string[]> = {
   fontWeight: ["font-weight"],
 };
 
-const TRACKED = [...new Set(Object.values(SLOTS).flatMap((s) => s.names))];
+/**
+ * Each corner, [top-left, top-right, bottom-right, bottom-left], for the class that rounded it.
+ * Logical corners are read as on a left-to-right page.
+ */
+const CORNERS: Slot[] = [
+  ["border-top-left-radius", "border-start-start-radius"],
+  ["border-top-right-radius", "border-start-end-radius"],
+  ["border-bottom-right-radius", "border-end-end-radius"],
+  ["border-bottom-left-radius", "border-end-start-radius"],
+].map((names) => ({ names: [...names, "border-radius"], inherits: false, kind: "length" }));
+
+const TRACKED = [...new Set([...Object.values(SLOTS), ...CORNERS].flatMap((s: Slot) => s.names))];
+
+/** Tailwind's rounding utilities: the size is group 1, none for bare `rounded`. */
+const ROUNDED = /^rounded(?:-(?:t|r|b|l|tl|tr|br|bl|s|e|ss|se|es|ee))?(?:-([a-z0-9.]+))?$/;
+const MAX_RADIUS_CLASS = 20;
+const SINGLE_CLASS = /^\.((?:[\w-]|\\[0-9a-fA-F]{1,6}\s?|\\.)+)$/;
+
+/**
+ * The radius name a selector gives: only a single class that is a rounding utility. A variant
+ * prefix, as `md:` in `md:rounded-xl`, is the same token at another breakpoint: the name follows
+ * its last colon.
+ */
+function radiusClassOf(selector: string | null): string | null {
+  const m = selector ? SINGLE_CLASS.exec(selector.trim()) : null;
+  if (!m) return null;
+  const size = ROUNDED.exec(
+    unescapeIdent(m[1] as string)
+      .split(":")
+      .at(-1) as string
+  );
+  if (!size) return null;
+  const name = size[1] ?? "DEFAULT";
+  return name.length <= MAX_RADIUS_CLASS ? name : null;
+}
 
 // ---------- Selectors
 
@@ -154,6 +188,13 @@ function balancedEnd(text: string): boolean {
 }
 
 const close = (a: number, b: number, within: number) => Math.abs(a - b) <= within + 1e-9;
+/** A plain `px` length, exponent included, as `3.40282e+38px`; null for anything else. */
+const pxOf = (value: string | undefined): number | null => {
+  const m = /^(-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)px$/i.exec(value?.trim() ?? "");
+  return m ? Number(m[1]) : null;
+};
+/** Browsers clamp a huge radius to their own float, so past 9999 px every value is the same. */
+const sameRadius = (a: number, b: number) => (a >= 9999 && b >= 9999) || close(a, b, 0.01);
 const normaliseFamily = (v: string) =>
   v
     .split(",")
@@ -178,6 +219,8 @@ type Entry = {
 /** One declaration that reaches an element, with what orders it in the cascade. */
 type Winner = Decl & {
   name: string;
+  /** The rule's selector; null for the inline style. */
+  selector: string | null;
   inline: boolean;
   layer: number[];
   spec: number;
@@ -298,8 +341,8 @@ export function createRefReader(
         }
         if (!hit) continue;
         for (const [name, decl] of entry.decls) {
-          const { layer, spec, order } = entry;
-          out.push({ ...decl, name, inline: false, layer, spec, order });
+          const { layer, spec, order, selector } = entry;
+          out.push({ ...decl, name, selector, inline: false, layer, spec, order });
         }
       }
       if (overBudget()) return null;
@@ -313,6 +356,7 @@ export function createRefReader(
           value,
           important: inline.getPropertyPriority(name) === "important",
           name,
+          selector: null,
           inline: true,
           layer: [],
           spec: 0,
@@ -325,7 +369,7 @@ export function createRefReader(
   };
 
   /** The winning declaration for one slot on `el` itself, or null when no rule sets it. */
-  const ownWinner = (el: Element, slot: Slot): Decl | null | undefined => {
+  const ownWinner = (el: Element, slot: Slot): Winner | null | undefined => {
     const list = matchesOf(el);
     if (!list) return undefined;
     let best: Winner | null = null;
@@ -377,7 +421,7 @@ export function createRefReader(
     );
     if (token === null || token.trim() === "") return false;
     const values = COMPUTED[slot].map((p) => style.getPropertyValue(p).trim());
-    // A border colour with no border to paint it (Tailwind sets one on every element) says nothing.
+    // A border color with no border to paint it (Tailwind sets one on every element) says nothing.
     const widths = ["top", "right", "bottom", "left"].map((side) =>
       Number.parseFloat(style.getPropertyValue(`border-${side}-width`))
     );
@@ -417,6 +461,14 @@ export function createRefReader(
     return values.every((v) => /px$/.test(v) && close(Number.parseFloat(v), want, 0.01));
   };
 
+  /** A corner's declared value in px, its `var()`s read from the root; null when it can't be. */
+  const cornerLength = (value: string): number | null => {
+    const plain = pxOf(value);
+    if (plain !== null) return plain;
+    const text = resolveVars(value, (n) => rootProps().getPropertyValue(n).trim() || undefined);
+    return text === null ? null : evalLength(text, {}, rootPx());
+  };
+
   const cache = new WeakMap<Element, TokenRefs | undefined>();
   return {
     refsFor(el: Element): TokenRefs | undefined {
@@ -441,6 +493,22 @@ export function createRefReader(
     for (const key of ["background", "color", "border", "radius"] as const) {
       if (refs[key]) out[key] = refs[key];
     }
+    // A class names a corner only where its value is the corner's computed px, so that a rule
+    // the reader got wrong, as when the real winner sat in a sheet it couldn't read, names nothing.
+    const corners: (string | null)[] = [];
+    for (const [at, corner] of CORNERS.entries()) {
+      const own = ownWinner(el, corner);
+      if (own === undefined) return undefined;
+      let name = radiusClassOf(own?.selector ?? null);
+      if (name && own) {
+        style ??= win.getComputedStyle(el);
+        const got = pxOf(style.getPropertyValue(COMPUTED.radius[at] as string).split(/\s+/)[0]);
+        const want = cornerLength(own.value);
+        if (got === null || want === null || !(got > 0) || !sameRadius(got, want)) name = null;
+      }
+      corners.push(name);
+    }
+    if (corners.some(Boolean)) out.radiusClass = corners as NonNullable<TokenRefs["radiusClass"]>;
     const sides = [refs.paddingTop, refs.paddingRight, refs.paddingBottom, refs.paddingLeft];
     if (sides.some(Boolean)) {
       out.padding = sides.map((s) => s ?? null) as NonNullable<TokenRefs["padding"]>;
