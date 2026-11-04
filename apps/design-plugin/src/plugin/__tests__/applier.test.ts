@@ -1200,6 +1200,49 @@ describe("binding to the Primitives and Theme collections", () => {
     expect(root.fillStyleId).toBe(style.id);
   });
 
+  test("a raw colour links to the user's matching paint style; a bound one stays bound", async () => {
+    const INK = { r: 0.2, g: 0.4, b: 0.6 };
+    const styled = {
+      ...plan,
+      layers: {
+        ...layers,
+        styleColors: [{ key: "paint:#336699", rgba: { ...INK, a: 1 }, uses: 3 }],
+      },
+    };
+    const raw = [{ type: "SOLID", color: INK, opacity: 1, colorKey: "paint:#336699" }];
+    const bound = [{ type: "SOLID", color: WHITE, opacity: 1, colorKey: card.key }];
+    const run_ = { ...run(0, 5, inter), color: INK, colorKey: "paint:#336699" };
+    const setup = (useLocalStyles: boolean) => {
+      const f = fakeFigma();
+      const ink = f.tokens.seedPaintStyle("Ink", [
+        { type: "SOLID", color: INK, opacity: 1, blendMode: "NORMAL", visible: true },
+      ]);
+      // A paint style of the card's colour too: the variable still wins.
+      f.tokens.seedPaintStyle("Paper", [{ type: "SOLID", color: WHITE, opacity: 1 }]);
+      return { f, ink, useLocalStyles };
+    };
+    for (const on of [true, false]) {
+      const { f, ink } = setup(on);
+      const a = createApplier(f.figma);
+      await a.begin(meta);
+      await a.importTokens(styled, { ...DEFAULT_IMPORT_OPTIONS, useLocalStyles: on });
+      await a.applyBatch([
+        frame("a", null, { fills: raw, childCount: 2 }),
+        frame("b", "a", { fills: bound }),
+        textOp("t", "a", [run_]),
+      ]);
+      const r = await a.end();
+      const root = f.node(r.rootId);
+      expect(root.fillStyleId).toBe(on ? ink.id : undefined);
+      const text = root.children[1];
+      const linked = (text.ranges ?? []).find((x: any) => x.m === "setRangeFillStyleIdAsync");
+      expect(linked?.v).toBe(on ? ink.id : undefined);
+      expect(root.children[0].fillStyleId).toBeUndefined();
+      expect(root.children[0].fills[0].boundVariables.color.id).toBe(variableNamed(f, "card").id);
+      expect(r.stylesReused).toBe(on ? 1 : 0);
+    }
+  });
+
   test("the imported root opens on the Theme collection's Light mode", async () => {
     const { f, root } = await layered([frame("a", null, { childCount: 1 }), frame("b", "a")]);
     const theme = collectionNamed(f, "example.com · Theme");

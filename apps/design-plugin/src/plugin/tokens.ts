@@ -212,7 +212,7 @@ function sameTextStyle(style: TextStyle, token: TextLook): boolean {
 }
 
 /** The colour of a paint style that paints the same as a plain opaque colour would, else null. */
-function solidColorOf(style: PaintStyle): RGB | null {
+export function solidColorOf(style: PaintStyle): RGB | null {
   const [paint, ...rest] = style.paints;
   const plain =
     paint?.type === "SOLID" &&
@@ -1355,11 +1355,13 @@ export function createTokenSet(api: PluginAPI) {
     },
 
     textStyleId: (key: string | undefined) => (key ? styleIds.get(key) : undefined),
-    /** A layered plan's colour is always a variable, never a paint style. */
+    /** A layered plan's colour is a variable, or for a raw one the user's matching paint style. */
     color(key: string | undefined): ColorBinding | undefined {
       if (!key) return undefined;
       const variable = layers?.variable(key);
-      return variable ? { variable } : colors.get(key);
+      if (variable) return { variable };
+      const paintStyleId = layers?.paintStyleId(key);
+      return paintStyleId ? { paintStyleId } : colors.get(key);
     },
     spacing: (key: string | null | undefined) =>
       key ? (layers?.variable(key) ?? spacing.get(key)) : undefined,
@@ -1379,6 +1381,7 @@ export function createTokenSet(api: PluginAPI) {
         variablesCreated: counts.variablesCreated + own.variablesCreated,
         variablesReused: counts.variablesReused + own.variablesReused,
         stylesCreated: counts.stylesCreated + own.stylesCreated,
+        stylesReused: counts.stylesReused + own.stylesReused,
         tokenFailures: counts.tokenFailures + layers.failures(),
         layers: own,
       };

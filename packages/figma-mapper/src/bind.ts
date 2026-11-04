@@ -6,6 +6,7 @@ import type {
   PlanLayout,
   PlanOp,
   PlanRgb,
+  PlanStyleColor,
   PlanVariable,
   PlanVarValue,
   SpacingKeys,
@@ -26,6 +27,8 @@ export type BindContext = {
   root?: CaptureNode;
   props?: Record<string, string>;
   keep?: Iterable<string>;
+  /** Uses an unbound colour needs before it is offered to the user's paint styles. */
+  floor?: number;
 };
 
 /** Two lengths this close are the same length. */
@@ -282,6 +285,7 @@ export function bindLayers(
   // Pages repeat few values, so each is looked up once.
   const matches = new Map<string, PlanVariable | null>();
   const raw: RawCounts = { colors: 0, radii: 0, spacing: 0 };
+  const stayed: Field[] = [];
   for (const field of unbound) {
     const at = `${field.kind}|${field.scope}|${JSON.stringify(field.value)}`;
     let v = matches.get(at);
@@ -290,7 +294,27 @@ export function bindLayers(
       matches.set(at, v);
     }
     if (v) bind(field, v);
-    else raw[field.kind]++;
+    else {
+      raw[field.kind]++;
+      if (field.kind === "colors" && field.value.a >= 1 - EPSILON) stayed.push(field);
+    }
+  }
+
+  // An opaque colour that stayed raw and repeats may still be one of the user's paint styles, as
+  // on the single-collection path: the sandbox links it where one matches, else leaves it plain.
+  const floor = context.floor ?? MIN_USES;
+  const byColour = new Map<string, Field[]>();
+  for (const field of stayed) {
+    const key = `paint:${colorKeyOf(field.value as Rgba)}`;
+    const list = byColour.get(key);
+    if (list) list.push(field);
+    else byColour.set(key, [field]);
+  }
+  const styleColors: PlanStyleColor[] = [];
+  for (const [key, list] of byColour) {
+    if (list.length < floor) continue;
+    for (const field of list) field.bind(key);
+    styleColors.push({ key, rgba: rgbaOf(key.slice("paint:".length)), uses: list.length });
   }
 
   // Shadows and gradients the page repeats; their colours bind as a field's would.
@@ -320,6 +344,7 @@ export function bindLayers(
       variables: kept,
       effectStyles: effects,
       gradientStyles: gradients,
+      styleColors,
       // Read after binding: refs may have asked for spacing steps past the cap.
       notes: {
         twins: nearTwins(kept),

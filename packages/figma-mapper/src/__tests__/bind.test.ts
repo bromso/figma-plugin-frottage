@@ -10,6 +10,10 @@ import { cap, el, inter, run, textNode } from "./fixtures";
 
 type FrameOp = Extract<PlanOp, { op: "frame" }>;
 
+const rgbOf = (hex: string) => {
+  const n = (at: number) => Number.parseInt(hex.slice(at, at + 2), 16) / 255;
+  return { r: n(1), g: n(3), b: n(5) };
+};
 const rgba = (css: string) => parseCssColor(css) as NonNullable<ReturnType<typeof parseCssColor>>;
 
 /** Stock shadcn on Tailwind v4, trimmed: the root's values, the authored ones and `.dark`. */
@@ -114,6 +118,27 @@ describe("bindLayers", () => {
 
   test("a page captured light opens in Light", () => {
     expect(plan([painted("a", "oklch(1 0 0)")]).tokens.layers?.activeMode).toBe("Light");
+  });
+
+  test("an unbound colour used three times is offered to the user's paint styles", () => {
+    const blue = "#2563eb";
+    const p = plan([
+      painted("a", blue),
+      painted("b", blue),
+      painted("c", blue),
+      painted("once", "#16a34a"),
+      painted("card", "oklch(1 0 0)", { background: "--color-card" }),
+    ]);
+    const key = "paint:#2563eb";
+    for (const id of ["a", "b", "c"]) expect(fillOf(p, id).colorKey).toBe(key);
+    expect(fillOf(p, "once").colorKey).toBeUndefined();
+    // A bound colour keeps its variable.
+    expect(fillOf(p, "card").colorKey).toBe("theme:card");
+    expect(p.tokens.layers?.styleColors).toEqual([
+      { key, rgba: { ...rgbOf(blue), a: 1 }, uses: 3 },
+    ]);
+    // Still raw: no variable holds them.
+    expect(p.report.raw?.colors).toBe(4);
   });
 
   test("a colour equal to two theme variables and with no ref stays raw", () => {

@@ -162,6 +162,7 @@ describe("createLayerSet", () => {
       variablesRenamed: 0,
       modesDropped: [],
       stylesCreated: 2,
+      stylesReused: 0,
     });
   });
 
@@ -216,6 +217,7 @@ describe("createLayerSet", () => {
       variablesRenamed: 0,
       modesDropped: [],
       stylesCreated: 0,
+      stylesReused: 0,
     });
     expect(set.variable(card.key)).toBe(variableNamed(f, "card"));
     expect(set.effectStyleId(shadow.key)).toBeDefined();
@@ -348,12 +350,14 @@ describe("the token set with layers", () => {
     expect(tokens.counts()).toMatchObject({
       variablesCreated: 4,
       stylesCreated: 2,
+      stylesReused: 0,
       layers: {
         variablesCreated: 4,
         variablesReused: 0,
         variablesRenamed: 0,
         modesDropped: [],
         stylesCreated: 2,
+        stylesReused: 0,
       },
     });
     await tokens.discard();

@@ -12,6 +12,7 @@ import {
   NAMESPACE,
   near,
   sameColor,
+  solidColorOf,
   CHANNEL_TOLERANCE as TOLERANCE,
   type TokenRuntime,
   tagCollection,
@@ -34,6 +35,8 @@ export type LayerCounts = {
   /** Theme modes the file had no room for. Their values weren't written. */
   modesDropped: string[];
   stylesCreated: number;
+  /** The user's paint styles that raw colours linked to. */
+  stylesReused: number;
 };
 
 type Kind = PlanVariable["collection"];
@@ -149,6 +152,8 @@ export function createLayerSet(api: PluginAPI) {
   const variables = new Map<string, Variable>();
   const effectIds = new Map<string, string>();
   const gradientIds = new Map<string, string>();
+  /** Raw colours' keys, to the user's paint style that holds the colour. */
+  const paintStyleIds = new Map<string, string>();
   const homes = new Map<Kind, Home>();
   const counts: LayerCounts = {
     variablesCreated: 0,
@@ -156,6 +161,7 @@ export function createLayerSet(api: PluginAPI) {
     variablesRenamed: 0,
     modesDropped: [],
     stylesCreated: 0,
+    stylesReused: 0,
   };
   let failures = 0;
   let createdVariables: Variable[] = [];
@@ -205,7 +211,11 @@ export function createLayerSet(api: PluginAPI) {
     const existing = await api.variables.getLocalVariablesAsync();
     const collections = await api.variables.getLocalVariableCollectionsAsync();
     const effectStyles = plan.effectStyles.length > 0 ? await api.getLocalEffectStylesAsync() : [];
-    const paintStyles = plan.gradientStyles.length > 0 ? await api.getLocalPaintStylesAsync() : [];
+    const styleColors = useLocal ? (plan.styleColors ?? []) : [];
+    const paintStyles =
+      plan.gradientStyles.length > 0 || styleColors.length > 0
+        ? await api.getLocalPaintStylesAsync()
+        : [];
     if (closed) return;
 
     const pause = async () => {
@@ -460,6 +470,21 @@ export function createLayerSet(api: PluginAPI) {
       return style.id;
     };
 
+    // A raw colour links to the user's solid paint style of that colour, as before layers.
+    if (styleColors.length > 0) {
+      const solids = paintStyles.flatMap((style) => {
+        if (style.getSharedPluginData(NAMESPACE, VALUE_KEY) !== "") return [];
+        const color = solidColorOf(style);
+        return color ? [{ id: style.id, color }] : [];
+      });
+      for (const token of styleColors) {
+        const style = solids.find((s) => sameColor(s.color, token.rgba));
+        if (!style) continue;
+        paintStyleIds.set(token.key, style.id);
+        counts.stylesReused++;
+      }
+    }
+
     try {
       // Primitives first, so that the theme's aliases have them to point at.
       const order = [
@@ -554,6 +579,7 @@ export function createLayerSet(api: PluginAPI) {
     variable: (key: string): Variable | undefined => variables.get(key),
     effectStyleId: (key: string): string | undefined => effectIds.get(key),
     gradientStyleId: (key: string): string | undefined => gradientIds.get(key),
+    paintStyleId: (key: string): string | undefined => paintStyleIds.get(key),
 
     themeMode,
 

@@ -381,9 +381,17 @@ export type PlanLayers = {
   variables: PlanVariable[];
   effectStyles: PlanEffectStyle[];
   gradientStyles: PlanGradientStyle[];
+  /**
+   * Opaque colours no variable took that repeat: the sandbox links their paints to the user's
+   * matching solid paint style, with local styles on, and leaves them plain otherwise.
+   */
+  styleColors?: PlanStyleColor[];
   /** Near twins by key; the inferred roles' names; primitives left out. */
   notes: { twins: [string, string][]; inferred: string[]; droppedPrimitives: number };
 };
+
+/** A raw colour a user's paint style may hold. `key` is `paint:#rrggbb`, as its paints have it. */
+export type PlanStyleColor = { key: string; rgba: PlanRgb & { a: number }; uses: number };
 
 export type PlanTokens = {
   textStyles: PlanTextStyle[];

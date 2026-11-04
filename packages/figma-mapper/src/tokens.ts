@@ -469,6 +469,7 @@ export function extractTokens(
       root: capture.root,
       props: capture.tokens.cssCustomProperties,
       keep,
+      floor,
     });
     if (report) {
       report.raw = raw;

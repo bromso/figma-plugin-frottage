@@ -28,6 +28,7 @@ export type {
   PlanRun,
   PlanSpacing,
   PlanStroke,
+  PlanStyleColor,
   PlanTextStyle,
   PlanTokens,
   PlanTrack,
