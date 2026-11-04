@@ -100,6 +100,11 @@ export type PlanLayout =
       sizingH: "FIXED" | "HUG";
       sizingV: "FIXED" | "HUG";
       spacingKeys?: SpacingKeys;
+      /**
+       * The frame counts its uniform stroke in its layout, as CSS's border-box: `padding` is still
+       * the inset from each edge, and Figma's padding is that less the stroke.
+       */
+      strokesIncluded?: boolean;
     }
   | {
       mode: "GRID";
@@ -109,6 +114,8 @@ export type PlanLayout =
       columnGap: number;
       padding: [number, number, number, number];
       spacingKeys?: SpacingKeys;
+      /** As on an auto layout frame. */
+      strokesIncluded?: boolean;
     };
 
 export type PlanChildLayout = {

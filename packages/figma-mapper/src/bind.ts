@@ -69,8 +69,48 @@ function colourField(
   };
 }
 
+type Followed = (value: PlanVarValue | undefined) => PlanVarValue | null;
+
+/** Whether some mode of `v` holds `px`. */
+function holds(v: PlanVariable | null, px: number, followed: Followed): boolean {
+  if (v?.type !== "FLOAT") return false;
+  return v.values.some((value) => {
+    const n = followed(value);
+    return typeof n === "number" && sameLength(n, px);
+  });
+}
+
+/**
+ * The stroke a frame's padding sits inside, as CSS's border-box has it, or 0. A frame's padding
+ * takes in its border, so `border p-6` is 25 px from the edge, not 24. Where the stroke is the same
+ * on every side and the padding refs hold the padding without it, the padding is read inside the
+ * stroke and the frame counts its strokes in its layout, so it lays out as before.
+ */
+function strokeInset(
+  op: Extract<PlanOp, { op: "frame" }>,
+  catalogue: Catalogue,
+  followed: Followed
+): number {
+  const { layout, strokes } = op;
+  const refs = op.refs?.padding;
+  if (layout.mode === "NONE" || !strokes || !refs) return 0;
+  const { top, right, bottom, left } = strokes.weights;
+  if (!(top > 0) || ![right, bottom, left].every((w) => sameLength(w, top))) return 0;
+  if (layout.padding.some((px) => px < top - PX)) return 0;
+  let inside = false;
+  for (const [side, ref] of refs.entries()) {
+    const v = ref ? catalogue.resolveRef(ref) : null;
+    if (!v) continue;
+    const px = layout.padding[side] as number;
+    // A ref that holds the whole inset says the stroke is not inside it.
+    if (holds(v, px, followed)) return 0;
+    if (holds(v, px - top, followed)) inside = true;
+  }
+  return inside ? top : 0;
+}
+
 /** The lengths auto layout or a grid sets, each with its ref. Zero is no spacing and isn't counted. */
-function spacingFields(layout: PlanLayout, refs: PlanOp["refs"], out: Field[]) {
+function spacingFields(layout: PlanLayout, refs: PlanOp["refs"], inset: number, out: Field[]) {
   if (layout.mode === "NONE") return;
   const keys = (): SpacingKeys => {
     layout.spacingKeys ??= {};
@@ -80,7 +120,7 @@ function spacingFields(layout: PlanLayout, refs: PlanOp["refs"], out: Field[]) {
     if (value > 0) out.push({ kind: "spacing", scope: "GAP", value, ref, bind });
   };
   layout.padding.forEach((px, side) => {
-    push(px, refs?.padding?.[side], (key) => {
+    push(px - inset, refs?.padding?.[side], (key) => {
       const k = keys();
       k.padding ??= [undefined, undefined, undefined, undefined];
       k.padding[side] = key;
@@ -101,7 +141,7 @@ function spacingFields(layout: PlanLayout, refs: PlanOp["refs"], out: Field[]) {
   }
 }
 
-function fieldsOf(op: PlanOp, out: Field[]) {
+function fieldsOf(op: PlanOp, out: Field[], catalogue: Catalogue, followed: Followed) {
   const refs = op.refs;
   switch (op.op) {
     case "frame": {
@@ -122,7 +162,9 @@ function fieldsOf(op: PlanOp, out: Field[]) {
           },
         });
       });
-      spacingFields(op.layout, refs, out);
+      const inset = strokeInset(op, catalogue, followed);
+      if (inset > 0 && op.layout.mode !== "NONE") op.layout.strokesIncluded = true;
+      spacingFields(op.layout, refs, inset, out);
       break;
     }
     case "image":
@@ -146,7 +188,7 @@ export function bindLayers(
   const siteColours = catalogue.variables.some((v) => v.type === "COLOR");
 
   const fields: Field[] = [];
-  for (const op of ops) fieldsOf(op, fields);
+  for (const op of ops) fieldsOf(op, fields, catalogue, followed);
 
   const bound = new Set<string>(context.keep);
   const bind = (field: Field, v: PlanVariable) => {
@@ -161,12 +203,7 @@ export function bindLayers(
     const v = field.ref ? catalogue.resolveRef(field.ref) : null;
     let fits = false;
     if (v && field.kind === "colors") fits = v.type === "COLOR";
-    else if (v && field.kind !== "colors" && v.type === "FLOAT") {
-      fits = v.values.some((value) => {
-        const n = followed(value);
-        return typeof n === "number" && sameLength(n, field.value);
-      });
-    }
+    else if (v && field.kind !== "colors") fits = holds(v, field.value, followed);
     if (v && fits) bind(field, v);
     else unbound.push(field);
   }

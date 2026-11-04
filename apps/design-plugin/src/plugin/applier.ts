@@ -567,6 +567,23 @@ export function createApplier(api: PluginAPI) {
     if (refused) set.failed();
   }
 
+  /** The stroke a frame counts in its layout, CSS's border-box, if it has one Figma will draw. */
+  function strokeInset(op: FrameOp): PlanStroke["weights"] | null {
+    const s = op.strokes;
+    if (op.layout.mode === "NONE" || !op.layout.strokesIncluded || !s) return null;
+    return Object.values(s.weights).every(validWeight) ? s.weights : null;
+  }
+
+  /** The frame's padding, inside its stroke where it counts that in its layout. */
+  function paddingOf(op: FrameOp): [number, number, number, number] {
+    if (op.layout.mode === "NONE") return [0, 0, 0, 0];
+    const [top, right, bottom, left] = op.layout.padding;
+    const w = strokeInset(op);
+    if (!w) return op.layout.padding;
+    const less = (px: number, by: number) => Math.max(0, px - by);
+    return [less(top, w.top), less(right, w.right), less(bottom, w.bottom), less(left, w.left)];
+  }
+
   function applyLayout(node: FrameNode, op: FrameOp) {
     const { layout } = op;
     const size = () => node.resize(clampSize(op.w), clampSize(op.h));
@@ -584,7 +601,8 @@ export function createApplier(api: PluginAPI) {
         node.counterAxisSizingMode = "FIXED";
       }
       size();
-      [node.paddingTop, node.paddingRight, node.paddingBottom, node.paddingLeft] = layout.padding;
+      [node.paddingTop, node.paddingRight, node.paddingBottom, node.paddingLeft] = paddingOf(op);
+      if (layout.strokesIncluded && strokeInset(op)) node.strokesIncludedInLayout = true;
       if (layout.mode === "GRID") {
         node.gridRowCount = layout.rows.length;
         node.gridColumnCount = layout.columns.length;

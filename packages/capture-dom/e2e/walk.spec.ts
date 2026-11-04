@@ -2478,7 +2478,11 @@ type MappedFrame = {
   fills: { colorKey?: string }[];
   strokes: { colorKey?: string } | null;
   radiusKeys?: (string | undefined)[];
-  layout: { padding: number[]; spacingKeys?: { padding?: (string | undefined)[] } };
+  layout: {
+    padding: number[];
+    strokesIncluded?: boolean;
+    spacingKeys?: { padding?: (string | null | undefined)[] };
+  };
 };
 
 function mapLayered(c: Capture) {
@@ -2495,12 +2499,18 @@ function mapLayered(c: Capture) {
     );
     return plan.ops.find((o) => o.op === "frame" && o.id === node.id) as unknown as MappedFrame;
   };
+  const byText = (text: string) => {
+    const node = findKind(c, "element", (n) =>
+      n.children.some((k) => k.kind === "text" && k.text === text)
+    );
+    return plan.ops.find((o) => o.op === "frame" && o.id === node.id) as unknown as MappedFrame;
+  };
   const values = (key: string) => {
     const v = layers.variables.find((x) => x.key === key);
     if (!v) throw new Error(`no variable ${key}`);
     return v.values as { r: number; g: number; b: number; a: number }[];
   };
-  return { plan, layers, byClass, values };
+  return { plan, layers, byClass, byText, values };
 }
 
 for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
@@ -2513,7 +2523,7 @@ for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
     expect(c.tokens.activeTheme).toBe(dark ? "Dark" : undefined);
     expect(c.tokens.themes?.map((t) => t.mode)).toEqual(["Dark"]);
 
-    const { layers, byClass, values } = mapLayered(c);
+    const { layers, byClass, byText, values } = mapLayered(c);
     expect(layers.modes).toEqual(["Light", "Dark"]);
     expect(layers.activeMode).toBe(dark ? "Dark" : "Light");
     expect(layers.themeSource).toBe("site");
@@ -2540,6 +2550,17 @@ for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
     expect(popover.fills[0]?.colorKey).toBe("theme:popover");
     expect(card.strokes?.colorKey).toBe("theme:border");
     expect(card.radiusKeys).toEqual(Array(4).fill("primitives:radius/lg"));
+
+    // Padding inside a border binds too: `border p-6` is 25 px from the edge, 24 inside the stroke.
+    const six = "primitives:spacing/6";
+    expect(card.layout.spacingKeys?.padding).toEqual([six, six, six, six]);
+    expect(card.layout.padding).toEqual([25, 25, 25, 25]);
+    expect(card.layout.strokesIncluded).toBe(true);
+    const four = "primitives:spacing/4";
+    expect(popover.layout.spacingKeys?.padding).toEqual([four, four, four, four]);
+    const cancel = byText("Cancel");
+    const [two, three] = ["primitives:spacing/2", "primitives:spacing/3"];
+    expect(cancel.layout.spacingKeys?.padding).toEqual([two, three, two, three]);
   });
 }
 

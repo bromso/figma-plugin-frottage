@@ -1118,6 +1118,43 @@ const spacingTokens = (spacing: PlanSpacing[] = [gap]) =>
 const idsOf = (b: object) => Object.fromEntries(Object.entries(b).map(([k, v]: any) => [k, v.id]));
 
 describe("spacing variables", () => {
+  test("padding read inside a uniform stroke binds, and the frame counts its stroke", async () => {
+    const f = fakeFigma();
+    const keys = { padding: [gap.key, gap.key, gap.key, gap.key] };
+    const stroke = {
+      color: { r: 0, g: 0, b: 0 },
+      opacity: 1,
+      weights: { top: 1, right: 1, bottom: 1, left: 1 },
+    };
+    // 10 px of padding inside a 1 px border: 11 px from each edge, as captured.
+    const ops: PlanOp[] = [
+      frame("a", null, {
+        layout: auto(keys, { padding: [11, 11, 11, 11], strokesIncluded: true }),
+        strokes: stroke,
+        h: 62,
+        w: 200,
+        childCount: 2,
+      }),
+      box("b1", "a", [11, 11, 50, 40]),
+      box("b2", "a", [71, 11, 50, 40]),
+    ];
+    const end = await runImport(f, spacingTokens(), options(), ops);
+    const node = f.frame("Import");
+    const [variable] = variablesIn(f) as [any];
+    expect(node.strokesIncludedInLayout).toBe(true);
+    expect([node.paddingTop, node.paddingRight, node.paddingBottom, node.paddingLeft]).toEqual([
+      10, 10, 10, 10,
+    ]);
+    expect(idsOf(bound(f))).toMatchObject({
+      paddingTop: variable.id,
+      paddingRight: variable.id,
+      paddingBottom: variable.id,
+      paddingLeft: variable.id,
+    });
+    // It lays out as captured, so it stays in auto layout.
+    expect(end.fallbackFrames).toBe(0);
+  });
+
   test("a gap and a side of padding bind to one Frottage number variable", async () => {
     const f = fakeFigma();
     const keys = { itemSpacing: gap.key, padding: [gap.key, undefined, undefined, undefined] };

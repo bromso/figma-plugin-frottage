@@ -21,6 +21,15 @@ const isGrid = (n: FakeNode | undefined) => n?.layoutMode === "GRID";
 const isLaidOut = (n: FakeNode | undefined) => isAuto(n) || isGrid(n);
 const inFlow = (n: FakeNode) => n.layoutPositioning !== "ABSOLUTE";
 
+type Side = "Top" | "Right" | "Bottom" | "Left";
+
+/** A side's inset: the padding, and the stroke too where the frame counts it, as Figma does. */
+const inset = (f: FakeNode, side: Side): number =>
+  (f[`padding${side}`] as number) +
+  (f.strokesIncludedInLayout && f.strokes?.length
+    ? ((f[`stroke${side}Weight`] as number) ?? 0)
+    : 0);
+
 /** Text sits on its baseline; anything else, having none, on its bottom edge. */
 const baselineOf = (c: FakeNode): number => (c.type === "TEXT" ? c.height * 0.8 : c.height);
 
@@ -70,11 +79,11 @@ export function layoutModel(opts: LayoutOptions = {}) {
     const fillsCross = (c: FakeNode) =>
       (horizontal ? c.layoutSizingVertical : c.layoutSizingHorizontal) === "FILL";
     const [padStart, padEnd] = horizontal
-      ? [f.paddingLeft, f.paddingRight]
-      : [f.paddingTop, f.paddingBottom];
+      ? [inset(f, "Left"), inset(f, "Right")]
+      : [inset(f, "Top"), inset(f, "Bottom")];
     const [crossPadStart, crossPadEnd] = horizontal
-      ? [f.paddingTop, f.paddingBottom]
-      : [f.paddingLeft, f.paddingRight];
+      ? [inset(f, "Top"), inset(f, "Bottom")]
+      : [inset(f, "Left"), inset(f, "Right")];
     const resizeChild = (c: FakeNode, main: number, cross: number) =>
       horizontal ? setSize(c, main, cross) : setSize(c, cross, main);
 
@@ -185,8 +194,8 @@ export function layoutModel(opts: LayoutOptions = {}) {
     );
     const gap: number = horizontal ? f.gridColumnGap : f.gridRowGap;
     const room =
-      (horizontal ? f.width - f.paddingLeft - f.paddingRight : f.height - f.paddingTop) -
-      (horizontal ? 0 : f.paddingBottom) -
+      (horizontal ? f.width - inset(f, "Left") - inset(f, "Right") : f.height - inset(f, "Top")) -
+      (horizontal ? 0 : inset(f, "Bottom")) -
       gap * (tracks.length - 1) -
       sizes.reduce((s, n) => s + n, 0);
     const shares = tracks.reduce((s, t) => s + (t.type === "FLEX" ? t.value : 0), 0);
@@ -206,8 +215,8 @@ export function layoutModel(opts: LayoutOptions = {}) {
         return start;
       });
     };
-    const xs = starts(columns, f.paddingLeft, f.gridColumnGap);
-    const ys = starts(rows, f.paddingTop, f.gridRowGap);
+    const xs = starts(columns, inset(f, "Left"), f.gridColumnGap);
+    const ys = starts(rows, inset(f, "Top"), f.gridRowGap);
     for (const c of f.children.filter(inFlow)) {
       const col = c.gridColumnAnchorIndex as number;
       const row = c.gridRowAnchorIndex as number;

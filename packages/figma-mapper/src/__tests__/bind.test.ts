@@ -176,6 +176,50 @@ describe("bindLayers", () => {
     expect(p.tokens.layers?.variables.find((v) => v.key === key)?.values).toEqual([16]);
   });
 
+  /** A p-4 column with a border of these widths on each side, [top, right, bottom, left]. */
+  function bordered(widths: [number, number, number, number]) {
+    const [t, r, b, l] = widths;
+    const child = textNode("t", { box: { x: 16 + l, y: 16 + t, w: 68, h: 20 } });
+    const base = el("a", [0, 0], [child], {}, [100 + l + r, 52 + t + b]);
+    const side = (width: number) => ({ width, style: "solid", color: rgba("oklch(0.922 0 0)") });
+    return {
+      ...base,
+      style: {
+        ...base.style,
+        borders: { top: side(t), right: side(r), bottom: side(b), left: side(l) },
+      },
+      layout: {
+        ...base.layout,
+        display: "flex",
+        flexDirection: "column",
+        flexWrap: "nowrap",
+        justifyContent: "normal",
+        alignItems: "flex-start",
+        gap: [0, 0],
+        padding: [16, 16, 16, 16],
+      },
+      tokenRefs: { padding: ["--spacing*4", "--spacing*4", "--spacing*4", "--spacing*4"] },
+    } as ElementNode;
+  }
+
+  test("border p-4 binds its padding inside a uniform stroke, which counts in the layout", () => {
+    const p = plan([bordered([1, 1, 1, 1])]);
+    const layout = frame(p, "a").layout;
+    const key = "primitives:spacing/4";
+    expect("spacingKeys" in layout && layout.spacingKeys?.padding).toEqual([key, key, key, key]);
+    // The padding stays the inset from each edge; the applier takes the stroke out of it.
+    expect("padding" in layout && layout.padding).toEqual([17, 17, 17, 17]);
+    expect("strokesIncluded" in layout && layout.strokesIncluded).toBe(true);
+    expect(p.report.raw?.spacing).toBe(0);
+  });
+
+  test("a stroke that differs by side leaves the padding as it was", () => {
+    const p = plan([bordered([1, 2, 1, 1])]);
+    const layout = frame(p, "a").layout;
+    expect("spacingKeys" in layout ? layout.spacingKeys?.padding : undefined).toBeUndefined();
+    expect("strokesIncluded" in layout).toBe(false);
+  });
+
   test("a length that doesn't hold the ref's value doesn't take it", () => {
     const base = el("a", [0, 0]);
     const node = {
