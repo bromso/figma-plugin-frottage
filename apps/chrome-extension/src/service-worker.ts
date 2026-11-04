@@ -21,8 +21,11 @@ const OFFSCREEN_URL = "offscreen.html";
 const RUN_PAGE = "run.html";
 const DOWNLOAD_POLL_MS = 250;
 const DOWNLOAD_MAX_POLLS = 240;
-/** How long a language's page may take to load before it is left out. */
-const LOAD_MS = 30_000;
+/**
+ * How long a language's page may take to load before it is left out: under the 30 s an MV3 worker
+ * may sit idle, so the wait ends, and its answer is sent, before Chrome can stop the worker.
+ */
+const LOAD_MS = 25_000;
 
 const WINDOWS: WindowsApi = {
   get: (windowId) => chrome.windows.get(windowId),

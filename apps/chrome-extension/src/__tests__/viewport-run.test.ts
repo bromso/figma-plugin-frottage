@@ -50,6 +50,8 @@ type Over = {
   origin?: (url: string) => string | null;
   /** The address the tab starts at. */
   url?: string;
+  /** The tab's address as read; by default where the tab is. */
+  address?: () => string | null;
   /** Where loading `url` ends up; it throws to fail the load. */
   navigate?: (url: string) => string;
   capture?: (label: string, run: ViewportRun, count: number) => Promise<CaptureResult> | null;
@@ -80,7 +82,7 @@ function setup(over: Over = {}) {
   for (const width of over.refuse ?? []) fake.refuse.add(width);
   const run: ViewportRun = new ViewportRun({
     origin: async () => (over.origin ? over.origin(tab.url) : ORIGIN),
-    address: async () => tab.url,
+    address: async () => (over.address ? over.address() : tab.url),
     navigate: async (url) => {
       events.push(`navigate ${url}`);
       tab.url = url;
@@ -993,6 +995,13 @@ describe("ViewportRun with languages", () => {
     expect(t.final().request.languages).toEqual([EN, SV]);
   });
 
+  test("a starting address that can't be read stops the run, and says so", async () => {
+    const t = setup({ origin: byPage, address: () => null });
+    await t.run.start(asked, { languages: [EN, SV] });
+    expect(t.final().stopped).toBe("The page's address couldn't be read, so the run stopped.");
+    expect(t.events).not.toContain("hold");
+  });
+
   test("a run without languages never loads another address", async () => {
     const t = setup();
     await t.run.start(asked);
@@ -1101,6 +1110,13 @@ describe("loadTab", () => {
     await loadTab(tabs.api, 7, "https://example.com/sv/", 1000);
     expect(tabs.asked).toEqual(["https://example.com/sv/"]);
     expect(tabs.listeners.size).toBe(0);
+  });
+
+  test("a complete with no load begun first is the old page's, and is not taken", async () => {
+    const tabs = fakeTabs((fire) => fire(7, { status: "complete" }));
+    await expect(loadTab(tabs.api, 7, "https://example.com/sv/", 5)).rejects.toThrow(
+      "The page didn't finish loading"
+    );
   });
 
   test("gives up on a page that doesn't finish loading", async () => {

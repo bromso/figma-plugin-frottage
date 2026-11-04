@@ -43,9 +43,13 @@ export async function loadTab(
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await new Promise<void>((resolve, reject) => {
-      // Listening first, so a fast load is not missed.
+      // Listening first, so a fast load is not missed. A `complete` counts only after this load's
+      // `loading`, so the old page's can't end the wait.
+      let loading = false;
       listener = (id, change) => {
-        if (id === tabId && change.status === "complete") resolve();
+        if (id !== tabId) return;
+        if (change.status === "loading") loading = true;
+        else if (change.status === "complete" && loading) resolve();
       };
       api.onUpdated.addListener(listener);
       timer = setTimeout(() => reject(new Error(NOT_LOADED)), timeoutMs);
@@ -159,6 +163,7 @@ type Pass = { items: RunWidth[]; language?: PageLanguage; load: boolean };
 
 const WINDOW_CLOSED = "The window was closed, so the run stopped.";
 const LEFT_PAGE = "The page changed address, so the run stopped.";
+const NO_ADDRESS = "The page's address couldn't be read, so the run stopped.";
 const NOT_MOVED = "The tab couldn't be moved, so the run stopped.";
 const STRANDED = "Your tab couldn't be moved back. It's in the small window.";
 const notSaved = (reason: string) => `The file couldn't be saved: ${friendlyError(reason)}`;
@@ -334,8 +339,13 @@ export class ViewportRun {
     const home = await this.origin();
     const loads = passes.some((pass) => pass.load);
     const start = loads ? await this.address() : null;
-    if (home === null || (loads && start === null)) {
+    if (home === null) {
       done.stopped = LEFT_PAGE;
+      return;
+    }
+    if (loads && start === null) {
+      // Without it the tab couldn't be sent back after the languages, so none is loaded.
+      done.stopped = NO_ADDRESS;
       return;
     }
     try {
