@@ -642,7 +642,11 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
         fixed(
           "breakpoint",
           "breakpoint/max-width",
-          ranges.map((r) => (r.max === null ? 0 : r.max - 1)),
+          // Up to the next mode's start: a range with no capture leaves no gap.
+          ranges.map((r) => {
+            const next = Math.min(...ranges.map((o) => o.min).filter((min) => min > r.min));
+            return Number.isFinite(next) ? next - 1 : 0;
+          }),
           "Where the range ends; 0 means it has no end"
         ),
         ...bpVariables,

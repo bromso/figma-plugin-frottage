@@ -202,7 +202,8 @@ describe("mergeDevices", () => {
     expect(report).toContain("No capture for the sm breakpoint.");
     expect(report).toContain("No capture for the xl breakpoint.");
     expect(varOf(layers, "breakpoint:breakpoint/min-width")?.values).toEqual([1400, 768, 0, 1024]);
-    expect(varOf(layers, "breakpoint:breakpoint/max-width")?.values).toEqual([0, 1023, 639, 1279]);
+    // A range's end is where the next mode starts, so the ranges with no capture leave no gap.
+    expect(varOf(layers, "breakpoint:breakpoint/max-width")?.values).toEqual([0, 1023, 767, 1399]);
   });
 
   test("Breakpoint modes put the frames' ranges first, so a mode limit drops extras' ranges", () => {
