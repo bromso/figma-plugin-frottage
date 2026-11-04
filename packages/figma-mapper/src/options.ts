@@ -15,6 +15,11 @@ export type PlanOptions = ImportOptions & {
    * then counts uses across its versions.
    */
   tokenFloor?: number;
+  /**
+   * Tokens as a Primitives and a Theme collection, with layers bound to the token the site used.
+   * Only a page imported on its own asks for it; a set of versions keeps the single collection.
+   */
+  layers?: boolean;
 };
 
 /**

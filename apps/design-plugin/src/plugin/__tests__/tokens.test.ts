@@ -188,7 +188,7 @@ describe("creating tokens", () => {
 });
 
 describe("binding", () => {
-  test("a paint with a token is bound to its variable, keeping its opacity", async () => {
+  test("a paint with a token is bound to its variable, at opacity 1", async () => {
     const f = fakeFigma();
     await runImport(f);
     const [variable] = variablesIn(f) as [any];
@@ -1118,6 +1118,43 @@ const spacingTokens = (spacing: PlanSpacing[] = [gap]) =>
 const idsOf = (b: object) => Object.fromEntries(Object.entries(b).map(([k, v]: any) => [k, v.id]));
 
 describe("spacing variables", () => {
+  test("padding read inside a uniform stroke binds, and the frame counts its stroke", async () => {
+    const f = fakeFigma();
+    const keys = { padding: [gap.key, gap.key, gap.key, gap.key] };
+    const stroke = {
+      color: { r: 0, g: 0, b: 0 },
+      opacity: 1,
+      weights: { top: 1, right: 1, bottom: 1, left: 1 },
+    };
+    // 10 px of padding inside a 1 px border: 11 px from each edge, as captured.
+    const ops: PlanOp[] = [
+      frame("a", null, {
+        layout: auto(keys, { padding: [11, 11, 11, 11], strokesIncluded: true }),
+        strokes: stroke,
+        h: 62,
+        w: 200,
+        childCount: 2,
+      }),
+      box("b1", "a", [11, 11, 50, 40]),
+      box("b2", "a", [71, 11, 50, 40]),
+    ];
+    const end = await runImport(f, spacingTokens(), options(), ops);
+    const node = f.frame("Import");
+    const [variable] = variablesIn(f) as [any];
+    expect(node.strokesIncludedInLayout).toBe(true);
+    expect([node.paddingTop, node.paddingRight, node.paddingBottom, node.paddingLeft]).toEqual([
+      10, 10, 10, 10,
+    ]);
+    expect(idsOf(bound(f))).toMatchObject({
+      paddingTop: variable.id,
+      paddingRight: variable.id,
+      paddingBottom: variable.id,
+      paddingLeft: variable.id,
+    });
+    // It lays out as captured, so it stays in auto layout.
+    expect(end.fallbackFrames).toBe(0);
+  });
+
   test("a gap and a side of padding bind to one Frottage number variable", async () => {
     const f = fakeFigma();
     const keys = { itemSpacing: gap.key, padding: [gap.key, undefined, undefined, undefined] };
@@ -1255,5 +1292,77 @@ describe("spacing variables", () => {
     expect(variablesIn(f)).toHaveLength(0);
     expect(bound(f)).toEqual({});
     expect(f.frame("Import").itemSpacing).toBe(10);
+  });
+});
+
+describe("a text style's bindings on the layered path", () => {
+  const variable = (name: string, type: "FLOAT" | "STRING", value: number | string) => ({
+    key: `primitives:${name}`,
+    name,
+    collection: "primitives" as const,
+    type,
+    values: [value],
+    description: `From the site: --${name.replace("/", "-")}`,
+    scopes: ["ALL_SCOPES"],
+  });
+  const size = variable("text/base", "FLOAT", 16);
+  const leading = variable("leading/base", "FLOAT", 24);
+  const family = variable("font/sans", "STRING", "Inter");
+  const weight = variable("font-weight/normal", "FLOAT", 400);
+  const bind = {
+    fontSize: size.key,
+    lineHeight: leading.key,
+    fontFamily: family.key,
+    fontWeight: weight.key,
+  };
+  const layered = (style: PlanTextStyle = { ...body, bind }): PlanTokens =>
+    tokens({
+      textStyles: [style],
+      colors: [],
+      layers: {
+        hostname: "example.com",
+        modes: ["Light"],
+        themeSource: "none",
+        variables: [size, leading, family, weight],
+        effectStyles: [],
+        gradientStyles: [],
+        notes: { twins: [], inferred: [], droppedPrimitives: 0 },
+      },
+    });
+  const idOf = (f: Fake, name: string) => variablesIn(f).find((v: any) => v.name === name)?.id;
+
+  test("a style made by this import is bound to its variables", async () => {
+    const f = fakeFigma();
+    const r = await runImport(f, layered());
+    const [style] = stylesIn(f) as [any];
+    expect(style.boundVariables.fontSize.id).toBe(idOf(f, "text/base"));
+    expect(style.boundVariables.lineHeight.id).toBe(idOf(f, "leading/base"));
+    expect(style.boundVariables.fontFamily.id).toBe(idOf(f, "font/sans"));
+    expect(style.boundVariables.fontWeight.id).toBe(idOf(f, "font-weight/normal"));
+    expect(r.tokenFailures).toBe(0);
+  });
+
+  test("a field Figma refuses stays plain and counts", async () => {
+    const f = fakeFigma({ failStyleBinding: "fontWeight" });
+    const r = await runImport(f, layered());
+    const [style] = stylesIn(f) as [any];
+    expect(Object.keys(style.boundVariables)).toEqual(["fontSize", "lineHeight", "fontFamily"]);
+    expect(r.tokenFailures).toBe(1);
+  });
+
+  test("a Frottage style from an earlier import is reused as it is", async () => {
+    const f = fakeFigma();
+    await runImport(f, tokens({ colors: [] }));
+    const [style] = stylesIn(f) as [any];
+    await runImport(f, layered());
+    expect(stylesIn(f)).toEqual([style]);
+    expect(style.boundVariables).toBeUndefined();
+  });
+
+  test("with tokens off nothing is bound", async () => {
+    const f = fakeFigma();
+    await runImport(f, layered(), options({ tokens: false }));
+    expect(stylesIn(f)).toEqual([]);
+    expect(variablesIn(f)).toEqual([]);
   });
 });

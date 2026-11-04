@@ -14,6 +14,43 @@ import { Button, Progress, SectionTitle } from "./index";
 
 type DoneState = Extract<ImportState, { step: "done" }>;
 
+const plural = (count: number, one: string, many = `${one}s`) =>
+  `${count} ${count === 1 ? one : many}`;
+
+/** What the theme import did, as lines. Only a page imported with layers has any. */
+function themeLines({ report, theme }: VersionResult): string[] {
+  if (!theme) return [];
+  const lines: string[] = [];
+  const modes = report.themeModes ?? [];
+  if (modes.length > 1) lines.push(`Theme modes: ${modes.join(", ")}`);
+  else if (theme.source !== "site") {
+    lines.push(
+      "No theme found in the stylesheet. To add a dark mode, capture the page again in dark and import both as versions."
+    );
+  }
+  if (theme.inferred.length > 0) lines.push(`Inferred from use: ${theme.inferred.join(", ")}`);
+  if (theme.twins > 0) {
+    lines.push(`${theme.twins} colours are near twins of another and were kept separate.`);
+  }
+  const { raw } = report;
+  if (raw && raw.colors + raw.radii + raw.spacing > 0) {
+    lines.push(
+      `Raw values left unbound: ${plural(raw.colors, "colour")}, ${plural(raw.radii, "radius", "radii")}, ${raw.spacing} spacing`
+    );
+  }
+  if (theme.modesDropped.length > 0) {
+    lines.push(`This file allows fewer modes. Not created: ${theme.modesDropped.join(", ")}.`);
+  }
+  if (theme.variablesRenamed > 0) {
+    lines.push(
+      theme.variablesRenamed === 1
+        ? "1 variable had changed values and was added as a new one."
+        : `${theme.variablesRenamed} variables had changed values and were added as new ones.`
+    );
+  }
+  return lines;
+}
+
 /** The counts of one version. */
 function Report({
   state,
@@ -61,6 +98,11 @@ function Report({
           </div>
         ))}
       </dl>
+      {themeLines(state).map((line) => (
+        <p key={line} className="text-figma-text-secondary">
+          {line}
+        </p>
+      ))}
       {overrideFailures > 0 && (
         <p className="text-figma-text-danger">
           {state.overrideFailuresInMains > 0 ? "At least " : ""}
@@ -125,9 +167,6 @@ function Report({
     </div>
   );
 }
-
-const plural = (count: number, one: string, many = `${one}s`) =>
-  `${count} ${count === 1 ? one : many}`;
 
 /** What the versions of a set share: its modes, and its tokens, which no one version owns. */
 function SetSummary({ set }: { set: SetReport }) {

@@ -1,3 +1,5 @@
+import type { TokenRefs } from "@repo/capture-schema";
+
 /** Plain-data layer plan. JSON-safe: it crosses postMessage to the sandbox. */
 
 export type FontRef = { family: string; style: string };
@@ -19,6 +21,8 @@ export type PlanPaint =
       transform: [[number, number, number], [number, number, number]];
       /** Positions run 0 to 1 along the gradient. */
       stops: { position: number; color: PlanRgb & { a: number } }[];
+      /** The paint style to link, when this gradient became one. */
+      gradientStyleKey?: string;
     };
 
 /** Per-side weights; one colour (the most common among drawn sides). */
@@ -59,6 +63,8 @@ export type PlanRun = {
   colorKey?: string;
   /** An http(s) link for this range; absent when the text has none or hyperlinks are off. */
   href?: string;
+  /** The text node's token refs, while tokens are extracted; never in a finished plan. */
+  refs?: TokenRefs;
 };
 
 export type PlanTrack = { type: "FIXED" | "FLEX" | "HUG"; value: number };
@@ -94,6 +100,11 @@ export type PlanLayout =
       sizingH: "FIXED" | "HUG";
       sizingV: "FIXED" | "HUG";
       spacingKeys?: SpacingKeys;
+      /**
+       * The frame counts its uniform stroke in its layout, as CSS's border-box: `padding` is still
+       * the inset from each edge, and Figma's padding is that less the stroke.
+       */
+      strokesIncluded?: boolean;
     }
   | {
       mode: "GRID";
@@ -103,6 +114,8 @@ export type PlanLayout =
       columnGap: number;
       padding: [number, number, number, number];
       spacingKeys?: SpacingKeys;
+      /** As on an auto layout frame. */
+      strokesIncluded?: boolean;
     };
 
 export type PlanChildLayout = {
@@ -150,8 +163,12 @@ export type PlanOp = (
       strokes: PlanStroke | null;
       /** [topLeft, topRight, bottomRight, bottomLeft]. */
       radius: [number, number, number, number];
+      /** The variable each corner is bound to, by `PlanVariable.key`; none stays a plain value. */
+      radiusKeys?: [string?, string?, string?, string?];
       opacity: number;
       effects: PlanEffect[];
+      /** The effect style to link, when these shadows became one; it replaces `effects`. */
+      effectStyleKey?: string;
       clips: boolean;
       layout: PlanLayout;
       /** Clockwise degrees as in CSS, about the box centre; absent when not rotated. */
@@ -246,6 +263,8 @@ export type PlanOp = (
 ) & {
   /** How the node sits in an auto layout parent; absent under a parent with mode NONE. */
   childLayout?: PlanChildLayout;
+  /** The node's token refs, while tokens are extracted; never in a finished plan. */
+  refs?: TokenRefs;
 };
 
 export type ImportReport = {
@@ -260,6 +279,10 @@ export type ImportReport = {
   components: number;
   /** On the canvas, where one inside a definition counts for the main and for each copy of it. */
   instances: number;
+  /** Colours, corners and spacing lengths that bound to no variable, on the layered path. */
+  raw?: { colors: number; radii: number; spacing: number };
+  /** The Theme collection's modes, on the layered path. */
+  themeModes?: string[];
 };
 
 /** A value worth a variable. `key` is the value, so it stays the same across imports. */
@@ -287,6 +310,14 @@ export type PlanTextStyle = {
   textCase: PlanRun["textCase"];
   /** How many runs use it in this capture. */
   uses: number;
+  /** The variables its fields are bound to, by `PlanVariable.key`, on the layered path. */
+  bind?: {
+    fontSize?: string;
+    lineHeight?: string;
+    letterSpacing?: string;
+    fontFamily?: string;
+    fontWeight?: string;
+  };
 };
 
 /**
@@ -302,6 +333,66 @@ export type PlanSpacing = {
   px: number;
 };
 
+/** A variable's value in one mode: a colour in 0..1, a number, a string, or another variable's key. */
+export type PlanVarValue = (PlanRgb & { a: number }) | number | string | { alias: string };
+
+/** One variable of the Primitives or Theme collection. */
+export type PlanVariable = {
+  /** `<collection>:<name>`, so it stays the same across imports. */
+  key: string;
+  /** As `color/gray-200`, `radius/lg`, `spacing/4`, `text/sm` or `background`. */
+  name: string;
+  collection: "primitives" | "theme";
+  type: "COLOR" | "FLOAT" | "STRING";
+  /** Primitives have one; theme variables have one per mode, in `PlanLayers.modes` order. */
+  values: PlanVarValue[];
+  /** `From the site: <--property>` or `Inferred: <evidence>`. */
+  description: string;
+  /** Figma `VariableScope` names. */
+  scopes: string[];
+  /** The custom property behind it, as `--card`. */
+  cssVar?: string;
+};
+
+/** Shadows worth an effect style; each shadow's colour binds to the variable in `colorKeys`. */
+export type PlanEffectStyle = {
+  key: string;
+  name: string;
+  shadows: PlanEffect[];
+  colorKeys: (string | null)[];
+};
+
+/** A gradient worth a paint style; each stop's colour binds to the variable in `stopKeys`. */
+export type PlanGradientStyle = {
+  key: string;
+  name: string;
+  paint: Extract<PlanPaint, { type: "GRADIENT_LINEAR" | "GRADIENT_RADIAL" | "GRADIENT_ANGULAR" }>;
+  stopKeys: (string | null)[];
+};
+
+/** The page's tokens as a Primitives and a Theme collection. */
+export type PlanLayers = {
+  hostname: string;
+  /** `["Light", ...theme modes]`; `["Light"]` when there are none. */
+  modes: string[];
+  /** The mode the page was captured in, which a page opens in. Light when absent. */
+  activeMode?: string;
+  themeSource: "site" | "inferred" | "none";
+  variables: PlanVariable[];
+  effectStyles: PlanEffectStyle[];
+  gradientStyles: PlanGradientStyle[];
+  /**
+   * Opaque colours no variable took that repeat: the sandbox links their paints to the user's
+   * matching solid paint style, with local styles on, and leaves them plain otherwise.
+   */
+  styleColors?: PlanStyleColor[];
+  /** Near twins by key; the inferred roles' names; primitives left out. */
+  notes: { twins: [string, string][]; inferred: string[]; droppedPrimitives: number };
+};
+
+/** A raw colour a user's paint style may hold. `key` is `paint:#rrggbb`, as its paints have it. */
+export type PlanStyleColor = { key: string; rgba: PlanRgb & { a: number }; uses: number };
+
 export type PlanTokens = {
   textStyles: PlanTextStyle[];
   colors: PlanColor[];
@@ -313,6 +404,8 @@ export type PlanTokens = {
   spacingRem?: boolean;
   /** The variable collection, named after the page's hostname. */
   collection: string;
+  /** The Primitives and Theme collections; absent on the single-collection path. */
+  layers?: PlanLayers;
 };
 
 /** One mode's value. `mode` is the version's index; a mode with none reads the first mode's. */

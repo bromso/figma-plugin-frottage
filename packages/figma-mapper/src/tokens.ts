@@ -1,6 +1,10 @@
 import type { Capture, CaptureNode } from "@repo/capture-schema";
+import { parseCssColor } from "@repo/capture-schema/css-values";
+import { bindLayers } from "./bind";
+import { buildCatalogue } from "./catalogue";
 import type { PlanOptions } from "./options";
 import type {
+  ImportReport,
   PlanColor,
   PlanLayout,
   PlanOp,
@@ -11,6 +15,7 @@ import type {
   PlanTokens,
   SpacingKeys,
 } from "./plan";
+import { bindTextStyles } from "./styles-tokens";
 
 /**
  * Finds the values a page repeats and proposes them as text styles and colour variables. Only the
@@ -22,7 +27,7 @@ export const MIN_USES = 3;
 /** Text this much larger than the page's body size is a heading even without a heading tag. */
 const HEADING_RATIO = 1.25;
 const MAX_VAR_DEPTH = 16;
-const MAX_VALUE_LENGTH = 200;
+export const MAX_VALUE_LENGTH = 200;
 const FALLBACK_COLLECTION = "Frottage";
 /** Spacing variables per file, so that a page with a huge scale can't flood a Figma file. */
 const MAX_SPACING = 200;
@@ -36,7 +41,7 @@ const ROOT_FONT_SIZE = 16;
 const PX_STEP = 0.01;
 
 /** Custom properties Figma can hold as a name. CSS allows far more, such as `.` and escapes. */
-const SAFE_PROPERTY = /^--[a-z0-9_-]+$/i;
+export const SAFE_PROPERTY = /^--[a-z0-9_-]+$/i;
 const VAR = /^var\(\s*(--[^\s,)]+)\s*(?:,(.*))?\)$/is;
 
 type Coloured = { color: PlanRgb; opacity: number; colorKey?: string };
@@ -49,7 +54,7 @@ const hexByte = (n: number) =>
 const hexOf = (r: number, g: number, b: number) => `#${hexByte(r)}${hexByte(g)}${hexByte(b)}`;
 
 /** Wide-gamut pages give fractional channels; the key is their nearest 8-bit colour. */
-const colorKeyOf = ({ r, g, b }: PlanRgb) => hexOf(r * 255, g * 255, b * 255);
+export const colorKeyOf = ({ r, g, b }: PlanRgb) => hexOf(r * 255, g * 255, b * 255);
 
 /**
  * A colour key's value, so a token's doesn't depend on which use came first. Only a value read from
@@ -78,7 +83,7 @@ function colorUses(op: PlanOp): Coloured[] {
 // ---------- CSS values
 
 /** Follows `var()` when it is the whole value. One inside a function stays unresolved. */
-function resolveVars(value: string, props: Record<string, string>): string | null {
+export function resolveVars(value: string, props: Record<string, string>): string | null {
   let current = value.trim();
   for (let depth = 0; depth < MAX_VAR_DEPTH; depth++) {
     const m = VAR.exec(current);
@@ -91,47 +96,16 @@ function resolveVars(value: string, props: Record<string, string>): string | nul
   return null;
 }
 
-function hslToHex(h: number, s: number, l: number): string {
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const m = l - c / 2;
-  const channel = (offset: number) => {
-    const k = (((h + offset) % 360) + 360) % 360;
-    const rise = k < 60 ? k / 60 : k < 180 ? 1 : k < 240 ? (240 - k) / 60 : 0;
-    return (rise * c + m) * 255;
-  };
-  return hexOf(channel(120), channel(0), channel(240));
-}
-
-const percentOr = (token: string, scale: number) =>
-  token.endsWith("%") ? (Number.parseFloat(token) / 100) * scale : Number.parseFloat(token);
-
-/** `#rrggbb`, with alpha added only when it isn't fully opaque. */
-const withAlpha = (hex: string, a: number) => {
-  const alpha = hexByte(a * 255);
-  return alpha === "ff" ? hex : `${hex}${alpha}`;
-};
-
-/** A CSS colour in hex, rgb or hsl, or white or black, as a hex key. Null for anything else. */
+/** A CSS colour as a hex key: `#rrggbb`, and `#rrggbbaa` when not opaque. Null for anything else. */
 function colorKeyOfCss(value: string): string | null {
   const text = value.trim().toLowerCase();
   if (text === "white") return "#ffffff";
   if (text === "black") return "#000000";
-  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(text)?.[1];
-  if (hex) {
-    const full = hex.length <= 4 ? hex.replace(/./g, "$&$&") : hex;
-    return full.endsWith("ff") && full.length === 8 ? `#${full.slice(0, 6)}` : `#${full}`;
-  }
-  const fn = /^(rgb|hsl)a?\(([^()]*)\)$/.exec(text);
-  if (!fn) return null;
-  const parts = (fn[2] as string).split(/[\s,/]+/).filter(Boolean);
-  if (parts.length !== 3 && parts.length !== 4) return null;
-  const [a = "", b = "", c = "", alpha = "1"] = parts;
-  if (![a, b, c, alpha].every((p) => /^[\d.]+(%|deg)?$/.test(p))) return null;
-  const key =
-    fn[1] === "rgb"
-      ? hexOf(percentOr(a, 255), percentOr(b, 255), percentOr(c, 255))
-      : hslToHex(Number.parseFloat(a), percentOr(b, 1), percentOr(c, 1));
-  return withAlpha(key, percentOr(alpha, 1));
+  const c = parseCssColor(text);
+  if (!c) return null;
+  const alpha = hexByte(c.a * 255);
+  const key = hexOf(c.r * 255, c.g * 255, c.b * 255);
+  return alpha === "ff" ? key : `${key}${alpha}`;
 }
 
 /** `--color-primary-dark` becomes `color/primary/dark`, as one level of grouping. Null if empty. */
@@ -371,7 +345,7 @@ function colorTokens(ops: PlanOp[], props: Record<string, string>, floor: number
 // ---------- Text styles
 
 /** The text nodes inside a heading. Wrappers collapse, so ops no longer show it. */
-function headedTexts(root: CaptureNode): Set<string> {
+export function headedTexts(root: CaptureNode): Set<string> {
   const headed = new Set<string>();
   const stack: { node: CaptureNode; inHeading: boolean }[] = [{ node: root, inHeading: false }];
   while (stack.length > 0) {
@@ -464,7 +438,7 @@ function textStyleTokens(ops: PlanOp[], root: CaptureNode, floor: number): PlanT
 
 // ---------- Plan
 
-function collectionName(url: string): string {
+export function collectionName(url: string): string {
   try {
     return new URL(url).hostname || FALLBACK_COLLECTION;
   } catch {
@@ -472,11 +446,43 @@ function collectionName(url: string): string {
   }
 }
 
-/** Proposes the page's tokens, and marks the runs and paints in `ops` that use them. */
-export function extractTokens(capture: Capture, ops: PlanOp[], options: PlanOptions): PlanTokens {
+/**
+ * Proposes the page's tokens, and marks the runs and paints in `ops` that use them. With `layers`,
+ * colours and lengths bind to the Primitives and Theme collections instead, and `report` gets the
+ * raw counts and the theme's modes.
+ */
+export function extractTokens(
+  capture: Capture,
+  ops: PlanOp[],
+  options: PlanOptions,
+  report?: Pick<ImportReport, "raw" | "themeModes">
+): PlanTokens {
   const collection = collectionName(capture.source.url);
   if (!options.tokens) return { textStyles: [], colors: [], spacing: [], collection };
   const floor = options.tokenFloor ?? MIN_USES;
+  if (options.layers) {
+    const catalogue = buildCatalogue(capture);
+    // Bound while the runs still hold their refs.
+    const textStyles = textStyleTokens(ops, capture.root, floor);
+    const keep = bindTextStyles(textStyles, ops, catalogue);
+    const { layers, raw } = bindLayers(catalogue, ops, {
+      root: capture.root,
+      props: capture.tokens.cssCustomProperties,
+      keep,
+      floor,
+    });
+    if (report) {
+      report.raw = raw;
+      report.themeModes = layers.modes;
+    }
+    return {
+      textStyles,
+      colors: [],
+      spacing: [],
+      collection,
+      layers,
+    };
+  }
   const spacing = spacingTokens(ops, capture.tokens.cssCustomProperties);
   return {
     textStyles: textStyleTokens(ops, capture.root, floor),

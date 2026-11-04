@@ -95,6 +95,56 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "authored": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "themes": {
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "context": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "mode": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "properties": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["context", "mode", "properties"],
+            "additionalProperties": false
+          }
+        },
+        "activeTheme": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "base": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "required": ["cssCustomProperties"],
@@ -1009,6 +1059,118 @@
               },
               "additionalProperties": false
             },
+            "tokenRefs": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "color": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "border": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "radius": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "padding": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 80,
+                          "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 80,
+                          "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 80,
+                          "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 80,
+                          "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "gap": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "fontSize": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "lineHeight": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "letterSpacing": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "fontFamily": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "fontWeight": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                }
+              },
+              "additionalProperties": false
+            },
             "children": {
               "type": "array",
               "items": {
@@ -1257,6 +1419,118 @@
                 ],
                 "additionalProperties": false
               }
+            },
+            "tokenRefs": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "color": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "border": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "radius": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "padding": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 80,
+                          "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 80,
+                          "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 80,
+                          "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 80,
+                          "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "gap": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "fontSize": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "lineHeight": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "letterSpacing": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "fontFamily": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                },
+                "fontWeight": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^--[A-Za-z0-9_-]+(?:\\*-?(?:\\d+\\.?\\d*|\\.\\d+))?$"
+                }
+              },
+              "additionalProperties": false
             }
           },
           "required": [

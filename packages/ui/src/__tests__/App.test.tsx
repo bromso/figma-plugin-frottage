@@ -9,6 +9,7 @@ import {
   fontFile,
   frottageFile,
   repeatedFile,
+  themedFile,
   versionFile,
 } from "../import/__tests__/helpers";
 
@@ -429,6 +430,78 @@ describe("App (options and font table)", () => {
     await screen.findByText("Import complete");
     expect(screen.queryByText("Styles created")).toBeNull();
     expect(screen.queryByText(/could not be created/)).toBeNull();
+  });
+});
+
+describe("App (theme report)", () => {
+  const NO_THEME =
+    "No theme found in the stylesheet. To add a dark mode, capture the page again in dark and import both as versions.";
+  const dark = {
+    cssCustomProperties: { "--surface": "#ffffff" },
+    themes: [{ context: ".dark", mode: "Dark", properties: { "--surface": "#000000" } }],
+  };
+  async function imported(file: File, endResult: Partial<FakePort["endResult"]> = {}) {
+    const user = userEvent.setup();
+    const port = fakePort();
+    port.endResult = { ...port.endResult, ...endResult };
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose .frottage files"), file);
+    await screen.findByText("Import complete");
+  }
+
+  it("lists the modes of a site theme, and not the no-theme line", async () => {
+    await imported(themedFile(dark, ["#ffffff"]));
+    expect(screen.getByText("Theme modes: Light, Dark")).toBeInTheDocument();
+    expect(screen.queryByText(NO_THEME)).toBeNull();
+  });
+
+  it("says when no theme was found, and lists no modes", async () => {
+    await imported(frottageFile(0));
+    expect(screen.getByText(NO_THEME)).toBeInTheDocument();
+    expect(screen.queryByText(/Theme modes:/)).toBeNull();
+    expect(screen.queryByText(/Inferred from use/)).toBeNull();
+    expect(screen.queryByText(/near twin/)).toBeNull();
+    expect(screen.queryByText(/This file allows fewer modes/)).toBeNull();
+    expect(screen.queryByText(/changed values/)).toBeNull();
+  });
+
+  it("counts the raw values left unbound, and hides the row at zero", async () => {
+    await imported(themedFile({ cssCustomProperties: {} }, ["#123456", "#654321"]));
+    expect(
+      screen.getByText(/^Raw values left unbound: 2 colours, 0 radii, 0 spacing$/)
+    ).toBeInTheDocument();
+    cleanup();
+    await imported(frottageFile(1));
+    expect(screen.queryByText(/Raw values left unbound/)).toBeNull();
+  });
+
+  it("names the roles inferred from use", async () => {
+    await imported(themedFile({ cssCustomProperties: {} }));
+    expect(screen.getByText(/^Inferred from use: foreground/)).toBeInTheDocument();
+  });
+
+  it("reports near twins", async () => {
+    await imported(
+      themedFile({ cssCustomProperties: { "--brand": "#2563eb", "--brand-alt": "#2564ea" } }, [
+        ["#2563eb", "--brand"],
+        ["#2564ea", "--brand-alt"],
+      ])
+    );
+    expect(
+      screen.getByText("2 colours are near twins of another and were kept separate.")
+    ).toBeInTheDocument();
+  });
+
+  it("reports the modes the file had no room for and the variables added as new ones", async () => {
+    await imported(themedFile(dark, ["#ffffff"]), {
+      layers: { variablesRenamed: 2, modesDropped: ["Dark"] },
+    });
+    expect(
+      screen.getByText("This file allows fewer modes. Not created: Dark.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("2 variables had changed values and were added as new ones.")
+    ).toBeInTheDocument();
   });
 });
 

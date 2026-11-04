@@ -161,6 +161,11 @@ describe("colour names", () => {
     expect(p.tokens.colors[0]?.name).toBe("color/brand");
   });
 
+  test("an oklch custom property names a colour", () => {
+    const p = plan(three("#ffffff", "a"), { "--background": "oklch(100% 0 0)" });
+    expect(p.tokens.colors[0]).toMatchObject({ name: "color/background", cssVar: "--background" });
+  });
+
   test.each([
     ["rgba(17, 34, 51, 0.5)"],
     ["#11223380"],

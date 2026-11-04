@@ -128,6 +128,37 @@ export function repeatedFile(count: number): File {
   return new File([packFrottage(capture, new Map()) as BlobPart], "page.frottage");
 }
 
+/**
+ * A File of a page with `tokens` and one frame per entry of `fills`: a hex colour, or one with the
+ * custom property the frame's background was authored as.
+ */
+export function themedFile(
+  tokens: Capture["tokens"],
+  fills: (string | [string, string])[] = []
+): File {
+  const capture = captureWithTexts(1);
+  capture.tokens = tokens;
+  const frames = fills.map((fill, i) => {
+    const [hex, ref] = typeof fill === "string" ? [fill, undefined] : fill;
+    const n = Number.parseInt(hex.slice(1), 16);
+    const frame = element(`f${i}`, []) as CaptureNode & {
+      style: { backgroundColor: unknown };
+      tokenRefs?: Record<string, string>;
+    };
+    frame.style.backgroundColor = {
+      r: (n >> 16) / 255,
+      g: ((n >> 8) & 255) / 255,
+      b: (n & 255) / 255,
+      a: 1,
+    };
+    if (ref) frame.tokenRefs = { background: ref };
+    return frame;
+  });
+  const root = capture.root as { children: CaptureNode[] };
+  capture.root = element("root", [...root.children, ...frames]);
+  return new File([packFrottage(capture, new Map()) as BlobPart], "page.frottage");
+}
+
 export type FakePort = ImportPort & {
   log: string[];
   batchSizes: number[];
@@ -153,6 +184,7 @@ export type FakePort = ImportPort & {
     variablesCreated?: number;
     variablesReused?: number;
     tokenFailures?: number;
+    layers?: { variablesRenamed: number; modesDropped: string[] };
   };
   /** What `endSet` gives, on top of zero counts. */
   setResult: Partial<Awaited<ReturnType<ImportPort["endSet"]>>>;

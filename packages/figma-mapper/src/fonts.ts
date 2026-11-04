@@ -22,7 +22,7 @@ const WEIGHTS: Record<string, number> = Object.assign(Object.create(null), {
   black: 900,
 });
 
-function parseStyle(style: string): { weight: number; italic: boolean } | null {
+export function parseStyle(style: string): { weight: number; italic: boolean } | null {
   const lower = style.toLowerCase();
   const italic = /italic|oblique/.test(lower);
   const rest = lower.replace(/italic|oblique/g, "").replace(/[\s_-]+/g, "");

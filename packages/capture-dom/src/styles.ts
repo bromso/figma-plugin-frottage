@@ -1,4 +1,5 @@
 import type { ElementNode } from "@repo/capture-schema";
+import { parseCssColor } from "@repo/capture-schema/css-values";
 import { parseComputedColor, type Rgba } from "./color";
 import { cleanCss, firstUrlInCss, rememberUrl, shortenDataUrls } from "./urls";
 
@@ -43,18 +44,68 @@ const LENGTH =
   /^[+-]?(?:\d+\.?\d*|\.\d+)(?:px|r?em|ex|ch|lh|rlh|[sld]?v[wh]|[sld]?vmin|[sld]?vmax|cm|mm|q|in|pt|pc|%)$/i;
 const VAR_CHAIN = /^var\(\s*--[^\s,)]+\s*(?:,(.*))?\)$/is;
 
+const CALC_TERM =
+  /^[+-]?(?:\d+\.?\d*|\.\d+)(?:px|r?em|ex|ch|lh|rlh|[sld]?v[wh]|[sld]?vmin|[sld]?vmax|cm|mm|q|in|pt|pc|%)?/i;
+const MAX_CALC_DEPTH = 8;
+
+/** The index after the `)` that closes the `(` at `open`, or -1. */
+function closingParen(text: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === "(") depth++;
+    else if (text[i] === ")" && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/** Whether a `calc()` body is only numbers, lengths, `var()` chains, operators and parentheses. */
+function isCalcBody(body: string, isColor: (value: string) => boolean, depth: number): boolean {
+  if (depth > MAX_CALC_DEPTH) return false;
+  let i = 0;
+  let terms = 0;
+  while (i < body.length) {
+    const rest = body.slice(i);
+    if (/^\s/.test(rest)) {
+      i++;
+    } else if (/^[*/]/.test(rest) || /^[+-]\s/.test(rest)) {
+      i++;
+    } else if (/^var\(/i.test(rest)) {
+      const end = closingParen(body, i + 3);
+      if (end < 0 || !isTokenValue(body.slice(i, end + 1), isColor)) return false;
+      i = end + 1;
+      terms++;
+    } else if (rest[0] === "(" || /^calc\(/i.test(rest)) {
+      const open = body.indexOf("(", i);
+      const end = closingParen(body, open);
+      if (end < 0 || !isCalcBody(body.slice(open + 1, end), isColor, depth + 1)) return false;
+      i = end + 1;
+      terms++;
+    } else {
+      const term = CALC_TERM.exec(rest);
+      if (!term) return false;
+      i += term[0].length;
+      terms++;
+    }
+  }
+  return terms > 0;
+}
+
 /**
- * Whether a custom property's value may be stored: a colour, a length, or a `var()` chain ending
- * in one, within 200 characters. The rest (fonts, URLs, session tokens) is no use to Figma and may
- * not be the page's to give. `isColor` is `CSS.supports("color", value)` in the page.
+ * Whether a custom property's value may be stored: a colour, a length, a `var()` chain ending in
+ * one, or a `calc()` of those, within 200 characters. The rest (fonts, URLs, session tokens) is no
+ * use to Figma and may not be the page's to give. `isColor` is `CSS.supports("color", value)` in
+ * the page.
  */
 export function isTokenValue(value: string, isColor: (value: string) => boolean): boolean {
   const v = value.trim();
   if (v === "" || v.length > MAX_TOKEN_VALUE) return false;
   const chain = VAR_CHAIN.exec(v);
   if (chain) return chain[1] === undefined || isTokenValue(chain[1], isColor);
+  if (/^calc\(/i.test(v)) {
+    return closingParen(v, 4) === v.length - 1 && isCalcBody(v.slice(5, -1), isColor, 0);
+  }
   if (/var\(/i.test(v)) return false;
-  return v === "0" || LENGTH.test(v) || isColor(v);
+  return v === "0" || LENGTH.test(v) || isColor(v) || parseCssColor(v) !== null;
 }
 
 const DIRECTIONS: Record<string, number> = {

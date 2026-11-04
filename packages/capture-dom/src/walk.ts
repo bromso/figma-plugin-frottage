@@ -5,11 +5,12 @@ import type {
   ImageNode,
   PlaceholderNode,
   TextNode,
+  TokenRefs,
 } from "@repo/capture-schema";
 import type { Rgba } from "./color";
 import { flatChildren, insideEditable, isEditable, shadowRootOf } from "./flatten";
 import { authoredTracksReader } from "./grid";
-import { type Hover, type HoverDeps, hoverCandidates, readHover } from "./hover";
+import { type Hover, type HoverDeps, hoverCandidates, readHover, resolveVars } from "./hover";
 import {
   collapse,
   type Inherited,
@@ -36,6 +37,8 @@ import {
   readZIndex,
 } from "./styles";
 import { emptySvgReport, MAX_SVG_BYTES, SvgTooLargeError, serialiseSvg } from "./svg";
+import { readThemes, walkStyleRules } from "./themes";
+import { createRefReader } from "./token-refs";
 import { cleanUrl, rememberUrl } from "./urls";
 
 export type CaptureEnv = {
@@ -99,6 +102,16 @@ const KEPT_WRAPPER_TAGS = new Set([
   "svg",
   "img",
 ]);
+
+/** The refs a text node takes from the elements that hold it. */
+const TEXT_REFS = [
+  "color",
+  "fontSize",
+  "lineHeight",
+  "letterSpacing",
+  "fontFamily",
+  "fontWeight",
+] as const;
 
 const IGNORED_TAGS = new Set([
   "script",
@@ -743,6 +756,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const runs: Run[] = [];
     const rects: Rect[] = [];
     const range = doc.createRange();
+    // The elements whose style the text takes; null for generated text.
+    const sources = new Set<Element | null>();
 
     const append = (piece: string, run: Run) => {
       const start = text.length;
@@ -775,6 +790,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         rects.push(pageBox(r));
       }
       if (!any) return;
+      sources.add(node.assignedSlot ?? parentEl);
       append(piece, inherit(runOf(s, 0, 0, up.clipped), up));
     };
 
@@ -791,6 +807,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       if (!piece) return;
       const lineH = px(s.lineHeight) || px(s.fontSize) * 1.2;
       rects.push({ x: 0, y: 0, w: measure(piece, s), h: round2(lineH), gen: p.which });
+      sources.add(null);
       append(piece, inherit(runOf(s, 0, 0, up.clipped || clipsToText(s)), up));
     };
 
@@ -849,6 +866,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       }
       lines.push({ x: r.x, y: r.y, w: r.w, h: r.h });
     }
+    const refs = textRefs(sources);
     const left = Math.min(...lines.map((l) => l.x));
     const top = Math.min(...lines.map((l) => l.y));
     const right = Math.max(...lines.map((l) => l.x + l.w));
@@ -867,7 +885,20 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       text: trimmed,
       lines,
       runs: finalRuns,
+      ...(refs ? { tokenRefs: refs } : {}),
     };
+  }
+
+  /** The colour and type refs that every element holding a text agrees on. */
+  function textRefs(sources: Set<Element | null>): TokenRefs | undefined {
+    if (sources.size === 0 || sources.has(null)) return undefined;
+    const all = [...sources].map((el) => refsOf(el as Element));
+    const out: TokenRefs = {};
+    for (const key of TEXT_REFS) {
+      const first = all[0]?.[key];
+      if (first && all.every((r) => r?.[key] === first)) out[key] = first;
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
   }
 
   // ---------- Form controls
@@ -1343,6 +1374,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     const hover = stored?.color ? { ...stored, restingColor: colorOf(s.color) } : stored;
     const lifted = liftedHover(el);
     if (hover || lifted) element.hover = { ...hover, ...lifted };
+    const refs = refsOf(el);
+    if (refs) element.tokenRefs = refs;
 
     const leafControl = tag === "input" || tag === "textarea" || tag === "select";
     if (isEditable(el)) {
@@ -1369,6 +1402,14 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     }
     return [element];
   }
+
+  const refsOf = (el: Element): TokenRefs | undefined => {
+    try {
+      return refReader?.refsFor(el);
+    } catch {
+      return undefined;
+    }
+  };
 
   // Hover differences are read once, up front, from the stylesheets; the walk only looks them up.
   let hovers = new Map<Element, Hover>();
@@ -1398,6 +1439,22 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     warn("hover-unreadable", undefined, "Hover styles could not be read");
   }
 
+  // Which token each property used, read from the stylesheets like hovers.
+  let refReader: ReturnType<typeof createRefReader> | undefined;
+  try {
+    refReader = createRefReader(doc, win, {
+      now: () => win.performance.now(),
+      report: (code) =>
+        warn(
+          code,
+          undefined,
+          "Reading which token each element used stopped at its time or rule limit, so later elements have none"
+        ),
+    });
+  } catch {
+    // refs are best effort
+  }
+
   const [tree] = visit(root, 1, true, {
     link: undefined,
     decoration: "none",
@@ -1409,48 +1466,52 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   // A rule only says that a name exists: which rule wins, and in which theme, is the browser's.
   const cssCustomProperties: Record<string, string> = {};
+  const authored: Record<string, string> = {};
+  const isColor = (v: string) => win.CSS.supports("color", v);
   try {
     const names = new Set<string>();
-    const appliesToRoot = (selector: string) => {
+    const written = new Map<string, string>();
+    walkStyleRules(doc, (rule, conditions) => {
+      if (!conditions.every((c) => c.applies)) return;
+      const found = Array.from(rule.style).filter((name) => name.startsWith("--"));
+      if (found.length === 0) return;
+      let applies = false;
       try {
-        return root.matches(selector);
+        applies = root.matches(rule.selectorText);
       } catch {
-        return false; // a selector `matches` can't take
+        return; // a selector `matches` can't take
       }
-    };
-    const collect = (rules: CSSRuleList) => {
-      for (const rule of Array.from(rules)) {
-        if (rule instanceof win.CSSStyleRule) {
-          const found = Array.from(rule.style).filter((name) => name.startsWith("--"));
-          if (found.length > 0 && appliesToRoot(rule.selectorText)) {
-            for (const name of found) names.add(name);
-          }
-        }
-        const inner = (rule as { cssRules?: CSSRuleList }).cssRules;
-        if (inner) collect(inner);
+      if (!applies) return;
+      for (const name of found) {
+        names.add(name);
+        written.set(name, rule.style.getPropertyValue(name).trim());
       }
-    };
-    for (const sheet of Array.from(doc.styleSheets)) {
-      try {
-        collect(sheet.cssRules);
-      } catch {
-        // cross-origin stylesheet
-      }
-    }
+    });
     const computed = win.getComputedStyle(root);
     for (const name of names) {
       const value = computed.getPropertyValue(name).trim();
-      if (isTokenValue(value, (v) => win.CSS.supports("color", v))) {
-        cssCustomProperties[name] = value;
-      }
+      if (!isTokenValue(value, isColor)) continue;
+      cssCustomProperties[name] = value;
+      // The computed value has lost any alias or calculation, so keep what was written.
+      const text = written.get(name) ?? "";
+      if (!/(?:var|calc)\(/i.test(text) || !isTokenValue(text, isColor)) continue;
+      // Rule order alone ignores specificity and !important: keep the text only if it gives the
+      // computed value.
+      const resolved = resolveVars(text, (n) => computed.getPropertyValue(n).trim() || undefined);
+      const same = (x: string) => x.replace(/\s+/g, " ").toLowerCase();
+      if (resolved !== null && same(resolved) === same(value)) authored[name] = text;
     }
   } catch {
     // tokens are best effort
   }
-  const sortedTokens = Object.fromEntries(
-    Object.entries(cssCustomProperties).sort(([a], [b]) => (a < b ? -1 : 1))
-  );
-
+  const byName = (o: Record<string, string>) =>
+    Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
+  let themes: ReturnType<typeof readThemes> = {};
+  try {
+    themes = readThemes(doc, root, isColor);
+  } catch {
+    // themes are best effort
+  }
   const dark = win.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
   return {
     schemaVersion: 1,
@@ -1464,7 +1525,13 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       devicePixelRatio: win.devicePixelRatio,
       colorScheme: dark ? "dark" : "light",
     },
-    tokens: { cssCustomProperties: sortedTokens },
+    tokens: {
+      cssCustomProperties: byName(cssCustomProperties),
+      ...(Object.keys(authored).length > 0 ? { authored: byName(authored) } : {}),
+      ...(themes.themes ? { themes: themes.themes } : {}),
+      ...(themes.activeTheme ? { activeTheme: themes.activeTheme } : {}),
+      ...(themes.base ? { base: byName(themes.base) } : {}),
+    },
     fonts: [...fonts.values()],
     assets: [],
     warnings: [...warnings.values()].map(({ first, count }) =>

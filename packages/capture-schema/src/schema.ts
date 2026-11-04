@@ -80,6 +80,28 @@ const hover = hoverBase.extend({
   boxShadows: z.array(boxShadow).max(MAX_HOVER_SHADOWS).optional(),
 });
 
+/** `--name`, or `--name*n` for `calc(var(--name) * n)`. */
+const ref = z
+  .string()
+  .max(80)
+  .regex(/^--[A-Za-z0-9_-]+(?:\*-?(?:\d+\.?\d*|\.\d+))?$/);
+
+/** Which custom property each property's winning rule used, where the page's value agrees. */
+const tokenRefs = z.object({
+  background: ref.optional(),
+  color: ref.optional(),
+  border: ref.optional(),
+  radius: ref.optional(),
+  // [top, right, bottom, left]
+  padding: z.tuple([ref.nullable(), ref.nullable(), ref.nullable(), ref.nullable()]).optional(),
+  gap: ref.optional(),
+  fontSize: ref.optional(),
+  lineHeight: ref.optional(),
+  letterSpacing: ref.optional(),
+  fontFamily: ref.optional(),
+  fontWeight: ref.optional(),
+});
+
 const marginAuto = z.tuple([z.boolean(), z.boolean(), z.boolean(), z.boolean()]);
 
 const layout = z.object({
@@ -162,6 +184,7 @@ const textNode = z.object({
   text: z.string(),
   lines: z.array(box),
   runs: z.array(textRun),
+  tokenRefs: tokenRefs.optional(),
 });
 
 // How a leaf sits among its siblings; left out when static or zero. Elements have `layout`.
@@ -208,6 +231,7 @@ const elementBase = z.object({
   style,
   layout,
   hover: hover.optional(),
+  tokenRefs: tokenRefs.optional(),
 });
 
 const elementNode = z.object({
@@ -229,10 +253,16 @@ export type TextNode = z.infer<typeof textNode>;
 export type ImageNode = z.infer<typeof imageNode>;
 export type SvgNode = z.infer<typeof svgNode>;
 export type PlaceholderNode = z.infer<typeof placeholderNode>;
+export type TokenRefs = z.infer<typeof tokenRefs>;
 export type ElementNode = z.infer<typeof elementBase> & {
   children: CaptureNode[];
 };
 export type CaptureNode = ElementNode | TextNode | ImageNode | SvgNode | PlaceholderNode;
+
+const MAX_THEMES = 8;
+const MAX_THEME_PROPERTIES = 2000;
+const MAX_MODE_LENGTH = 40;
+const MAX_CONTEXT_LENGTH = 200;
 
 export const captureSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
@@ -253,7 +283,34 @@ export const captureSchema = z.object({
       kind: z.enum(["viewport", "theme", "language"]),
     })
     .optional(),
-  tokens: z.object({ cssCustomProperties: z.record(z.string(), z.string()) }),
+  tokens: z.object({
+    cssCustomProperties: z.record(z.string(), z.string()),
+    /** A root custom property's authored value, kept only when it holds `var(` or `calc(`. */
+    authored: z.record(z.string(), z.string()).optional(),
+    /** Stylesheet contexts that restyle the root, such as `.dark`: one entry per mode. */
+    themes: z
+      .array(
+        z.object({
+          context: z.string().max(MAX_CONTEXT_LENGTH),
+          mode: z.string().max(MAX_MODE_LENGTH),
+          properties: z
+            .record(z.string(), z.string())
+            .refine((p) => Object.keys(p).length <= MAX_THEME_PROPERTIES, "too many properties"),
+        })
+      )
+      .max(MAX_THEMES)
+      .optional(),
+    /** The mode of the theme context the page was in when captured, as `Dark`. */
+    activeTheme: z.string().max(MAX_MODE_LENGTH).optional(),
+    /**
+     * With a theme context active: the root's authored values outside every theme context, for
+     * the properties an active context sets, so Light is not read from the active theme.
+     */
+    base: z
+      .record(z.string(), z.string())
+      .refine((p) => Object.keys(p).length <= MAX_THEME_PROPERTIES, "too many properties")
+      .optional(),
+  }),
   fonts: z.array(
     z.object({
       family: z.string(),
@@ -299,6 +356,10 @@ export const parts = {
   textRun,
   boxShadow,
   maxHoverShadows: MAX_HOVER_SHADOWS,
+  maxThemes: MAX_THEMES,
+  maxThemeProperties: MAX_THEME_PROPERTIES,
+  theme: captureSchema.shape.tokens.shape.themes.unwrap().unwrap(),
+  activeTheme: captureSchema.shape.tokens.shape.activeTheme.unwrap(),
   backgroundImage: backgroundImage.omit({ stops: true }),
   stop,
   string: z.string(),

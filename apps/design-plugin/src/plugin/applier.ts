@@ -338,6 +338,21 @@ export function createApplier(api: PluginAPI) {
   /** The tokens this version may bind to: none once its mode was refused. */
   const bindable = () => (modeRefused ? undefined : tokens);
 
+  /**
+   * Opens a page, not a version, on the Theme mode it was captured in: Dark for a page captured
+   * dark, else Light.
+   */
+  function setOpeningMode(node: FrameNode): void {
+    if (versionIndex !== null) return;
+    const mode = bindable()?.openingMode();
+    if (!mode) return;
+    try {
+      node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
+    } catch {
+      tokens?.failed();
+    }
+  }
+
   /** Settles the plan's tokens against the file. Comes before any batch that uses them. */
   async function importTokens(plan: PlanTokens, options: ImportOptions): Promise<void> {
     if (!active) throw new Error("import not started");
@@ -385,13 +400,20 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
-  /** A plain paint, bound to its variable if it has one. A refused binding stays plain. */
+  /**
+   * A plain paint, bound to its variable if it has one. A bound paint's opacity is 1, as the variable
+   * carries the alpha; a refused binding stays plain, with its captured opacity.
+   */
   function solidPaint(color: PlanRgb, opacity: number, colorKey?: string): SolidPaint {
     const paint: SolidPaint = { type: "SOLID", color, opacity };
     const binding = bindable()?.color(colorKey);
     if (!binding || !("variable" in binding)) return paint;
     try {
-      return api.variables.setBoundVariableForPaint(paint, "color", binding.variable);
+      return api.variables.setBoundVariableForPaint(
+        { ...paint, opacity: 1 },
+        "color",
+        binding.variable
+      );
     } catch {
       tokens?.failed();
       return paint;
@@ -545,6 +567,23 @@ export function createApplier(api: PluginAPI) {
     if (refused) set.failed();
   }
 
+  /** The stroke a frame counts in its layout, CSS's border-box, if it has one Figma will draw. */
+  function strokeInset(op: FrameOp): PlanStroke["weights"] | null {
+    const s = op.strokes;
+    if (op.layout.mode === "NONE" || !op.layout.strokesIncluded || !s) return null;
+    return Object.values(s.weights).every(validWeight) ? s.weights : null;
+  }
+
+  /** The frame's padding, inside its stroke where it counts that in its layout. */
+  function paddingOf(op: FrameOp): [number, number, number, number] {
+    if (op.layout.mode === "NONE") return [0, 0, 0, 0];
+    const [top, right, bottom, left] = op.layout.padding;
+    const w = strokeInset(op);
+    if (!w) return op.layout.padding;
+    const less = (px: number, by: number) => Math.max(0, px - by);
+    return [less(top, w.top), less(right, w.right), less(bottom, w.bottom), less(left, w.left)];
+  }
+
   function applyLayout(node: FrameNode, op: FrameOp) {
     const { layout } = op;
     const size = () => node.resize(clampSize(op.w), clampSize(op.h));
@@ -562,7 +601,8 @@ export function createApplier(api: PluginAPI) {
         node.counterAxisSizingMode = "FIXED";
       }
       size();
-      [node.paddingTop, node.paddingRight, node.paddingBottom, node.paddingLeft] = layout.padding;
+      [node.paddingTop, node.paddingRight, node.paddingBottom, node.paddingLeft] = paddingOf(op);
+      if (layout.strokesIncluded && strokeInset(op)) node.strokesIncludedInLayout = true;
       if (layout.mode === "GRID") {
         node.gridRowCount = layout.rows.length;
         node.gridColumnCount = layout.columns.length;
@@ -667,11 +707,52 @@ export function createApplier(api: PluginAPI) {
 
   const validWeight = (n: number) => Number.isFinite(n) && n >= 0;
 
-  function setRadius(node: FrameNode | RectangleNode, radius: Corners) {
-    node.topLeftRadius = radius[0];
-    node.topRightRadius = radius[1];
-    node.bottomRightRadius = radius[2];
-    node.bottomLeftRadius = radius[3];
+  const CORNERS = [
+    "topLeftRadius",
+    "topRightRadius",
+    "bottomRightRadius",
+    "bottomLeftRadius",
+  ] as const;
+
+  /** Each corner bound to its variable where it has one; a refused one keeps its value. */
+  function setRadius(
+    node: FrameNode | RectangleNode,
+    radius: Corners,
+    keys?: (string | undefined)[]
+  ) {
+    for (const [i, corner] of CORNERS.entries()) node[corner] = radius[i] as number;
+    const set = bindable();
+    if (!set || !keys) return;
+    for (const [i, corner] of CORNERS.entries()) {
+      const variable = set.radius(keys[i]);
+      if (!variable) continue;
+      try {
+        node.setBoundVariable(corner, variable);
+      } catch {
+        set.failed();
+      }
+    }
+  }
+
+  /** Links the frame's effect style, or else gives it its effects loose. */
+  function setEffects(node: FrameNode, op: FrameOp) {
+    const loose = () => {
+      try {
+        node.effects = effects(op.effects);
+      } catch {
+        paintFailures++;
+      }
+    };
+    const styleId = bindable()?.effectStyleId(op.effectStyleKey);
+    if (!styleId) return loose();
+    styleLinks.push(async () => {
+      try {
+        await node.setEffectStyleIdAsync(styleId);
+      } catch (e) {
+        loose();
+        throw e;
+      }
+    });
   }
 
   function setStroke(node: FrameNode | RectangleNode, s: PlanStroke | null) {
@@ -696,27 +777,28 @@ export function createApplier(api: PluginAPI) {
     const name = parent || op.component ? op.name : rootName || op.name;
     const node = createFrame(parent, op, name);
     if (!parent) setMode(node);
+    if (!parent && !op.component) setOpeningMode(node);
     setLayout(node, op);
     node.clipsContent = op.clips;
     // A refused paint costs that paint, not the frame and all that is under it.
     try {
       node.fills = paints(op.fills);
-      // A fill style replaces the whole list, so it needs the solid to be the only fill.
+      // A fill style replaces the whole list, so it needs the solid or gradient to be the only fill.
       const [only] = op.fills;
       const fillStyle =
-        op.fills.length === 1 && only?.type === "SOLID" ? paintStyleId(only.colorKey) : undefined;
+        op.fills.length !== 1 || only?.type === "IMAGE"
+          ? undefined
+          : only?.type === "SOLID"
+            ? paintStyleId(only.colorKey)
+            : bindable()?.gradientStyleId(only?.gradientStyleKey);
       if (fillStyle) styleLinks.push(() => node.setFillStyleIdAsync(fillStyle));
     } catch {
       paintFailures++;
       node.fills = [];
     }
-    setRadius(node, op.radius);
+    setRadius(node, op.radius, op.radiusKeys);
     setStroke(node, op.strokes);
-    try {
-      node.effects = effects(op.effects);
-    } catch {
-      paintFailures++;
-    }
+    setEffects(node, op);
     node.opacity = op.opacity;
     // The import root is placed by the applier, not at its captured offset, and a main by `layOut`.
     // A frame in auto layout is turned by the tracker once its size is final.

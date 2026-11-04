@@ -1,3 +1,4 @@
+export { buildCatalogue, type Catalogue } from "./catalogue";
 export { extractComponents } from "./components";
 export { matchFont } from "./fonts";
 export { inferChildLayout, inferLayout } from "./layout";
@@ -12,7 +13,10 @@ export type {
   PlanChildLayout,
   PlanColor,
   PlanEffect,
+  PlanEffectStyle,
+  PlanGradientStyle,
   PlanHoverPatch,
+  PlanLayers,
   PlanLayout,
   PlanModeColor,
   PlanModeSpacing,
@@ -24,9 +28,12 @@ export type {
   PlanRun,
   PlanSpacing,
   PlanStroke,
+  PlanStyleColor,
   PlanTextStyle,
   PlanTokens,
   PlanTrack,
+  PlanVariable,
+  PlanVarValue,
   PlanVersionTokens,
   SpacingKeys,
 } from "./plan";

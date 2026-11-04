@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import * as schema from "@repo/capture-schema";
 import { FrottageFileError, packFrottage } from "@repo/capture-schema";
+import * as mapper from "@repo/figma-mapper";
 import { DEFAULT_IMPORT_OPTIONS } from "@repo/figma-mapper";
 import {
   failureHeading,
@@ -950,6 +951,27 @@ describe("a set of versions", () => {
       "endSet",
     ]);
     expect(port.modesSent?.modes).toEqual(["1512", "834"]);
+  });
+
+  test("a page on its own is mapped with layers, a set's versions without", async () => {
+    const spy = spyOn(mapper, "mapCapture");
+    try {
+      await runSet([frottageFile(2)]);
+      expect(spy.mock.calls.length).toBeGreaterThan(0);
+      expect(spy.mock.calls.every((call) => call[2]?.layers === true)).toBe(true);
+      spy.mockClear();
+      await runSet([wide(), narrow()]);
+      expect(spy.mock.calls.length).toBeGreaterThan(0);
+      expect(spy.mock.calls.some((call) => call[2]?.layers)).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("a page on its own sends the Primitives and Theme collections", async () => {
+    const { port } = await runSet([frottageFile(2)]);
+    expect(port.tokensSent?.layers?.modes).toEqual(["Light"]);
+    expect(port.prefs.get("options:example.com") ?? {}).not.toHaveProperty("layers");
   });
 
   test("port.tokens never runs: a set's plans have none of their own", async () => {

@@ -60,6 +60,14 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     modes: number;
     modesDropped: number;
     droppedVersions: number[];
+    /** The Primitives and Theme collections' own counts, for a page with layers. */
+    layers?: {
+      variablesCreated: number;
+      variablesReused: number;
+      variablesRenamed: number;
+      modesDropped: string[];
+      stylesCreated: number;
+    };
   };
   importEndSet(): {
     rootIds: string[];
