@@ -1,5 +1,7 @@
 // Offscreen document. It owns the run state, the 60 s no-progress timeout and the run's capture set,
 // and packs the one file (Zod and fflate live here, not in the page script) and makes the Blob URL.
+
+import type { PageLanguage } from "@repo/capture-schema";
 import { parseCapture } from "@repo/capture-schema";
 import { CaptureRun, type RunStatus } from "./capture-run";
 import { CaptureSet } from "./capture-set";
@@ -11,7 +13,7 @@ import {
   type Reply,
   type SwMessage,
 } from "./messages";
-import { captureFilename, cleanThemes } from "./page";
+import { captureFilename, cleanLanguage, cleanThemes } from "./page";
 import type { HeldTab } from "./tab-hold";
 import { CaptureGate, startRefusal, ViewportRun } from "./viewport-run";
 
@@ -77,6 +79,7 @@ let viewportTab = 0;
 let collapseWrappers = false;
 let typedLabel = "";
 let themeChoice: { light: boolean; dark: boolean } | undefined;
+let languages: PageLanguage[] | undefined;
 let heldTab: HeldTab | null = null;
 
 function held(): HeldTab {
@@ -88,6 +91,13 @@ const viewport: ViewportRun = new ViewportRun({
   origin: async () => {
     const reply = await askWorker({ target: "sw", type: "tab-origin", tabId: viewportTab });
     return reply.origin ?? null;
+  },
+  address: async () => {
+    const reply = await askWorker({ target: "sw", type: "tab-address", tabId: viewportTab });
+    return reply.address ?? null;
+  },
+  navigate: async (url) => {
+    await askWorker({ target: "sw", type: "load-tab", tabId: viewportTab, url });
   },
   hold: async () => {
     const reply = await askWorker({ target: "sw", type: "hold-tab", tabId: viewportTab });
@@ -133,7 +143,7 @@ const viewport: ViewportRun = new ViewportRun({
       } satisfies SwMessage)
       .catch(() => {});
   },
-  capture: (item) =>
+  capture: (item, language) =>
     gate.run(() =>
       chrome.runtime.sendMessage({
         target: "sw",
@@ -144,6 +154,7 @@ const viewport: ViewportRun = new ViewportRun({
         ...(themeChoice ? { themes: themeChoice } : {}),
         ...(item.device ? { device: item.device } : {}),
         ...(item.breakpoint ? { breakpoint: item.breakpoint } : {}),
+        ...(language ? { language } : {}),
       } satisfies SwMessage)
     ),
   pageWidth: async () => {
@@ -180,12 +191,16 @@ chrome.runtime.onMessage.addListener((message: OffscreenMessage, _sender, sendRe
         collapseWrappers = message.collapseWrappers === true;
         typedLabel = message.versionLabel ?? "";
         themeChoice = cleanThemes(message.themes);
+        languages = message.languages
+          ?.map(cleanLanguage)
+          .filter((l): l is PageLanguage => l !== undefined);
         heldTab = null;
         captured = new CaptureSet();
         void viewport.start(message.runWidths ?? message.widths ?? [], {
           collapseWrappers,
           versionLabel: typedLabel,
           ...(themeChoice ? { themes: themeChoice } : {}),
+          ...(languages ? { languages } : {}),
         });
         sendResponse({ ok: true } satisfies Reply);
       } catch (error) {

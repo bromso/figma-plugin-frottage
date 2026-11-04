@@ -334,3 +334,28 @@ describe("themeChoice", () => {
     if (result.ok) expect(result.capture.themeChoice).toBeUndefined();
   });
 });
+
+describe("language", () => {
+  const SV = { code: "sv", name: "Svenska", url: "https://example.com/sv/", current: false };
+  const withLanguage = (language: unknown) => parseCapture({ ...minimalCapture(), language });
+  test("a capture records the language it was taken in", () => {
+    const result = withLanguage(SV);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.capture.language).toEqual(SV);
+  });
+  test("a long URL, code or name is refused", () => {
+    expect(withLanguage({ ...SV, url: `https://example.com/${"a".repeat(3000)}` }).ok).toBe(false);
+    expect(withLanguage({ ...SV, code: "x".repeat(21) }).ok).toBe(false);
+    expect(withLanguage({ ...SV, name: "x".repeat(41) }).ok).toBe(false);
+  });
+  test("missing fields or wrong types are refused", () => {
+    expect(withLanguage({ ...SV, current: "no" }).ok).toBe(false);
+    expect(withLanguage({ code: "sv" }).ok).toBe(false);
+    expect(withLanguage("sv").ok).toBe(false);
+  });
+  test("an older capture without it parses unchanged", () => {
+    const result = parseCapture(minimalCapture());
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.capture.language).toBeUndefined();
+  });
+});

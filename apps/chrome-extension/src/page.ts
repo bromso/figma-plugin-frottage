@@ -79,6 +79,17 @@ export function cleanThemes(themes: unknown): { light: boolean; dark: boolean } 
   return { light, dark };
 }
 
+/** A language as the format stores it, or undefined when it is not one or is too long. */
+export function cleanLanguage(language: unknown): PageLanguage | undefined {
+  if (!language || typeof language !== "object") return undefined;
+  const { code, name, url, current } = language as Record<string, unknown>;
+  const fits = (s: unknown, max: number, min = 1): s is string =>
+    typeof s === "string" && s.length >= min && s.length <= max;
+  if (!fits(code, 20) || !fits(name, 40) || !fits(url, 2048, 0)) return undefined;
+  if (typeof current !== "boolean") return undefined;
+  return { code, name, url, current };
+}
+
 /**
  * The version a capture records, in the page: a viewport labelled with the device's name, or the
  * breakpoint's for an extra capture, or else the width the page was laid out at, which only the
@@ -465,7 +476,10 @@ export function viewportAdvice(status: RunStatus & { state: "viewport-done" }): 
       : "No file was saved.",
     mismatches: status.mismatched.map((m) => `${m.requested} was captured at ${m.width}.`),
     stopped: status.stopped ?? (status.cancelled ? "You stopped the run." : null),
-    skipped: status.skipped.map((w) => `${w} couldn't be reached, so it was skipped.`),
+    skipped: [
+      ...status.skipped.map((w) => `${w} couldn't be reached, so it was skipped.`),
+      ...(status.leftOut ?? []),
+    ],
     nodeWarning: nodeAdvice(status.nodes, status.nodeLimit).warning,
     blockedImages: status.blockedImages,
   };

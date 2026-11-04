@@ -1,5 +1,7 @@
 // Service worker. Holds no run state: Chrome stops it when idle, so the run lives in the
 // offscreen document and the page script. Everything here is a stateless relay.
+
+import type { PageLanguage } from "@repo/capture-schema";
 import { serveImagePort } from "./image-fetch";
 import {
   CAPTURE_PORT,
@@ -9,20 +11,27 @@ import {
   type Reply,
   type SwMessage,
 } from "./messages";
-import { cleanThemes, pageOrigin } from "./page";
+import { cleanLanguage, cleanThemes, pageOrigin } from "./page";
 import type { RunWidth } from "./plan-widths";
 import { probeReply } from "./probe";
 import { type HoldApi, holdTab, releaseTab } from "./tab-hold";
-import { resizeWindow, type WindowsApi } from "./viewport-run";
+import { loadTab, resizeWindow, type TabsApi, type WindowsApi } from "./viewport-run";
 
 const OFFSCREEN_URL = "offscreen.html";
 const RUN_PAGE = "run.html";
 const DOWNLOAD_POLL_MS = 250;
 const DOWNLOAD_MAX_POLLS = 240;
+/** How long a language's page may take to load before it is left out. */
+const LOAD_MS = 30_000;
 
 const WINDOWS: WindowsApi = {
   get: (windowId) => chrome.windows.get(windowId),
   update: (windowId, info) => chrome.windows.update(windowId, info),
+};
+
+const TABS: TabsApi = {
+  update: (tabId, info) => chrome.tabs.update(tabId, info),
+  onUpdated: chrome.tabs.onUpdated,
 };
 
 const HOLD: HoldApi = {
@@ -95,7 +104,8 @@ async function startCapture(
   collapseWrappers: boolean,
   versionLabel: string,
   named: { device?: RunWidth["device"]; breakpoint?: string },
-  themes?: { light: boolean; dark: boolean }
+  themes?: { light: boolean; dark: boolean },
+  language?: PageLanguage
 ): Promise<Reply> {
   const runId = crypto.randomUUID();
   const started = await toOffscreen({
@@ -115,7 +125,8 @@ async function startCapture(
         label: string,
         device: RunWidth["device"] | null,
         breakpoint: string | null,
-        themes: { light: boolean; dark: boolean } | null
+        themes: { light: boolean; dark: boolean } | null,
+        language: PageLanguage | null
       ) => {
         const win = window as unknown as {
           __frottageRunId?: string;
@@ -125,6 +136,7 @@ async function startCapture(
           __frottageDevice?: RunWidth["device"];
           __frottageBreakpoint?: string;
           __frottageThemes?: { light: boolean; dark: boolean };
+          __frottageLanguage?: PageLanguage;
         };
         win.__frottageRunId = id;
         win.__frottageCollapse = collapse;
@@ -133,6 +145,7 @@ async function startCapture(
         win.__frottageDevice = device ?? undefined;
         win.__frottageBreakpoint = breakpoint ?? undefined;
         win.__frottageThemes = themes ?? undefined;
+        win.__frottageLanguage = language ?? undefined;
       },
       // `null`, not undefined: the arguments are sent as JSON.
       args: [
@@ -143,6 +156,7 @@ async function startCapture(
         named.device ?? null,
         named.breakpoint ?? null,
         themes ?? null,
+        language ?? null,
       ],
     });
     await chrome.scripting.executeScript({ target: { tabId }, files: ["capture-entry.js"] });
@@ -193,7 +207,8 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
         device: message.device,
         breakpoint: message.breakpoint,
       },
-      cleanThemes(message.themes)
+      cleanThemes(message.themes),
+      cleanLanguage(message.language)
     ).then(sendResponse, (e) => sendResponse({ ok: false, error: errorText(e) }));
     return true;
   }
@@ -215,6 +230,19 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
     return answer(async () => {
       const tab = await chrome.tabs.get(message.tabId);
       return { ok: true, origin: pageOrigin(tab.url) };
+    }, sendResponse);
+  }
+  if (message.type === "tab-address") {
+    return answer(async () => {
+      const tab = await chrome.tabs.get(message.tabId);
+      return { ok: true, address: tab.url ?? null };
+    }, sendResponse);
+  }
+  if (message.type === "load-tab") {
+    // Loading an address needs no access to the page, so the tab can always be sent back.
+    return answer(async () => {
+      await loadTab(TABS, message.tabId, message.url, LOAD_MS);
+      return { ok: true };
     }, sendResponse);
   }
   if (message.type === "page-width") {

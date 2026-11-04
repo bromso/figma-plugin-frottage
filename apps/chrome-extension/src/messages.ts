@@ -56,12 +56,17 @@ export type SwMessage =
       breakpoint?: string;
       /** Which themes the capture records as the ones to import. */
       themes?: { light: boolean; dark: boolean };
+      /** The language the capture records, in a run with languages. */
+      language?: PageLanguage;
     }
   | ({ target: "sw"; type: "viewport-start" } & ViewportRequest)
   /** Reads the page's breakpoints for the popup. */
   | { target: "sw"; type: "breakpoints"; tabId: number }
   | { target: "sw"; type: "download"; url: string; filename: string }
   | { target: "sw"; type: "tab-origin"; tabId: number }
+  | { target: "sw"; type: "tab-address"; tabId: number }
+  /** Loads a language's address in the held tab and answers once it has loaded. */
+  | { target: "sw"; type: "load-tab"; tabId: number; url: string }
   | { target: "sw"; type: "page-width"; tabId: number }
   /** Moves the tab to a small window and holds its place with the run page. */
   | { target: "sw"; type: "hold-tab"; tabId: number }
@@ -86,8 +91,9 @@ export type OffscreenMessage =
 export type PopupMessage = { target: "popup"; type: "status"; status: RunStatus };
 
 /**
- * `filename` is the saved basename, set by the worker for downloads. `origin`, `held`, `released`, `open`
- * and `width` answer `tab-origin`, `hold-tab`, `release-tab`, `window-open`, and `resize-window` or `page-width`;
+ * `filename` is the saved basename, set by the worker for downloads. `origin`, `address`, `held`,
+ * `released`, `open` and `width` answer `tab-origin`, `tab-address`, `hold-tab`, `release-tab`,
+ * `window-open`, and `resize-window` or `page-width`;
  * `breakpoints` answers `breakpoints`.
  */
 export type Reply =
@@ -95,6 +101,7 @@ export type Reply =
       ok: true;
       filename?: string;
       origin?: string | null;
+      address?: string | null;
       held?: HeldTab;
       released?: ReleaseOutcome;
       open?: boolean;

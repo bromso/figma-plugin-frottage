@@ -1,4 +1,5 @@
-import { languageName, type PageLanguage } from "@repo/capture-schema";
+import type { PageLanguage } from "@repo/capture-schema";
+import { languageName } from "@repo/capture-schema/css-values";
 
 /** The most languages one page offers; the popup lists no more. */
 export const MAX_LANGUAGES = 8;

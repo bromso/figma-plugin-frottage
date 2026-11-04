@@ -8,6 +8,7 @@ import {
   captureCountLine,
   captureFilename,
   captureLabel,
+  cleanLanguage,
   cleanThemes,
   DEVICE_HEIGHTS,
   DEVICES,
@@ -465,6 +466,14 @@ describe("viewportAdvice", () => {
     ]);
   });
 
+  test("a language left out is named after the skipped widths", () => {
+    const line = "Svenska couldn't be loaded, so it was left out.";
+    expect(viewportAdvice({ ...base, skipped: [3840], leftOut: [line] }).skipped).toEqual([
+      "3840 couldn't be reached, so it was skipped.",
+      line,
+    ]);
+  });
+
   test("carries the size and image flags", () => {
     const a = viewportAdvice({ ...base, nodeLimit: true, blockedImages: 3 });
     expect(a.nodeWarning).toContain("20,000");
@@ -708,6 +717,22 @@ describe("cleanThemes", () => {
     expect(cleanThemes({ light: "yes", dark: true })).toBeUndefined();
     expect(cleanThemes({ light: true })).toBeUndefined();
     expect(cleanThemes(null)).toBeUndefined();
+  });
+});
+
+describe("cleanLanguage", () => {
+  const SV = { code: "sv", name: "Svenska", url: "https://example.com/sv/", current: false };
+  test("keeps a language as the format stores it", () => {
+    expect(cleanLanguage({ ...SV, extra: 1 })).toEqual(SV);
+  });
+  test("anything else, or anything too long, is no language", () => {
+    expect(cleanLanguage(undefined)).toBeUndefined();
+    expect(cleanLanguage(null)).toBeUndefined();
+    expect(cleanLanguage({ ...SV, current: "no" })).toBeUndefined();
+    expect(cleanLanguage({ ...SV, code: "" })).toBeUndefined();
+    expect(cleanLanguage({ ...SV, code: "x".repeat(21) })).toBeUndefined();
+    expect(cleanLanguage({ ...SV, name: "x".repeat(41) })).toBeUndefined();
+    expect(cleanLanguage({ ...SV, url: "x".repeat(2049) })).toBeUndefined();
   });
 });
 

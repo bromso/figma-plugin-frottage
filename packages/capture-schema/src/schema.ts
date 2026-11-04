@@ -308,6 +308,15 @@ export const captureSchema = z.object({
     .optional(),
   /** Which of the page's themes to import: what the user ticked when capturing. Older files lack it. */
   themeChoice: z.object({ light: z.boolean(), dark: z.boolean() }).optional(),
+  /** The language the page was captured in, when the run captured several. Older files lack it. */
+  language: z
+    .object({
+      code: z.string().min(1).max(20),
+      name: z.string().min(1).max(40),
+      url: z.string().max(2048),
+      current: z.boolean(),
+    })
+    .optional(),
   /** Width boundaries (px) the page's stylesheets switch at, and how many sheets could not be read. */
   breakpoints: z
     .object({
@@ -415,4 +424,4 @@ export const parts = {
 };
 
 /** A language the captured page is offered in; the capture's `language` (when set) has this shape. */
-export type PageLanguage = { code: string; name: string; url: string; current: boolean };
+export type PageLanguage = NonNullable<Capture["language"]>;

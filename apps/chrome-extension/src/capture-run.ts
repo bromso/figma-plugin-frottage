@@ -38,6 +38,8 @@ export type RunStatus =
       blockedImages: number;
       stopped?: string;
       cancelled?: boolean;
+      /** A line for each language that couldn't be loaded and was left out. */
+      leftOut?: string[];
       /** What the run was asked, so a re-run from a fresh popup repeats it. */
       request: {
         widths: number[];
