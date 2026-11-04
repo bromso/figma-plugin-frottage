@@ -103,17 +103,27 @@ export type Placement = "new-page" | "current-page";
 /** What a device set's collections and mode warnings come to, for the ticks given. */
 export type ContentsSummary = { collections: string; overLimit: string[] };
 
-/** What a device set holds, shown before import: its captures, ticked, and what they make. */
+/** The themes a file holds, each ticked or not; Dark is absent from a file with no dark theme. */
+export type ReviewThemes = { light?: { on: boolean }; dark?: { on: boolean } };
+
+/** The themes the user ticked, as the mapper takes them. */
+export type ThemeChoice = { light: boolean; dark: boolean };
+
+/**
+ * What a file holds, shown before import: a device set's captures, ticked, the themes the file
+ * holds, and what they make. A single capture has no devices or extras, only themes.
+ */
 export type ReviewContents = {
   devices: { name: string; width: number; on: boolean }[];
   extras: { breakpoint: string; width: number; on: boolean }[];
+  themes: ReviewThemes;
   /** The collections the ticked captures make, in one line. */
   collections: string;
   placement: Placement;
   /** One warning per collection that needs more modes than the remembered limit. */
   overLimit: string[];
   /** The line and warnings again, for other ticks: one boolean per device and per extra. */
-  summarize?: (devices: boolean[], extras: boolean[]) => ContentsSummary;
+  summarize?: (devices: boolean[], extras: boolean[], themes?: ThemeChoice) => ContentsSummary;
 };
 
 export type ImportState =
@@ -235,7 +245,12 @@ type SetResult = {
 export type ReviewDecision = {
   options: ImportOptions;
   fonts: ReadonlyMap<string, string>;
-  contents?: { devices: boolean[]; extras: boolean[]; placement: Placement };
+  contents?: {
+    devices: boolean[];
+    extras: boolean[];
+    placement: Placement;
+    themes?: ThemeChoice;
+  };
 };
 
 export type ReviewSession = {
@@ -932,17 +947,27 @@ export async function runImports(
     const layered = new Set(sets.filter(isDeviceSet).flatMap((s) => s.versions));
     /** The review shows the first device set's contents, from these plans. */
     const firstDevices = sets.find(isDeviceSet);
+    /** A lone page that holds a dark theme is reviewed too, so the user can choose its themes. */
+    const reviewed =
+      firstDevices ??
+      (ordered.length === 1 && ordered[0] && holdsDark(ordered[0].capture) ? sets[0] : undefined);
     const previewPlans = new Map<LoadedFile, Plan>();
     for (const v of ordered) {
       const layers = ordered.length === 1 || layered.has(v);
       const plan = mapCapture(v.capture, available, layers ? alone(options) : options);
       if (ordered.length === 1) firstPlan = plan;
-      if (session && firstDevices?.versions.includes(v)) previewPlans.set(v, plan);
+      if (session && reviewed?.versions.includes(v)) previewPlans.set(v, plan);
       mergeMissing(missing, missingFonts(plan.report, available));
     }
     const contents =
-      session && firstDevices
-        ? await reviewContents(firstDevices, previewPlans, await readModeLimit(port))
+      session && reviewed
+        ? await reviewContents(
+            reviewed,
+            previewPlans,
+            await readModeLimit(port),
+            (v, themes) => mapCapture(v.capture, available, { ...alone(options), themes }),
+            reviewed === firstDevices
+          )
         : undefined;
 
     let overrides: Record<string, string> | undefined;
@@ -1036,8 +1061,10 @@ export async function runImports(
       // With every device unticked there is nothing to make.
       if (devices && !set.versions.some((v) => !isExtra(v))) continue;
       // A set counts uses across its versions, in `mergeVersions`, so each plan proposes them all.
-      const planOptions =
+      const chosen = whole === reviewed ? deviceChoice?.themes : undefined;
+      const base =
         set.versions.length > 1 && !devices ? { ...options, tokenFloor: 1 } : alone(options);
+      const planOptions = chosen ? { ...base, themes: chosen } : base;
       const plans = set.versions.map(
         (v) => firstPlan ?? mapCapture(v.capture, available, planOptions, overrides)
       );
@@ -1107,23 +1134,68 @@ async function readModeLimit(port: ImportPort): Promise<number | null> {
   }
 }
 
-/** A device set's contents as the review shows them, all ticked, with what they make. */
+/** Whether a capture's stylesheet holds a dark theme. */
+function holdsDark(capture: Capture): boolean {
+  return capture.tokens.themes?.some((t) => t.mode === "Dark") === true;
+}
+
+/** The themes as pre-ticked from a capture's choice; none chosen, or neither, ticks all. */
+function themeTicks(capture: Capture): { shown: ReviewThemes; initial: ThemeChoice } {
+  const hasDark = holdsDark(capture);
+  const choice = capture.themeChoice;
+  const chosen = choice && (choice.light || choice.dark) ? choice : undefined;
+  const light = chosen ? chosen.light || (chosen.dark && !hasDark) : true;
+  const dark = hasDark ? (chosen ? chosen.dark : true) : false;
+  return {
+    shown: { light: { on: light }, ...(hasDark ? { dark: { on: dark } } : {}) },
+    initial: { light, dark },
+  };
+}
+
+/**
+ * What a file holds as the review shows it, all ticked as the capture chose, with what it makes. A
+ * device set lists its captures; a lone page lists only its themes.
+ */
 async function reviewContents(
   set: VersionSet,
   plans: ReadonlyMap<LoadedFile, Plan>,
-  limit: number | null
+  limit: number | null,
+  replan: (v: LoadedFile, themes: ThemeChoice) => Plan,
+  deviceSet: boolean
 ): Promise<ReviewContents> {
   await yieldToPaint();
   // The width a capture was laid out at, as the merge places it; a device without device data
   // goes by the width its label chose, as its Device mode does.
   const width = (v: LoadedFile) => captureWidth(v.capture);
-  const devices = set.versions.filter((v) => !isExtra(v));
-  const extras = set.versions.filter(isExtra);
-  const summarize = (deviceTicks: boolean[], extraTicks: boolean[]): ContentsSummary => {
+  const devices = deviceSet ? set.versions.filter((v) => !isExtra(v)) : [];
+  const extras = deviceSet ? set.versions.filter(isExtra) : [];
+  const { shown, initial } = themeTicks((set.versions[0] as LoadedFile).capture);
+  const none = { collections: "", overLimit: [] };
+  const replanned = new Map<string, Plan>();
+  /** A capture's plan under these themes: the one made for the review, or made again. */
+  const planUnder = (v: LoadedFile, themes: ThemeChoice): Plan => {
+    if (themes.light === initial.light && themes.dark === initial.dark) return plans.get(v) as Plan;
+    const key = `${set.versions.indexOf(v)}:${themes.light}:${themes.dark}`;
+    let plan = replanned.get(key);
+    if (!plan) {
+      plan = replan(v, themes);
+      replanned.set(key, plan);
+    }
+    return plan;
+  };
+  const summarize = (
+    deviceTicks: boolean[],
+    extraTicks: boolean[],
+    themes: ThemeChoice = initial
+  ): ContentsSummary => {
+    if (!deviceSet) {
+      const layers = planUnder(set.versions[0] as LoadedFile, themes).tokens.layers;
+      return layers ? summarizeLayers(layers, limit) : none;
+    }
     const kept = ticked(set.versions, isExtra, deviceTicks, extraTicks);
-    if (!kept.some((v) => !isExtra(v))) return { collections: "", overLimit: [] };
+    if (!kept.some((v) => !isExtra(v))) return none;
     const entries = kept.map(
-      (v): DeviceEntry => ({ capture: v.capture, plan: plans.get(v) as Plan })
+      (v): DeviceEntry => ({ capture: v.capture, plan: planUnder(v, themes) })
     );
     return summarizeLayers(mergeDevices(entries).layers, limit);
   };
@@ -1138,6 +1210,7 @@ async function reviewContents(
       width: width(v),
       on: true,
     })),
+    themes: shown,
     placement: "new-page",
     ...summarize(
       devices.map(() => true),
@@ -1163,6 +1236,9 @@ function sanitizeContents(raw: ReviewDecision["contents"]): ReviewDecision["cont
     devices: ticks(raw.devices),
     extras: ticks(raw.extras),
     placement: raw.placement === "current-page" ? "current-page" : "new-page",
+    ...(raw.themes
+      ? { themes: { light: raw.themes.light !== false, dark: raw.themes.dark !== false } }
+      : {}),
   };
 }
 

@@ -441,6 +441,8 @@ export function deviceSetFile(opts: {
   breakpoints?: number[];
   /** A scrollbar's width, taken off each client width; the laid-out width is recorded. */
   scrollbar?: number;
+  /** Changes every capture before it is packed, to give them tokens or a theme choice. */
+  edit?: (capture: Capture) => void;
 }): File {
   const make = (width: number) => {
     const capture = captureWithTexts(1);
@@ -448,6 +450,7 @@ export function deviceSetFile(opts: {
     capture.source.title = "Example";
     capture.source.viewport = { w: width - (opts.scrollbar ?? 0), h: 800 };
     if (opts.breakpoints) capture.breakpoints = { widths: opts.breakpoints, unreadable: 0 };
+    opts.edit?.(capture);
     return capture;
   };
   const devices = opts.devices.map(({ name, width, height }) => {

@@ -1,9 +1,14 @@
 import { useId } from "react";
 import { Checkbox, Label, RadioGroup, RadioGroupItem } from "../index";
-import type { ContentsSummary, Placement, ReviewContents } from "./import-flow";
+import type { ContentsSummary, Placement, ReviewContents, ThemeChoice } from "./import-flow";
 
 /** The user's ticks, one per device and one per extra, and where the frames go. */
-export type ContentsChoice = { devices: boolean[]; extras: boolean[]; placement: Placement };
+export type ContentsChoice = {
+  devices: boolean[];
+  extras: boolean[];
+  placement: Placement;
+  themes: ThemeChoice;
+};
 
 function TickRow({
   label,
@@ -79,22 +84,49 @@ export function ContentsSection({
           Breakpoint captures make no frames. They give the Breakpoint values.
         </p>
       )}
+      {(contents.themes.light || contents.themes.dark) && (
+        <fieldset aria-label="Themes" className="m-0 flex min-w-0 flex-col gap-1 border-0 p-0">
+          <p className="flex h-6 items-center text-figma-text-secondary">Themes</p>
+          {contents.themes.light && (
+            <TickRow
+              label="Light"
+              checked={choice.themes.light}
+              onChange={(on) => onChange({ ...choice, themes: { ...choice.themes, light: on } })}
+            />
+          )}
+          {contents.themes.dark && (
+            <TickRow
+              label="Dark"
+              checked={choice.themes.dark}
+              onChange={(on) => onChange({ ...choice, themes: { ...choice.themes, dark: on } })}
+            />
+          )}
+          {!choice.themes.light && !choice.themes.dark && (
+            <p className="text-figma-text-danger">Tick Light, Dark or both.</p>
+          )}
+        </fieldset>
+      )}
       {summary.collections && <p>{summary.collections}</p>}
       {summary.overLimit.map((line) => (
         <p key={line} className="text-figma-text-danger">
           {line}
         </p>
       ))}
-      <RadioGroup
-        aria-label="Where it goes"
-        value={choice.placement}
-        onValueChange={(value) =>
-          onChange({ ...choice, placement: value === "current-page" ? "current-page" : "new-page" })
-        }
-      >
-        <PlacementRow value="new-page" label="New page" />
-        <PlacementRow value="current-page" label="Current page" />
-      </RadioGroup>
+      {contents.devices.length > 0 && (
+        <RadioGroup
+          aria-label="Where it goes"
+          value={choice.placement}
+          onValueChange={(value) =>
+            onChange({
+              ...choice,
+              placement: value === "current-page" ? "current-page" : "new-page",
+            })
+          }
+        >
+          <PlacementRow value="new-page" label="New page" />
+          <PlacementRow value="current-page" label="Current page" />
+        </RadioGroup>
+      )}
     </div>
   );
 }

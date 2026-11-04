@@ -290,6 +290,10 @@ function Review({
           devices: contents.devices.map((d) => d.on),
           extras: contents.extras.map((e) => e.on),
           placement: contents.placement,
+          themes: {
+            light: contents.themes.light?.on ?? false,
+            dark: contents.themes.dark?.on ?? false,
+          },
         }
       : null
   );
@@ -299,12 +303,20 @@ function Review({
     const first = { collections: contents.collections, overLimit: contents.overLimit };
     const unchanged =
       picked.devices.every((on, i) => on === contents.devices[i]?.on) &&
-      picked.extras.every((on, i) => on === contents.extras[i]?.on);
-    return unchanged ? first : (contents.summarize?.(picked.devices, picked.extras) ?? first);
+      picked.extras.every((on, i) => on === contents.extras[i]?.on) &&
+      picked.themes.light === (contents.themes.light?.on ?? false) &&
+      picked.themes.dark === (contents.themes.dark?.on ?? false);
+    return unchanged
+      ? first
+      : (contents.summarize?.(picked.devices, picked.extras, picked.themes) ?? first);
   }, [contents, picked]);
   // A device set always shows its contents, so the options wait behind a button unless asked for.
-  const [showOptions, setShowOptions] = useState(!contents || state.optionsOpen === true);
-  const noDevice = picked !== null && !picked.devices.some(Boolean);
+  const [showOptions, setShowOptions] = useState(
+    !contents || contents.devices.length === 0 || state.optionsOpen === true
+  );
+  const noDevice = picked !== null && picked.devices.length > 0 && !picked.devices.some(Boolean);
+  // A file's themes need one ticked; a file with no choice to make has no themes to tick.
+  const noTheme = picked !== null && !picked.themes.light && !picked.themes.dark;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">
@@ -346,7 +358,7 @@ function Review({
           Cancel
         </Button>
         <Button
-          disabled={noDevice}
+          disabled={noDevice || noTheme}
           onClick={() =>
             onDecide({
               options,
