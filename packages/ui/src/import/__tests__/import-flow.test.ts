@@ -1742,14 +1742,14 @@ describe("a device set", () => {
     const one = await runDevices([devicesFile()], port);
     if (one.last.step !== "done") throw new Error(one.last.step);
     expect(one.last.sets[0]?.notes).toContain(
-      "1 frame couldn't get its device or breakpoint modes and uses the first mode's values."
+      "1 frame couldn't get its device or breakpoint modes and keeps its captured values, not linked to variables."
     );
     const two = fakePort();
     two.setResult = { plainVersions: [1, 2] };
     const both = await runDevices([devicesFile()], two);
     if (both.last.step !== "done") throw new Error(both.last.step);
     expect(both.last.sets[0]?.notes).toContain(
-      "2 frames couldn't get their device or breakpoint modes and use the first mode's values."
+      "2 frames couldn't get their device or breakpoint modes and keep their captured values, not linked to variables."
     );
   });
 

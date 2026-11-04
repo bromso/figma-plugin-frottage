@@ -615,8 +615,8 @@ function modesSpec(set: VersionSet, ctx: SetContext): SetSpec {
 /** The sentence for frames a device set left without their Device or Breakpoint mode. */
 export function plainFramesLine(count: number): string {
   return count === 1
-    ? "1 frame couldn't get its device or breakpoint modes and uses the first mode's values."
-    : `${count} frames couldn't get their device or breakpoint modes and use the first mode's values.`;
+    ? "1 frame couldn't get its device or breakpoint modes and keeps its captured values, not linked to variables."
+    : `${count} frames couldn't get their device or breakpoint modes and keep their captured values, not linked to variables.`;
 }
 
 /** A page captured on devices, and extra captures for its breakpoints: a frame per device. */

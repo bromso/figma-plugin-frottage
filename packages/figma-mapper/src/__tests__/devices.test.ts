@@ -299,7 +299,7 @@ describe("mergeDevices", () => {
     ]);
     expect(modesOf(layers, "Breakpoint")).toEqual(["min 1400", "base"]);
     expect(report).toContain(
-      "color/card differs by breakpoint in Color Mode; kept the min 1400 value"
+      "color/card differs by breakpoint in Color Mode; kept the min 1400 value."
     );
     const card = aliasOf(varOf(layers, "theme:color/card")?.values[0]);
     expect(card && varOf(layers, card)?.values.length).toBe(2);
@@ -480,6 +480,9 @@ describe("mergeDevices", () => {
     expect(layers.variables.length).toBeLessThanOrEqual(1000);
     expect(varOf(layers, "theme:type/heading/1/size")).toBeDefined();
     expect(varOf(layers, "theme:type/heading/1/line-height")).toBeUndefined();
+    expect(report).toContain(
+      "heading/1 line-height differs by breakpoint; kept, at the variable limit."
+    );
     expect(report.some((line) => line.includes("past the 1,000-variable limit"))).toBe(true);
     expectResolves(layers, plans);
   });

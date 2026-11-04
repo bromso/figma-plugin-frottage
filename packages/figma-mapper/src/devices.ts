@@ -409,10 +409,10 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
       const top = modeNames[widest];
       const kinds = sources.map((key) => (merged.get(key) as PlanVariable).collection);
       if (kinds.includes("colorMode")) {
-        report.push(`${name} differs by breakpoint in Color Mode; kept the ${top} value`);
+        report.push(`${name} differs by breakpoint in Color Mode; kept the ${top} value.`);
       } else if (!splitRoom()) {
         dropped += ranges.length + 1;
-        report.push(`${name} differs by breakpoint; kept the ${top} value, at the variable limit`);
+        report.push(`${name} differs by breakpoint; kept the ${top} value, at the variable limit.`);
       } else {
         alias = split(
           name,
@@ -506,7 +506,7 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
         if (switches(seed.bind?.[field])) continue;
         if (!room(ranges.length + 2)) {
           dropped += ranges.length + 2;
-          report.push(`${seed.name} ${suffix} differs by breakpoint; kept, at the variable limit`);
+          report.push(`${seed.name} ${suffix} differs by breakpoint; kept, at the variable limit.`);
           continue;
         }
         const name = free(`type/${seed.name}/${suffix}`, themeNames);
