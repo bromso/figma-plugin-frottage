@@ -185,3 +185,34 @@ test("themes: at most 8, and 2,000 properties each", () => {
   expect(parseCapture(withThemes([themeOf(0, props(2001))])).ok).toBe(false);
   expect(parseCapture(withThemes([themeOf(0, { "--a": 1 as never })])).ok).toBe(false);
 });
+
+test("the active theme and the root's base values parse like the schema does", async () => {
+  const { captureSchema } = await import("../index");
+  const input = {
+    ...minimalCapture(),
+    tokens: {
+      cssCustomProperties: { "--bg": "#000" },
+      themes: [{ context: ".dark", mode: "Dark", properties: { "--bg": "#000" } }],
+      activeTheme: "Dark",
+      base: { "--bg": "#fff" },
+    },
+  };
+  const result = parseCapture(input);
+  expect(result.ok).toBe(true);
+  if (result.ok) expect(result.capture).toEqual(captureSchema.parse(input));
+});
+
+test("an active theme over 40 characters, or base values past 2,000, are refused", () => {
+  const withTokens = (extra: Record<string, unknown>) => ({
+    ...minimalCapture(),
+    tokens: { cssCustomProperties: {}, ...extra },
+  });
+  expect(parseCapture(withTokens({ activeTheme: "x".repeat(40) })).ok).toBe(true);
+  expect(parseCapture(withTokens({ activeTheme: "x".repeat(41) })).ok).toBe(false);
+  expect(parseCapture(withTokens({ activeTheme: 1 })).ok).toBe(false);
+  const props = (n: number) =>
+    Object.fromEntries(Array.from({ length: n }, (_, i) => [`--p${i}`, "1"]));
+  expect(parseCapture(withTokens({ base: props(2000) })).ok).toBe(true);
+  expect(parseCapture(withTokens({ base: props(2001) })).ok).toBe(false);
+  expect(parseCapture(withTokens({ base: { "--a": 1 } })).ok).toBe(false);
+});

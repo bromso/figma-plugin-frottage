@@ -338,10 +338,13 @@ export function createApplier(api: PluginAPI) {
   /** The tokens this version may bind to: none once its mode was refused. */
   const bindable = () => (modeRefused ? undefined : tokens);
 
-  /** Opens a page, not a version, on its Theme collection's Light mode. */
-  function setLightMode(node: FrameNode): void {
+  /**
+   * Opens a page, not a version, on the Theme mode it was captured in: Dark for a page captured
+   * dark, else Light.
+   */
+  function setOpeningMode(node: FrameNode): void {
     if (versionIndex !== null) return;
-    const mode = bindable()?.themeMode("Light");
+    const mode = bindable()?.openingMode();
     if (!mode) return;
     try {
       node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
@@ -756,7 +759,7 @@ export function createApplier(api: PluginAPI) {
     const name = parent || op.component ? op.name : rootName || op.name;
     const node = createFrame(parent, op, name);
     if (!parent) setMode(node);
-    if (!parent && !op.component) setLightMode(node);
+    if (!parent && !op.component) setOpeningMode(node);
     setLayout(node, op);
     node.clipsContent = op.clips;
     // A refused paint costs that paint, not the frame and all that is under it.

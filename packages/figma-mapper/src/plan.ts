@@ -368,6 +368,8 @@ export type PlanLayers = {
   hostname: string;
   /** `["Light", ...theme modes]`; `["Light"]` when there are none. */
   modes: string[];
+  /** The mode the page was captured in, which a page opens in. Light when absent. */
+  activeMode?: string;
   themeSource: "site" | "inferred" | "none";
   variables: PlanVariable[];
   effectStyles: PlanEffectStyle[];

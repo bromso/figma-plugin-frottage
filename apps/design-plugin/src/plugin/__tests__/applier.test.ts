@@ -1089,11 +1089,11 @@ describe("binding to the Primitives and Theme collections", () => {
   };
   const plan: PlanTokens = { textStyles: [], colors: [], collection: "example.com", layers };
 
-  async function layered(ops: PlanOp[], over: object = {}, tokens = true) {
+  async function layered(ops: PlanOp[], over: object = {}, tokens = true, with_ = plan) {
     const f = fakeFigma(over);
     const a = createApplier(f.figma);
     await a.begin(meta);
-    await a.importTokens(plan, { ...DEFAULT_IMPORT_OPTIONS, tokens });
+    await a.importTokens(with_, { ...DEFAULT_IMPORT_OPTIONS, tokens });
     await a.applyBatch(ops);
     const r = await a.end();
     return { f, r, root: f.node(r.rootId) };
@@ -1206,6 +1206,22 @@ describe("binding to the Primitives and Theme collections", () => {
     const light = theme.modes.find((m: { name: string }) => m.name === "Light").modeId;
     expect(root.explicitModes).toEqual({ [theme.id]: light });
     expect(root.children[0].explicitModes).toEqual({});
+  });
+
+  test("a page captured in Dark opens on the Theme collection's Dark mode", async () => {
+    const dark = { ...plan, layers: { ...layers, activeMode: "Dark" } };
+    const { f, root } = await layered([frame("a")], {}, true, dark);
+    const theme = collectionNamed(f, "example.com · Theme");
+    const mode = theme.modes.find((m: { name: string }) => m.name === "Dark").modeId;
+    expect(root.explicitModes).toEqual({ [theme.id]: mode });
+  });
+
+  test("an active mode the file had no room for opens on Light", async () => {
+    const sepia = { ...plan, layers: { ...layers, activeMode: "Sepia" } };
+    const { f, root } = await layered([frame("a")], {}, true, sepia);
+    const theme = collectionNamed(f, "example.com · Theme");
+    const light = theme.modes.find((m: { name: string }) => m.name === "Light").modeId;
+    expect(root.explicitModes).toEqual({ [theme.id]: light });
   });
 
   test("a refused Light mode counts and the page still imports", async () => {

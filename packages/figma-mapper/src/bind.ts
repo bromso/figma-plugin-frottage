@@ -15,8 +15,8 @@ import { colorKeyOf, MIN_USES, rgbaOf } from "./tokens";
 
 /**
  * Binds each colour, corner radius and spacing length in `ops` to a variable of the catalogue: the
- * one the site used, else the only theme variable whose Light value is equal, else the only equal
- * primitive. What none of those finds stays a plain value and is counted as raw.
+ * one the site used, else the only theme variable whose value in the captured mode is equal, else
+ * the only equal primitive. What none of those finds stays a plain value and is counted as raw.
  */
 
 type Rgba = PlanRgb & { a: number };
@@ -175,13 +175,15 @@ export function bindLayers(
   // unless some layer or text style bound to a site variable by its ref.
   if (bound.size === 0 && context.root) inferTheme(catalogue, ops, context.root);
 
-  // (2) The only theme variable whose Light value is equal, (3) else the only equal primitive.
+  // (2) The only theme variable whose value in the mode the page was captured in is equal, (3)
+  // else the only equal primitive. The page's values are that mode's, Light or not.
+  const active = Math.max(0, catalogue.modes.indexOf(catalogue.activeMode));
   const equal = (field: Field, v: PlanVariable): boolean => {
     if (!accepts(v, field.scope)) return false;
-    const light = followed(v.values[0]);
-    if (light === null) return false;
-    if (field.kind === "colors") return isColour(light) && sameColour(light, field.value);
-    return typeof light === "number" && sameLength(light, field.value);
+    const held = followed(v.values[active] ?? v.values[0]);
+    if (held === null) return false;
+    if (field.kind === "colors") return isColour(held) && sameColour(held, field.value);
+    return typeof held === "number" && sameLength(held, field.value);
   };
   const theme = catalogue.variables.filter((v) => v.collection === "theme");
   const primitives = catalogue.variables.filter((v) => v.collection === "primitives");
@@ -276,6 +278,7 @@ export function bindLayers(
     layers: {
       hostname: catalogue.hostname,
       modes: catalogue.modes,
+      activeMode: catalogue.activeMode,
       themeSource: catalogue.themeSource,
       variables: kept,
       effectStyles: effects,

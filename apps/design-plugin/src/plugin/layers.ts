@@ -148,6 +148,8 @@ export function createLayerSet(api: PluginAPI) {
   let createdStyles: (EffectStyle | PaintStyle)[] = [];
   /** Set once the import is abandoned: nothing may be created after that. */
   let closed = false;
+  /** The mode the page was captured in, which it opens in. */
+  let activeMode = "Light";
 
   /** Gives each label a mode, adding those missing until the file's limit. */
   function settleModes(collection: VariableCollection, labels: string[], fresh: boolean) {
@@ -467,10 +469,18 @@ export function createLayerSet(api: PluginAPI) {
     });
   }
 
+  /** A Theme mode by its label, or null for one the file had no room for. */
+  function themeMode(name: string): { collection: VariableCollection; modeId: string } | null {
+    const home = homes.get("theme");
+    const modeId = home?.modeIds[home.labels.indexOf(name)];
+    return home && modeId ? { collection: home.collection, modeId } : null;
+  }
+
   return {
     /** Works out the plan's collections and styles. Never throws: what fails stays plain. */
     async resolve(plan: PlanLayers, options: ImportOptions, runtime: TokenRuntime): Promise<void> {
       if (!options.tokens) return;
+      activeMode = plan.activeMode ?? "Light";
       try {
         await settle(plan, options.useLocalStyles, runtime);
       } catch {
@@ -482,12 +492,10 @@ export function createLayerSet(api: PluginAPI) {
     effectStyleId: (key: string): string | undefined => effectIds.get(key),
     gradientStyleId: (key: string): string | undefined => gradientIds.get(key),
 
-    /** A Theme mode by its label, or null for one the file had no room for. */
-    themeMode(name: string): { collection: VariableCollection; modeId: string } | null {
-      const home = homes.get("theme");
-      const modeId = home?.modeIds[home.labels.indexOf(name)];
-      return home && modeId ? { collection: home.collection, modeId } : null;
-    },
+    themeMode,
+
+    /** The Theme mode a page opens in: the one it was captured in, else Light. */
+    openingMode: () => themeMode(activeMode) ?? themeMode("Light"),
 
     counts: (): LayerCounts => ({ ...counts, modesDropped: [...counts.modesDropped] }),
     failures: () => failures,

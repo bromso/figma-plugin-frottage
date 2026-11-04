@@ -93,6 +93,29 @@ describe("bindLayers", () => {
     expect(p.report.raw?.colors).toBe(0);
   });
 
+  test("on a page captured dark, a colour binds by its Dark value and the page opens in Dark", () => {
+    const tokens = shadcnTokens();
+    const dark = tokens.themes?.[0]?.properties ?? {};
+    const light: Record<string, string> = {};
+    for (const [prop, value] of Object.entries(dark)) {
+      light[prop] = tokens.cssCustomProperties[prop] as string;
+      tokens.cssCustomProperties[prop] = value;
+    }
+    tokens.activeTheme = "Dark";
+    tokens.base = light;
+    // The dark background, with no ref: equal to exactly one theme variable's Dark value.
+    const p = plan([painted("a", "oklch(0.145 0 0)")], tokens);
+    expect(fillOf(p, "a").colorKey).toBe("theme:background");
+    expect(p.tokens.layers?.activeMode).toBe("Dark");
+    // Light is the light page's: white.
+    const bg = p.tokens.layers?.variables.find((v) => v.key === "theme:background");
+    expect(bg?.values[0]).toMatchObject({ r: expect.closeTo(1, 4), g: expect.closeTo(1, 4) });
+  });
+
+  test("a page captured light opens in Light", () => {
+    expect(plan([painted("a", "oklch(1 0 0)")]).tokens.layers?.activeMode).toBe("Light");
+  });
+
   test("a colour equal to two theme variables and with no ref stays raw", () => {
     const tokens = shadcnTokens();
     delete tokens.cssCustomProperties["--background"];

@@ -130,6 +130,19 @@
             "required": ["context", "mode", "properties"],
             "additionalProperties": false
           }
+        },
+        "activeTheme": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "base": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "required": ["cssCustomProperties"],

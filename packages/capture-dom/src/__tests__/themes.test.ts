@@ -4,13 +4,15 @@ import { readThemes } from "../themes";
 
 const isColor = (v: string) => /^(#[0-9a-f]{3,8}|rgba?\(.*\)|oklch\(.*\)|red)$/i.test(v);
 
-function themes(css: string, rootClass = "") {
-  const win = new Window();
+function read(css: string, rootClass = "", scheme: "light" | "dark" = "light") {
+  const win = new Window({ settings: { device: { prefersColorScheme: scheme } } });
   const doc = win.document as unknown as Document;
   doc.head.innerHTML = `<style>${css}</style>`;
   doc.documentElement.className = rootClass;
   return readThemes(doc, doc.documentElement, isColor);
 }
+
+const themes = (css: string, rootClass = "") => read(css, rootClass).themes;
 
 describe("readThemes", () => {
   test("reads a class context", () => {
@@ -65,9 +67,52 @@ describe("readThemes", () => {
     ).toBeUndefined();
   });
 
-  test("ignores a rule the root already matches", () => {
-    expect(themes(".dark{--bg:#000}", "dark")).toBeUndefined();
+  test("a plain root rule is no theme", () => {
     expect(themes(":root{--bg:#000}")).toBeUndefined();
+    expect(read(":root{--bg:#000}").activeTheme).toBeUndefined();
+  });
+
+  test("a context the root matches is a theme, and the active one", () => {
+    const found = read(":root{--bg:#fff;--fg:#000;--r:4px}.dark{--bg:#000;--fg:#fff}", "dark");
+    expect(found.themes).toEqual([
+      { context: ".dark", mode: "Dark", properties: { "--bg": "#000", "--fg": "#fff" } },
+    ]);
+    expect(found.activeTheme).toBe("Dark");
+    // Light is what the root sets outside the context, for what the context changes.
+    expect(found.base).toEqual({ "--bg": "#fff", "--fg": "#000" });
+  });
+
+  test("an applying prefers-color-scheme block is the active theme", () => {
+    const found = read(
+      ":root{--bg:#fff;--fg:#000}@media (prefers-color-scheme: dark){:root{--bg:#000}}",
+      "",
+      "dark"
+    );
+    expect(found.themes?.map((t) => t.mode)).toEqual(["Dark"]);
+    expect(found.activeTheme).toBe("Dark");
+    expect(found.base).toEqual({ "--bg": "#fff" });
+  });
+
+  test("an inactive context records no active theme or base", () => {
+    const found = read(":root{--bg:#fff}.dark{--bg:#000}");
+    expect(found.activeTheme).toBeUndefined();
+    expect(found.base).toBeUndefined();
+  });
+
+  test("the base value follows the cascade: specificity, then order", () => {
+    const found = read(
+      ":root{--x:#111} html{--x:#222} :root{--y:#333} :root{--y:#444} .dark{--x:#000;--y:#000}",
+      "dark"
+    );
+    expect(found.base).toEqual({ "--x": "#111", "--y": "#444" });
+  });
+
+  test("base values pass the token filter and skip other conditions that don't hold", () => {
+    const found = read(
+      ':root{--a:#fff;--u:#fff}@media print{:root{--a:#123}}:root{--u:url("x.png")}.dark{--a:#000;--u:#000}',
+      "dark"
+    );
+    expect(found.base).toEqual({ "--a": "#fff" });
   });
 
   test("merges contexts with one mode, later rules winning", () => {

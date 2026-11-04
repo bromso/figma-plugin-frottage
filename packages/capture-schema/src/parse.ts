@@ -291,6 +291,12 @@ function checkTokens(input: unknown): Tokens {
       ),
     }));
   }
+  if (input.activeTheme !== undefined) {
+    out.activeTheme = check<string>(parts.activeTheme, input.activeTheme, "tokens.activeTheme");
+  }
+  if (input.base !== undefined) {
+    out.base = checkStringRecord(input.base, "tokens.base", parts.maxThemeProperties);
+  }
   return out;
 }
 

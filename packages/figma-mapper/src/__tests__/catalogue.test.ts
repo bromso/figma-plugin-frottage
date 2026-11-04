@@ -197,6 +197,40 @@ describe("buildCatalogue", () => {
     expectColour(surface?.values[0], "#ffffff");
   });
 
+  test("a page captured in its Dark theme still reads Light from the root's base values", () => {
+    const capture = shadcn();
+    const dark = capture.tokens.themes?.[0]?.properties ?? {};
+    const light: Record<string, string> = {};
+    for (const [prop, value] of Object.entries(dark)) {
+      light[prop] = capture.tokens.cssCustomProperties[prop] as string;
+      capture.tokens.cssCustomProperties[prop] = value;
+    }
+    // What the page computed: the aliases already follow the dark values.
+    capture.tokens.cssCustomProperties["--color-card"] = "oklch(0.205 0 0)";
+    capture.tokens.activeTheme = "Dark";
+    capture.tokens.base = light;
+    const cat = buildCatalogue(capture);
+    expect(cat.modes).toEqual(["Light", "Dark"]);
+    expect(cat.activeMode).toBe("Dark");
+    const card = cat.resolveRef("--color-card");
+    expect(card?.key).toBe("theme:card");
+    expectColour(card?.values[0], "#ffffff");
+    expectColour(card?.values[1], "oklch(0.205 0 0)");
+    const border = cat.byCssVar.get("--border");
+    expectColour(border?.values[0], "oklch(0.922 0 0)");
+    expectColour(border?.values[1], "oklch(1 0 0 / 10%)");
+  });
+
+  test("an active Light theme, or one not among the modes, opens in Light", () => {
+    const capture = shadcn();
+    capture.tokens.activeTheme = "Light";
+    expect(buildCatalogue(capture).activeMode).toBe("Light");
+    capture.tokens.activeTheme = "Sepia";
+    expect(buildCatalogue(capture).activeMode).toBe("Light");
+    delete capture.tokens.activeTheme;
+    expect(buildCatalogue(capture).activeMode).toBe("Light");
+  });
+
   test("a capture with no themes has one Light mode and no theme source", () => {
     const capture = cap(el("root", [0, 0]));
     capture.tokens.cssCustomProperties = { "--color-primary": "#2563eb" };

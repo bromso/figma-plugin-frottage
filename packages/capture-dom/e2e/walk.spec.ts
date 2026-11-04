@@ -2447,3 +2447,122 @@ test("each element records the token its CSS used, even where tokens share a val
   });
   expect(c.warnings.some((w) => w.code === "token-refs-partial")).toBe(false);
 });
+
+// ---------- Theme modes, captured light or dark, through the mapper
+
+type Variant = "light" | "media-dark" | "class-dark";
+
+/** The shadcn fixture as a site serves it: `.dark` on a class, or a dark media block. */
+async function captureShadcn(page: Page, variant: Variant): Promise<Capture> {
+  let html = readFileSync(
+    fileURLToPath(new URL("../fixtures/shadcn.html", import.meta.url)),
+    "utf8"
+  );
+  if (variant === "media-dark") {
+    html = html
+      .replace("  .dark {", "  @media (prefers-color-scheme: dark) { :root {")
+      .replace("--border: oklch(1 0 0 / 10%);\n  }", "--border: oklch(1 0 0 / 10%);\n  } }");
+    await page.emulateMedia({ colorScheme: "dark" });
+  }
+  if (variant === "class-dark")
+    html = html.replace('<html lang="en">', '<html lang="en" class="dark">');
+  await page.route("**/shadcn-variant.html", (route) =>
+    route.fulfill({ contentType: "text/html", body: html })
+  );
+  return capture(page, "shadcn-variant.html");
+}
+
+type MappedFrame = {
+  id: string;
+  op: string;
+  fills: { colorKey?: string }[];
+  strokes: { colorKey?: string } | null;
+  radiusKeys?: (string | undefined)[];
+  layout: { padding: number[]; spacingKeys?: { padding?: (string | undefined)[] } };
+};
+
+function mapLayered(c: Capture) {
+  const plan = mapCapture(c, [{ family: "Inter", style: "Regular" }], {
+    ...DEFAULT_IMPORT_OPTIONS,
+    tokens: true,
+    layers: true,
+  });
+  const layers = plan.tokens.layers;
+  if (!layers) throw new Error("no layers");
+  const byClass = (name: string) => {
+    const node = findKind(c, "element", (n) =>
+      (n.semantic.className ?? "").split(" ").includes(name)
+    );
+    return plan.ops.find((o) => o.op === "frame" && o.id === node.id) as unknown as MappedFrame;
+  };
+  const values = (key: string) => {
+    const v = layers.variables.find((x) => x.key === key);
+    if (!v) throw new Error(`no variable ${key}`);
+    return v.values as { r: number; g: number; b: number; a: number }[];
+  };
+  return { plan, layers, byClass, values };
+}
+
+for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
+  test(`shadcn captured ${variant}: Light and Dark modes, and what each layer binds to`, async ({
+    page,
+  }) => {
+    const c = await captureShadcn(page, variant);
+    expect(parseCapture(c).ok).toBe(true);
+    const dark = variant !== "light";
+    expect(c.tokens.activeTheme).toBe(dark ? "Dark" : undefined);
+    expect(c.tokens.themes?.map((t) => t.mode)).toEqual(["Dark"]);
+
+    const { layers, byClass, values } = mapLayered(c);
+    expect(layers.modes).toEqual(["Light", "Dark"]);
+    expect(layers.activeMode).toBe(dark ? "Dark" : "Light");
+    expect(layers.themeSource).toBe("site");
+
+    // Light is the light page's whichever way it was captured; Dark the dark one's.
+    const white = { r: 1, g: 1, b: 1, a: 1 };
+    for (const name of ["background", "card", "popover"]) {
+      const [light, darkValue] = values(`theme:${name}`);
+      expect(light).toMatchObject({
+        r: expect.closeTo(white.r, 3),
+        g: expect.closeTo(white.g, 3),
+        a: 1,
+      });
+      expect(darkValue?.r).toBeLessThan(0.3);
+    }
+    // In Dark, card, popover and background are three colours.
+    const darks = ["background", "card", "popover"].map((n) => values(`theme:${n}`)[1]?.r);
+    expect(new Set(darks.map((r) => r?.toFixed(3))).size).toBe(3);
+    expect(values("theme:border")[1]?.a).toBeCloseTo(0.1, 2);
+
+    const card = byClass("card");
+    const popover = byClass("popover");
+    expect(card.fills[0]?.colorKey).toBe("theme:card");
+    expect(popover.fills[0]?.colorKey).toBe("theme:popover");
+    expect(card.strokes?.colorKey).toBe("theme:border");
+    expect(card.radiusKeys).toEqual(Array(4).fill("primitives:radius/lg"));
+  });
+}
+
+test("captured in a theme, Light comes from the root's own rules, by the cascade", async ({
+  page,
+}) => {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await page.goto("/secrets.html");
+  await page.addStyleTag({
+    content: `
+      @layer a, b;
+      :root { --x: #111111; }
+      @layer b { :root { --y: #333333; } }
+      @layer a { :root { --y: #444444; --x: #555555; } }
+      html { --z: #666666; }
+      :root { --z: #777777; }
+      html.night-theme { --x: #000000; --y: #000000; --z: #000000; }
+    `,
+  });
+  await page.evaluate(() => document.documentElement.classList.add("night-theme"));
+  await page.addScriptTag({ content: bundle });
+  const { tokens } = await runCapture(page, "2026-01-01T00:00:00.000Z");
+  expect(tokens.cssCustomProperties["--x"]).toBe("#000000");
+  expect(tokens.activeTheme).toBe("Night theme");
+  expect(tokens.base).toEqual({ "--x": "#111111", "--y": "#333333", "--z": "#777777" });
+});

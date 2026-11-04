@@ -1,5 +1,5 @@
 import type { Capture } from "@repo/capture-schema";
-import { nestSelectors, splitSelectors as splitNested } from "./hover";
+import { nestSelectors, specificity, splitSelectors as splitNested } from "./hover";
 import { isTokenValue } from "./styles";
 
 type Themes = NonNullable<Capture["tokens"]["themes"]>;
@@ -165,23 +165,52 @@ function splitSelectors(text: string): string[] {
 const isDarkMedia = (condition: string) =>
   /^\(\s*prefers-color-scheme\s*:\s*dark\s*\)$/i.test(condition.trim());
 
+/** The stylesheet themes, the one the page was in, and the root's values outside them. */
+export type ReadThemes = {
+  themes?: Themes;
+  /** The mode of the context the root was in when captured; absent when none applied. */
+  activeTheme?: string;
+  /** With a context other than Light active: what the root sets outside every context. */
+  base?: Record<string, string>;
+};
+
+/** Where a declaration sits in the cascade, to say which of two wins. */
+type Place = { layer: number[]; spec: number; order: number };
+
+function wins(a: Place, b: Place): boolean {
+  for (let i = 0; i < Math.max(a.layer.length, b.layer.length); i++) {
+    const x = a.layer[i] ?? Number.POSITIVE_INFINITY;
+    const y = b.layer[i] ?? Number.POSITIVE_INFINITY;
+    if (x !== y) return x > y;
+  }
+  if (a.spec !== b.spec) return a.spec > b.spec;
+  return a.order > b.order;
+}
+
 /**
  * The stylesheet contexts that restyle the root: `.dark`, `[data-theme="dark"]` or a dark
- * `prefers-color-scheme` block. Contexts with the same mode name merge, later rules winning.
+ * `prefers-color-scheme` block, whether the root is in one now or not. Contexts with the same mode
+ * name merge, later rules winning. When the root is in one, its computed values are that theme's,
+ * so the values the root's own rules set outside every context are read as well, for Light.
  */
 export function readThemes(
   doc: Document,
   root: Element,
   isColor: (value: string) => boolean
-): Capture["tokens"]["themes"] {
+): ReadThemes {
   const byMode = new Map<string, Themes[number]>();
-  const add = (context: string, mode: string, rule: CSSStyleRule) => {
+  const active = new Set<string>();
+  /** The winning base declaration of each property, by cascade place. */
+  const base = new Map<string, Place & { value: string }>();
+  let order = 0;
+  const add = (context: string, mode: string, rule: CSSStyleRule, applies: boolean) => {
     let theme = byMode.get(mode);
     if (!theme) {
       if (byMode.size >= MAX_THEMES) return;
       theme = { context, mode, properties: {} };
       byMode.set(mode, theme);
     }
+    if (applies) active.add(mode);
     for (const name of Array.from(rule.style)) {
       if (!name.startsWith("--") || name.startsWith("--tw-")) continue;
       if (
@@ -194,33 +223,71 @@ export function readThemes(
       if (isTokenValue(value, isColor)) theme.properties[name] = value;
     }
   };
+  const addBase = (rule: CSSStyleRule, place: Place) => {
+    for (const name of Array.from(rule.style)) {
+      if (!name.startsWith("--") || name.startsWith("--tw-")) continue;
+      const held = base.get(name);
+      if (held && !wins(place, held)) continue;
+      base.set(name, { ...place, value: rule.style.getPropertyValue(name).trim() });
+    }
+  };
+  const matches = (selector: string): boolean | null => {
+    try {
+      return root.matches(selector);
+    } catch {
+      return null; // a selector `matches` can't take
+    }
+  };
   try {
-    walkStyleRules(doc, (rule, conditions) => {
+    walkStyleRules(doc, (rule, conditions, { layer }) => {
       if (!Array.from(rule.style).some((name) => name.startsWith("--"))) return;
+      order++;
+      const holds = conditions.every((c) => c.applies);
       // Only a `prefers-color-scheme: dark` block may hold a theme; print, width and feature
       // conditions say nothing about a theme.
-      if (!conditions.every((c) => isDarkMedia(c.text))) return;
-      const dark = conditions.length > 0;
+      const dark = conditions.length > 0 && conditions.every((c) => isDarkMedia(c.text));
       for (const selector of splitSelectors(rule.selectorText)) {
         if (dark && /^(?::root|html)$/.test(selector)) {
-          add(DARK_MEDIA, "Dark", rule);
+          add(DARK_MEDIA, "Dark", rule, holds);
           continue;
         }
         const mode = modeOfSelector(selector);
-        if (mode === null) continue;
-        let matches = false;
-        try {
-          matches = root.matches(selector);
-        } catch {
-          continue; // a selector `matches` can't take
+        const on = matches(selector);
+        if (on === null) continue;
+        if (mode === null) {
+          // The root's own rules, outside any context: what Light is when a context applies.
+          if (on && holds && !conditions.some((c) => isDarkMedia(c.text))) {
+            addBase(rule, { layer, spec: specificity(selector), order });
+          }
+          continue;
         }
-        if (dark) add(DARK_MEDIA, "Dark", rule);
-        else if (!matches) add(selector, mode, rule);
+        if (dark) add(DARK_MEDIA, "Dark", rule, holds && on);
+        else if (conditions.length === 0) add(selector, mode, rule, on);
       }
     });
   } catch {
     // themes are best effort
   }
   const themes = [...byMode.values()].filter((t) => Object.keys(t.properties).length > 0);
-  return themes.length > 0 ? themes : undefined;
+  const out: ReadThemes = {};
+  if (themes.length === 0) return out;
+  out.themes = themes;
+  const on = themes.filter((t) => active.has(t.mode));
+  const lead = on.find((t) => t.mode !== "Light") ?? on[0];
+  if (!lead) return out;
+  out.activeTheme = lead.mode;
+  // Light's values for what an active context changes; Light itself needs none.
+  const values: Record<string, string> = {};
+  let count = 0;
+  for (const theme of on) {
+    if (theme.mode === "Light") continue;
+    for (const name of Object.keys(theme.properties)) {
+      const value = base.get(name)?.value;
+      if (value === undefined || name in values || !isTokenValue(value, isColor)) continue;
+      if (++count > MAX_THEME_PROPERTIES) break;
+      values[name] = value;
+    }
+  }
+  if (count > 0) out.base = values;
+  return out;
 }

@@ -11,6 +11,8 @@ import { collectionName, MAX_VALUE_LENGTH, resolveVars, SAFE_PROPERTY } from "./
 export type Catalogue = {
   hostname: string;
   modes: string[];
+  /** The mode the page was captured in: its computed values are that mode's. */
+  activeMode: string;
   themeSource: PlanLayers["themeSource"];
   /** Every custom property that became a variable or collapsed into one. */
   byCssVar: Map<string, PlanVariable>;
@@ -166,6 +168,23 @@ export function buildCatalogue(capture: Capture): Catalogue {
     byMode.set(t.mode, { ...t.properties, ...byMode.get(t.mode) });
   }
   const modes = [LIGHT, ...byMode.keys()];
+  // In a theme the page was captured in, the root's values are that theme's: Light is what the
+  // root's own rules set outside it.
+  const captured = capture.tokens.activeTheme;
+  const activeMode = captured !== undefined && byMode.has(captured) ? captured : LIGHT;
+  const base = activeMode === LIGHT ? {} : (capture.tokens.base ?? {});
+  /** Light's value of a property, as the root's own rules set it. */
+  const lightText = (prop: string) => base[prop] ?? root[prop];
+  const lightProps = activeMode === LIGHT ? root : { ...rootAuthored, ...base };
+  const lightAuthored = (prop: string) => base[prop] ?? authored[prop];
+  // Each mode's values over the root's, built once: the active mode's over what the page computed,
+  // any other over Light.
+  const modeProps = new Map(
+    [...byMode].map(([mode, context]) => [
+      mode,
+      mode === activeMode ? { ...rootAuthored, ...context } : { ...lightProps, ...context },
+    ])
+  );
 
   const variables: PlanVariable[] = [];
   const byKey = new Map<string, PlanVariable>();
@@ -226,17 +245,17 @@ export function buildCatalogue(capture: Capture): Catalogue {
   // Theme: Light is the root's value, each other mode its context's over the root.
   for (const prop of Object.keys(root)) {
     if (!themeProps.has(prop)) continue;
-    const light = classify(prop, root[prop] as string, root, true);
+    const light = classify(prop, lightText(prop) as string, lightProps, true);
     if (!light) continue;
-    const values: PlanVarValue[] = [aliasOf(authored[prop], light.type) ?? light.value];
-    for (const context of byMode.values()) {
+    const values: PlanVarValue[] = [aliasOf(lightAuthored(prop), light.type) ?? light.value];
+    for (const [mode, context] of byMode) {
       const text = context[prop];
       if (text === undefined) {
         values.push(values[0] as PlanVarValue);
         continue;
       }
       const alias = aliasOf(text, light.type);
-      const spec = alias ? null : classify(prop, text, { ...rootAuthored, ...context }, true);
+      const spec = alias ? null : classify(prop, text, modeProps.get(mode) ?? context, true);
       // A value of another type, or none, keeps Light's.
       values.push(alias ?? (spec?.type === light.type ? spec.value : (values[0] as PlanVarValue)));
     }
@@ -305,6 +324,7 @@ export function buildCatalogue(capture: Capture): Catalogue {
     dropped,
     hostname: collectionName(capture.source.url),
     modes,
+    activeMode,
     themeSource: themes.length > 0 ? "site" : "none",
     byCssVar,
     variables,

@@ -1368,6 +1368,8 @@ export function createTokenSet(api: PluginAPI) {
     gradientStyleId: (key: string | undefined) => (key ? layers?.gradientStyleId(key) : undefined),
     /** A Theme mode by its label, or null without layers or room for it. */
     themeMode: (name: string) => layers?.themeMode(name) ?? null,
+    /** The Theme mode a page opens in: the one it was captured in, else Light. */
+    openingMode: () => layers?.openingMode() ?? null,
     failed,
     counts(): TokenCounts {
       if (!layers) return { ...counts };

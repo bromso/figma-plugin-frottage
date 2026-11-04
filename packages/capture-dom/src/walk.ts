@@ -1506,7 +1506,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   }
   const byName = (o: Record<string, string>) =>
     Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
-  let themes: ReturnType<typeof readThemes>;
+  let themes: ReturnType<typeof readThemes> = {};
   try {
     themes = readThemes(doc, root, isColor);
   } catch {
@@ -1528,7 +1528,9 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     tokens: {
       cssCustomProperties: byName(cssCustomProperties),
       ...(Object.keys(authored).length > 0 ? { authored: byName(authored) } : {}),
-      ...(themes ? { themes } : {}),
+      ...(themes.themes ? { themes: themes.themes } : {}),
+      ...(themes.activeTheme ? { activeTheme: themes.activeTheme } : {}),
+      ...(themes.base ? { base: byName(themes.base) } : {}),
     },
     fonts: [...fonts.values()],
     assets: [],

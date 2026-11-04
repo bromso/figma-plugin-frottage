@@ -624,3 +624,77 @@ export function readHover(
   if (stopped) deps.report("hover-stopped", 1);
   return result;
 }
+
+/** The rule order key: [inline, ids, classes, types] packed into one number. */
+export function specificity(selector: string): number {
+  let a = 0;
+  let b = 0;
+  let c = 0;
+  const add = (n: number) => {
+    a += Math.floor(n / 1e6);
+    b += Math.floor(n / 1e3) % 1e3;
+    c += n % 1e3;
+  };
+  const most = (list: string) => Math.max(0, ...splitSelectors(list).map(specificity));
+  let i = 0;
+  const ident = () => {
+    const start = i;
+    while (i < selector.length && /[\w\-\\\u0080-\uffff]/.test(selector[i] as string)) {
+      i += selector[i] === "\\" ? 2 : 1;
+    }
+    return selector.slice(start, i);
+  };
+  const args = (): string => {
+    let depth = 1;
+    const start = i;
+    while (i < selector.length && depth > 0) {
+      if (selector[i] === "\\") i++;
+      else if (selector[i] === "(") depth++;
+      else if (selector[i] === ")") depth--;
+      i++;
+    }
+    return selector.slice(start, i - 1);
+  };
+  while (i < selector.length) {
+    const ch = selector[i] as string;
+    if (ch === "#") {
+      i++;
+      ident();
+      a++;
+    } else if (ch === ".") {
+      i++;
+      ident();
+      b++;
+    } else if (ch === "[") {
+      while (i < selector.length && selector[i] !== "]") {
+        const q = selector[i];
+        if (q === '"' || q === "'") {
+          i++;
+          while (i < selector.length && selector[i] !== q) i += selector[i] === "\\" ? 2 : 1;
+        }
+        i++;
+      }
+      i++;
+      b++;
+    } else if (ch === ":") {
+      const element = selector[i + 1] === ":";
+      i += element ? 2 : 1;
+      const name = ident().toLowerCase();
+      const fn = selector[i] === "(";
+      if (fn) i++;
+      const inner = fn ? args() : "";
+      if (element || ["before", "after", "first-line", "first-letter"].includes(name)) c++;
+      else if (name === "where") {
+        // no weight
+      } else if (["is", "not", "has", "matches", "-webkit-any"].includes(name)) add(most(inner));
+      else if (/^nth-(?:last-)?child$/.test(name) && /\sof\s/i.test(inner)) {
+        b++;
+        add(most(inner.slice(inner.search(/\sof\s/i) + 4)));
+      } else b++;
+    } else if (/[A-Za-z_\\\u0080-\uffff-]/.test(ch)) {
+      ident();
+      c++;
+    } else i++;
+  }
+  return Math.min(a, 999) * 1e6 + Math.min(b, 999) * 1e3 + Math.min(c, 999);
+}

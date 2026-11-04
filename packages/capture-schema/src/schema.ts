@@ -261,6 +261,7 @@ export type CaptureNode = ElementNode | TextNode | ImageNode | SvgNode | Placeho
 
 const MAX_THEMES = 8;
 const MAX_THEME_PROPERTIES = 2000;
+const MAX_MODE_LENGTH = 40;
 
 export const captureSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
@@ -297,6 +298,16 @@ export const captureSchema = z.object({
         })
       )
       .max(MAX_THEMES)
+      .optional(),
+    /** The mode of the theme context the page was in when captured, as `Dark`. */
+    activeTheme: z.string().max(MAX_MODE_LENGTH).optional(),
+    /**
+     * With a theme context active: the root's authored values outside every theme context, for
+     * the properties an active context sets, so Light is not read from the active theme.
+     */
+    base: z
+      .record(z.string(), z.string())
+      .refine((p) => Object.keys(p).length <= MAX_THEME_PROPERTIES, "too many properties")
       .optional(),
   }),
   fonts: z.array(
@@ -347,6 +358,7 @@ export const parts = {
   maxThemes: MAX_THEMES,
   maxThemeProperties: MAX_THEME_PROPERTIES,
   theme: captureSchema.shape.tokens.shape.themes.unwrap().unwrap(),
+  activeTheme: captureSchema.shape.tokens.shape.activeTheme.unwrap(),
   backgroundImage: backgroundImage.omit({ stops: true }),
   stop,
   string: z.string(),
