@@ -20,6 +20,13 @@ describe("tailwindName", () => {
     expect(tailwindName(at("oklch(63.7% 0.237 25.331)"))).toBe("red/500");
   });
 
+  test("names Tailwind 4.3's mauve, olive, mist and taupe families", () => {
+    expect(tailwindName(at("oklch(54.2% 0.034 322.5)"))).toBe("mauve/500");
+    expect(tailwindName(at("oklch(58% 0.031 107.3)"))).toBe("olive/500");
+    expect(tailwindName(at("oklch(56% 0.021 213.5)"))).toBe("mist/500");
+    expect(tailwindName(at("oklch(54.7% 0.021 43.1)"))).toBe("taupe/500");
+  });
+
   test("a value one 8-bit step away is not Tailwind's", () => {
     const c = at("oklch(14.5% 0 0)");
     expect(tailwindName(step(c, 1))).toBeNull();
