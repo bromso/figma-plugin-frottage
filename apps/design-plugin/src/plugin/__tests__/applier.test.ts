@@ -1032,13 +1032,13 @@ test("image, svg and missing-image layers rotate too", async () => {
   expect([cx, cy].map((n) => Math.round(n * 1e6) / 1e6)).toEqual([30, 20]);
 });
 
-describe("binding to the Primitives and Theme collections", () => {
+describe("binding to the layered collections", () => {
   type Rgba = { r: number; g: number; b: number; a: number };
   const WHITE: Rgba = { r: 1, g: 1, b: 1, a: 1 };
   const SHADE: Rgba = { r: 0, g: 0, b: 0, a: 0.5 };
   const BLACK = { r: 0, g: 0, b: 0 };
-  const radius: PlanVariable = {
-    key: "primitives:radius/lg",
+  const rawRadius: PlanVariable = {
+    key: "radius:radius/lg",
     name: "radius/lg",
     collection: "radius",
     type: "FLOAT",
@@ -1047,17 +1047,38 @@ describe("binding to the Primitives and Theme collections", () => {
     scopes: ["CORNER_RADIUS"],
     cssVar: "--radius",
   };
+  const paper: PlanVariable = {
+    key: "palette:white",
+    name: "white",
+    collection: "palette",
+    type: "COLOR",
+    values: [WHITE],
+    description: "From the site: --white",
+    scopes: ["ALL_SCOPES"],
+  };
+  const shade: PlanVariable = { ...paper, key: "palette:shade", name: "shade", values: [SHADE] };
   // Opaque in Light, translucent in Dark: the variable carries the alpha.
-  const card: PlanVariable = {
-    key: "theme:card",
+  const modeCard: PlanVariable = {
+    key: "colorMode:card",
     name: "card",
     collection: "colorMode",
     type: "COLOR",
-    values: [WHITE, SHADE],
+    values: [{ alias: paper.key }, { alias: shade.key }],
     description: "From the site: --card",
     scopes: ["ALL_SCOPES"],
     cssVar: "--card",
   };
+  const themeOf = (source: PlanVariable, name: string, from: string): PlanVariable => ({
+    ...source,
+    key: `theme:${name}`,
+    name,
+    collection: "theme",
+    values: [{ alias: source.key }],
+    description: `Final theme token; source: ${from}`,
+  });
+  // Layers bind only to Theme.
+  const card = themeOf(modeCard, "color/card", "Color Mode");
+  const radius = themeOf(rawRadius, "radius/lg", "Border radius");
   const shadow: PlanEffect = {
     type: "DROP_SHADOW",
     color: { r: 0, g: 0, b: 0, a: 0.25 },
@@ -1080,8 +1101,13 @@ describe("binding to the Primitives and Theme collections", () => {
     hostname: "example.com",
     modes: ["Light", "Dark"],
     themeSource: "site",
-    collections: [],
-    variables: [card, radius],
+    collections: [
+      { kind: "palette", name: "Palette", modes: ["Base"] },
+      { kind: "radius", name: "Border radius", modes: ["Base"] },
+      { kind: "colorMode", name: "Color Mode", modes: ["Light", "Dark"] },
+      { kind: "theme", name: "Theme", modes: ["Default"] },
+    ],
+    variables: [paper, shade, rawRadius, modeCard, card, radius],
     effectStyles: [{ key: "shadow:sm", name: "shadow/sm", shadows: [shadow], colorKeys: [null] }],
     gradientStyles: [
       { key: "gradient:1", name: "gradient/1", paint: gradientPaint, stopKeys: [card.key, null] },
@@ -1099,10 +1125,13 @@ describe("binding to the Primitives and Theme collections", () => {
     const r = await a.end();
     return { f, r, root: f.node(r.rootId) };
   }
-  const variableNamed = (f: ReturnType<typeof fakeFigma>, name: string): any =>
-    [...f.tokens.variables.values()].find((v) => v.name === name);
   const collectionNamed = (f: ReturnType<typeof fakeFigma>, name: string): any =>
     [...f.tokens.collections.values()].find((c) => c.name === name);
+  /** A Theme variable by name: the only ones a layer binds to. */
+  const variableNamed = (f: ReturnType<typeof fakeFigma>, name: string): any =>
+    [...f.tokens.variables.values()].find(
+      (v) => v.name === name && v.variableCollectionId === collectionNamed(f, "Theme")?.id
+    );
   const allKeys = [radius.key, radius.key, radius.key, radius.key] as [
     string,
     string,
@@ -1125,7 +1154,7 @@ describe("binding to the Primitives and Theme collections", () => {
   });
 
   test("a corner without a key, or one Figma refuses, keeps its raw value", async () => {
-    const keys = [radius.key, undefined, "primitives:radius/none", radius.key];
+    const keys = [radius.key, undefined, "theme:radius/none", radius.key];
     const { f, root, r } = await layered([frame("a", null, { radiusKeys: keys })], {
       failRadiusBinding: "bottomLeftRadius",
     });
@@ -1148,7 +1177,7 @@ describe("binding to the Primitives and Theme collections", () => {
       frame("a", null, { fills, strokes: stroke, childCount: 1 }),
       textOp("t", "a", [run_]),
     ]);
-    const id = variableNamed(f, "card").id;
+    const id = variableNamed(f, "color/card").id;
     const runFill = root.children[0].ranges.find((x: any) => x.m === "setRangeFills").v[0];
     for (const paint of [root.fills[0], root.strokes[0], runFill]) {
       expect(paint.boundVariables.color.id).toBe(id);
@@ -1239,23 +1268,25 @@ describe("binding to the Primitives and Theme collections", () => {
       const linked = (text.ranges ?? []).find((x: any) => x.m === "setRangeFillStyleIdAsync");
       expect(linked?.v).toBe(on ? ink.id : undefined);
       expect(root.children[0].fillStyleId).toBeUndefined();
-      expect(root.children[0].fills[0].boundVariables.color.id).toBe(variableNamed(f, "card").id);
+      expect(root.children[0].fills[0].boundVariables.color.id).toBe(
+        variableNamed(f, "color/card").id
+      );
       expect(r.stylesReused).toBe(on ? 1 : 0);
     }
   });
 
-  test("the imported root opens on the Theme collection's Light mode", async () => {
+  test("the imported root opens on Color Mode's Light mode", async () => {
     const { f, root } = await layered([frame("a", null, { childCount: 1 }), frame("b", "a")]);
-    const theme = collectionNamed(f, "example.com · Theme");
+    const theme = collectionNamed(f, "Color Mode");
     const light = theme.modes.find((m: { name: string }) => m.name === "Light").modeId;
     expect(root.explicitModes).toEqual({ [theme.id]: light });
     expect(root.children[0].explicitModes).toEqual({});
   });
 
-  test("a page captured in Dark opens on the Theme collection's Dark mode", async () => {
+  test("a page captured in Dark opens on Color Mode's Dark mode", async () => {
     const dark = { ...plan, layers: { ...layers, activeMode: "Dark" } };
     const { f, root } = await layered([frame("a")], {}, true, dark);
-    const theme = collectionNamed(f, "example.com · Theme");
+    const theme = collectionNamed(f, "Color Mode");
     const mode = theme.modes.find((m: { name: string }) => m.name === "Dark").modeId;
     expect(root.explicitModes).toEqual({ [theme.id]: mode });
   });
@@ -1263,7 +1294,7 @@ describe("binding to the Primitives and Theme collections", () => {
   test("an active mode the file had no room for opens on Light", async () => {
     const sepia = { ...plan, layers: { ...layers, activeMode: "Sepia" } };
     const { f, root } = await layered([frame("a")], {}, true, sepia);
-    const theme = collectionNamed(f, "example.com · Theme");
+    const theme = collectionNamed(f, "Color Mode");
     const light = theme.modes.find((m: { name: string }) => m.name === "Light").modeId;
     expect(root.explicitModes).toEqual({ [theme.id]: light });
   });

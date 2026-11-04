@@ -339,8 +339,9 @@ export function createApplier(api: PluginAPI) {
   const bindable = () => (modeRefused ? undefined : tokens);
 
   /**
-   * Opens a page, not a version, on the Theme mode it was captured in: Dark for a page captured
-   * dark, else Light.
+   * Opens a page, not a version, on the Color Mode mode it was captured in: Dark for a page
+   * captured dark, else Light. Layers bind to Theme, which aliases Color Mode, so this switches
+   * them all.
    */
   function setOpeningMode(node: FrameNode): void {
     if (versionIndex !== null) return;

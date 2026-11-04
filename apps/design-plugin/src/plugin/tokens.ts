@@ -49,8 +49,7 @@ export type TokenCounts = {
    */
   droppedVersions: number[];
   /**
-   * The Primitives and Theme collections' own counts, for a plan with layers. The totals above
-   * include them.
+   * The layered collections' own counts, for a plan with layers. The totals above include them.
    */
   layers?: LayerCounts;
 };
@@ -438,7 +437,7 @@ export function createTokenSet(api: PluginAPI) {
   let modesCollection: VariableCollection | null = null;
   /** Set once the import is abandoned: nothing may be created after that. */
   let closed = false;
-  /** The Primitives and Theme collections, for a plan that has them. */
+  /** The layered collections, for a plan that has them. */
   let layers: ReturnType<typeof createLayerSet> | null = null;
 
   function failed(n = 1) {
@@ -1368,9 +1367,9 @@ export function createTokenSet(api: PluginAPI) {
     radius: (key: string | null | undefined) => (key ? layers?.variable(key) : undefined),
     effectStyleId: (key: string | undefined) => (key ? layers?.effectStyleId(key) : undefined),
     gradientStyleId: (key: string | undefined) => (key ? layers?.gradientStyleId(key) : undefined),
-    /** A Theme mode by its label, or null without layers or room for it. */
+    /** A Color Mode mode by its label, or null without layers or room for it. */
     themeMode: (name: string) => layers?.themeMode(name) ?? null,
-    /** The Theme mode a page opens in: the one it was captured in, else Light. */
+    /** The Color Mode mode a page opens in: the one it was captured in, else Light. */
     openingMode: () => layers?.openingMode() ?? null,
     failed,
     counts(): TokenCounts {

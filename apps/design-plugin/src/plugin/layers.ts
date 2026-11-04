@@ -1,12 +1,14 @@
-import type {
-  ImportOptions,
-  PlanCollectionKind,
-  PlanEffect,
-  PlanEffectStyle,
-  PlanGradientStyle,
-  PlanLayers,
-  PlanVariable,
-  PlanVarValue,
+import {
+  COLLECTION_NAMES,
+  type ImportOptions,
+  type PlanCollection,
+  type PlanCollectionKind,
+  type PlanEffect,
+  type PlanEffectStyle,
+  type PlanGradientStyle,
+  type PlanLayers,
+  type PlanVariable,
+  type PlanVarValue,
 } from "@repo/figma-mapper";
 import {
   COLLECTION_KEY,
@@ -22,10 +24,11 @@ import {
 } from "./tokens";
 
 /**
- * Settles a plan's Primitives and Theme collections, with its effect and gradient styles, against
- * the file. Frottage's own from an earlier import are reused where they hold the same values; a
- * user's are only ever read, and bound to. Any failure here counts and leaves what it was for
- * plain.
+ * Settles a plan's layered collections (Palette, Spacing, Border radius, Typography, Color Mode
+ * and Theme), with its effect and gradient styles, against the file. Frottage's own from an
+ * earlier import are reused where they hold the same values; a user's are only ever read, and
+ * bound to. PR #7's two collections are never touched. Any failure here counts and leaves what it
+ * was for plain.
  */
 
 export type LayerCounts = {
@@ -38,15 +41,11 @@ export type LayerCounts = {
   stylesCreated: number;
   /** The user's paint styles that raw colours linked to. */
   stylesReused: number;
+  /** The file holds PR #7's `· Primitives` or `· Theme` collection for this host, left as it is. */
+  legacyCollections: boolean;
 };
 
-/**
- * PR #7's two collections, which the layered plan still settles into until the sandbox makes the
- * six: Color Mode in Theme, every other collection in Primitives, in plan order so aliases resolve.
- */
-type Kind = "primitives" | "theme";
-const homeKind = (collection: PlanCollectionKind): Kind =>
-  collection === "colorMode" ? "theme" : "primitives";
+/** Creation order: each collection only aliases the ones before it. */
 const CREATION_ORDER: PlanCollectionKind[] = [
   "palette",
   "spacing",
@@ -55,6 +54,14 @@ const CREATION_ORDER: PlanCollectionKind[] = [
   "colorMode",
   "theme",
 ];
+const ONE_MODE: Record<PlanCollectionKind, string> = {
+  palette: "Base",
+  spacing: "Base",
+  radius: "Base",
+  typography: "Base",
+  colorMode: "Light",
+  theme: "Default",
+};
 
 /** A collection this import writes to, with the names taken in it and each plan mode's id. */
 type Home = {
@@ -67,8 +74,9 @@ type Home = {
   added: Set<string>;
 };
 
-const LABEL: Record<Kind, string> = { primitives: "Primitives", theme: "Theme" };
-const tagOf = (hostname: string, kind: Kind) => `${hostname}#${kind}`;
+/** A new namespace: PR #7's `<hostname>#primitives` and `#theme` are never matched. */
+const tagOf = (hostname: string, kind: PlanCollectionKind) => `${hostname}#layer:${kind}`;
+const legacyTags = (hostname: string) => [`${hostname}#primitives`, `${hostname}#theme`];
 
 /** `name`, or else `name (2)` and on: the first not taken, recorded as taken. */
 function freeName(name: string, taken: Set<string>): string {
@@ -169,7 +177,7 @@ export function createLayerSet(api: PluginAPI) {
   const gradientIds = new Map<string, string>();
   /** Raw colours' keys, to the user's paint style that holds the colour. */
   const paintStyleIds = new Map<string, string>();
-  const homes = new Map<Kind, Home>();
+  const homes = new Map<PlanCollectionKind, Home>();
   const counts: LayerCounts = {
     variablesCreated: 0,
     variablesReused: 0,
@@ -177,6 +185,7 @@ export function createLayerSet(api: PluginAPI) {
     modesDropped: [],
     stylesCreated: 0,
     stylesReused: 0,
+    legacyCollections: false,
   };
   let failures = 0;
   let createdVariables: Variable[] = [];
@@ -238,7 +247,13 @@ export function createLayerSet(api: PluginAPI) {
       return !closed;
     };
     const tagged = (c: VariableCollection) => c.getSharedPluginData(NAMESPACE, COLLECTION_KEY);
-    const ownCollections = new Set(collections.filter((c) => tagged(c) !== "").map((c) => c.id));
+    const tags = new Map(collections.map((c) => [c.id, tagged(c)]));
+    const tagIn = (c: VariableCollection) => tags.get(c.id) ?? "";
+    const ownCollections = new Set(collections.filter((c) => tagIn(c) !== "").map((c) => c.id));
+    const legacy = legacyTags(plan.hostname);
+    if (collections.some((c) => legacy.includes(tagIn(c)))) counts.legacyCollections = true;
+    /** Every collection name in the file, with those made just now. */
+    const collectionNames = new Set(collections.map((c) => c.name));
     const defaults = new Map(collections.map((c) => [c.id, c.defaultModeId]));
     // Each variable is read once here: a file can hold thousands, each read crosses into Figma,
     // and every token would otherwise look through them all.
@@ -291,22 +306,41 @@ export function createLayerSet(api: PluginAPI) {
     };
     const planned = new Map(plan.variables.map((v) => [v.key, v]));
 
+    /** The plan's collection of a kind; a plan without them still names its six. */
+    const described = (kind: PlanCollectionKind): PlanCollection =>
+      plan.collections.find((c) => c.kind === kind) ?? {
+        kind,
+        name: COLLECTION_NAMES[kind],
+        modes: kind === "colorMode" ? plan.modes : [ONE_MODE[kind]],
+      };
+
+    /**
+     * A new collection's name: the plan's, else `<name> (Frottage)` beside a user's of that name,
+     * or `<name> (<hostname>)` beside another host's; numbered on if that is taken too.
+     */
+    const nameFor = (name: string): string => {
+      if (!collectionNames.has(name)) {
+        collectionNames.add(name);
+        return name;
+      }
+      const users = collections.some((c) => c.name === name && tagIn(c) === "");
+      return freeName(`${name} (${users ? "Frottage" : plan.hostname})`, collectionNames);
+    };
+
     /** Frottage's collection of this kind, by its tag, else a new one. Made only when needed. */
-    const homeOf = (kind: Kind): Home => {
+    const homeOf = (kind: PlanCollectionKind): Home => {
       const known = homes.get(kind);
       if (known) return known;
+      const { name, modes } = described(kind);
       const tag = tagOf(plan.hostname, kind);
-      let collection = collections.find((c) => !c.remote && !c.isExtension && tagged(c) === tag);
+      let collection = collections.find((c) => !c.remote && !c.isExtension && tagIn(c) === tag);
       const fresh = !collection;
       if (!collection) {
-        const name = `${plan.hostname} · ${LABEL[kind]}`;
-        // A user's of this name stays as it is, beside this one.
-        const free = !collections.some((c) => c.name === name);
-        collection = api.variables.createVariableCollection(free ? name : `${name} (Frottage)`);
+        collection = api.variables.createVariableCollection(nameFor(name));
         createdCollections.push(collection);
         tagCollection(collection, tag);
       }
-      const labels = kind === "primitives" ? ["Value"] : plan.modes;
+      const labels = modes.length > 0 ? modes : [ONE_MODE[kind]];
       const { id } = collection;
       const names = held.filter((h) => h.collectionId === id).map((h) => h.name);
       const home = {
@@ -319,17 +353,18 @@ export function createLayerSet(api: PluginAPI) {
       return home;
     };
 
-    /** A plan value as Figma holds it: an alias goes to the variable its key settled on. */
-    const figmaValue = (value: PlanVarValue): VariableValue => {
+    /**
+     * A plan value as Figma holds it: an alias goes to the variable its key settled on. With no
+     * variable for it, down the chain to the first that has one, or to the value at its foot, so
+     * that the theme still reads right.
+     */
+    const figmaValue = (value: PlanVarValue, depth = 0): VariableValue => {
       if (typeof value !== "object" || !("alias" in value)) return value;
       const target = variables.get(value.alias);
       if (target) return api.variables.createVariableAlias(target);
-      // With no variable for it, the value it holds, so that the theme still reads right.
-      const held = planned.get(value.alias)?.values[0];
-      if (held === undefined || (typeof held === "object" && "alias" in held)) {
-        throw new Error("alias to nothing");
-      }
-      return held;
+      const next = planned.get(value.alias)?.values[0];
+      if (next === undefined || depth >= CREATION_ORDER.length) throw new Error("alias to nothing");
+      return figmaValue(next, depth + 1);
     };
 
     /** Frottage's variable of this key or name in the home, holding these values, if any. */
@@ -413,7 +448,7 @@ export function createLayerSet(api: PluginAPI) {
           return;
         }
       }
-      const home = homeOf(homeKind(token.collection));
+      const home = homeOf(token.collection);
       const wants = new Map<string, VariableValue>();
       for (const [i, modeId] of home.modeIds.entries()) {
         const value = token.values[i];
@@ -501,10 +536,11 @@ export function createLayerSet(api: PluginAPI) {
     }
 
     try {
-      // Lower collections first, so that the aliases above have them to point at.
-      const order = CREATION_ORDER.flatMap((kind) =>
-        plan.variables.filter((v) => v.collection === kind)
-      );
+      // In the plan's collection order, lower first, so that the aliases above have them to
+      // point at; a kind the plan leaves out of its list comes after, in its usual place.
+      const listed = plan.collections.map((c) => c.kind);
+      const kinds = [...listed, ...CREATION_ORDER.filter((k) => !listed.includes(k))];
+      const order = kinds.flatMap((kind) => plan.variables.filter((v) => v.collection === kind));
       for (const token of order) {
         if (!(await pause())) return;
         try {
@@ -571,9 +607,9 @@ export function createLayerSet(api: PluginAPI) {
     });
   }
 
-  /** A Theme mode by its label, or null for one the file had no room for. */
+  /** A Color Mode mode by its label, or null for one the file had no room for. */
   function themeMode(name: string): { collection: VariableCollection; modeId: string } | null {
-    const home = homes.get("theme");
+    const home = homes.get("colorMode");
     const modeId = home?.modeIds[home.labels.indexOf(name)];
     return home && modeId ? { collection: home.collection, modeId } : null;
   }
@@ -597,7 +633,7 @@ export function createLayerSet(api: PluginAPI) {
 
     themeMode,
 
-    /** The Theme mode a page opens in: the one it was captured in, else Light. */
+    /** The Color Mode mode a page opens in: the one it was captured in, else Light. */
     openingMode: () => themeMode(activeMode) ?? themeMode("Light"),
 
     counts: (): LayerCounts => ({ ...counts, modesDropped: [...counts.modesDropped] }),
@@ -610,7 +646,8 @@ export function createLayerSet(api: PluginAPI) {
 
     /**
      * Takes back what this import made, where nothing else uses it, as the token set does. Styles
-     * go first: one that stays holds its variables.
+     * go first: one that stays holds its variables. Then the variables and collections from the
+     * top layer down, so that each goes before the ones it aliases.
      */
     async discard(): Promise<void> {
       closed = true;
@@ -632,8 +669,8 @@ export function createLayerSet(api: PluginAPI) {
       if (made.length === 0 && collections.length === 0 && modes.length === 0) return;
       try {
         const used = await usedVariables(api, made, true);
-        for (const variable of made) if (!used.has(variable.id)) variable.remove();
-        for (const collection of collections) {
+        for (const variable of [...made].reverse()) if (!used.has(variable.id)) variable.remove();
+        for (const collection of [...collections].reverse()) {
           if (collection.variableIds.length === 0) collection.remove();
         }
         // A variable that stays keeps the values it holds in these modes.

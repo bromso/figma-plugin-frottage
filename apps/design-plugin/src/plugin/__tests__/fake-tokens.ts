@@ -304,6 +304,7 @@ export function tokenModel(
       },
       remove() {
         called("collection.remove");
+        writes.push(`remove collection ${collection.name}`);
         collection.removed = true;
         collections.delete(id);
         for (const v of [...variables.values()]) {
