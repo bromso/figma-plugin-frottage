@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   allowAccessAndRecapture,
+  applyProbe,
   BREAKPOINT_WAIT_MS,
   canCapture,
   captureFilename,
@@ -574,7 +575,13 @@ describe("a label in a filename", () => {
 });
 
 describe("canCapture", () => {
-  const ready = { restricted: false, tabId: 1, sizes: 3, breakpointsRead: true };
+  const ready = {
+    restricted: false,
+    tabId: 1,
+    sizes: 3,
+    breakpointsRead: true,
+    themes: { light: true, dark: false },
+  };
 
   test("waits for the page's breakpoints, for at most 1.5 s", () => {
     expect(canCapture(ready)).toBe(true);
@@ -590,7 +597,13 @@ describe("canCapture", () => {
 });
 
 describe("canCapture with themes", () => {
-  const ready = { restricted: false, tabId: 1, sizes: 3, breakpointsRead: true };
+  const ready = {
+    restricted: false,
+    tabId: 1,
+    sizes: 3,
+    breakpointsRead: true,
+    themes: { light: true, dark: false },
+  };
 
   test("needs Light, Dark or both ticked", () => {
     expect(canCapture({ ...ready, themes: { light: true, dark: false } })).toBe(true);
@@ -619,6 +632,38 @@ describe("initialThemes", () => {
     expect(initialThemes(undefined)).toEqual(failed);
     expect(initialThemes({ ok: false })).toEqual(failed);
     expect(initialThemes({ ok: true })).toEqual(failed);
+  });
+});
+
+describe("applyProbe", () => {
+  const off = { light: false, dark: true };
+
+  test("untouched boxes take the defaults", () => {
+    expect(applyProbe(off, false, { ok: true, dark: false })).toEqual(
+      initialThemes({ ok: true, dark: false })
+    );
+    expect(applyProbe(off, false, { ok: true, dark: true }).themes).toEqual({
+      light: true,
+      dark: true,
+    });
+  });
+
+  test("boxes the user changed are kept", () => {
+    expect(applyProbe({ light: false, dark: true }, true, { ok: true, dark: true })).toEqual({
+      themes: { light: false, dark: true },
+      darkEnabled: true,
+    });
+    expect(applyProbe({ light: false, dark: false }, true, { ok: false })).toEqual({
+      themes: { light: false, dark: false },
+      darkEnabled: true,
+    });
+  });
+
+  test("a touched Dark is cleared on a page with no dark theme", () => {
+    expect(applyProbe({ light: true, dark: true }, true, { ok: true, dark: false })).toEqual({
+      themes: { light: true, dark: false },
+      darkEnabled: false,
+    });
   });
 });
 

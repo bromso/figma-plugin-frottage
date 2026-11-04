@@ -326,9 +326,9 @@ export function canCapture(state: {
   sizes: number;
   breakpointsRead: boolean;
   /** The Light and Dark boxes; with neither ticked there is nothing to import. */
-  themes?: { light: boolean; dark: boolean };
+  themes: { light: boolean; dark: boolean };
 }): boolean {
-  const themed = !state.themes || state.themes.light || state.themes.dark;
+  const themed = state.themes.light || state.themes.dark;
   return (
     state.restricted === false &&
     state.tabId !== null &&
@@ -451,5 +451,23 @@ export function viewportAdvice(status: RunStatus & { state: "viewport-done" }): 
     skipped: status.skipped.map((w) => `${w} couldn't be reached, so it was skipped.`),
     nodeWarning: nodeAdvice(status.nodes, status.nodeLimit).warning,
     blockedImages: status.blockedImages,
+  };
+}
+
+/**
+ * The boxes once the probe answers. Untouched boxes take the defaults; boxes the user already
+ * changed are kept, except that Dark is cleared when the page has no dark theme. Whether Dark can
+ * be ticked always follows the probe.
+ */
+export function applyProbe(
+  current: { light: boolean; dark: boolean },
+  touched: boolean,
+  reply: { ok: boolean; dark?: boolean } | undefined
+): { themes: { light: boolean; dark: boolean }; darkEnabled: boolean } {
+  const start = initialThemes(reply);
+  if (!touched) return start;
+  return {
+    themes: { light: current.light, dark: current.dark && start.darkEnabled },
+    darkEnabled: start.darkEnabled,
   };
 }

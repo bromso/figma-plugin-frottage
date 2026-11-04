@@ -6,6 +6,7 @@ import type { RunStatus } from "../capture-run";
 import type { PopupMessage, Reply } from "../messages";
 import {
   allowAccessAndRecapture,
+  applyProbe,
   BREAKPOINT_WAIT_MS,
   canCapture,
   captureLabel,
@@ -65,6 +66,10 @@ function Popup() {
   // Which themes to import; Dark is off and locked until the probe says the page has one.
   const [themes, setThemes] = useState(() => initialThemes(undefined).themes);
   const [darkEnabled, setDarkEnabled] = useState(true);
+  // Set once the user ticks a box, so a late probe reply doesn't overwrite the choice.
+  const touched = useRef(false);
+  const themesRef = useRef(themes);
+  themesRef.current = themes;
 
   // The size for each device, remembered between opens.
   const [choices, setChoices] = useState<WidthChoice[]>(loadChoices);
@@ -98,12 +103,17 @@ function Popup() {
           chrome.runtime.sendMessage({ target: "sw", type: "breakpoints", tabId: tab.id }).then(
             (reply?: Reply) => {
               if (reply?.ok && reply.breakpoints) setBreakpoints(reply.breakpoints);
-              const start = initialThemes(reply?.ok ? reply : undefined);
+              const start = applyProbe(themesRef.current, touched.current, reply);
               setThemes(start.themes);
               setDarkEnabled(start.darkEnabled);
               setBreakpointsRead(true);
             },
-            () => setBreakpointsRead(true)
+            () => {
+              const start = applyProbe(themesRef.current, touched.current, undefined);
+              setThemes(start.themes);
+              setDarkEnabled(start.darkEnabled);
+              setBreakpointsRead(true);
+            }
           );
         } else setBreakpointsRead(true);
       },
@@ -375,7 +385,10 @@ function Popup() {
               <Checkbox
                 id="theme-light"
                 checked={themes.light}
-                onCheckedChange={(on) => setThemes((t) => ({ ...t, light: on === true }))}
+                onCheckedChange={(on) => {
+                  touched.current = true;
+                  setThemes((t) => ({ ...t, light: on === true }));
+                }}
               />
               <Label htmlFor="theme-light">Light</Label>
             </div>
@@ -384,13 +397,17 @@ function Popup() {
                 id="theme-dark"
                 checked={themes.dark}
                 disabled={!darkEnabled}
-                onCheckedChange={(on) => setThemes((t) => ({ ...t, dark: on === true }))}
+                aria-describedby={darkEnabled ? undefined : "theme-dark-hint"}
+                onCheckedChange={(on) => {
+                  touched.current = true;
+                  setThemes((t) => ({ ...t, dark: on === true }));
+                }}
               />
               <Label htmlFor="theme-dark">Dark</Label>
             </div>
           </div>
           {!darkEnabled && (
-            <Type size="xsmall" className="text-muted-foreground">
+            <Type id="theme-dark-hint" size="xsmall" className="text-muted-foreground">
               {NO_DARK_HINT}
             </Type>
           )}
