@@ -1,6 +1,7 @@
 import type { CaptureNode } from "@repo/capture-schema";
 import { type Catalogue, COLOR_SCOPES, followAlias, MAX_VARIABLES } from "./catalogue";
 import type { PlanOp, PlanRgb, StagedVariable } from "./plan";
+import { tailwindName } from "./tailwind-palette";
 import { headedTexts } from "./tokens";
 
 /**
@@ -57,15 +58,19 @@ export function oklab({ r, g, b }: PlanRgb): { L: number; a: number; b: number }
   };
 }
 
-/** `color/<family>-<step>`, with `-2`, `-3` after a name in `taken`. */
+/**
+ * `color/<family>-<step>`, with `-2`, `-3` after a name in `taken`. An opaque colour that is exactly
+ * one of Tailwind's own takes Tailwind's name (`color/neutral-950`).
+ */
 export function primitiveName(colour: PlanRgb, taken: Set<string>): string {
+  const tw = tailwindName({ a: 1, ...colour });
   const lab = oklab(colour);
   const chroma = Math.hypot(lab.a, lab.b);
   let hue = (Math.atan2(lab.b, lab.a) * 180) / Math.PI;
   if (hue < 0) hue += 360;
   const family = chroma < GRAY_CHROMA ? "gray" : (HUES.find(([end]) => hue < end)?.[1] ?? "pink");
   const step = Math.max(50, Math.min(950, Math.round((1 - lab.L) * 20) * 50));
-  const base = `color/${family}-${step}`;
+  const base = tw ? `color/${tw.replace("/", "-")}` : `color/${family}-${step}`;
   let name = base;
   for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
   return name;

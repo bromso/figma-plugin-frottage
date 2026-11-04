@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { parseCssColor } from "@repo/capture-schema/css-values";
 import { layerCollections } from "../layering";
 import type {
   PlanEffectStyle,
@@ -365,7 +366,7 @@ describe("layerCollections", () => {
     expect(token?.values).toEqual([{ alias: "colorMode:radius" }]);
   });
   describe("Color Mode colours alias Palette", () => {
-    const oklchDark = { r: 0.04, g: 0.04, b: 0.04, a: 1 };
+    const oklchDark = { r: 0.05, g: 0.05, b: 0.05, a: 1 };
     function colours(): StagedLayers {
       const layers = staged();
       layers.variables = [
@@ -396,6 +397,27 @@ describe("layerCollections", () => {
       expect(entry.cssVar).toBeUndefined();
       expect(get(out, "colorMode:color/background").values[1]).toEqual({ alias: entry.key });
       expect(get(out, "colorMode:color/foreground").values[0]).toEqual({ alias: entry.key });
+    });
+
+    test("a value equal to a Tailwind color is named for Tailwind", () => {
+      const layers = colours();
+      const tw = parseCssColor("oklch(14.5% 0 0)") as typeof white;
+      layers.variables[1] = variable("theme", "background", "COLOR", [white, tw], COLOR_SCOPES);
+      const out = run(layers);
+      expect(get(out, "colorMode:color/background").values[1]).toEqual({
+        alias: "palette:neutral/950",
+      });
+      expect(get(out, "palette:neutral/950").values).toEqual([tw]);
+    });
+
+    test("a value one 8-bit step from Tailwind's keeps the family and step name", () => {
+      const layers = colours();
+      const near = { ...(parseCssColor("oklch(14.5% 0 0)") as typeof white) };
+      near.r += 1 / 255;
+      layers.variables[1] = variable("theme", "background", "COLOR", [white, near], COLOR_SCOPES);
+      const out = run(layers);
+      const alias = get(out, "colorMode:color/background").values[1] as { alias: string };
+      expect(alias.alias).toMatch(/^palette:gray\/\d+$/);
     });
 
     test("an alpha value gets its own entry carrying the alpha", () => {
