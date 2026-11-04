@@ -2012,7 +2012,10 @@ describe("a device set", () => {
       expect(own.children).toHaveLength(1);
       expect(phone.name).toBe(`${PAGE} — Phone`);
       const device = collectionNamed(f, "Device");
-      expect(phone.explicitModes).toEqual({ [device.id]: modeIn(device, "Phone") });
+      expect(phone.explicitModes).toEqual({
+        [device.id]: modeIn(device, "Phone"),
+        [language.id]: modeIn(language, "Svenska"),
+      });
       // Its own texts, plain; its tokens bound as any frame's.
       expect(labelOf(phone).characters).toBe("Läs mer");
       expect(labelOf(phone).boundVariables?.characters).toBeUndefined();
@@ -2031,6 +2034,56 @@ describe("a device set", () => {
       }
       const last = mains.at(-1) as FakeNode;
       expect(last.x).toBeGreaterThanOrEqual(own.x);
+    });
+
+    test("a main opens on its frame's language, though the collection's default is another", async () => {
+      const f = fakeFigma();
+      // An earlier import from the Svenska page made Svenska the default mode.
+      await importLanguages(f, withLanguages(["Svenska", "English"]));
+      const language = collectionNamed(f, "Language");
+      expect(language.defaultModeId).toBe(modeIn(language, "Svenska"));
+      const made = f.created.length;
+      await importLanguages(f);
+      const mains = f.created.slice(made).filter((n) => n.type === "COMPONENT");
+      expect(mains).toHaveLength(2);
+      for (const main of mains) {
+        expect(main.explicitModes[language.id]).toBe(modeIn(language, "English"));
+      }
+    });
+
+    test("a cancel once a language's section has begun removes that section too", async () => {
+      const f = fakeFigma();
+      const plan = withLanguages();
+      const a = createApplier(f.figma);
+      await a.beginDeviceSet({
+        name: PAGE,
+        layers: plan,
+        options: DEFAULT_IMPORT_OPTIONS,
+        placement: "current-page",
+      });
+      const frames: Frame[] = [...MAIN, { device: "Phone", language: "Svenska" }];
+      for (const [index, d] of frames.entries()) {
+        await a.begin({
+          ...meta,
+          name: PAGE,
+          version: { index, label: d.device },
+          device: {
+            mode: d.device,
+            breakpoint: null,
+            ...(d.language ? { language: d.language } : {}),
+          },
+        });
+        await a.applyBatch(pageOps(d.language));
+        if (d.language) break;
+        await a.end();
+      }
+      const own = sectionNamed(f, `${PAGE} — Svenska`);
+      expect(own).toBeDefined();
+      await a.cancel();
+      expect(own.removed).toBe(true);
+      expect(f.created.filter((n) => n.type === "SECTION" && !n.removed)).toEqual([]);
+      expect(f.page.children).toEqual([]);
+      expect(f.tokens.collections.size).toBe(0);
     });
 
     test("with room for one Language mode no text binds, and the language goes unmade", async () => {

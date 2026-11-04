@@ -561,15 +561,18 @@ export function createApplier(api: PluginAPI) {
   }
 
   /**
-   * A device frame's Device and Breakpoint modes. Without its Breakpoint mode a frame would read
-   * another range's values, so it stays plain; Device holds only reference values, so a frame the
-   * file had no Device mode for still binds.
+   * A device frame's Device and Breakpoint modes, and its Language mode. Without its Breakpoint
+   * mode a frame would read another range's values, so it stays plain; Device holds only reference
+   * values, so a frame the file had no Device mode for still binds. Language is set from the start,
+   * so that a main, built before it joins its section, isn't measured in the collection's default.
    */
-  function deviceSetModes({ mode, breakpoint }: NonNullable<ImportMeta["device"]>) {
+  function deviceSetModes({ mode, breakpoint, language }: NonNullable<ImportMeta["device"]>) {
     const range =
       breakpoint === null ? null : (tokens?.layerMode("breakpoint", breakpoint) ?? null);
     if (breakpoint !== null && !range) return null;
-    return [tokens?.layerMode("device", mode) ?? null, range];
+    const own = language ?? held?.language;
+    const text = own === undefined ? null : (tokens?.layerMode("language", own) ?? null);
+    return [tokens?.layerMode("device", mode) ?? null, range, text];
   }
 
   /** The tokens this version may bind to: none once its mode was refused. */
@@ -1182,6 +1185,8 @@ export function createApplier(api: PluginAPI) {
       }
     } else {
       if (node.type !== "TEXT") throw new Error("not text");
+      // Setting the text drops a binding the main's text had, as it should: an override with no
+      // `textKey` is one the mapper left plain, such as a text of mixed styles.
       const before = node.height;
       await setText(node, override, usableFont(override.runs[0]?.fontName ?? FALLBACK));
       bindText(node, override.textKey);
