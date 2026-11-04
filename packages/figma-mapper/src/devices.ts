@@ -856,11 +856,22 @@ function textAt(key: string, path: number[], ops: PlanOp[]): TextOp | undefined 
   return at?.op === "text" ? at : undefined;
 }
 
+/** The captured text ids are only for binding; a finished plan doesn't carry them. */
+function dropSources(plans: LayerPlan[]): void {
+  for (const plan of plans) {
+    for (const op of plan.ops) {
+      if (op.op !== "instance") continue;
+      for (const over of op.overrides) if (over.kind === "text") delete over.source;
+    }
+  }
+}
+
 export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {}): DeviceMerge {
   const tagged = entries.flatMap((e) => (e.capture.language ? [e.capture.language] : []));
   const current = tagged.find((l) => l.current);
   if (!current) {
     const { adopt: _, ...merge } = mergeSet(entries, options);
+    dropSources(merge.plans);
     if (tagged.length > 0) {
       merge.report.push("No capture in the page's own language, so languages were left out.");
     }
@@ -1000,13 +1011,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
       else repeated++;
     }
   }
-  // The captured ids were only for this; a finished plan doesn't carry them.
-  for (const plan of plans) {
-    for (const op of plan.ops) {
-      if (op.op !== "instance") continue;
-      for (const over of op.overrides) if (over.kind === "text") delete over.source;
-    }
-  }
+  dropSources(plans);
 
   for (const [l, count] of counts.entries()) {
     const name = names[l];
