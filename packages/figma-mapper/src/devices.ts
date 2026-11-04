@@ -242,6 +242,11 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
   if (fromDevices) {
     report.push("This page records no breakpoints, so each device width was used as one.");
   }
+  const unreadable = Math.max(0, ...entries.map((e) => e.capture.breakpoints?.unreadable ?? 0));
+  if (unreadable > 0) {
+    const sheets = unreadable === 1 ? "1 stylesheet" : `${unreadable} stylesheets`;
+    report.push(`Breakpoints from ${sheets} couldn't be read.`);
+  }
   for (const name of missing) report.push(`No capture for the ${name} breakpoint.`);
   const modeNames = ranges.map((r) => r.name);
   /** The widest range, whose value a token that can't switch by breakpoint keeps. */

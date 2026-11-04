@@ -306,6 +306,23 @@ describe("mergeDevices", () => {
     expect(JSON.stringify(varOf(layers, card as string))).not.toContain("0.9");
   });
 
+  test("says how many stylesheets' breakpoints couldn't be read, the most of any capture", () => {
+    const unreadable = (n: number) => (e: DeviceEntry) => {
+      e.capture.breakpoints = { widths: BOUNDARIES, unreadable: n };
+      return e;
+    };
+    const [laptop, tablet, phone] = mainline();
+    const { report } = mergeDevices([
+      unreadable(2)(laptop as DeviceEntry),
+      unreadable(3)(tablet as DeviceEntry),
+      unreadable(0)(phone as DeviceEntry),
+    ]);
+    expect(report).toContain("Breakpoints from 3 stylesheets couldn't be read.");
+    const one = mergeDevices(mainline().map(unreadable(1)));
+    expect(one.report).toContain("Breakpoints from 1 stylesheet couldn't be read.");
+    expect(mergeDevices(mainline()).report.some((l) => l.includes("stylesheet"))).toBe(false);
+  });
+
   test("frames list the devices with their modes, and no extra", () => {
     const { frames } = mergeDevices(mainline());
     expect(frames).toEqual([
