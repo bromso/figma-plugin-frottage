@@ -1742,6 +1742,46 @@ describe("a device set", () => {
     expect(r?.plainVersions).toEqual([0]);
   });
 
+  test("with Breakpoint modes in the mapper's order, a limit drops the extras' ranges first", async () => {
+    // Frames' ranges first, widest device's first; `sm`, an extra's, last.
+    const ordered: PlanLayers = {
+      ...layers,
+      collections: layers.collections.map((c) =>
+        c.kind === "breakpoint" ? { ...c, modes: ["lg", "md", "base", "sm"] } : c
+      ),
+      variables: layers.variables.map((v) =>
+        v.collection === "breakpoint" ? { ...v, values: [...[...v.values].reverse(), 0] } : v
+      ),
+    };
+    const run = async (modeLimit: number) => {
+      const f = fakeFigma({ modeLimit });
+      const { r } = await importDevices(f, { plan: ordered });
+      return { f, r, breakpoint: collectionNamed(f, "Breakpoint") };
+    };
+    const four = await run(4);
+    expect(four.breakpoint.modes.map((m: { name: string }) => m.name)).toEqual([
+      "lg",
+      "md",
+      "base",
+      "sm",
+    ]);
+    expect(four.r?.plainVersions).toEqual([]);
+    const three = await run(3);
+    expect(three.breakpoint.modes.map((m: { name: string }) => m.name)).toEqual([
+      "lg",
+      "md",
+      "base",
+    ]);
+    expect(three.r?.plainVersions).toEqual([]);
+    const one = await run(1);
+    const [desktop] = sectionOf(one.f).children;
+    expect(desktop.explicitModes).toEqual({
+      [collectionNamed(one.f, "Device").id]: modeIn(collectionNamed(one.f, "Device"), "Desktop"),
+      [one.breakpoint.id]: modeIn(one.breakpoint, "lg"),
+    });
+    expect(one.r?.plainVersions).toEqual([1, 2]);
+  });
+
   test("a refused Device mode leaves the frame plain and counts", async () => {
     // The section's Color Mode is the first explicit mode; Desktop's Device mode the second.
     const f = fakeFigma({ failExplicitMode: 2 });

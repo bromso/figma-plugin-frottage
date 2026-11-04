@@ -160,6 +160,15 @@ function rangesOf(entries: DeviceEntry[], order: number[]) {
     if (owner === undefined) missing.push(range.name);
     else ranges.push({ ...range, owner });
   }
+  // Figma adds modes in this order until the file's limit: the frames' ranges first, the widest
+  // device's first, so a limit leaves out the extras' ranges before any frame's.
+  const rank = (r: Range) => {
+    const at = all.findIndex((a) => a.name === r.name);
+    const framed = order.findIndex((i) => isDevice(entries[i] as DeviceEntry) && placed(i) === at);
+    // A range only extras are in: after every frame's, widest first.
+    return framed >= 0 ? framed : order.length + all.length - at;
+  };
+  ranges.sort((a, b) => rank(a) - rank(b));
   /** The Breakpoint mode an entry is in. */
   const rangeOf = (i: number) => {
     const name = all[placed(i)]?.name;
@@ -235,6 +244,8 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
   }
   for (const name of missing) report.push(`No capture for the ${name} breakpoint.`);
   const modeNames = ranges.map((r) => r.name);
+  /** The widest range, whose value a token that can't switch by breakpoint keeps. */
+  const widest = ranges.reduce((best, r, at) => (r.min > (ranges[best]?.min ?? -1) ? at : best), 0);
 
   const deviceAt = entries.flatMap((e, i) => (isDevice(e) ? [i] : []));
   const deviceNames = uniqueLabels(
@@ -385,12 +396,12 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
     }
     const model = order.map((i) => themeIn(i).get(name)).find(Boolean) as PlanVariable;
     const sources = ranges.map((r) => sourceIn(r.owner, name) ?? fallback);
-    const topKey = sources[sources.length - 1] ?? fallback;
+    const topKey = sources[widest] ?? fallback;
     const differs = new Set(sources.map((key) => JSON.stringify(resolved(key)))).size > 1;
     let alias = topKey;
     let source = COLLECTION_NAMES[(merged.get(topKey) as PlanVariable).collection];
     if (differs) {
-      const top = modeNames[modeNames.length - 1];
+      const top = modeNames[widest];
       const kinds = sources.map((key) => (merged.get(key) as PlanVariable).collection);
       if (kinds.includes("colorMode")) {
         report.push(`${name} differs by breakpoint in Color Mode; kept the ${top} value`);
