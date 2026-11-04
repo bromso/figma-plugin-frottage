@@ -54,6 +54,8 @@ type Over = {
   address?: () => string | null;
   /** Where loading `url` ends up; it throws to fail the load. */
   navigate?: (url: string) => string;
+  /** The loaded page's `<html lang>`, given the tab's address; it throws to fail the read. */
+  pageLanguage?: (url: string) => string | null;
   capture?: (label: string, run: ViewportRun, count: number) => Promise<CaptureResult> | null;
   /** Width lost to something beside the page, such as a classic scrollbar. */
   scrollbar?: number;
@@ -88,6 +90,7 @@ function setup(over: Over = {}) {
       tab.url = url;
       if (over.navigate) tab.url = over.navigate(url);
     },
+    pageLanguage: async () => (over.pageLanguage ? over.pageLanguage(tab.url) : null),
     hold: async () => {
       events.push("hold");
       await over.hold?.();
@@ -939,6 +942,53 @@ describe("ViewportRun with languages", () => {
     await t.run.start(asked, { languages: [EN, SV] });
     expect(t.languages).toEqual(["en", "en", "en", "sv", "sv"]);
     expect(t.final().leftOut).toBeUndefined();
+  });
+
+  test("a language that lands back on the run's own page is left out", async () => {
+    for (const landing of ["https://example.com/en", "https://example.com/en/#top"]) {
+      const t = setup({ origin: byPage, navigate: (url) => (url === SV.url ? landing : url) });
+      await t.run.start(asked, { languages: [EN, SV, FR] });
+      expect(t.languages).toEqual(["en", "en", "en", "fr", "fr"]);
+      expect(t.final().leftOut).toEqual(["Svenska couldn't be loaded, so it was left out."]);
+      expect(t.tab.url).toBe(EN.url);
+    }
+  });
+
+  test("a language that lands on the current language's link is left out", async () => {
+    const t = setup({
+      origin: byPage,
+      url: "https://example.com/en/?ref=nav",
+      navigate: (url) => (url === SV.url ? EN.url : url),
+    });
+    await t.run.start(asked, { languages: [EN, SV] });
+    expect(t.languages).toEqual(["en", "en", "en"]);
+    expect(t.final().leftOut).toEqual(["Svenska couldn't be loaded, so it was left out."]);
+  });
+
+  test("a language page whose html lang is another language is left out", async () => {
+    const t = setup({
+      origin: byPage,
+      pageLanguage: (url) =>
+        url.startsWith(SV.url) ? "en-US" : url.startsWith(FR.url) ? "fr-FR" : "en",
+    });
+    await t.run.start(asked, { languages: [EN, SV, FR] });
+    expect(t.languages).toEqual(["en", "en", "en", "fr", "fr"]);
+    expect(t.final().leftOut).toEqual(["Svenska couldn't be loaded, so it was left out."]);
+  });
+
+  test("a language page whose html lang is missing or can't be read still runs", async () => {
+    for (const pageLanguage of [
+      () => null,
+      () => "",
+      () => {
+        throw new Error("Cannot access contents of the page");
+      },
+    ]) {
+      const t = setup({ origin: byPage, pageLanguage });
+      await t.run.start(asked, { languages: [EN, SV] });
+      expect(t.languages).toEqual(["en", "en", "en", "sv", "sv"]);
+      expect(t.final().leftOut).toBeUndefined();
+    }
   });
 
   test("Cancel during a language sends the tab back before it is released", async () => {

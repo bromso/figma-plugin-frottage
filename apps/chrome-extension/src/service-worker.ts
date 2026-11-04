@@ -257,6 +257,16 @@ chrome.runtime.onMessage.addListener((message: SwMessage, _sender, sendResponse)
       return { ok: true, width: frame?.result };
     }, sendResponse);
   }
+  if (message.type === "page-language") {
+    // Same-origin languages keep the toolbar click's access; another site's was asked for.
+    return answer(async () => {
+      const [frame] = await chrome.scripting.executeScript({
+        target: { tabId: message.tabId },
+        func: () => document.documentElement.lang,
+      });
+      return { ok: true, lang: frame?.result ?? null };
+    }, sendResponse);
+  }
   if (message.type === "breakpoints") {
     // The popup's toolbar click granted `activeTab`. A restricted page refuses, and the popup
     // then plans no extra captures.

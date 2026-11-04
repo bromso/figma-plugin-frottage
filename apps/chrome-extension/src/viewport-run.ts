@@ -138,6 +138,8 @@ export type ViewportDeps = {
   address: () => Promise<string | null>;
   /** Loads an address in the tab and waits for it; throws when it doesn't load. */
   navigate: (url: string) => Promise<void>;
+  /** The loaded page's `<html lang>`; null or empty when it has none. Throws when it can't be read. */
+  pageLanguage: () => Promise<string | null>;
   /** Gives the tab back; "stranded" means it is still in the small window. */
   release: () => Promise<ReleaseOutcome>;
   /** Packs the captures into one file and saves it; returns the filename. Called only if any exist. */
@@ -186,6 +188,22 @@ const nameOf = (item: RunWidth): string | undefined => item.device?.name ?? item
 /** What progress and the saved list call a capture: in a run with languages, its language too. */
 const tagged = (name: string, language?: PageLanguage) =>
   language ? `${name} · ${language.name}` : name;
+
+/** An address as a page: no hash, no trailing slash on its path, so `/en/#top` is `/en`. */
+const samePage = (a: string, b: string): boolean => {
+  const page = (url: string) => {
+    try {
+      const u = new URL(url);
+      return `${u.origin}${u.pathname.replace(/\/+$/, "")}${u.search}`;
+    } catch {
+      return url;
+    }
+  };
+  return page(a) === page(b);
+};
+
+/** A language code's primary subtag: `sv-SE` → `sv`. */
+const primary = (code: string) => code.split("-")[0]?.trim().toLowerCase() ?? "";
 
 const originOf = (url: string): string | null => {
   try {
@@ -371,7 +389,9 @@ export class ViewportRun {
           : passes.map((pass) =>
               pass.language ? { ...pass, language: { ...pass.language, base: start } } : pass
             );
-      const stopped = await this.sweeps(based, total, home, done);
+      const current = passes.find((pass) => pass.language?.current)?.language?.url;
+      const away = start === null ? [] : [start, ...(current ? [current] : [])];
+      const stopped = await this.sweeps(based, total, home, away, done);
       if (stopped) done.stopped = stopped;
     } catch {
       done.stopped = WENT_WRONG;
@@ -415,12 +435,13 @@ export class ViewportRun {
     passes: Pass[],
     total: number,
     home: string,
+    away: string[],
     done: Final
   ): Promise<string | undefined> {
     let offset = 0;
     for (const pass of passes) {
       if (this.stopping(done)) return undefined;
-      const page = pass.load && pass.language ? await this.load(pass.language) : home;
+      const page = pass.load && pass.language ? await this.load(pass.language, away) : home;
       if (page === null) {
         if (pass.language) done.leftOut = [...(done.leftOut ?? []), notLoaded(pass.language)];
       } else {
@@ -434,9 +455,11 @@ export class ViewportRun {
 
   /**
    * Loads a language in the tab; its page, which that pass's captures must stay on, or null when it
-   * didn't load or landed on another site (a redirect within its own site is fine).
+   * didn't load, landed on another site (a redirect within its own site is fine), landed back on
+   * one of the `away` pages the run began on, or says in `<html lang>` that it is another language.
+   * A `lang` that can't be read doesn't count against it.
    */
-  private async load(language: PageLanguage): Promise<string | null> {
+  private async load(language: PageLanguage, away: string[]): Promise<string | null> {
     try {
       await this.deps.navigate(language.url);
     } catch {
@@ -445,6 +468,9 @@ export class ViewportRun {
     await this.deps.settle();
     const address = await this.address();
     if (address === null || originOf(address) !== originOf(language.url)) return null;
+    if (away.some((url) => samePage(address, url))) return null;
+    const lang = await this.deps.pageLanguage().catch(() => null);
+    if (lang && primary(lang) !== "" && primary(lang) !== primary(language.code)) return null;
     return this.origin();
   }
 

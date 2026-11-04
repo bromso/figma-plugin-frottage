@@ -99,6 +99,10 @@ const viewport: ViewportRun = new ViewportRun({
   navigate: async (url) => {
     await askWorker({ target: "sw", type: "load-tab", tabId: viewportTab, url });
   },
+  pageLanguage: async () => {
+    const reply = await askWorker({ target: "sw", type: "page-language", tabId: viewportTab });
+    return reply.lang ?? null;
+  },
   hold: async () => {
     const reply = await askWorker({ target: "sw", type: "hold-tab", tabId: viewportTab });
     if (!reply.held) throw new Error("The tab was not moved");

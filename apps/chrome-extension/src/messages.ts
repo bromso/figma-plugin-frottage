@@ -68,6 +68,8 @@ export type SwMessage =
   /** Loads a language's address in the held tab and answers once it has loaded. */
   | { target: "sw"; type: "load-tab"; tabId: number; url: string }
   | { target: "sw"; type: "page-width"; tabId: number }
+  /** Reads a loaded language page's `<html lang>`. */
+  | { target: "sw"; type: "page-language"; tabId: number }
   /** Moves the tab to a small window and holds its place with the run page. */
   | { target: "sw"; type: "hold-tab"; tabId: number }
   /** Gives the tab back where it was. */
@@ -93,7 +95,7 @@ export type PopupMessage = { target: "popup"; type: "status"; status: RunStatus 
 /**
  * `filename` is the saved basename, set by the worker for downloads. `origin`, `address`, `held`,
  * `released`, `open` and `width` answer `tab-origin`, `tab-address`, `hold-tab`, `release-tab`,
- * `window-open`, and `resize-window` or `page-width`;
+ * `window-open`, and `resize-window` or `page-width`; `lang` answers `page-language`;
  * `breakpoints` answers `breakpoints`.
  */
 export type Reply =
@@ -106,6 +108,7 @@ export type Reply =
       released?: ReleaseOutcome;
       open?: boolean;
       width?: number;
+      lang?: string | null;
       /** The page's breakpoints, answering `breakpoints`. */
       breakpoints?: number[];
       /** Whether the page defines a dark theme, answering `breakpoints`. */
