@@ -40,6 +40,13 @@ describe("findLanguages", () => {
       ["sv", "https://site.test/sv/pricing", false],
     ]);
   });
+  test("a path segment that names no language isn't one", () => {
+    const doc = page("", `<a href="/us/app">US</a>`);
+    expect(findLanguages(doc, "https://site.test/js/app")).toEqual([]);
+    const mixed = page("", `<a href="/js/pricing">JS</a><a href="/sv/pricing">Svenska</a>`);
+    const found = findLanguages(mixed, "https://site.test/en/pricing");
+    expect(found.map((l) => l.code)).toEqual(["en", "sv"]);
+  });
   test("finds switcher links with hreflang or lang, on the same site only", () => {
     const doc = page(
       "",

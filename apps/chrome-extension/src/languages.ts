@@ -46,18 +46,22 @@ function fromHreflang(doc: Document, here: string): Found[] {
   );
 }
 
+/** A path segment shaped like a language code that names a real language, so `/js/` isn't one. */
+const isLanguageSegment = (segment: string) =>
+  PATH_CODE.test(segment) && languageName(segment.toLowerCase()) !== segment.toLowerCase();
+
 function fromPathPattern(doc: Document, here: string): Found[] {
   const page = parse(here, here);
   if (!page) return [];
   const [, first, ...rest] = page.pathname.split("/");
-  if (!first || !PATH_CODE.test(first)) return [];
+  if (!first || !isLanguageSegment(first)) return [];
   const tail = rest.join("/");
   const entries: Array<[string | null, string | null]> = [[first, page.href]];
   for (const a of doc.querySelectorAll("a[href]")) {
     const url = parse(a.getAttribute("href") ?? "", here);
     if (!url || url.origin !== page.origin) continue;
     const [, seg, ...more] = url.pathname.split("/");
-    if (seg && PATH_CODE.test(seg) && more.join("/") === tail) entries.push([seg, url.href]);
+    if (seg && isLanguageSegment(seg) && more.join("/") === tail) entries.push([seg, url.href]);
   }
   return collect(entries, here);
 }
