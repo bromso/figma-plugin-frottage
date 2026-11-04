@@ -113,7 +113,9 @@ describe("bindLayers", () => {
     expect(p.tokens.layers?.activeMode).toBe("Dark");
     // Light is the light page's: white.
     const bg = p.tokens.layers?.variables.find((v) => v.key === "colorMode:color/background");
-    expect(bg?.values[0]).toMatchObject({ r: expect.closeTo(1, 4), g: expect.closeTo(1, 4) });
+    const lightKey = (bg?.values[0] as { alias: string } | undefined)?.alias;
+    const held = p.tokens.layers?.variables.find((v) => v.key === lightKey);
+    expect(held?.values[0]).toMatchObject({ r: expect.closeTo(1, 4), g: expect.closeTo(1, 4) });
   });
 
   test("a page captured light opens in Light", () => {
@@ -306,7 +308,13 @@ describe("bindLayers", () => {
     };
     const p = plan([node], tokens);
     const keys = p.tokens.layers?.variables.map((v) => v.key);
-    expect(keys).toEqual(["radius:radius/lg", "colorMode:color/card", "theme:radius/lg"]);
+    expect(keys).toEqual([
+      "palette:gray/50",
+      "palette:gray/800",
+      "radius:radius/lg",
+      "colorMode:color/card",
+      "theme:radius/lg",
+    ]);
     expect(p.tokens.layers?.notes.droppedPrimitives).toBe(1);
   });
 

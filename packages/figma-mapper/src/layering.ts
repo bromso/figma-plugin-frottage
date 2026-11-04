@@ -1,4 +1,5 @@
 import { MAX_VARIABLES } from "./catalogue";
+import { primitiveName, sameColour } from "./infer";
 import type {
   PlanCollection,
   PlanCollectionKind,
@@ -223,6 +224,12 @@ export function layerCollections(layers: StagedLayers, plan: LayeringPlan): Plan
     renamed.set(`${v.collection}:${v.name}`, name);
   }
 
+  /** `color/<family>-<step>` names in use, so `primitiveName` numbers a clash. */
+  const rawNames = new Set<string>();
+  for (const v of moved.values()) {
+    if (v.collection === "palette") rawNames.add(`color/${v.name.replace("/", "-")}`);
+  }
+
   // Aliases follow their target; one into a variable left out holds that variable's value.
   for (const [oldKey, v] of moved) {
     const from = byKey.get(oldKey) as StagedVariable;
@@ -236,6 +243,40 @@ export function layerCollections(layers: StagedLayers, plan: LayeringPlan): Plan
     v.description = v.description.replace(/^Near twin of (.+)$/m, (line, twin: string) => {
       const name = renamed.get(`${from.collection}:${twin}`);
       return name ? `Near twin of ${name}` : line;
+    });
+  }
+
+  // Every Color Mode colour aliases a Palette colour, adding one where none matches.
+  const palette = [...moved.values()].filter((v) => v.collection === "palette");
+  const paletteNames = taken.get("palette") as Set<string>;
+  for (const v of moved.values()) {
+    if (v.collection !== "colorMode" || v.type !== "COLOR") continue;
+    v.values = v.values.map((value, i) => {
+      if (isAlias(value) || typeof value !== "object") return value;
+      const same = palette.filter((p) => {
+        const c = p.values[0];
+        return typeof c === "object" && !isAlias(c) && sameColour(c, value);
+      });
+      if (same.length === 1) return { alias: same[0].key };
+      if (moved.size >= MAX_VARIABLES) {
+        dropped++;
+        return value;
+      }
+      const name = free(paletteName(primitiveName(value, rawNames)), paletteNames);
+      rawNames.add(`color/${name.replace("/", "-")}`);
+      const entry: PlanVariable = {
+        key: `palette:${name}`,
+        name,
+        collection: "palette",
+        type: "COLOR",
+        values: [value],
+        description: `From the site: ${v.cssVar ?? `--${v.name}`} (${layers.modes[i] ?? BASE_MODE})`,
+        scopes: v.scopes,
+        ...(v.cssVar ? { cssVar: v.cssVar } : {}),
+      };
+      moved.set(entry.key, entry);
+      palette.push(entry);
+      return { alias: entry.key };
     });
   }
 

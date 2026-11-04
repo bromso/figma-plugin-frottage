@@ -193,7 +193,9 @@ describe("layerCollections", () => {
     const card = v("colorMode:color/card");
     expect(card?.name).toBe("color/card");
     expect(card?.collection).toBe("colorMode");
-    expect(card?.values).toEqual([white, dark]);
+    // Each mode's value aliases a Palette colour holding it.
+    const held = card?.values.map((x) => v((x as { alias: string }).alias)?.values[0]);
+    expect(held).toEqual([white, dark]);
     expect(card?.description).toBe("From the site: --card");
   });
 
@@ -244,7 +246,10 @@ describe("layerCollections", () => {
 
   test("a Color Mode alias into a primitive follows it to Palette", () => {
     const { v } = setup();
-    expect(v("colorMode:color/ring")?.values).toEqual([{ alias: "palette:gray/200" }, white]);
+    expect(v("colorMode:color/ring")?.values).toEqual([
+      { alias: "palette:gray/200" },
+      { alias: "palette:gray/50" },
+    ]);
   });
 
   test("an unbound source gets no Theme token", () => {
@@ -258,7 +263,10 @@ describe("layerCollections", () => {
   test("two Color Mode colours equal in Light stay two variables and two Theme tokens", () => {
     const { v, layers, text } = setup();
     expect(text.runs[0]?.colorKey).toBe("theme:color/popover");
-    expect(v("colorMode:color/popover")?.values).toEqual([white, darker]);
+    const popover = v("colorMode:color/popover")?.values.map(
+      (x) => v((x as { alias: string }).alias)?.values[0]
+    );
+    expect(popover).toEqual([white, darker]);
     const colorMode = layers.variables.filter((x) => x.collection === "colorMode");
     expect(colorMode.map((x) => x.name)).toEqual([
       "color/card",
@@ -337,7 +345,8 @@ describe("layerCollections", () => {
     const layers = staged();
     layers.variables = layers.variables.filter((x) => x.key === "theme:card");
     const out = layerCollections(layers, { ops: [], textStyles: [] });
-    expect(out.collections.map((c) => c.kind)).toEqual(["colorMode", "theme"]);
+    // Its colours still need a Palette to alias.
+    expect(out.collections.map((c) => c.kind)).toEqual(["palette", "colorMode", "theme"]);
     const bare = staged();
     bare.variables = [];
     expect(layerCollections(bare, { ops: [], textStyles: [] }).collections).toEqual([
@@ -354,5 +363,72 @@ describe("layerCollections", () => {
     expect((ops[0] as FrameOp).radiusKeys?.[0]).toBe("theme:radius");
     const token = out.variables.find((x) => x.key === "theme:radius");
     expect(token?.values).toEqual([{ alias: "colorMode:radius" }]);
+  });
+  describe("Color Mode colours alias Palette", () => {
+    const oklchDark = { r: 0.04, g: 0.04, b: 0.04, a: 1 };
+    function colours(): StagedLayers {
+      const layers = staged();
+      layers.variables = [
+        variable("primitives", "color/white", "COLOR", [white], COLOR_SCOPES),
+        variable("theme", "background", "COLOR", [white, oklchDark], COLOR_SCOPES),
+        variable("theme", "foreground", "COLOR", [oklchDark, white], COLOR_SCOPES),
+        variable("theme", "border", "COLOR", [white, { ...oklchDark, a: 0.1 }], COLOR_SCOPES),
+      ];
+      return layers;
+    }
+    const run = (layers: StagedLayers) => layerCollections(layers, { ops: [], textStyles: [] });
+    const get = (out: ReturnType<typeof run>, key: string) =>
+      out.variables.find((v) => v.key === key) as PlanVariable;
+
+    test("a value equal to a palette colour aliases it", () => {
+      const out = run(colours());
+      expect(get(out, "colorMode:color/background").values[0]).toEqual({ alias: "palette:white" });
+    });
+
+    test("a value matching no palette colour creates one entry, reused by an equal value", () => {
+      const out = run(colours());
+      const entry = out.variables.find(
+        (v) => v.collection === "palette" && v.name !== "white" && v.values[0] !== undefined
+      ) as PlanVariable;
+      expect(entry.name).toMatch(/^gray\/\d+$/);
+      expect(entry.values).toEqual([oklchDark]);
+      expect(entry.description).toBe("From the site: --background (Dark)");
+      expect(get(out, "colorMode:color/background").values[1]).toEqual({ alias: entry.key });
+      expect(get(out, "colorMode:color/foreground").values[0]).toEqual({ alias: entry.key });
+    });
+
+    test("an alpha value gets its own entry carrying the alpha", () => {
+      const out = run(colours());
+      const border = get(out, "colorMode:color/border").values[1] as { alias: string };
+      const entry = get(out, border.alias);
+      expect(entry.values).toEqual([{ ...oklchDark, a: 0.1 }]);
+      expect(border.alias).not.toBe("palette:white");
+    });
+
+    test("every Color Mode colour value is an alias to Palette", () => {
+      const out = run(colours());
+      for (const v of out.variables.filter((x) => x.collection === "colorMode")) {
+        for (const value of v.values) {
+          expect(value).toHaveProperty("alias");
+          expect((value as { alias: string }).alias.startsWith("palette:")).toBe(true);
+        }
+      }
+    });
+
+    test("at the cap a value stays literal and is counted", () => {
+      const layers = colours();
+      for (let i = 0; i < 996; i++) {
+        const c = { r: (i % 250) / 255, g: 0.5, b: Math.floor(i / 250) / 10, a: 0.5 };
+        layers.variables.push(
+          variable("primitives", `color/fill-${i}`, "COLOR", [c], COLOR_SCOPES)
+        );
+      }
+      const out = run(layers);
+      expect(out.variables.filter((v) => v.collection !== "theme").length).toBeLessThanOrEqual(
+        1000
+      );
+      expect(out.notes.droppedPrimitives).toBeGreaterThan(0);
+      expect(get(out, "colorMode:color/background").values[1]).toEqual(oklchDark);
+    });
   });
 });
