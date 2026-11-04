@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   allowAccessAndRecapture,
+  BREAKPOINT_WAIT_MS,
+  canCapture,
   captureFilename,
   captureLabel,
   DEVICE_HEIGHTS,
@@ -559,5 +561,21 @@ describe("a label in a filename", () => {
     ["a tilde", "Dark~mode"],
   ])("%s separates words", (_, label) => {
     expect(part(label)).toBe("-Dark-mode.frottage");
+  });
+});
+
+describe("canCapture", () => {
+  const ready = { restricted: false, tabId: 1, sizes: 3, breakpointsRead: true };
+
+  test("waits for the page's breakpoints, for at most 1.5 s", () => {
+    expect(canCapture(ready)).toBe(true);
+    expect(canCapture({ ...ready, breakpointsRead: false })).toBe(false);
+    expect(BREAKPOINT_WAIT_MS).toBe(1500);
+  });
+
+  test("needs a tab that can be captured and a size", () => {
+    expect(canCapture({ ...ready, restricted: null })).toBe(false);
+    expect(canCapture({ ...ready, tabId: null })).toBe(false);
+    expect(canCapture({ ...ready, sizes: 0 })).toBe(false);
   });
 });

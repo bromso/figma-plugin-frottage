@@ -18,6 +18,8 @@ import type { RunStatus } from "../capture-run";
 import type { PopupMessage, Reply } from "../messages";
 import {
   allowAccessAndRecapture,
+  BREAKPOINT_WAIT_MS,
+  canCapture,
   captureLabel,
   DEVICES,
   friendlyError,
@@ -80,6 +82,8 @@ function Popup() {
 
   // The page's breakpoints, read once on open; none when the page can't be read.
   const [breakpoints, setBreakpoints] = useState<number[]>([]);
+  // Capture waits for them, or for BREAKPOINT_WAIT_MS, so the extras they call for are planned.
+  const [breakpointsRead, setBreakpointsRead] = useState(false);
 
   // Whether the optional image permission is held; read when a run finishes with blocked images.
   const [declined, setDeclined] = useState(false);
@@ -93,6 +97,7 @@ function Popup() {
   useEffect(() => {
     // The badge says a run ended; opening the popup is the look it asked for.
     chrome.action.setBadgeText({ text: "" }).catch(() => {});
+    const giveUp = setTimeout(() => setBreakpointsRead(true), BREAKPOINT_WAIT_MS);
     chrome.tabs.query({ active: true, currentWindow: true }).then(
       ([tab]) => {
         setTabId(tab?.id ?? null);
@@ -104,12 +109,16 @@ function Popup() {
           chrome.runtime.sendMessage({ target: "sw", type: "breakpoints", tabId: tab.id }).then(
             (reply?: Reply) => {
               if (reply?.ok && reply.breakpoints) setBreakpoints(reply.breakpoints);
+              setBreakpointsRead(true);
             },
-            () => {}
+            () => setBreakpointsRead(true)
           );
-        }
+        } else setBreakpointsRead(true);
       },
-      () => setTabRead(true)
+      () => {
+        setTabRead(true);
+        setBreakpointsRead(true);
+      }
     );
     // A run that is going, or that finished while the popup was closed, is shown; the offscreen
     // document clears a finished one when read.
@@ -127,7 +136,10 @@ function Popup() {
       sendResponse({ received: true });
     };
     chrome.runtime.onMessage.addListener(onMessage);
-    return () => chrome.runtime.onMessage.removeListener(onMessage);
+    return () => {
+      clearTimeout(giveUp);
+      chrome.runtime.onMessage.removeListener(onMessage);
+    };
   }, []);
 
   // Whether Cancel was clicked.
@@ -424,7 +436,7 @@ function Popup() {
         <Button
           className="w-full"
           onClick={() => captureWidths()}
-          disabled={restricted === null || tabId === null || wanted.length === 0}
+          disabled={!canCapture({ restricted, tabId, sizes: wanted.length, breakpointsRead })}
         >
           {captureLabel(wanted.length)}
         </Button>

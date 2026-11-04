@@ -305,6 +305,24 @@ export function parseWidths(text: string[]): number[] {
   return widths;
 }
 
+/** How long Capture waits for the page's breakpoints before it lets a capture go without them. */
+export const BREAKPOINT_WAIT_MS = 1500;
+
+/**
+ * Whether Capture can be pressed: a tab that can be captured, a size, and the page's breakpoints
+ * read (or given up on), so the extra captures they call for are planned.
+ */
+export function canCapture(state: {
+  restricted: boolean | null;
+  tabId: number | null;
+  sizes: number;
+  breakpointsRead: boolean;
+}): boolean {
+  return (
+    state.restricted === false && state.tabId !== null && state.sizes > 0 && state.breakpointsRead
+  );
+}
+
 /** The label on the Capture button. */
 export function captureLabel(count: number): string {
   if (count <= 0) return "Capture";
