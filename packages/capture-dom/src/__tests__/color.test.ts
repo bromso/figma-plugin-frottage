@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parseComputedColor } from "../color";
 
 describe("parseComputedColor", () => {
-  test("parses modern colour syntaxes", () => {
+  test("parses modern color syntaxes", () => {
     expect(parseComputedColor("rgb(255 0 0 / 50%)")).toEqual({ r: 1, g: 0, b: 0, a: 0.5 });
     expect(parseComputedColor("rgba(0, 0, 0, 0)")).toEqual({ r: 0, g: 0, b: 0, a: 0 });
     expect(parseComputedColor("oklch(0.7 0.1 200)")).not.toBeNull();
@@ -44,7 +44,7 @@ describe("parseComputedColor", () => {
   });
 
   test("returns null for garbage", () => {
-    expect(parseComputedColor("not a colour")).toBeNull();
+    expect(parseComputedColor("not a color")).toBeNull();
     expect(parseComputedColor("")).toBeNull();
   });
 });

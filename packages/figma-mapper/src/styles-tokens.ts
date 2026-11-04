@@ -25,8 +25,8 @@ type Gradient = Extract<
   { type: "GRADIENT_LINEAR" | "GRADIENT_RADIAL" | "GRADIENT_ANGULAR" }
 >;
 type Shadow = Extract<PlanEffect, { type: "DROP_SHADOW" | "INNER_SHADOW" }>;
-/** The key of the only colour variable equal to `colour` in `scope`, or null. */
-export type MatchColour = (colour: Rgba, scope: string) => string | null;
+/** The key of the only color variable equal to `color` in `scope`, or null. */
+export type MatchColour = (color: Rgba, scope: string) => string | null;
 
 /** Styles of each kind per import, so a page can't flood a file. */
 const MAX_STYLES = 200;
@@ -61,7 +61,7 @@ function splitTop(text: string, separator: RegExp): string[] {
   return parts.map((p) => p.trim()).filter((p) => p !== "");
 }
 
-/** A `box-shadow` value as shadows, or null for one with no colour of its own or anything unread. */
+/** A `box-shadow` value as shadows, or null for one with no color of its own or anything unread. */
 export function parseShadows(value: string, props: Record<string, string>): Shadow[] | null {
   if (value.length > MAX_VALUE_LENGTH) return null;
   const text = resolveVars(value, props);
@@ -69,7 +69,7 @@ export function parseShadows(value: string, props: Record<string, string>): Shad
   const shadows: Shadow[] = [];
   for (const layer of splitTop(text, /,/)) {
     let inset = false;
-    let colour: Rgba | null = null;
+    let color: Rgba | null = null;
     const lengths: number[] = [];
     for (const part of splitTop(layer, /\s/)) {
       const lower = part.toLowerCase();
@@ -78,19 +78,19 @@ export function parseShadows(value: string, props: Record<string, string>): Shad
         continue;
       }
       const c = parseCssColor(NAMED.get(lower) ?? lower);
-      if (c && !colour) {
-        colour = { r: c.r, g: c.g, b: c.b, a: c.a };
+      if (c && !color) {
+        color = { r: c.r, g: c.g, b: c.b, a: c.a };
         continue;
       }
       const px = evalLength(part, props);
       if (px === null) return null;
       lengths.push(px);
     }
-    if (!colour || lengths.length < 2 || lengths.length > 4) return null;
+    if (!color || lengths.length < 2 || lengths.length > 4) return null;
     const [x, y, blur = 0, spread = 0] = lengths as [number, number, number?, number?];
     shadows.push({
       type: inset ? "INNER_SHADOW" : "DROP_SHADOW",
-      color: colour,
+      color: color,
       offset: { x, y },
       radius: blur,
       spread,

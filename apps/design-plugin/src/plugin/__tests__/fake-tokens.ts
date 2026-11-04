@@ -351,7 +351,7 @@ export function tokenModel(
           if (typeof value !== "number") throw new Error("needs a number");
           valuesByMode[modeId] = Math.fround(value);
         } else {
-          if (typeof value !== "object") throw new Error("needs a colour");
+          if (typeof value !== "object") throw new Error("needs a color");
           valuesByMode[modeId] = stored(value);
         }
       },
@@ -450,7 +450,7 @@ export function tokenModel(
         const shadow = effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW";
         if (!shadow || field !== "color") throw new Error("not a bindable effect field");
         if (!variables.has(variable?.id)) throw new Error("unknown variable");
-        if (variable.resolvedType !== "COLOR") throw new Error("needs a colour variable");
+        if (variable.resolvedType !== "COLOR") throw new Error("needs a color variable");
         return {
           ...effect,
           boundVariables: { color: { type: "VARIABLE_ALIAS", id: variable.id } },

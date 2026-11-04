@@ -180,7 +180,7 @@ describe("creating tokens", () => {
     expect(f.tokens.count("setVariableCodeSyntax")).toBe(0);
   });
 
-  test("no colours means no collection", async () => {
+  test("no colors means no collection", async () => {
     const f = fakeFigma();
     await runImport(f, tokens({ colors: [] }));
     expect(f.tokens.collections.size).toBe(0);
@@ -240,7 +240,7 @@ describe("binding", () => {
     }
   });
 
-  test("a styled run binds its colour, which a text style doesn't hold", async () => {
+  test("a styled run binds its color, which a text style doesn't hold", async () => {
     const f = fakeFigma();
     await runImport(f);
     const [variable] = variablesIn(f) as [any];
@@ -506,7 +506,7 @@ describe("a user's own tokens", () => {
     expect(end.variablesCreated).toBe(1);
   });
 
-  test("a translucent variable doesn't match an opaque colour", async () => {
+  test("a translucent variable doesn't match an opaque color", async () => {
     const f = fakeFigma();
     const collection = f.tokens.seedCollection("Brand");
     f.tokens.seedVariable("ink", collection, { ...INK, a: 0.5 });
@@ -585,7 +585,7 @@ describe("a user's own tokens", () => {
     expect((await runImport(f)).variablesCreated).toBe(1);
   });
 
-  test("each paint style is read once, however many colours there are", async () => {
+  test("each paint style is read once, however many colors there are", async () => {
     const f = fakeFigma();
     f.tokens.seedPaintStyle("Ink", [{ type: "SOLID", color: INK }]);
     const blue = { ...ink, key: "#0000ff", name: "color/b", rgba: { r: 0, g: 0, b: 1, a: 1 } };

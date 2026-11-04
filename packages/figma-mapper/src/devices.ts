@@ -689,7 +689,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     ...(kind === "breakpoint" ? { priority } : {}),
   }));
 
-  // Effect and gradient styles, and paint-style colours: one per key, the primary's first.
+  // Effect and gradient styles, and paint-style colors: one per key, the primary's first.
   const effectStyles: PlanLayers["effectStyles"] = [];
   const gradientStyles: PlanLayers["gradientStyles"] = [];
   const styleColors = new Map<string, NonNullable<PlanLayers["styleColors"]>[number]>();

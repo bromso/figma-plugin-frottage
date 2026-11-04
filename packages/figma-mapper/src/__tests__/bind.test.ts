@@ -91,13 +91,13 @@ describe("bindLayers", () => {
     expect(p.tokens.layers?.modes).toEqual(["Light", "Dark"]);
   });
 
-  test("a colour equal to exactly one theme Light value binds to it", () => {
+  test("a color equal to exactly one theme Light value binds to it", () => {
     const p = plan([painted("a", "oklch(0.145 0 0)")]);
     expect(fillOf(p, "a").colorKey).toBe("theme:color/foreground");
     expect(p.report.raw?.colors).toBe(0);
   });
 
-  test("on a page captured dark, a colour binds by its Dark value and the page opens in Dark", () => {
+  test("on a page captured dark, a color binds by its Dark value and the page opens in Dark", () => {
     const tokens = shadcnTokens();
     const dark = tokens.themes?.[0]?.properties ?? {};
     const light: Record<string, string> = {};
@@ -122,7 +122,7 @@ describe("bindLayers", () => {
     expect(plan([painted("a", "oklch(1 0 0)")]).tokens.layers?.activeMode).toBe("Light");
   });
 
-  test("an unbound colour used three times is offered to the user's paint styles", () => {
+  test("an unbound color used three times is offered to the user's paint styles", () => {
     const blue = "#2563eb";
     const p = plan([
       painted("a", blue),
@@ -134,7 +134,7 @@ describe("bindLayers", () => {
     const key = "paint:#2563eb";
     for (const id of ["a", "b", "c"]) expect(fillOf(p, id).colorKey).toBe(key);
     expect(fillOf(p, "once").colorKey).toBeUndefined();
-    // A bound colour keeps its variable.
+    // A bound color keeps its variable.
     expect(fillOf(p, "card").colorKey).toBe("theme:color/card");
     expect(p.tokens.layers?.styleColors).toEqual([
       { key, rgba: { ...rgbOf(blue), a: 1 }, uses: 3 },
@@ -143,7 +143,7 @@ describe("bindLayers", () => {
     expect(p.report.raw?.colors).toBe(4);
   });
 
-  test("a colour equal to two theme variables and with no ref stays raw", () => {
+  test("a color equal to two theme variables and with no ref stays raw", () => {
     const tokens = shadcnTokens();
     delete tokens.cssCustomProperties["--background"];
     delete tokens.cssCustomProperties["--color-background"];
@@ -313,7 +313,7 @@ describe("bindLayers", () => {
     expect(p.report.raw?.radii).toBe(4);
   });
 
-  test("a text run binds through its node's colour ref", () => {
+  test("a text run binds through its node's color ref", () => {
     const text = textNode("t", {
       runs: [run({ color: rgba("oklch(0.145 0 0)") })],
       tokenRefs: { color: "--foreground" },
@@ -361,7 +361,7 @@ describe("bindLayers", () => {
     expect(p.tokens.layers?.notes.droppedPrimitives).toBe(0);
   });
 
-  test("the layered path leaves colours and spacing empty and reports the modes", () => {
+  test("the layered path leaves colors and spacing empty and reports the modes", () => {
     const p = plan([painted("a", "oklch(1 0 0)", { background: "--color-card" })]);
     expect(p.tokens.colors).toEqual([]);
     expect(p.tokens.spacing).toEqual([]);

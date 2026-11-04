@@ -91,7 +91,7 @@ function isCalcBody(body: string, isColor: (value: string) => boolean, depth: nu
 }
 
 /**
- * Whether a custom property's value may be stored: a colour, a length, a `var()` chain ending in
+ * Whether a custom property's value may be stored: a color, a length, a `var()` chain ending in
  * one, or a `calc()` of those, within 200 characters. The rest (fonts, URLs, session tokens) is no
  * use to Figma and may not be the page's to give. `isColor` is `CSS.supports("color", value)` in
  * the page.
@@ -228,7 +228,7 @@ export function parseBackgroundImages(
 }
 
 const PLAIN_LENGTH = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:px)?$/i;
-/** Words that mean "the element's colour" or "whatever is inherited", which no stylesheet value pins down. */
+/** Words that mean "the element's color" or "whatever is inherited", which no stylesheet value pins down. */
 const UNPINNED = /^(?:currentcolor|inherit|initial|unset|revert|revert-layer)$/i;
 
 function shadowLayers(value: string, strict: boolean): Shadow[] | null {
@@ -237,7 +237,7 @@ function shadowLayers(value: string, strict: boolean): Shadow[] | null {
   for (const layer of splitTop(value)) {
     const tokens = splitTop(layer, " ");
     const inset = tokens.includes("inset");
-    // Authored values name colours with hex and keywords as well as functions.
+    // Authored values name colors with hex and keywords as well as functions.
     const colorToken = tokens.find((t) =>
       strict ? t !== "inset" && !/^[-+.\d]/.test(t) : /^[a-z-]+\(/.test(t) || t === "transparent"
     );
@@ -259,7 +259,7 @@ function shadowLayers(value: string, strict: boolean): Shadow[] | null {
         color = colorOf(colorToken);
       }
     } else if (strict) {
-      return null; // the colour would be currentcolor
+      return null; // the color would be currentcolor
     }
     out.push({
       inset,
@@ -279,7 +279,7 @@ export function parseBoxShadows(value: string): Shadow[] {
 
 /**
  * `parseBoxShadows` for a value as authored in a stylesheet: null unless every layer is plain
- * pixels with a colour that can be read, so nothing is guessed (no `em`, `calc()` or `currentcolor`).
+ * pixels with a color that can be read, so nothing is guessed (no `em`, `calc()` or `currentcolor`).
  */
 export function parseAuthoredBoxShadows(value: string): Shadow[] | null {
   return shadowLayers(value.trim(), true);

@@ -129,7 +129,7 @@ export function repeatedFile(count: number): File {
 }
 
 /**
- * A File of a page with `tokens` and one frame per entry of `fills`: a hex colour, or one with the
+ * A File of a page with `tokens` and one frame per entry of `fills`: a hex color, or one with the
  * custom property the frame's background was authored as.
  */
 export function themedFile(

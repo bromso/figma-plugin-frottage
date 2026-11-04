@@ -69,7 +69,7 @@ const border: PlanVariable = {
   collection: "colorMode",
   type: "COLOR",
   values: [{ alias: gray.key }, { alias: gray.key }],
-  description: "Inferred: the colour of most borders\nNear twin of input",
+  description: "Inferred: the color of most borders\nNear twin of input",
   scopes: ["STROKE_COLOR"],
 };
 const token = (source: PlanVariable, name: string): PlanVariable => ({
@@ -411,11 +411,11 @@ describe("createLayerSet", () => {
     expect(set.openingMode()?.modeId).toBe(colorMode.defaultModeId);
   });
 
-  test("with local styles, a palette colour equal to a user's variable binds to it", async () => {
+  test("with local styles, a palette color equal to a user's variable binds to it", async () => {
     const f = fakeFigma();
     const brand = f.tokens.seedCollection("Brand");
     const theirs = f.tokens.seedVariable("neutral/200", brand, GRAY);
-    // A user's number of the same value is never taken: only Palette colours are.
+    // A user's number of the same value is never taken: only Palette colors are.
     f.tokens.seedVariable("eight", brand, 8, "FLOAT");
     const set = await settle(f);
     expect(set.variable(gray.key)?.id).toBe(theirs.id);
@@ -432,7 +432,7 @@ describe("createLayerSet", () => {
     expect(off.variable(gray.key)?.name).toBe("gray/200");
   });
 
-  test("a user's multi-mode colour is not reused, so a mode switch cannot recolour the page", async () => {
+  test("a user's multi-mode color is not reused, so a mode switch cannot recolor the page", async () => {
     const f = fakeFigma();
     const ds = f.tokens.seedCollection("DS Theme", ["Light", "Dark"]);
     f.tokens.seedVariable("surface/default", ds, GRAY);

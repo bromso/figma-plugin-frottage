@@ -61,7 +61,7 @@ function plainPage(foreground = 90): CaptureNode[] {
   ];
 }
 
-/** The semantic colours: PR #7's theme variables, now in Color Mode. */
+/** The semantic colors: PR #7's theme variables, now in Color Mode. */
 const theme = (p: LayerPlan) =>
   p.tokens.layers?.variables.filter((v) => v.collection === "colorMode") ?? [];
 
@@ -112,7 +112,7 @@ describe("inferTheme", () => {
     expect(theme(p).map((v) => v.name)).toContain("color/background");
   });
 
-  test("a second text colour with lower contrast is muted-foreground", () => {
+  test("a second text color with lower contrast is muted-foreground", () => {
     const p = plan([text("t1", "#111111", 70), text("t2", "#737373", 30)]);
     const muted = theme(p).find((v) => v.name === "color/muted-foreground");
     expect(muted?.description).toBe("Inferred: used on 30% of body text");
@@ -135,7 +135,7 @@ describe("inferTheme", () => {
     expect(theme(p)).toEqual([]);
   });
 
-  test("a repeated colour that fills no role becomes a primitive named by family and step", () => {
+  test("a repeated color that fills no role becomes a primitive named by family and step", () => {
     const green = ["g1", "g2", "g3"].map((id) => text(id, "#16a34a", 1));
     const p = plan([...plainPage(), ...green]);
     const v = p.tokens.layers?.variables.find((x) => x.collection === "palette");
@@ -149,7 +149,7 @@ describe("inferTheme", () => {
 });
 
 describe("primitiveName", () => {
-  test("names a colour by family and step", () => {
+  test("names a color by family and step", () => {
     expect(primitiveName(rgb("#ffffff"), new Set())).toBe("color/gray-50");
     expect(primitiveName(rgb("#111111"), new Set())).toBe("color/gray-800");
     expect(primitiveName(rgb("#2563eb"), new Set())).toBe("color/blue-450");
@@ -164,7 +164,7 @@ describe("primitiveName", () => {
 });
 
 describe("nearTwins", () => {
-  const colour = (name: string, css: string): StagedVariable => ({
+  const color = (name: string, css: string): StagedVariable => ({
     key: `primitives:${name}`,
     name,
     collection: "primitives",
@@ -175,9 +175,9 @@ describe("nearTwins", () => {
   });
 
   test("#2563eb and #2564ea are near twins, and both say so", () => {
-    const a = colour("brand", "#2563eb");
-    const b = colour("brand-alt", "#2564ea");
-    const c = colour("red", "#ff0000");
+    const a = color("brand", "#2563eb");
+    const b = color("brand-alt", "#2564ea");
+    const c = color("red", "#ff0000");
     expect(nearTwins([a, b, c])).toEqual([["primitives:brand", "primitives:brand-alt"]]);
     expect(a.description).toBe("From the site: --brand\nNear twin of brand-alt");
     expect(b.description).toBe("From the site: --brand-alt\nNear twin of brand");
@@ -204,11 +204,11 @@ describe("nearTwins", () => {
     expect(brand?.description).toBe("From the site: --color-brand\nNear twin of brand-alt");
   });
 
-  test("translucent colours and identical ones are not near twins", () => {
-    const a = colour("a", "rgb(0 0 0 / 0.5)");
-    const b = colour("b", "rgb(1 0 0 / 0.5)");
-    const c = colour("c", "#ffffff");
-    const d = colour("d", "#ffffff");
+  test("translucent colors and identical ones are not near twins", () => {
+    const a = color("a", "rgb(0 0 0 / 0.5)");
+    const b = color("b", "rgb(1 0 0 / 0.5)");
+    const c = color("c", "#ffffff");
+    const d = color("d", "#ffffff");
     expect(nearTwins([a, b, c, d])).toEqual([]);
   });
 });

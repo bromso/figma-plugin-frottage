@@ -76,7 +76,7 @@ describe("effect styles", () => {
     expect(p.tokens.layers?.effectStyles.map((s) => s.name)).toEqual(["shadow/sm"]);
   });
 
-  test("a shadow colour binds to the colour variable equal to it", () => {
+  test("a shadow color binds to the color variable equal to it", () => {
     const one = [{ ...(SHADOW[0] as (typeof SHADOW)[number]), color: rgba("#111111") }];
     const p = plan(
       ["a", "b", "c"].map((id) => shadowed(id, one)),

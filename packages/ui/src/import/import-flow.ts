@@ -57,7 +57,7 @@ export type VersionResult = {
 /** The theme side of a layered import: the plan's notes and what the sandbox did about them. */
 export type ThemeReport = {
   source: "site" | "inferred" | "none";
-  /** The colours that are near twins of another. */
+  /** The colors that are near twins of another. */
   twins: number;
   inferred: string[];
   /** Variables created as `name (2)` because a variable of that name held other values. */

@@ -150,9 +150,9 @@ function svgs(c: Capture) {
 /**
  * The snapshot keeps only what is the same on every machine:
  * - structure: kind, tag, role, heading level, landmark, href, alt, children, ids, paintOrder
- * - text content, plus run offsets, weight, style, size, lineHeight, letterSpacing, colour,
+ * - text content, plus run offsets, weight, style, size, lineHeight, letterSpacing, color,
  *   decoration, transform and align (all come from CSS, not from text metrics)
- * - element style and layout values: colours, gradients, borders, radii, shadows, filters,
+ * - element style and layout values: colors, gradients, borders, radii, shadows, filters,
  *   overflow, display, padding, margin, flex values
  * - box values only for squares of 8px or more (fixed CSS sizes such as the 44px icon) and for
  *   images, whose width and height attributes fix them; every other box is dropped, placeholders
@@ -788,11 +788,11 @@ test("inline SVG is stored as markup with currentColor resolved", async ({ page 
   expect(svg.markup).toContain("<svg");
   expect(svg.markup).not.toContain("currentColor");
   expect(svg.markup).not.toContain("<script");
-  // The page's brand colour (#0d9488) is inlined as the stroke.
+  // The page's brand color (#0d9488) is inlined as the stroke.
   expect(svg.markup).toMatch(/stroke="#0d9488"/i);
 });
 
-test("computed colours, classes and gradients are inlined and the page CSS is not needed", async ({
+test("computed colors, classes and gradients are inlined and the page CSS is not needed", async ({
   page,
 }) => {
   const c = await capture(page, "svg.html");
@@ -841,7 +841,7 @@ test("hostile SVG markup loses scripts, handlers and external references", async
   ]) {
     expect(markup).not.toContain(bad);
   }
-  // The inline style survives as computed colour.
+  // The inline style survives as computed color.
   expect(markup).toMatch(/fill="#010203"/i);
   expect(JSON.stringify(c)).not.toContain("SECRET-TOKEN");
 });
@@ -1699,7 +1699,7 @@ test("the links fixture still parses, with its pseudo-elements", async ({ page }
 
 // ---------- Custom properties
 
-test("only colours and lengths are kept from :root, with var() chains resolved", async ({
+test("only colors and lengths are kept from :root, with var() chains resolved", async ({
   page,
 }) => {
   const c = await capture(page, "secrets.html");
@@ -1876,7 +1876,7 @@ test("a pseudo-element keeps its z-index, so an underlay stays under the text", 
   expect(under[0]).toBe(pseudo("zq-pill")?.id);
 });
 
-test("transparent text fill outside a clip takes the stroke colour, else the text colour", async ({
+test("transparent text fill outside a clip takes the stroke color, else the text color", async ({
   page,
 }) => {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
@@ -1906,7 +1906,7 @@ test("transparent text fill outside a clip takes the stroke colour, else the tex
   expect(warned[0]?.detail).toContain("(3 times)");
 });
 
-test("background-clip: text is captured and the text paints with the first gradient colour", async ({
+test("background-clip: text is captured and the text paints with the first gradient color", async ({
   page,
 }) => {
   const c = await capture(page, "gradient-text.html");
@@ -1928,11 +1928,11 @@ test("background-clip: text is captured and the text paints with the first gradi
   };
   expect(fillsOf(heading("h1").id)).toEqual([]);
   expect(fillsOf(heading("p").id)).toHaveLength(1);
-  const colours = plan.ops.flatMap((o) =>
+  const colors = plan.ops.flatMap((o) =>
     o.op === "text" ? [o.runs[0]?.color, o.runs[0]?.opacity] : []
   );
   // h1: -webkit-text-fill-color transparent over a red-to-blue gradient; h2: color transparent over green.
-  expect(colours.slice(0, 4)).toEqual([{ r: 1, g: 0, b: 0 }, 1, { r: 0, g: 128 / 255, b: 0 }, 1]);
+  expect(colors.slice(0, 4)).toEqual([{ r: 1, g: 0, b: 0 }, 1, { r: 0, g: 128 / 255, b: 0 }, 1]);
 });
 
 // ---------- Hover
@@ -1966,7 +1966,7 @@ test("a var() value is resolved, with its fallback", async ({ page }) => {
   expect(hover?.backgroundColor).toEqual(rgb(0, 0, 0, 0.5));
 });
 
-test("a colour hover carries the resting colour, and other hovers do not", async ({ page }) => {
+test("a color hover carries the resting color, and other hovers do not", async ({ page }) => {
   const c = await capture(page, "hover.html");
   near(hoverOf(c, "x-btn", "vars")?.restingColor?.r, 0x11 / 255);
   expect(hoverOf(c, "x-btn", "vars")?.restingColor?.a).toBe(1);
@@ -2103,7 +2103,7 @@ test("a rule with an unsupported property keeps what it can and is counted", asy
   const pill = hoverOf(c, "x-pill", "a");
   expect(pill?.color?.g).toBeCloseTo(0.6, 2);
   expect(JSON.stringify(pill)).not.toContain("transform");
-  // currentcolor can't be pinned down, so the earlier rule's green stays; the colour beside it is read
+  // currentcolor can't be pinned down, so the earlier rule's green stays; the color beside it is read
   const cur = hoverOf(c, "x-pill", "cur");
   expect(cur?.color?.g).toBeCloseTo(0.6, 2);
   near(cur?.backgroundColor?.r, 0xab / 255);
@@ -2239,7 +2239,7 @@ test.describe("hover on what merges into text", () => {
   const arial = [{ family: "Arial", style: "Regular" }];
   const redHover = { r: 1, g: 0, b: 0, a: 1 };
 
-  test("an anchor that is all of its parent's text lifts its hover, with its own colour", async ({
+  test("an anchor that is all of its parent's text lifts its hover, with its own color", async ({
     page,
   }) => {
     const c = await plain(
@@ -2305,7 +2305,7 @@ test.describe("hover on what merges into text", () => {
     expect(c.warnings.find((w) => w.code === "hover-partial")?.detail).toContain("(2 times)");
   });
 
-  test("links in a nested list do not recolour what holds them", async ({ page }) => {
+  test("links in a nested list do not recolor what holds them", async ({ page }) => {
     const c = await plain(
       page,
       `<style>x-nav { display: block } x-nav a { color: rgb(51, 51, 51) } x-nav a:hover { color: red }</style>
@@ -2319,7 +2319,7 @@ test.describe("hover on what merges into text", () => {
     expect(elements(c, "ul").every((n) => !n.hover)).toBe(true);
   });
 
-  test("only colour and decoration lift; box changes are counted", async ({ page }) => {
+  test("only color and decoration lift; box changes are counted", async ({ page }) => {
     const c = await plain(
       page,
       `<style>x-btn { display: block; padding: 8px } x-btn a { color: inherit }
@@ -2597,12 +2597,12 @@ for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
       });
       expect(darkValue?.r).toBeLessThan(0.3);
     }
-    // A colour passes Theme, then Color Mode, then Palette: each layer aliases the one before.
+    // A color passes Theme, then Color Mode, then Palette: each layer aliases the one before.
     for (const name of ["background", "card", "popover", "border"]) {
       const kinds = resolve(`theme:color/${name}`).chain.map((k) => k.split(":")[0]);
       expect(kinds).toEqual(["theme", "colorMode", "palette"]);
     }
-    // In Dark, card, popover and background are three colours.
+    // In Dark, card, popover and background are three colors.
     const darks = ["background", "card", "popover"].map((n) => values(`theme:color/${n}`)[1]?.r);
     expect(new Set(darks.map((r) => r?.toFixed(3))).size).toBe(3);
     expect(values("theme:color/border")[1]?.a).toBeCloseTo(0.1, 2);

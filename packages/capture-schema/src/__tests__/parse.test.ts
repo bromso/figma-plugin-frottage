@@ -76,7 +76,7 @@ test("accepts hover differences on an element and keeps them", () => {
   const result = parseCapture(withHover(hover));
   expect(result.ok && (result.capture.root as any).hover).toEqual(hover);
 });
-test("rejects a hover with a bad colour, opacity or shadow", () => {
+test("rejects a hover with a bad color, opacity or shadow", () => {
   expect(parseCapture(withHover({ backgroundColor: { r: 2, g: 0, b: 0, a: 1 } })).ok).toBe(false);
   expect(parseCapture(withHover({ opacity: 3 })).ok).toBe(false);
   expect(parseCapture(withHover({ boxShadows: [{ ...shadow, x: "no" }] })).ok).toBe(false);

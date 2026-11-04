@@ -1230,7 +1230,7 @@ describe("binding to the layered collections", () => {
     expect(root.fillStyleId).toBe(style.id);
   });
 
-  test("a raw colour links to the user's matching paint style; a bound one stays bound", async () => {
+  test("a raw color links to the user's matching paint style; a bound one stays bound", async () => {
     const INK = { r: 0.2, g: 0.4, b: 0.6 };
     const styled = {
       ...plan,
@@ -1247,7 +1247,7 @@ describe("binding to the layered collections", () => {
       const ink = f.tokens.seedPaintStyle("Ink", [
         { type: "SOLID", color: INK, opacity: 1, blendMode: "NORMAL", visible: true },
       ]);
-      // A paint style of the card's colour too: the variable still wins.
+      // A paint style of the card's color too: the variable still wins.
       f.tokens.seedPaintStyle("Paper", [{ type: "SOLID", color: WHITE, opacity: 1 }]);
       return { f, ink, useLocalStyles };
     };

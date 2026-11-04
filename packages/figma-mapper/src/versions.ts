@@ -17,9 +17,9 @@ import { cssColorOf, cssSpacingOf, MIN_USES, rgbaOf } from "./tokens";
 /**
  * Turns several versions' tokens into one set with a mode per version. The first version seeds
  * the set, and a later version's token joins a seed or stays a plain value in its own frame. A
- * colour joins by the same custom property, then the same value. A text style joins by shared
+ * color joins by the same custom property, then the same value. A text style joins by shared
  * text, then the same role, and only with the same look apart from what varies by mode. A spacing
- * token joins by its custom property alone: a length no property names stays plain. A colour or
+ * token joins by its custom property alone: a length no property names stays plain. A color or
  * text style stays a token when its uses across the versions it joined reach `MIN_USES`, so that a
  * heading set once at each width still varies, and each plan's own floor may be lower for that.
  */
@@ -34,7 +34,7 @@ export type TokenVersion = {
 /** Per version, the token standing in for each seed. */
 type Joins<T> = Map<T, T>[];
 
-/** A later version's colours: `cssOnly` is what a seed's property holds where no token does. */
+/** A later version's colors: `cssOnly` is what a seed's property holds where no token does. */
 type ColorJoins = { joins: Map<PlanColor, PlanColor>; cssOnly: Map<PlanColor, string> };
 
 /** Per version, what each single-version key becomes. */
@@ -361,7 +361,7 @@ const counted = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`
 
 function plainReport(mode: string, colors: number, styles: number, spacing: number): string[] {
   const parts = [
-    ...(colors > 0 ? [counted(colors, "colour")] : []),
+    ...(colors > 0 ? [counted(colors, "color")] : []),
     ...(styles > 0 ? [counted(styles, "text style")] : []),
     ...(spacing > 0 ? [counted(spacing, "spacing value")] : []),
   ];

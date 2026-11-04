@@ -21,7 +21,7 @@ import { effectStyles, gradientStyles } from "./styles-tokens";
 import { colorKeyOf, MIN_USES, rgbaOf } from "./tokens";
 
 /**
- * Binds each colour, corner radius and spacing length in `ops` to a variable of the catalogue: the
+ * Binds each color, corner radius and spacing length in `ops` to a variable of the catalogue: the
  * one the site used, else the only theme variable whose value in the captured mode is equal, else
  * the only equal primitive. What none of those finds stays a plain value and is counted as raw.
  */
@@ -33,7 +33,7 @@ export type BindContext = {
   root?: CaptureNode;
   props?: Record<string, string>;
   keep?: Iterable<string>;
-  /** Uses an unbound colour needs before it is offered to the user's paint styles. */
+  /** Uses an unbound color needs before it is offered to the user's paint styles. */
   floor?: number;
 };
 
@@ -64,8 +64,8 @@ const sameLength = (a: number, b: number) => Math.abs(a - b) <= PX + EPSILON;
 const accepts = (v: StagedVariable, scope: string) => v.scopes.includes(scope);
 
 /**
- * A colour to bind. The paint keeps its captured opacity: the applier sets 1 only once the variable,
- * which carries the alpha, is bound, so a failed binding still shows the raw colour.
+ * A color to bind. The paint keeps its captured opacity: the applier sets 1 only once the variable,
+ * which carries the alpha, is bound, so a failed binding still shows the raw color.
  */
 function colourField(
   paint: { color: PlanRgb; opacity: number; colorKey?: string },
@@ -201,7 +201,7 @@ export function bindLayers(
   // Aliases point at variables the catalogue made up front, never at a step made on demand.
   const byKey = new Map(catalogue.variables.map((v) => [v.key, v]));
   const followed = (value: PlanVarValue | undefined) => followAlias(byKey, value);
-  // Read before inference adds any: a site that names colours gets no unnamed primitives.
+  // Read before inference adds any: a site that names colors gets no unnamed primitives.
   const siteColours = catalogue.variables.some((v) => v.type === "COLOR");
 
   const fields: Field[] = [];
@@ -232,7 +232,7 @@ export function bindLayers(
 
   // Roles inferred for a page with no theme join the catalogue here, before values are matched,
   // unless some layer or text style bound to a site variable by its ref. Corners named by a
-  // rounding class bind after this, so they never keep a page's colours from being inferred.
+  // rounding class bind after this, so they never keep a page's colors from being inferred.
   if (bound.size === 0 && context.root) inferTheme(catalogue, ops, context.root);
 
   // A corner a `rounded-<name>` class set binds to `radius/<name>`, made with the first value it
@@ -276,7 +276,7 @@ export function bindLayers(
   };
   const match = (field: Field) => only(field, theme) ?? only(field, primitives);
 
-  // On a site that names no colours, an opaque colour used `MIN_USES` times that no variable takes
+  // On a site that names no colors, an opaque color used `MIN_USES` times that no variable takes
   // becomes a primitive named by family and step, and its uses bind to it.
   if (!siteColours) {
     const groups = new Map<string, Field[]>();
@@ -338,7 +338,7 @@ export function bindLayers(
     }
   }
 
-  // An opaque colour that stayed raw and repeats may still be one of the user's paint styles, as
+  // An opaque color that stayed raw and repeats may still be one of the user's paint styles, as
   // on the single-collection path: the sandbox links it where one matches, else leaves it plain.
   const floor = context.floor ?? MIN_USES;
   const byColour = new Map<string, Field[]>();
@@ -355,7 +355,7 @@ export function bindLayers(
     styleColors.push({ key, rgba: rgbaOf(key.slice("paint:".length)), uses: list.length });
   }
 
-  // Shadows and gradients the page repeats; their colours bind as a field's would.
+  // Shadows and gradients the page repeats; their colors bind as a field's would.
   const matchColour = (value: Rgba, scope: string) => {
     const v = match({ kind: "colors", scope, value, bind() {} });
     if (v) bound.add(v.key);

@@ -34,12 +34,12 @@ function themeLines({ report, theme }: Pick<VersionResult, "report" | "theme">, 
   }
   if (theme.inferred.length > 0) lines.push(`Inferred from use: ${theme.inferred.join(", ")}`);
   if (theme.twins > 0) {
-    lines.push(`${theme.twins} colours are near twins of another and were kept separate.`);
+    lines.push(`${theme.twins} colors are near twins of another and were kept separate.`);
   }
   const { raw } = report;
   if (raw && raw.colors + raw.radii + raw.spacing > 0) {
     lines.push(
-      `Raw values left unbound: ${plural(raw.colors, "colour")}, ${plural(raw.radii, "radius", "radii")}, ${raw.spacing} spacing`
+      `Raw values left unbound: ${plural(raw.colors, "color")}, ${plural(raw.radii, "radius", "radii")}, ${raw.spacing} spacing`
     );
   }
   if (theme.modesDropped.length > 0) {

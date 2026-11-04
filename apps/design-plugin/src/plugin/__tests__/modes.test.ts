@@ -90,7 +90,7 @@ async function settle(
   return tokens;
 }
 
-/** A single file with one colour, imported to the end. */
+/** A single file with one color, imported to the end. */
 async function importFile(f: Fake, colorToken: PlanColor) {
   const a = createApplier(f.figma);
   await a.begin(meta);
@@ -107,7 +107,7 @@ const stylesIn = (f: Fake) => [...f.tokens.textStyles.values()] as any[];
 const variableNamed = (f: Fake, name: string) => variablesIn(f).find((v) => v.name === name);
 const modeNames = (c: any) => c.modes.map((m: any) => m.name);
 const modeId = (c: any, name: string) => c.modes.find((m: any) => m.name === name).modeId;
-/** The channel where the three test colours all differ. */
+/** The channel where the three test colors all differ. */
 const channel = (v: { g: number }) => v.g;
 /** Tags a variable as Frottage's, as Stages 1 and 2 left it. */
 const tagged = (variable: any, key: string) => {
@@ -1000,7 +1000,7 @@ describe("a later version on the only mode left", () => {
     return tokens;
   }
 
-  test("a colour, size, line height and tracking all come from the held version", async () => {
+  test("a color, size, line height and tracking all come from the held version", async () => {
     const f = fakeFigma({ modeLimit: 2 });
     await settle(f, set({ modes: ["A", "B"] }));
     const paint = color("color/late", [SKY, PAPER]);
@@ -1477,7 +1477,7 @@ describe("a width added to a set", () => {
     expect(tokens.textStyleId(body([16, 14, 12], [24, 20, 18]).key)).toBe(stylesIn(f)[0].id);
   });
 
-  test("a colour the same in all three finds its variable, with local reuse off", async () => {
+  test("a color the same in all three finds its variable, with local reuse off", async () => {
     const f = fakeFigma();
     const opts = options({ useLocalStyles: false });
     await settle(f, set({ modes: TWO, colors: [ink([INK, INK])] }), opts);

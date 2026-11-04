@@ -202,7 +202,7 @@ describe("createRefReader", () => {
     expect(layers.reader.refsFor(layers.$(".x"))?.color).toBe("--b");
   });
 
-  test("colour inherits from an ancestor's rule", () => {
+  test("color inherits from an ancestor's rule", () => {
     const { reader, $ } = setup(
       "body { color: var(--foreground) }",
       `<main><p>Hi</p></main>`,

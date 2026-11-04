@@ -28,7 +28,7 @@ export const VALUE_KEY = "valueKey";
  * ones have none, and go by their variables' value keys.
  */
 export const COLLECTION_KEY = "collection";
-/** Half an 8-bit step: two colours this close are the same colour. */
+/** Half an 8-bit step: two colors this close are the same color. */
 export const CHANNEL_TOLERANCE = 1 / 512;
 /** Figma stores 32-bit numbers, so a size read back isn't quite the one that was set. */
 const NUMBER_TOLERANCE = 1e-4;
@@ -211,7 +211,7 @@ function sameTextStyle(style: TextStyle, token: TextLook): boolean {
   );
 }
 
-/** The colour of a paint style that paints the same as a plain opaque colour would, else null. */
+/** The color of a paint style that paints the same as a plain opaque color would, else null. */
 export function solidColorOf(style: PaintStyle): RGB | null {
   const [paint, ...rest] = style.paints;
   const plain =
@@ -223,7 +223,7 @@ export function solidColorOf(style: PaintStyle): RGB | null {
   return plain ? paint.color : null;
 }
 
-/** The default mode's colour, or null for an alias: what it points at is matched on its own. */
+/** The default mode's color, or null for an alias: what it points at is matched on its own. */
 function colorOf(variable: Variable, modes: Map<string, string>): RGBA | null {
   const mode = modes.get(variable.variableCollectionId);
   const value = mode === undefined ? undefined : variable.valuesByMode[mode];
@@ -962,7 +962,7 @@ export function createTokenSet(api: PluginAPI) {
       counts.variablesCreated++;
     };
 
-    /** Frottage's own, as a flat colour can't be: a length has no user's variable to take. */
+    /** Frottage's own, as a flat color can't be: a length has no user's variable to take. */
     const settleSpacing = async (token: PlanModeSpacing): Promise<void> => {
       const first = token.values[0]?.value;
       if (first === undefined) throw new Error("no value");
@@ -1364,7 +1364,7 @@ export function createTokenSet(api: PluginAPI) {
     },
 
     textStyleId: (key: string | undefined) => (key ? styleIds.get(key) : undefined),
-    /** A layered plan's colour is a variable, or for a raw one the user's matching paint style. */
+    /** A layered plan's color is a variable, or for a raw one the user's matching paint style. */
     color(key: string | undefined): ColorBinding | undefined {
       if (!key) return undefined;
       const variable = layers?.variable(key);

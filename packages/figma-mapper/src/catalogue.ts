@@ -147,7 +147,7 @@ function lengthScopes(bare: string): string[] {
 
 /**
  * What a property's value makes, named by the primitive rules, or by its bare name in the theme.
- * Null for a value that is neither colour nor length (nor a weight or family where the name says so).
+ * Null for a value that is neither color nor length (nor a weight or family where the name says so).
  */
 function classify(
   prop: string,
@@ -164,10 +164,10 @@ function classify(
   const grouped = (group: string, tail: string) =>
     theme ? bare : tail ? `${group}/${tail}` : group;
 
-  const colour = colourOf(value, props);
-  if (colour) {
+  const color = colourOf(value, props);
+  if (color) {
     const name = theme || first !== "color" || !rest ? bare : `color/${rest}`;
-    return { name, type: "COLOR", value: colour, scopes: COLOR_SCOPES };
+    return { name, type: "COLOR", value: color, scopes: COLOR_SCOPES };
   }
   if (/^font-weight-./i.test(bare)) {
     const n = numberOf(value, props);
@@ -292,7 +292,7 @@ export function buildCatalogue(capture: Capture): Catalogue {
   /** A value authored as `var()` of a primitive of the same type aliases it. */
   const aliasOf = (text: string | undefined, type: StagedVariable["type"]): PlanVarValue | null => {
     const named = SINGLE_VAR.exec(text?.trim() ?? "")?.[1];
-    // A colour alias that collapsed stands for the primitive it names.
+    // A color alias that collapsed stands for the primitive it names.
     const target = named && !themeProps.has(named) ? (collapsesInto(named) ?? named) : undefined;
     const v = target && !themeProps.has(target) ? byCssVar.get(target) : undefined;
     return v && v.collection === "primitives" && v.type === type ? { alias: v.key } : null;
@@ -343,7 +343,7 @@ export function buildCatalogue(capture: Capture): Catalogue {
   }
 
   // Aliases of theme properties, as Tailwind's `--color-card: var(--card)`, collapse into them, and
-  // colour aliases into the primitive they name.
+  // color aliases into the primitive they name.
   for (const prop of Object.keys(root)) {
     if (!usable(prop) || themeProps.has(prop)) continue;
     const target = collapsesInto(prop);

@@ -31,7 +31,7 @@ function viaCanvas(value: string): Rgba | null {
 }
 
 /**
- * Parse a computed CSS colour into unit-range sRGB. Anything the arithmetic doesn't cover is drawn
+ * Parse a computed CSS color into unit-range sRGB. Anything the arithmetic doesn't cover is drawn
  * to a 1x1 canvas when one exists.
  */
 export function parseComputedColor(value: string): Rgba | null {

@@ -191,7 +191,7 @@ function fromHex(text: string): Rgba | null {
 }
 
 /**
- * Parse a CSS colour into unit-range sRGB. rgb, hsl, hwb, lab, lch, oklab, oklch,
+ * Parse a CSS color into unit-range sRGB. rgb, hsl, hwb, lab, lch, oklab, oklch,
  * color(srgb | srgb-linear | display-p3), hex and transparent are converted arithmetically; anything
  * else is null.
  */

@@ -16,7 +16,7 @@ function RadioGroup({
   );
 }
 
-/** UI3 radio: 16 px circle, strong 1 px border; selected shows a 6 px dot in the text colour. Kit ref 2015:20366. */
+/** UI3 radio: 16 px circle, strong 1 px border; selected shows a 6 px dot in the text color. Kit ref 2015:20366. */
 function RadioGroupItem({
   className,
   ...props

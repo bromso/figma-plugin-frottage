@@ -5,18 +5,18 @@ import { tailwindName } from "./tailwind-palette";
 import { headedTexts } from "./tokens";
 
 /**
- * Infers theme roles for a page with no theme of its own, from how its colours are used, and names
- * colours by family and lightness step. Each role is inferred only when its evidence holds.
+ * Infers theme roles for a page with no theme of its own, from how its colors are used, and names
+ * colors by family and lightness step. Each role is inferred only when its evidence holds.
  */
 
 export type Rgba = PlanRgb & { a: number };
 
-/** Two colours this close in every channel, alpha included, are the same colour. */
+/** Two colors this close in every channel, alpha included, are the same color. */
 const CHANNEL = 1 / 255;
 const EPSILON = 1e-9;
-/** Colours closer than this in OKLab are near twins. */
+/** Colors closer than this in OKLab are near twins. */
 const TWIN_DISTANCE = 0.02;
-/** Closer than this, two colours are the same value and not twins. */
+/** Closer than this, two colors are the same value and not twins. */
 const SAME_DISTANCE = 1e-6;
 const GRAY_CHROMA = 0.03;
 /** Hue ranges by their end, in degrees. */
@@ -59,12 +59,12 @@ export function oklab({ r, g, b }: PlanRgb): { L: number; a: number; b: number }
 }
 
 /**
- * `color/<family>-<step>`, with `-2`, `-3` after a name in `taken`. An opaque colour that is exactly
+ * `color/<family>-<step>`, with `-2`, `-3` after a name in `taken`. An opaque color that is exactly
  * one of Tailwind's own takes Tailwind's name (`color/neutral-950`).
  */
-export function primitiveName(colour: PlanRgb, taken: Set<string>): string {
-  const tw = tailwindName({ a: 1, ...colour });
-  const lab = oklab(colour);
+export function primitiveName(color: PlanRgb, taken: Set<string>): string {
+  const tw = tailwindName({ a: 1, ...color });
+  const lab = oklab(color);
   const chroma = Math.hypot(lab.a, lab.b);
   let hue = (Math.atan2(lab.b, lab.a) * 180) / Math.PI;
   if (hue < 0) hue += 360;
@@ -89,29 +89,29 @@ function contrast(fg: Rgba, bg: Rgba): number {
   return (Math.max(top, bottom) + 0.05) / (Math.min(top, bottom) + 0.05);
 }
 
-/** Uses of each colour, by its nearest 8-bit value. */
+/** Uses of each color, by its nearest 8-bit value. */
 class Tally {
-  private counts = new Map<string, { colour: Rgba; n: number }>();
+  private counts = new Map<string, { color: Rgba; n: number }>();
   total = 0;
-  add(colour: Rgba, n = 1) {
-    const key = [colour.r, colour.g, colour.b, colour.a].map((c) => Math.round(c * 255)).join();
+  add(color: Rgba, n = 1) {
+    const key = [color.r, color.g, color.b, color.a].map((c) => Math.round(c * 255)).join();
     const at = this.counts.get(key);
     if (at) at.n += n;
-    else this.counts.set(key, { colour, n });
+    else this.counts.set(key, { color, n });
     this.total += n;
   }
   /** Most used first; ties by value, so the order doesn't depend on the page's order. */
-  ranked(): { colour: Rgba; n: number }[] {
+  ranked(): { color: Rgba; n: number }[] {
     const key = (c: Rgba) => [c.r, c.g, c.b, c.a].join();
     return [...this.counts.values()].sort(
-      (x, y) => y.n - x.n || (key(x.colour) < key(y.colour) ? -1 : 1)
+      (x, y) => y.n - x.n || (key(x.color) < key(y.color) ? -1 : 1)
     );
   }
 }
 
 const percent = (n: number, total: number) => Math.round((n / total) * 100);
 
-type Role = { name: string; colour: Rgba; evidence: string };
+type Role = { name: string; color: Rgba; evidence: string };
 
 /** The page's own background: the root's, else the body's, when opaque. */
 function pageBackground(root: CaptureNode): Rgba | null {
@@ -143,10 +143,10 @@ const firstSolid = (op: Extract<PlanOp, { op: "frame" }>): Rgba | null => {
 
 function findRoles(ops: PlanOp[], root: CaptureNode): Role[] {
   const roles: Role[] = [];
-  const add = (name: string, colour: Rgba, evidence: string) => {
-    // A colour that already fills a role would make both ambiguous to bind by value.
-    if (roles.some((r) => sameColour(r.colour, colour))) return;
-    roles.push({ name, colour, evidence });
+  const add = (name: string, color: Rgba, evidence: string) => {
+    // A color that already fills a role would make both ambiguous to bind by value.
+    if (roles.some((r) => sameColour(r.color, color))) return;
+    roles.push({ name, color, evidence });
   };
   const headed = headedTexts(root);
   const tags = tagsOf(root);
@@ -172,25 +172,25 @@ function findRoles(ops: PlanOp[], root: CaptureNode): Role[] {
   if (background) add("background", background, "the page background");
 
   const [first, second] = text.ranked();
-  const foreground = first && first.n / text.total >= 0.5 ? first.colour : null;
+  const foreground = first && first.n / text.total >= 0.5 ? first.color : null;
   if (first && foreground) {
     add("foreground", foreground, `used on ${percent(first.n, text.total)}% of body text`);
   }
 
   const border = borders.ranked()[0];
   if (border && border.n >= 3 && border.n / borders.total >= 0.5) {
-    add("border", border.colour, `used on ${percent(border.n, borders.total)}% of bordered frames`);
+    add("border", border.color, `used on ${percent(border.n, borders.total)}% of bordered frames`);
   }
 
   const primary = actions.ranked()[0];
   if (primary && primary.n >= 2 && primary.n / actions.total >= 0.5) {
     const share = percent(primary.n, actions.total);
-    add("primary", primary.colour, `used on ${share}% of buttons and links`);
+    add("primary", primary.color, `used on ${share}% of buttons and links`);
   }
 
-  const muted = fills.ranked().find((f) => !roles.some((r) => sameColour(r.colour, f.colour)));
+  const muted = fills.ranked().find((f) => !roles.some((r) => sameColour(r.color, f.color)));
   if (muted && muted.n >= 3) {
-    add("muted", muted.colour, `used on ${percent(muted.n, fills.total)}% of filled frames`);
+    add("muted", muted.color, `used on ${percent(muted.n, fills.total)}% of filled frames`);
   }
 
   if (
@@ -198,10 +198,10 @@ function findRoles(ops: PlanOp[], root: CaptureNode): Role[] {
     background &&
     foreground &&
     second.n / text.total >= 0.15 &&
-    contrast(second.colour, background) < contrast(foreground, background)
+    contrast(second.color, background) < contrast(foreground, background)
   ) {
     const share = percent(second.n, text.total);
-    add("muted-foreground", second.colour, `used on ${share}% of body text`);
+    add("muted-foreground", second.color, `used on ${share}% of body text`);
   }
   // Listed in the spec's order.
   const order = ["background", "foreground", "border", "primary", "muted", "muted-foreground"];
@@ -226,7 +226,7 @@ export function inferTheme(catalogue: Catalogue, ops: PlanOp[], root: CaptureNod
     }
     const equal = primitives.filter((v) => {
       const value = v.values[0];
-      return isColour(value) && sameColour(value, role.colour);
+      return isColour(value) && sameColour(value, role.color);
     });
     const alias = equal.length === 1 ? (equal[0] as StagedVariable) : null;
     catalogue.variables.push({
@@ -234,7 +234,7 @@ export function inferTheme(catalogue: Catalogue, ops: PlanOp[], root: CaptureNod
       name: role.name,
       collection: "theme",
       type: "COLOR",
-      values: [alias ? { alias: alias.key } : { ...role.colour }],
+      values: [alias ? { alias: alias.key } : { ...role.color }],
       description: `Inferred: ${role.evidence}`,
       scopes: COLOR_SCOPES,
     });
@@ -244,7 +244,7 @@ export function inferTheme(catalogue: Catalogue, ops: PlanOp[], root: CaptureNod
 }
 
 /**
- * Pairs of opaque colour variables of one collection whose values lie within 0.02 of each other
+ * Pairs of opaque color variables of one collection whose values lie within 0.02 of each other
  * in OKLab in every mode, without being equal. Both get a `Near twin of` line, naming the first.
  */
 export function nearTwins(variables: StagedVariable[]): [string, string][] {

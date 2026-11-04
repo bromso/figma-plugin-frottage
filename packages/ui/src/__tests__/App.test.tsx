@@ -472,7 +472,7 @@ describe("App (theme report)", () => {
   it("counts the raw values left unbound, and hides the row at zero", async () => {
     await imported(themedFile({ cssCustomProperties: {} }, ["#123456", "#654321"]));
     expect(
-      screen.getByText(/^Raw values left unbound: 2 colours, 0 radii, 0 spacing$/)
+      screen.getByText(/^Raw values left unbound: 2 colors, 0 radii, 0 spacing$/)
     ).toBeInTheDocument();
     cleanup();
     await imported(frottageFile(1));
@@ -492,7 +492,7 @@ describe("App (theme report)", () => {
       ])
     );
     expect(
-      screen.getByText("2 colours are near twins of another and were kept separate.")
+      screen.getByText("2 colors are near twins of another and were kept separate.")
     ).toBeInTheDocument();
   });
 

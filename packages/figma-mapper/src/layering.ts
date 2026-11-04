@@ -84,7 +84,7 @@ export function paletteName(name: string): string {
   return m ? `${m[1]}/${m[2]}` : bare;
 }
 
-/** A semantic colour, `color/<site name>`: `card` is `color/card`, `color-primary` `color/primary`. */
+/** A semantic color, `color/<site name>`: `card` is `color/card`, `color-primary` `color/primary`. */
 function colourName(name: string): string {
   const bare = name.startsWith("color-") ? name.slice("color-".length) : name;
   return grouped("color", bare);
@@ -332,7 +332,7 @@ export function layerCollections(layers: StagedLayers, plan: LayeringPlan): Plan
     });
   }
 
-  // Every Color Mode colour aliases a Palette colour, adding one where none matches.
+  // Every Color Mode color aliases a Palette color, adding one where none matches.
   const palette = [...moved.values()].filter((v) => v.collection === "palette");
   const paletteNames = taken.get("palette") as Set<string>;
   for (const v of moved.values()) {
@@ -353,7 +353,7 @@ export function layerCollections(layers: StagedLayers, plan: LayeringPlan): Plan
       }
       const alpha = (value as { a?: number }).a ?? 1;
       const opaque = alpha >= 1 - 1e-6;
-      // A translucent colour is named for its alpha too: `gray/50-a10`, not `gray/50-2`.
+      // A translucent color is named for its alpha too: `gray/50-a10`, not `gray/50-2`.
       const base = paletteName(primitiveName(value, opaque ? rawNames : new Set()));
       const name = free(opaque ? base : `${base}-a${Math.round(alpha * 100)}`, paletteNames);
       rawNames.add(`color/${name.replace("/", "-")}`);

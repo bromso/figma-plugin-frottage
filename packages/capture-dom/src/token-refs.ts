@@ -421,7 +421,7 @@ export function createRefReader(
     );
     if (token === null || token.trim() === "") return false;
     const values = COMPUTED[slot].map((p) => style.getPropertyValue(p).trim());
-    // A border colour with no border to paint it (Tailwind sets one on every element) says nothing.
+    // A border color with no border to paint it (Tailwind sets one on every element) says nothing.
     const widths = ["top", "right", "bottom", "left"].map((side) =>
       Number.parseFloat(style.getPropertyValue(`border-${side}-width`))
     );

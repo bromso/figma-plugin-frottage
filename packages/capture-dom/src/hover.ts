@@ -268,7 +268,7 @@ export function resolveVars(value: string, lookup: Lookup): string | null {
 
 const UNPINNED = /^(?:currentcolor|inherit|initial|unset|revert|revert-layer)$/i;
 
-/** A colour token as authored; null for `currentcolor` and the like, which depend on the element. */
+/** A color token as authored; null for `currentcolor` and the like, which depend on the element. */
 function colourOf(token: string): Rgba | null {
   if (UNPINNED.test(token.trim())) return null;
   return parseComputedColor(token);
@@ -325,7 +325,7 @@ function declared(rule: CSSStyleRule): Declared {
   };
 }
 
-/** A colour out of a shorthand's tokens. `rest` is true when other tokens (width, image, style...) came with it. */
+/** A color out of a shorthand's tokens. `rest` is true when other tokens (width, image, style...) came with it. */
 function colourFromShorthand(tokens: string[]): { color: Rgba | null; rest: boolean } {
   let color: Rgba | null = null;
   let rest = false;
@@ -385,9 +385,9 @@ function apply(into: Hover, d: Declared, el: Element, deps: HoverDeps): boolean 
   if (border) {
     const tokens = splitTop(border.text, " ");
     if (border.name === "border-color") {
-      const colours = tokens.map(colourOf);
-      const first = colours[0];
-      const same = colours.every((c) => c && first && JSON.stringify(c) === JSON.stringify(first));
+      const colors = tokens.map(colourOf);
+      const first = colors[0];
+      const same = colors.every((c) => c && first && JSON.stringify(c) === JSON.stringify(first));
       if (first && same) into.borderColor = first;
       else partial = true;
     } else {

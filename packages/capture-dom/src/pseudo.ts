@@ -23,7 +23,7 @@ export type PseudoCtx = {
   /** The next node id, or null once the node budget is spent. */
   nextId: () => number | null;
   warn: (code: string, nodeId: string | undefined, detail: string) => void;
-  /** Reports a gradient cut off at the limit on colour stops. */
+  /** Reports a gradient cut off at the limit on color stops. */
   warnStops: (nodeId: string) => void;
   /** Page-space border box of an element. */
   pageBox: (el: Element) => Box;

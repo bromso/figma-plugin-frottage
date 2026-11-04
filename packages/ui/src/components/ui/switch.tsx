@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * UI3 switch: 32×16 track (sm 24×12) with 1 px border; 14 px knob (sm 10) flush inside it.
- * On = brand fill, white knob. Off = outlined track and knob in the strong border colour. Kit ref 2015:24698.
+ * On = brand fill, white knob. Off = outlined track and knob in the strong border color. Kit ref 2015:24698.
  */
 function Switch({
   className,

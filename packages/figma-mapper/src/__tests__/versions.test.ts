@@ -202,7 +202,7 @@ describe("one version", () => {
   });
 });
 
-describe("matching colours", () => {
+describe("matching colors", () => {
   test("the same custom property with two values is one variable with two modes", () => {
     const r = mergeVersions([
       version("Light", planOf({ colors: [color("#ffffff", "color/bg", "--bg")] })),
@@ -250,7 +250,7 @@ describe("matching colours", () => {
     });
   });
 
-  test("an unmatched colour stays a plain value in its own frame", () => {
+  test("an unmatched color stays a plain value in its own frame", () => {
     const shared = color("#112233", "color/1");
     const stray = color("#abcdef", "color/2");
     const later = planOf({ colors: [shared, stray] }, [
@@ -263,7 +263,7 @@ describe("matching colours", () => {
     const plain = r.plans[1]?.ops[1];
     expect(plain).toMatchObject({ fills: [{ color: rgb("#000000") }] });
     expect((plain as Extract<PlanOp, { op: "frame" }>).fills[0]).not.toHaveProperty("colorKey");
-    expect(r.report).toEqual(["768: 1 colour stayed a plain value."]);
+    expect(r.report).toEqual(["768: 1 color stayed a plain value."]);
   });
 
   test("a token only in the first version has one value, and later frames don't use it", () => {
@@ -337,7 +337,7 @@ describe("a custom property's value in a later version", () => {
     expect(r.tokens.colors[0]?.from).toEqual(["#111111", null]);
     expect(r.tokens.colors[0]?.values[1]?.value).toEqual(rgba("#222222"));
     expect(keysIn(r.plans[1]?.ops ?? []).colors).toEqual([]);
-    expect(r.report).toEqual(["Dark: 1 colour stayed a plain value."]);
+    expect(r.report).toEqual(["Dark: 1 color stayed a plain value."]);
   });
 
   test("blocks a value match when it's translucent", () => {
@@ -351,7 +351,7 @@ describe("a custom property's value in a later version", () => {
       const r = merged({ "--bg": unreadable }, [color("#111111", "color/1")]);
       expect(r.tokens.colors[0]?.from).toEqual(["#111111", null]);
       expect(r.tokens.colors[0]?.values.map((v) => v.mode)).toEqual([0]);
-      expect(r.report).toEqual(["Dark: 1 colour stayed a plain value."]);
+      expect(r.report).toEqual(["Dark: 1 color stayed a plain value."]);
     }
   });
 
@@ -695,7 +695,7 @@ describe("the order", () => {
     expect(colorNamed(r, "color/a")?.from).toEqual(["#111111", "#222222"]);
     // The custom property took #222222, so `bare` has nothing left to match by value.
     expect(colorNamed(r, "color/1")?.from).toEqual(["#222222", null]);
-    expect(r.report).toEqual(["Dark: 1 colour stayed a plain value."]);
+    expect(r.report).toEqual(["Dark: 1 color stayed a plain value."]);
   });
 
   test("text styles match by role alone, never by value", () => {
@@ -756,7 +756,7 @@ describe("mode labels", () => {
         })
       ),
     ]);
-    expect(r.report).toEqual(["1440 (2): 2 colours and 1 text style stayed plain values."]);
+    expect(r.report).toEqual(["1440 (2): 2 colors and 1 text style stayed plain values."]);
   });
 });
 
@@ -1359,7 +1359,7 @@ describe("uses across a set", () => {
     expect(keysIn(r.plans[2]?.ops ?? []).styles).toEqual([r.tokens.textStyles[0]?.key]);
   });
 
-  test("a colour used once per version is kept when the three reach 3", () => {
+  test("a color used once per version is kept when the three reach 3", () => {
     const hexes = ["#111111", "#222222", "#333333"];
     const r = mergeVersions(
       hexes.map((hex, i) =>

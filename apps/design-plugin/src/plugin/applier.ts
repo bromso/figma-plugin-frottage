@@ -840,7 +840,7 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
-  /** A text style holds no colour, so this applies to every run. */
+  /** A text style holds no color, so this applies to every run. */
   async function paintRun(node: TextNode, run: PlanRun, start: number, end: number) {
     node.setRangeFills(start, end, [solidPaint(run.color, run.opacity, run.colorKey)]);
     const styleId = paintStyleId(run.colorKey);
@@ -877,7 +877,7 @@ export function createApplier(api: PluginAPI) {
         // Figma rejected the URL: the run stays, without its link.
         return;
       }
-      // Figma restyles linked text (blue, underlined), so put the page's colour and decoration back.
+      // Figma restyles linked text (blue, underlined), so put the page's color and decoration back.
       await paintRun(node, run, start, end);
       // On a styled run, only a real difference is worth an override of the style.
       if (!styled || node.getRangeTextDecoration(start, end) !== run.decoration) {

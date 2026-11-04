@@ -11,7 +11,7 @@ export type PlanPaint =
       type: "SOLID";
       color: PlanRgb;
       opacity: number;
-      /** The colour token to bind, when this colour became one. */
+      /** The color token to bind, when this color became one. */
       colorKey?: string;
     }
   | { type: "IMAGE"; hash: string; fit: "FILL" | "FIT" | "CROP" | "TILE" }
@@ -25,11 +25,11 @@ export type PlanPaint =
       gradientStyleKey?: string;
     };
 
-/** Per-side weights; one colour (the most common among drawn sides). */
+/** Per-side weights; one color (the most common among drawn sides). */
 export type PlanStroke = {
   color: PlanRgb;
   opacity: number;
-  /** The colour token to bind, when this colour became one. */
+  /** The color token to bind, when this color became one. */
   colorKey?: string;
   weights: { top: number; right: number; bottom: number; left: number };
 };
@@ -59,7 +59,7 @@ export type PlanRun = {
   textCase: "ORIGINAL" | "UPPER" | "LOWER" | "TITLE";
   /** The text style to link, when this run's type became one. */
   styleKey?: string;
-  /** The colour token to bind, when this colour became one. */
+  /** The color token to bind, when this color became one. */
   colorKey?: string;
   /** An http(s) link for this range; absent when the text has none or hyperlinks are off. */
   href?: string;
@@ -142,9 +142,9 @@ export type PlanHoverPatch = {
   strokeColor?: PlanRgb & { a: number };
   opacity?: number;
   effects?: PlanEffect[];
-  /** Text layers: the colour of the runs in `ranges`, or of the whole text without them. */
+  /** Text layers: the color of the runs in `ranges`, or of the whole text without them. */
   textColor?: PlanRgb & { a: number };
-  /** [start, end) character ranges that take `textColor`; the runs with a colour of their own stay. */
+  /** [start, end) character ranges that take `textColor`; the runs with a color of their own stay. */
   ranges?: [number, number][];
   decoration?: PlanRun["decoration"];
 };
@@ -279,7 +279,7 @@ export type ImportReport = {
   components: number;
   /** On the canvas, where one inside a definition counts for the main and for each copy of it. */
   instances: number;
-  /** Colours, corners and spacing lengths that bound to no variable, on the layered path. */
+  /** Colors, corners and spacing lengths that bound to no variable, on the layered path. */
   raw?: { colors: number; radii: number; spacing: number };
   /** The Color Mode collection's modes, on the layered path. */
   themeModes?: string[];
@@ -333,7 +333,7 @@ export type PlanSpacing = {
   px: number;
 };
 
-/** A variable's value in one mode: a colour in 0..1, a number, a string, or another variable's key. */
+/** A variable's value in one mode: a color in 0..1, a number, a string, or another variable's key. */
 export type PlanVarValue = (PlanRgb & { a: number }) | number | string | { alias: string };
 
 /**
@@ -390,7 +390,7 @@ export type PlanVariable<K extends string = PlanCollectionKind> = {
   cssVar?: string;
 };
 
-/** Shadows worth an effect style; each shadow's colour binds to the variable in `colorKeys`. */
+/** Shadows worth an effect style; each shadow's color binds to the variable in `colorKeys`. */
 export type PlanEffectStyle = {
   key: string;
   name: string;
@@ -398,7 +398,7 @@ export type PlanEffectStyle = {
   colorKeys: (string | null)[];
 };
 
-/** A gradient worth a paint style; each stop's colour binds to the variable in `stopKeys`. */
+/** A gradient worth a paint style; each stop's color binds to the variable in `stopKeys`. */
 export type PlanGradientStyle = {
   key: string;
   name: string;
@@ -424,7 +424,7 @@ export type PlanLayers = {
   effectStyles: PlanEffectStyle[];
   gradientStyles: PlanGradientStyle[];
   /**
-   * Opaque colours no variable took that repeat: the sandbox links their paints to the user's
+   * Opaque colors no variable took that repeat: the sandbox links their paints to the user's
    * matching solid paint style, with local styles on, and leaves them plain otherwise.
    */
   styleColors?: PlanStyleColor[];
@@ -437,7 +437,7 @@ export type StagedLayers = Omit<PlanLayers, "collections" | "variables"> & {
   variables: PlanVariable<StagedCollection>[];
 };
 
-/** A raw colour a user's paint style may hold. `key` is `paint:#rrggbb`, as its paints have it. */
+/** A raw color a user's paint style may hold. `key` is `paint:#rrggbb`, as its paints have it. */
 export type PlanStyleColor = { key: string; rgba: PlanRgb & { a: number }; uses: number };
 
 export type PlanTokens = {
@@ -458,7 +458,7 @@ export type PlanTokens = {
 /** One mode's value. `mode` is the version's index; a mode with none reads the first mode's. */
 export type ModeValue<T> = { mode: number; value: T };
 
-/** A colour across versions. `key` is its values by mode plus its name. */
+/** A color across versions. `key` is its values by mode plus its name. */
 export type PlanModeColor = {
   key: string;
   /** From the first version that has it. A proposal, as on `PlanColor`. */

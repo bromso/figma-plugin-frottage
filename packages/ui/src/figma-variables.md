@@ -2,7 +2,7 @@
 
 Overview and usage: `apps/docs/content/docs/guides/theming.mdx` (Theming and the UI3 Look).
 
-`figma.showUI(..., { themeColors: true })` makes Figma inject `--figma-color-*` custom properties into the plugin iframe and toggle the `figma-light` / `figma-dark` class on `<html>`. `styles.css` binds each `--ui3-*` token to one of those names with a UI3 kit fallback, so colours track the user's theme inside Figma and the fallback palette applies everywhere else (Storybook, tests).
+`figma.showUI(..., { themeColors: true })` makes Figma inject `--figma-color-*` custom properties into the plugin iframe and toggle the `figma-light` / `figma-dark` class on `<html>`. `styles.css` binds each `--ui3-*` token to one of those names with a UI3 kit fallback, so colors track the user's theme inside Figma and the fallback palette applies everywhere else (Storybook, tests).
 
 Source of the names below: Figma's plugin documentation, "CSS variables" (developers.figma.com/docs/plugins/css-variables), checked 2026-10-29. The light and dark values Figma injects were not dumped from a live plugin yet; the fallback values come from the UI3 kit (file `tumaLvnU1CE6fZgCVc68wb`).
 

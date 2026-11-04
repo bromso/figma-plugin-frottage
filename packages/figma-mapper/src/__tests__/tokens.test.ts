@@ -5,7 +5,7 @@ import { DEFAULT_IMPORT_OPTIONS } from "../options";
 import type { LayerPlan, PlanOp, PlanRun } from "../plan";
 import { cap, el, inter, run, textNode } from "./fixtures";
 
-const colour = (hex: string, a = 1) => ({
+const color = (hex: string, a = 1) => ({
   r: Number.parseInt(hex.slice(1, 3), 16) / 255,
   g: Number.parseInt(hex.slice(3, 5), 16) / 255,
   b: Number.parseInt(hex.slice(5, 7), 16) / 255,
@@ -14,7 +14,7 @@ const colour = (hex: string, a = 1) => ({
 
 const filled = (id: string, hex: string, a = 1) => {
   const base = el(id, [0, 0]);
-  return { ...base, style: { ...base.style, backgroundColor: colour(hex, a) } };
+  return { ...base, style: { ...base.style, backgroundColor: color(hex, a) } };
 };
 
 /** One text node per use, so that each run counts once. */
@@ -90,8 +90,8 @@ describe("usage threshold", () => {
     expect(runsOf(p).filter((r) => r.fontSize === 30)[0]).not.toHaveProperty("styleKey");
   });
 
-  test("fills, strokes and text colours all count towards one colour", () => {
-    const side = { width: 1, color: colour("#123456"), style: "solid" };
+  test("fills, strokes and text colors all count towards one color", () => {
+    const side = { width: 1, color: color("#123456"), style: "solid" };
     const bordered = el("b", [0, 0]);
     bordered.style = {
       ...bordered.style,
@@ -100,7 +100,7 @@ describe("usage threshold", () => {
     const p = plan([
       filled("f", "#123456"),
       bordered,
-      textNode("t", { runs: [run({ color: colour("#123456") })] }),
+      textNode("t", { runs: [run({ color: color("#123456") })] }),
     ]);
     expect(p.tokens.colors.map((c) => c.key)).toContain("#123456");
     const stroke = p.ops.flatMap((op) => (op.op === "frame" && op.strokes ? [op.strokes] : []));
@@ -109,7 +109,7 @@ describe("usage threshold", () => {
   });
 
   test("a token's value does not depend on which use came first", () => {
-    // Two wide-gamut values that round to one 8-bit colour, in either order.
+    // Two wide-gamut values that round to one 8-bit color, in either order.
     const near = (r: number) => {
       const base = el("x", [0, 0]);
       return { ...base, style: { ...base.style, backgroundColor: { r, g: 0, b: 0, a: 1 } } };
@@ -121,7 +121,7 @@ describe("usage threshold", () => {
   });
 });
 
-describe("colour names", () => {
+describe("color names", () => {
   const three = (hex: string, tag: string) => [1, 2, 3].map((i) => filled(`${tag}${i}`, hex));
 
   test("names come from matching CSS custom properties", () => {
@@ -129,7 +129,7 @@ describe("colour names", () => {
     expect(p.tokens.colors[0]).toMatchObject({
       name: "color/primary",
       cssVar: "--color-primary",
-      rgba: colour("#112233"),
+      rgba: color("#112233"),
     });
   });
 
@@ -161,7 +161,7 @@ describe("colour names", () => {
     expect(p.tokens.colors[0]?.name).toBe("color/brand");
   });
 
-  test("an oklch custom property names a colour", () => {
+  test("an oklch custom property names a color", () => {
     const p = plan(three("#ffffff", "a"), { "--background": "oklch(100% 0 0)" });
     expect(p.tokens.colors[0]).toMatchObject({ name: "color/background", cssVar: "--background" });
   });
@@ -199,7 +199,7 @@ describe("colour names", () => {
     expect(p.tokens.colors[0]).toMatchObject({ name: "color/ink", cssVar: "--color-ink" });
   });
 
-  test("names stay unique across colours", () => {
+  test("names stay unique across colors", () => {
     const p = plan([...three("#112233", "a"), ...three("#445566", "b")], {
       "--color-primary": "#112233",
       "--c-primary": "#445566",
@@ -221,7 +221,7 @@ describe("colour names", () => {
     expect(p.tokens.colors[0]?.name).toBe("color/1");
   });
 
-  test("custom properties for a colour under the threshold make nothing", () => {
+  test("custom properties for a color under the threshold make nothing", () => {
     const p = plan([filled("a", "#112233")], { "--color-primary": "#112233" });
     expect(p.tokens.colors).toEqual([]);
   });
@@ -317,11 +317,11 @@ describe("text style names", () => {
 });
 
 describe("what stays plain", () => {
-  test("alpha colours stay plain paints", () => {
+  test("alpha colors stay plain paints", () => {
     const p = plan(
       [
         ...["a", "b", "c"].map((id) => filled(id, "#112233", 0.5)),
-        ...texts("t", 3, { color: colour("#445566", 0.5) }),
+        ...texts("t", 3, { color: color("#445566", 0.5) }),
       ],
       { "--veil": "rgba(17, 34, 51, 0.5)" }
     );
@@ -331,7 +331,7 @@ describe("what stays plain", () => {
   });
 
   test("shadows are not tokens", () => {
-    const shadow = { x: 0, y: 1, blur: 2, spread: 0, inset: false, color: colour("#778899") };
+    const shadow = { x: 0, y: 1, blur: 2, spread: 0, inset: false, color: color("#778899") };
     const shadowed = (id: string) => {
       const base = el(id, [0, 0]);
       return { ...base, style: { ...base.style, boxShadows: [shadow] } };

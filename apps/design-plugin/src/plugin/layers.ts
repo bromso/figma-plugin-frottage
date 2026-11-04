@@ -44,7 +44,7 @@ export type LayerCounts = {
    */
   modes: LayerModes[];
   stylesCreated: number;
-  /** The user's paint styles that raw colours linked to. */
+  /** The user's paint styles that raw colors linked to. */
   stylesReused: number;
   /** The file holds PR #7's `· Primitives` or `· Theme` collection for this host, left as it is. */
   legacyCollections: boolean;
@@ -124,10 +124,10 @@ function freeName(name: string, taken: Set<string>): string {
 /** A name less any ` (n)` a copy has. */
 const baseName = (name: string) => name.replace(/ \(\d+\)$/, "");
 
-/** A colour in 8-bit steps, as `sameColor` tells colours apart to about half of one. */
+/** A color in 8-bit steps, as `sameColor` tells colors apart to about half of one. */
 const step = (c: number) => Math.round(c * 255);
 const stepKey = (c: RGB | RGBA) => [c.r, c.g, c.b, "a" in c ? c.a : 1].map(step).join(",");
-/** The steps a colour `sameColor` takes for this one may be in: at most two per channel. */
+/** The steps a color `sameColor` takes for this one may be in: at most two per channel. */
 function nearKeys(c: RGB | RGBA): string[] {
   const span = (v: number) => [...new Set([step(v - TOLERANCE), step(v), step(v + TOLERANCE)])];
   let keys = [""];
@@ -169,7 +169,7 @@ function effectOf(e: PlanEffect): Effect {
 const boundId = (target: { boundVariables?: { color?: VariableAlias } }) =>
   target.boundVariables?.color?.id;
 
-/** A bound colour is the variable's: only the binding says whether it's the same. */
+/** A bound color is the variable's: only the binding says whether it's the same. */
 function sameEffect(held: Effect | undefined, want: Effect): boolean {
   if (held?.type !== want.type || held.visible !== want.visible) return false;
   if (isBlur(want)) return isBlur(held) && near(held.radius, want.radius);
@@ -210,7 +210,7 @@ export function createLayerSet(api: PluginAPI) {
   const variables = new Map<string, Variable>();
   const effectIds = new Map<string, string>();
   const gradientIds = new Map<string, string>();
-  /** Raw colours' keys, to the user's paint style that holds the colour. */
+  /** Raw colors' keys, to the user's paint style that holds the color. */
   const paintStyleIds = new Map<string, string>();
   const homes = new Map<PlanCollectionKind, Home>();
   const counts: LayerCounts = {
@@ -403,8 +403,8 @@ export function createLayerSet(api: PluginAPI) {
     /** Frottage's own, by collection and value key, and by collection and name, with and without any `(n)`. */
     const ownByKey = new Map<string, Held[]>();
     const ownByName = new Map<string, Held[]>();
-    // Colours only, as before layers: a number or a string says too little to take a user's.
-    /** The user's colours, by their default mode's value in 8-bit steps. */
+    // Colors only, as before layers: a number or a string says too little to take a user's.
+    /** The user's colors, by their default mode's value in 8-bit steps. */
     const theirs = new Map<string, { h: Held; value: VariableValue }[]>();
     for (const h of held) {
       const own = ownCollections.has(h.collectionId) || h.key !== "";
@@ -427,7 +427,7 @@ export function createLayerSet(api: PluginAPI) {
         else theirs.set(key, [{ h, value }]);
       }
     }
-    /** The user's first colour variable, in file order, holding `want`. */
+    /** The user's first color variable, in file order, holding `want`. */
     const theirColour = (want: VariableValue): Variable | null => {
       if (!isColor(want)) return null;
       let best: Held | null = null;
@@ -509,7 +509,8 @@ export function createLayerSet(api: PluginAPI) {
       if (typeof value !== "object" || !("alias" in value)) return value;
       const target = variables.get(value.alias);
       if (target) return api.variables.createVariableAlias(target);
-      const next = widest(planned.get(value.alias) ?? { collection: "", values: [] });
+      const pointed = planned.get(value.alias);
+      const next = pointed && widest(pointed);
       if (next === undefined || depth >= CREATION_ORDER.length) throw new Error("alias to nothing");
       return figmaValue(next, depth + 1);
     };
@@ -615,7 +616,7 @@ export function createLayerSet(api: PluginAPI) {
       if (variable.name !== token.name) counts.variablesRenamed++;
     };
 
-    /** Binds a colour to its variable. A refused binding stays plain. */
+    /** Binds a color to its variable. A refused binding stays plain. */
     const bindEffect = (effect: Effect, key: string | null | undefined): Effect => {
       const variable = key ? variables.get(key) : undefined;
       if (!variable || !isShadow(effect)) return effect;
@@ -667,7 +668,7 @@ export function createLayerSet(api: PluginAPI) {
       return style.id;
     };
 
-    // A raw colour links to the user's solid paint style of that colour, as before layers.
+    // A raw color links to the user's solid paint style of that color, as before layers.
     if (styleColors.length > 0) {
       const solids = paintStyles.flatMap((style) => {
         if (style.getSharedPluginData(NAMESPACE, VALUE_KEY) !== "") return [];

@@ -353,8 +353,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   // ---------- Text
 
   /**
-   * The colour text is painted in: `-webkit-text-fill-color` wins over `color` and defaults to it.
-   * A clear fill shows only its outline, or the background of a clip, and Figma text has one colour.
+   * The color text is painted in: `-webkit-text-fill-color` wins over `color` and defaults to it.
+   * A clear fill shows only its outline, or the background of a clip, and Figma text has one color.
    */
   function paintedColor(style: CSSStyleDeclaration, clipped: boolean): Rgba {
     const fill = colorOf(style.getPropertyValue("-webkit-text-fill-color") || style.color);
@@ -367,7 +367,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       warn(
         "text-fill-transparent",
         undefined,
-        "Text with a transparent fill was imported filled with its stroke or text colour"
+        "Text with a transparent fill was imported filled with its stroke or text color"
       );
     }
     return shown;
@@ -637,7 +637,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
 
   /**
    * A merged element has no node to keep a hover on, so one that is all of its parent's text hands
-   * its colour and decoration to the parent, with the colour its own text rests at. What it does to
+   * its color and decoration to the parent, with the color its own text rests at. What it does to
    * its own box would land on the parent's, so that is counted. The elements it read go in
    * `liftedHovers`; any other merged hover is lost, and counted.
    */
@@ -890,7 +890,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     };
   }
 
-  /** The colour and type refs that every element holding a text agrees on. */
+  /** The color and type refs that every element holding a text agrees on. */
   function textRefs(sources: Set<Element | null>): TokenRefs | undefined {
     if (sources.size === 0 || sources.has(null)) return undefined;
     const all = [...sources].map((el) => refsOf(el as Element));
@@ -1063,7 +1063,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   }
 
   const warnStops = (nodeId: string) =>
-    warn("gradient-stops", nodeId, "A gradient was cut off at the limit on colour stops");
+    warn("gradient-stops", nodeId, "A gradient was cut off at the limit on color stops");
 
   /** `warn`, counted `count` times. */
   function warnEach(count: number, code: string, nodeId: string, detail: string) {
@@ -1371,7 +1371,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     // Overflow on these two propagates to the viewport instead of clipping the element itself.
     if (el === root || el === doc.body) element.style.overflow = "visible";
     const stored = hovers.get(el);
-    // What text inherits at rest, so the mapper can tell it from text with a colour of its own.
+    // What text inherits at rest, so the mapper can tell it from text with a color of its own.
     const hover = stored?.color ? { ...stored, restingColor: colorOf(s.color) } : stored;
     const lifted = liftedHover(el);
     if (hover || lifted) element.hover = { ...hover, ...lifted };
