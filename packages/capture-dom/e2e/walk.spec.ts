@@ -2486,6 +2486,27 @@ test("each corner records the rounding class that set it, and binds to radius/<n
   expect(plan.report.warnings.filter((w) => w.includes("different values"))).toEqual([]);
 });
 
+test("an image's corners record their rounding class and bind to radius/<name>", async ({
+  page,
+}) => {
+  const c = await capture(page, "shadcn.html");
+  expect(parseCapture(c).ok).toBe(true);
+  const hero = findKind(c, "image", (n) => n.semantic.className === "hero");
+  expect(hero.tokenRefs?.radiusClass).toEqual(["2xl", "2xl", "2xl", "2xl"]);
+  // Assets are not under test: the mapper makes an image op only for an image it has bytes for.
+  hero.assetHash = "hero";
+  const { plan } = mapLayered(c);
+  const op = plan.ops.find((o) => o.op === "image" && o.id === hero.id) as
+    | { radiusKeys?: (string | undefined)[] }
+    | undefined;
+  expect(op?.radiusKeys).toEqual([
+    "theme:radius/2xl",
+    "theme:radius/2xl",
+    "theme:radius/2xl",
+    "theme:radius/2xl",
+  ]);
+});
+
 // ---------- Theme modes, captured light or dark, through the mapper
 
 type Variant = "light" | "media-dark" | "class-dark";

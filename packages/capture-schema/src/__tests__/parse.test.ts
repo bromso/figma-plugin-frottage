@@ -130,6 +130,40 @@ test("rejects a token ref that is long, malformed or a padding of the wrong leng
   });
 });
 
+test("an image keeps its token refs, and malformed ones are refused", () => {
+  const image = (tokenRefs: unknown) => ({
+    ...minimalCapture(),
+    root: {
+      ...elementNode("r"),
+      children: [
+        {
+          id: "i",
+          kind: "image",
+          box: { x: 0, y: 0, w: 10, h: 10 },
+          paintOrder: 0,
+          visible: true,
+          opacity: 1,
+          blendMode: "normal",
+          semantic: { tag: "img" },
+          ...imageStyle,
+          fit: "cover",
+          objectPosition: "50% 50%",
+          tokenRefs,
+        },
+      ],
+    },
+  });
+  const refs = { radius: "--radius*2", radiusClass: ["2xl", "2xl", "2xl", "2xl"] };
+  const result = parseCapture(image(refs));
+  expect(result.ok).toBe(true);
+  if (result.ok) {
+    const node = (result.capture.root as { children: Array<{ tokenRefs?: unknown }> }).children[0];
+    expect(node?.tokenRefs).toEqual(refs);
+  }
+  expect(parseCapture(image({ radiusClass: ["md", "md", "md"] })).ok).toBe(false);
+  expect(parseCapture(image({ radius: "red" })).ok).toBe(false);
+});
+
 test("a capture without version still parses", () => {
   const result = parseCapture(minimalCapture());
   expect(result.ok).toBe(true);

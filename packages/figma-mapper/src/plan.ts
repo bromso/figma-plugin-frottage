@@ -212,6 +212,8 @@ export type PlanOp = (
       opacity: number;
       /** [topLeft, topRight, bottomRight, bottomLeft]. */
       radius: [number, number, number, number];
+      /** The variable each corner is bound to, by `PlanVariable.key`; none stays a plain value. */
+      radiusKeys?: [string?, string?, string?, string?];
       strokes: PlanStroke | null;
       /** Clockwise degrees as in CSS, about the box centre; absent when not rotated. */
       rotation?: number;

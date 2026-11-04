@@ -1094,7 +1094,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     common: Omit<ImageNode, "kind" | "fit" | "objectPosition" | "borders" | "borderRadius">,
     sourceUrl: string | undefined,
     s: CSSStyleDeclaration,
-    box: Box
+    box: Box,
+    el: Element
   ): ImageNode {
     const fitRaw = s.objectFit;
     const fit: ImageNode["fit"] =
@@ -1112,6 +1113,14 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       borders: readBorders(s),
       borderRadius: readRadii(s, box.w, box.h),
     };
+    // Only the corners' refs: an image's fill is its picture, and its strokes bind by value.
+    const refs = refsOf(el);
+    if (refs?.radius || refs?.radiusClass) {
+      node.tokenRefs = {
+        ...(refs.radius ? { radius: refs.radius } : {}),
+        ...(refs.radiusClass ? { radiusClass: refs.radiusClass } : {}),
+      };
+    }
     if (sourceUrl) rememberUrl(node, sourceUrl);
     return node;
   }
@@ -1338,7 +1347,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         const v = el as HTMLVideoElement;
         // A poster is an image like any other: collectAssets fetches it, or turns it into a
         // placeholder when it cannot be read.
-        if (v.poster) return [imageNode(leaf, v.poster, s, box)];
+        if (v.poster) return [imageNode(leaf, v.poster, s, box, el)];
         return [placeholder(leaf, "video", v.currentSrc || undefined)];
       }
       if (tag === "iframe") {
@@ -1352,7 +1361,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
         if (img.complete && img.naturalWidth === 0) {
           return [placeholder(leaf, "blocked-image", sourceUrl)];
         }
-        return [imageNode(leaf, sourceUrl, s, box)];
+        return [imageNode(leaf, sourceUrl, s, box, el)];
       }
     }
 

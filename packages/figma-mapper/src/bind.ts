@@ -157,6 +157,24 @@ function spacingFields(layout: PlanLayout, refs: PlanOp["refs"], inset: number, 
   }
 }
 
+/** Each rounded corner of a frame or an image, with its ref and the class that named it. */
+function cornerFields(op: Extract<PlanOp, { op: "frame" | "image" }>, out: Field[]) {
+  op.radius.forEach((px, corner) => {
+    if (!(px > 0)) return;
+    out.push({
+      kind: "radii",
+      scope: "CORNER_RADIUS",
+      value: px,
+      ref: op.refs?.radius,
+      name: op.refs?.radiusClass?.[corner],
+      bind(key) {
+        op.radiusKeys ??= [undefined, undefined, undefined, undefined];
+        op.radiusKeys[corner] = key;
+      },
+    });
+  });
+}
+
 function fieldsOf(op: PlanOp, out: Field[], catalogue: Catalogue, followed: Followed) {
   const refs = op.refs;
   switch (op.op) {
@@ -165,20 +183,7 @@ function fieldsOf(op: PlanOp, out: Field[], catalogue: Catalogue, followed: Foll
         if (paint.type === "SOLID") out.push(colourField(paint, "ALL_FILLS", refs?.background));
       }
       if (op.strokes) out.push(colourField(op.strokes, "STROKE_COLOR", refs?.border));
-      op.radius.forEach((px, corner) => {
-        if (!(px > 0)) return;
-        out.push({
-          kind: "radii",
-          scope: "CORNER_RADIUS",
-          value: px,
-          ref: refs?.radius,
-          name: refs?.radiusClass?.[corner],
-          bind(key) {
-            op.radiusKeys ??= [undefined, undefined, undefined, undefined];
-            op.radiusKeys[corner] = key;
-          },
-        });
-      });
+      cornerFields(op, out);
       const inset = strokeInset(op, catalogue, followed);
       if (inset > 0 && op.layout.mode !== "NONE") op.layout.strokesIncluded = true;
       spacingFields(op.layout, refs, inset, out);
@@ -186,6 +191,7 @@ function fieldsOf(op: PlanOp, out: Field[], catalogue: Catalogue, followed: Foll
     }
     case "image":
       if (op.strokes) out.push(colourField(op.strokes, "STROKE_COLOR", undefined));
+      cornerFields(op, out);
       break;
     case "text":
       for (const run of op.runs) out.push(colourField(run, "ALL_FILLS", run.refs?.color));

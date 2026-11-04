@@ -214,6 +214,7 @@ const imageNode = z.object({
   borders,
   // [topLeft, topRight, bottomRight, bottomLeft]
   borderRadius: four,
+  tokenRefs: tokenRefs.optional(),
 });
 
 const svgNode = z.object({

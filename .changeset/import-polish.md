@@ -15,3 +15,5 @@ Names Palette colors after Tailwind (`neutral/950`, `red/500`) when they exactly
 Shows Breakpoint modes and each collection's variables smallest to largest (`base, sm, md, …`; `spacing/0_5, 1, 1_5, 2, …`). Under a file's mode limit, the modes the frames use are still the ones kept.
 
 Names mauve, olive, mist and taupe after Tailwind 4.3, and says "color" throughout the import report.
+
+Binds an image's rounded corners to the Border radius collection as it does a frame's, and counts the ones that stay plain as raw.

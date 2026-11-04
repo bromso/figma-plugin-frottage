@@ -732,6 +732,7 @@ export function mapCapture(
             radius: [...node.borderRadius] as [number, number, number, number],
             strokes: mapStroke(node.borders),
             ...rotationOf(node),
+            ...(layered && node.tokenRefs ? { refs: node.tokenRefs } : {}),
           };
         } else {
           op = placeholder(

@@ -1164,6 +1164,36 @@ describe("binding to the layered collections", () => {
     expect(variableNamed(f, "radius/lg")).toBeDefined();
   });
 
+  test("an image's corners bind to their radius variables, and a missing image's too", async () => {
+    const f = fakeFigma();
+    const a = createApplier(f.figma);
+    await a.begin(meta);
+    await a.importTokens(plan, { ...DEFAULT_IMPORT_OPTIONS, tokens: true });
+    await a.addImage("abc", png);
+    const rounded = (hash: string, id: string): PlanOp => ({
+      ...(imageOp(hash) as Extract<PlanOp, { op: "image" }>),
+      id,
+      radius: [16, 16, 16, 16],
+      radiusKeys: allKeys,
+    });
+    await a.applyBatch([frame("a"), rounded("abc", "img"), rounded("gone", "img2")]);
+    await a.end();
+    const id = variableNamed(f, "radius/lg").id;
+    const picture = f.lastRectangle();
+    const missing = f.lastFrame();
+    expect(missing.name).toContain("Image (missing)");
+    for (const node of [picture, missing]) {
+      for (const corner of [
+        "topLeftRadius",
+        "topRightRadius",
+        "bottomRightRadius",
+        "bottomLeftRadius",
+      ]) {
+        expect(node.boundVariables?.[corner]?.id).toBe(id);
+      }
+    }
+  });
+
   test("a translucent paint bound to a variable holding alpha takes opacity 1", async () => {
     const fills = [{ type: "SOLID", color: BLACK, opacity: 0.5, colorKey: card.key }];
     const stroke = {

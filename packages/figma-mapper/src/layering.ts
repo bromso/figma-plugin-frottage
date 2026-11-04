@@ -151,6 +151,16 @@ function rekeySpacing(keys: SpacingKeys, rekey: Rekey) {
   }
 }
 
+function rekeyCorners(op: Extract<PlanOp, { op: "frame" | "image" }>, rekey: Rekey) {
+  if (!op.radiusKeys) return;
+  op.radiusKeys = op.radiusKeys.map((key) => (key === undefined ? key : rekey(key))) as [
+    string?,
+    string?,
+    string?,
+    string?,
+  ];
+}
+
 /** Every variable key a plan binds by, passed through `rekey`; paint-style keys pass through too. */
 function visitKeys(layers: StagedLayers, plan: LayeringPlan, rekey: Rekey) {
   for (const op of plan.ops) {
@@ -158,14 +168,7 @@ function visitKeys(layers: StagedLayers, plan: LayeringPlan, rekey: Rekey) {
       case "frame": {
         for (const paint of op.fills) rekeyPaint(paint, rekey);
         if (op.strokes) rekeyPaint(op.strokes, rekey);
-        if (op.radiusKeys) {
-          op.radiusKeys = op.radiusKeys.map((key) => (key === undefined ? key : rekey(key))) as [
-            string?,
-            string?,
-            string?,
-            string?,
-          ];
-        }
+        rekeyCorners(op, rekey);
         if (op.layout.mode !== "NONE" && op.layout.spacingKeys) {
           rekeySpacing(op.layout.spacingKeys, rekey);
         }
@@ -176,6 +179,7 @@ function visitKeys(layers: StagedLayers, plan: LayeringPlan, rekey: Rekey) {
       }
       case "image":
         if (op.strokes) rekeyPaint(op.strokes, rekey);
+        rekeyCorners(op, rekey);
         break;
       case "text":
         rekeyRuns(op.runs, rekey);

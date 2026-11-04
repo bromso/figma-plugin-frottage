@@ -6,7 +6,7 @@ import { buildCatalogue } from "../catalogue";
 import { mapCapture } from "../map";
 import { DEFAULT_IMPORT_OPTIONS } from "../options";
 import type { LayerPlan, PlanOp } from "../plan";
-import { cap, el, inter, run, textNode } from "./fixtures";
+import { cap, el, imageStyle, inter, run, textNode } from "./fixtures";
 
 type FrameOp = Extract<PlanOp, { op: "frame" }>;
 
@@ -523,6 +523,46 @@ describe("radii named by the site's classes", () => {
     const p2 = plan([rounded("b", all(6))], mainline());
     expect(frame(p2, "b").radiusKeys).toBeUndefined();
     expect(p2.report.raw?.radii).toBe(4);
+  });
+
+  const picture = (id: string, radius: Four<number>, refs?: TokenRefs): CaptureNode => ({
+    id,
+    kind: "image",
+    box: { x: 0, y: 0, w: 50, h: 50 },
+    paintOrder: 0,
+    visible: true,
+    opacity: 1,
+    blendMode: "normal",
+    semantic: { tag: "img" },
+    assetHash: `hash-${id}`,
+    fit: "cover",
+    objectPosition: "50% 50%",
+    ...imageStyle,
+    borderRadius: radius,
+    ...(refs ? { tokenRefs: refs } : {}),
+  });
+  const imageOp = (p: LayerPlan, id: string) =>
+    p.ops.find((o) => o.op === "image" && o.id === id) as Extract<PlanOp, { op: "image" }>;
+
+  test("an image's corners bind like a frame's: by class, then by ref", () => {
+    const p = plan(
+      [
+        picture("hero", all(16), { radiusClass: all("2xl") }),
+        picture("byRef", all(24), { radius: "--radius*3" }),
+      ],
+      mainline()
+    );
+    expect(imageOp(p, "hero").radiusKeys).toEqual(all("theme:radius/2xl"));
+    expect(chainOf(p, "theme:radius/2xl").value).toBe(16);
+    expect(imageOp(p, "byRef").radiusKeys).toEqual(all("theme:radius/x3"));
+    expect(p.report.raw?.radii).toBe(0);
+    expect(imageOp(p, "hero")).not.toHaveProperty("refs");
+  });
+
+  test("an image corner nothing binds is counted raw", () => {
+    const p = plan([picture("odd", [13, 13, 0, 0])], mainline());
+    expect(imageOp(p, "odd").radiusKeys).toBeUndefined();
+    expect(p.report.raw?.radii).toBe(2);
   });
 
   test("--radius*2 with no class resolves to radius/x2", () => {

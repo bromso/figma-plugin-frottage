@@ -1200,7 +1200,7 @@ export function createApplier(api: PluginAPI) {
           missingImages++;
           const node = newFrame(parent, op, `Image (missing): ${op.name}`);
           node.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 }, opacity: 0.08 }];
-          setRadius(node, op.radius);
+          setRadius(node, op.radius, op.radiusKeys);
           node.opacity = op.opacity;
           rotate(node, op, place(node, parent, op));
           return node;
@@ -1211,7 +1211,7 @@ export function createApplier(api: PluginAPI) {
         node.name = op.name;
         node.resize(clampSize(op.w), clampSize(op.h));
         node.fills = [{ type: "IMAGE", imageHash, scaleMode: op.fit === "CROP" ? "FILL" : op.fit }];
-        setRadius(node, op.radius);
+        setRadius(node, op.radius, op.radiusKeys);
         setStroke(node, op.strokes);
         node.opacity = op.opacity;
         rotate(node, op, place(node, parent, op));
