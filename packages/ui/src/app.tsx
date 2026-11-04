@@ -19,8 +19,8 @@ const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`;
 
 /**
- * What the theme import did, as lines. Only a page imported with layers has any. `advise` adds how
- * to get a dark mode, which a device set's captures can't follow as worded.
+ * What the theme import did, as lines. Only a page imported with layers has any. `advise` adds the
+ * no-theme line, which a device set's captures can't follow as worded.
  */
 function themeLines({ report, theme }: Pick<VersionResult, "report" | "theme">, advise = true) {
   if (!theme) return [];
