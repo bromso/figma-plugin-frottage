@@ -12,6 +12,7 @@ import {
   NAMESPACE,
   near,
   sameColor,
+  CHANNEL_TOLERANCE as TOLERANCE,
   type TokenRuntime,
   tagCollection,
   usedVariables,
@@ -57,6 +58,22 @@ function freeName(name: string, taken: Set<string>): string {
   for (let n = 2; taken.has(out); n++) out = `${name} (${n})`;
   taken.add(out);
   return out;
+}
+
+/** A name less any ` (n)` a copy has. */
+const baseName = (name: string) => name.replace(/ \(\d+\)$/, "");
+
+/** A colour in 8-bit steps, as `sameColor` tells colours apart to about half of one. */
+const step = (c: number) => Math.round(c * 255);
+const stepKey = (c: RGB | RGBA) => [c.r, c.g, c.b, "a" in c ? c.a : 1].map(step).join(",");
+/** The steps a colour `sameColor` takes for this one may be in: at most two per channel. */
+function nearKeys(c: RGB | RGBA): string[] {
+  const span = (v: number) => [...new Set([step(v - TOLERANCE), step(v), step(v + TOLERANCE)])];
+  let keys = [""];
+  for (const v of [c.r, c.g, c.b, "a" in c ? c.a : 1]) {
+    keys = keys.flatMap((k) => span(v).map((s) => (k ? `${k},${s}` : `${s}`)));
+  }
+  return keys;
 }
 
 /** Whether a name is `name` or one of its numbered copies. */
@@ -197,11 +214,56 @@ export function createLayerSet(api: PluginAPI) {
     };
     const tagged = (c: VariableCollection) => c.getSharedPluginData(NAMESPACE, COLLECTION_KEY);
     const ownCollections = new Set(collections.filter((c) => tagged(c) !== "").map((c) => c.id));
-    const isOwn = (v: Variable) =>
-      ownCollections.has(v.variableCollectionId) || v.getSharedPluginData(NAMESPACE, VALUE_KEY);
     const defaults = new Map(collections.map((c) => [c.id, c.defaultModeId]));
+    // Each variable is read once here: a file can hold thousands, each read crosses into Figma,
+    // and every token would otherwise look through them all.
+    const held = existing.map((v, at) => ({
+      v,
+      at,
+      collectionId: v.variableCollectionId,
+      type: v.resolvedType,
+      name: v.name,
+      key: v.getSharedPluginData(NAMESPACE, VALUE_KEY),
+    }));
+    type Held = (typeof held)[number];
+    const push = <K>(map: Map<K, Held[]>, key: K, h: Held) => {
+      const list = map.get(key);
+      if (list) list.push(h);
+      else map.set(key, [h]);
+    };
+    /** Frottage's own, by collection and value key, and by collection and name, with and without any `(n)`. */
+    const ownByKey = new Map<string, Held[]>();
+    const ownByName = new Map<string, Held[]>();
     // Colours only, as before layers: a number or a string says too little to take a user's.
-    const local = useLocal ? existing.filter((v) => v.resolvedType === "COLOR" && !isOwn(v)) : [];
+    /** The user's colours, by their default mode's value in 8-bit steps. */
+    const theirs = new Map<string, { h: Held; value: VariableValue }[]>();
+    for (const h of held) {
+      const own = ownCollections.has(h.collectionId) || h.key !== "";
+      if (own) {
+        if (h.key) push(ownByKey, `${h.collectionId}\0${h.key}`, h);
+        push(ownByName, `${h.collectionId}\0${h.name}`, h);
+        const base = baseName(h.name);
+        if (base !== h.name) push(ownByName, `${h.collectionId}\0${base}`, h);
+      } else if (useLocal && h.type === "COLOR") {
+        const value = h.v.valuesByMode[defaults.get(h.collectionId) ?? ""];
+        if (!isColor(value)) continue;
+        const key = stepKey(value);
+        const list = theirs.get(key);
+        if (list) list.push({ h, value });
+        else theirs.set(key, [{ h, value }]);
+      }
+    }
+    /** The user's first colour variable, in file order, holding `want`. */
+    const theirColour = (want: VariableValue): Variable | null => {
+      if (!isColor(want)) return null;
+      let best: Held | null = null;
+      for (const key of nearKeys(want)) {
+        for (const { h, value } of theirs.get(key) ?? []) {
+          if ((!best || h.at < best.at) && sameValue(value, want)) best = h;
+        }
+      }
+      return best?.v ?? null;
+    };
     const planned = new Map(plan.variables.map((v) => [v.key, v]));
 
     /** Frottage's collection of this kind, by its tag, else a new one. Made only when needed. */
@@ -221,7 +283,7 @@ export function createLayerSet(api: PluginAPI) {
       }
       const labels = kind === "primitives" ? ["Value"] : plan.modes;
       const { id } = collection;
-      const names = existing.filter((v) => v.variableCollectionId === id).map((v) => v.name);
+      const names = held.filter((h) => h.collectionId === id).map((h) => h.name);
       const home = {
         collection,
         taken: new Set(names),
@@ -251,19 +313,22 @@ export function createLayerSet(api: PluginAPI) {
       wants: Map<string, VariableValue>,
       { collection, added }: Home
     ): Promise<Variable | null> => {
-      const fits = (v: Variable) => {
-        if (v.variableCollectionId !== collection.id || v.resolvedType !== token.type) return false;
-        if (
-          v.getSharedPluginData(NAMESPACE, VALUE_KEY) !== token.key &&
-          !ofName(v.name, token.name)
-        )
-          return false;
-        const held = v.valuesByMode;
+      const fits = ({ v, type }: Held) => {
+        if (type !== token.type) return false;
+        const values = v.valuesByMode;
         return [...wants].every(
-          ([modeId, want]) => added.has(modeId) || sameValue(held[modeId], want)
+          ([modeId, want]) => added.has(modeId) || sameValue(values[modeId], want)
         );
       };
-      const found = existing.find(fits);
+      // Its key or its name, in file order, as one scan of them all would find it.
+      const at = `${collection.id}\0`;
+      const byName = (ownByName.get(at + token.name) ?? []).filter((h) =>
+        ofName(h.name, token.name)
+      );
+      const candidates = [...new Set([...(ownByKey.get(at + token.key) ?? []), ...byName])].sort(
+        (a, b) => a.at - b.at
+      );
+      const found = candidates.find(fits)?.v;
       if (!found) return null;
       // A mode added just now reads what the one before it held.
       for (const modeId of added) {
@@ -315,12 +380,10 @@ export function createLayerSet(api: PluginAPI) {
       const [lead] = token.values;
       if (lead === undefined) throw new Error("no value");
       const first = figmaValue(lead);
-      if (token.collection === "primitives" && token.type === "COLOR" && local.length > 0) {
-        const theirs = local.find((v) =>
-          sameValue(v.valuesByMode[defaults.get(v.variableCollectionId) ?? ""], first)
-        );
-        if (theirs) {
-          variables.set(token.key, theirs);
+      if (token.collection === "primitives" && token.type === "COLOR" && theirs.size > 0) {
+        const match = theirColour(first);
+        if (match) {
+          variables.set(token.key, match);
           counts.variablesReused++;
           return;
         }

@@ -28,7 +28,7 @@ export const VALUE_KEY = "valueKey";
  */
 export const COLLECTION_KEY = "collection";
 /** Half an 8-bit step: two colours this close are the same colour. */
-const CHANNEL_TOLERANCE = 1 / 512;
+export const CHANNEL_TOLERANCE = 1 / 512;
 /** Figma stores 32-bit numbers, so a size read back isn't quite the one that was set. */
 const NUMBER_TOLERANCE = 1e-4;
 

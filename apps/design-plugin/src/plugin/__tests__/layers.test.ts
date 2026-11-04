@@ -373,4 +373,40 @@ describe("the token set with layers", () => {
     expect(tokens.effectStyleId("shadow:sm")).toBeUndefined();
     expect(tokens.counts().layers).toBeUndefined();
   });
+
+  test("a re-import of 1,000 tokens over 1,000 of the user's reads each variable a few times", async () => {
+    const f = fakeFigma();
+    const theirs = f.tokens.seedCollection("Brand");
+    for (let i = 0; i < 1000; i++) {
+      f.tokens.seedVariable(`brand/${i}`, theirs, { r: 0, g: 0, b: i / 2000, a: 1 });
+    }
+    const many: PlanVariable[] = Array.from({ length: 1000 }, (_, i) => ({
+      ...gray,
+      key: `primitives:color/c${i}`,
+      name: `color/c${i}`,
+      values: [{ r: 1, g: i / 1000, b: 0, a: 1 }],
+    }));
+    const plan = layers({ variables: many, effectStyles: [], gradientStyles: [] });
+    await settle(f, plan);
+
+    // Count every read of what the scans look at, on the second import.
+    let reads = 0;
+    const watched = new Set(["variableCollectionId", "valuesByMode", "name", "resolvedType"]);
+    const local = f.figma.variables.getLocalVariablesAsync.bind(f.figma.variables);
+    f.figma.variables.getLocalVariablesAsync = async () =>
+      (await local()).map(
+        (v) =>
+          new Proxy(v, {
+            get(target, prop, receiver) {
+              if (watched.has(prop as string) || prop === "getSharedPluginData") reads++;
+              return Reflect.get(target, prop, receiver);
+            },
+          })
+      );
+    const again = await settle(f, plan);
+    expect(again.counts().variablesReused).toBe(1000);
+    expect(again.counts().variablesCreated).toBe(0);
+    // Linear in tokens plus variables: a scan per token would be about two million.
+    expect(reads).toBeLessThan(20_000);
+  });
 });
