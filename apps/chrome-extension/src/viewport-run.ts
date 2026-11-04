@@ -1,6 +1,7 @@
 import { NO_ROOM, type RunStatus } from "./capture-run";
 import type { Reply } from "./messages";
 import { friendlyError } from "./page";
+import type { RunWidth } from "./plan-widths";
 import type { ReleaseOutcome } from "./tab-hold";
 
 /** The part of `chrome.windows` the worker uses, so resizing can be tested. */
@@ -98,8 +99,8 @@ export type ViewportDeps = {
   save: () => Promise<string>;
   /** Tells the user the run is over. `failed` is true when it saved less than was asked. */
   announce: (failed: boolean) => void;
-  /** One capture, kept in the run's set. The page has the last word on its width. */
-  capture: () => Promise<CaptureResult>;
+  /** One capture, kept in the run's set, for its device or breakpoint. The page has the last word on its width. */
+  capture: (item: RunWidth) => Promise<CaptureResult>;
   /** The width the page is laid out at; null when it can't be read. */
   pageWidth: () => Promise<number | null>;
   /** Pages re-lay out on resize: this gives them time. */
@@ -125,6 +126,9 @@ const MIN_WIDTH = 120;
 /** How far the window moves to see whether the page follows it. */
 const PROBE_PX = 40;
 
+/** What a capture is called while it runs and in the file: its device, or its breakpoint. */
+const nameOf = (item: RunWidth): string | undefined => item.device?.name ?? item.breakpoint;
+
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
@@ -138,17 +142,23 @@ export class ViewportRun {
 
   constructor(private deps: ViewportDeps) {}
 
-  /** Resolves when the run has finished, the tab is back and the file is saved. */
+  /**
+   * Resolves when the run has finished, the tab is back and the file is saved. Plain widths are
+   * what a run from an older build asked; they are labelled with the width the page had.
+   */
   start(
-    widths: number[],
+    widths: (number | RunWidth)[],
     options: { collapseWrappers?: boolean; versionLabel?: string } = {}
   ): Promise<void> {
     if (this.running) throw new Error(RUN_BUSY);
     this.running = true;
     this.cancelled = false;
     this.status = { state: "idle" };
-    return this.drive(widths, {
-      widths: [...widths],
+    const items = widths.map((w): RunWidth => (typeof w === "number" ? { width: w } : { ...w }));
+    const named = items.some((w) => w.device || w.breakpoint);
+    return this.drive(items, {
+      widths: items.map((w) => w.width),
+      ...(named ? { runWidths: items.map((w) => ({ ...w })) } : {}),
       collapseWrappers: options.collapseWrappers === true,
       versionLabel: options.versionLabel ?? "",
     });
@@ -176,8 +186,8 @@ export class ViewportRun {
     this.deps.onStatus(status);
   }
 
-  private async drive(widths: number[], request: Final["request"]): Promise<void> {
-    const asked = [...widths].sort((a, b) => b - a);
+  private async drive(widths: RunWidth[], request: Final["request"]): Promise<void> {
+    const asked = [...widths].sort((a, b) => b.width - a.width);
     const done: Final = {
       state: "viewport-done",
       saved: [],
@@ -208,7 +218,7 @@ export class ViewportRun {
   }
 
   /** Every way out of the sweep passes through here, so the tab always goes back, then the file is saved. */
-  private async withTab(widths: number[], done: Final): Promise<void> {
+  private async withTab(widths: RunWidth[], done: Final): Promise<void> {
     const home = await this.origin();
     if (home === null) {
       done.stopped = LEFT_PAGE;
@@ -222,7 +232,12 @@ export class ViewportRun {
     }
     let stranded = false;
     try {
-      this.set({ state: "viewport", index: 1, total: widths.length, label: String(widths[0]) });
+      this.set({
+        state: "viewport",
+        index: 1,
+        total: widths.length,
+        label: nameOf(widths[0]) ?? String(widths[0].width),
+      });
       const stopped = await this.sweep(widths, home, done);
       if (stopped) done.stopped = stopped;
     } catch {
@@ -262,10 +277,11 @@ export class ViewportRun {
   }
 
   /** Returns why it stopped early, if something went wrong. */
-  private async sweep(widths: number[], home: string, done: Final): Promise<string | undefined> {
+  private async sweep(widths: RunWidth[], home: string, done: Final): Promise<string | undefined> {
     // Window width to the width its capture really had, to tell which requests are repeats.
     const seen = new Map<number, number>();
-    for (const [index, requested] of widths.entries()) {
+    for (const [index, item] of widths.entries()) {
+      const requested = item.width;
       if (this.stopping(done)) return undefined;
       const given = await this.resized(requested);
       if (given === "closed") return WINDOW_CLOSED;
@@ -282,24 +298,25 @@ export class ViewportRun {
         state: "viewport",
         index: index + 1,
         total: widths.length,
-        label: String(given),
+        label: nameOf(item) ?? String(given),
       });
       await this.deps.settle();
       if (this.stopping(done)) return undefined;
       if ((await this.origin()) !== home) return this.whyGone();
       const stuck = await this.heldAt(given);
       if (typeof stuck === "string") return stuck;
-      if (stuck !== null) return held(stuck.at);
+      if ("at" in stuck) return held(stuck.at);
       const result = await this.deps
-        .capture()
+        .capture(item)
         .catch((error): CaptureResult => ({ ok: false, message: messageOf(error) }));
       if (!result.ok) {
         if ((await this.origin()) !== home) return this.whyGone();
         return result.message === NO_ROOM ? noRoom(given) : friendlyError(result.message);
       }
       const label = result.label ?? String(result.width);
-      // The label is the laid-out width, scrollbar included, so a scrollbar is not a mismatch.
-      const real = Number.parseInt(label, 10);
+      // The laid-out width, scrollbar included, so a scrollbar is not a mismatch: a plain width's
+      // label is that width, and a named capture's is the page's width read before it.
+      const real = nameOf(item) ? (stuck.page ?? given) : Number.parseInt(label, 10);
       seen.set(given, real);
       if (real !== requested) done.mismatched.push({ requested, width: real });
       done.saved.push({ label, width: result.width });
@@ -311,25 +328,29 @@ export class ViewportRun {
   }
 
   /**
-   * Whether the page is held at one width, or why the run must stop; null when it follows the window.
+   * Whether the page is held at one width, or why the run must stop; when it follows the window,
+   * the width it is laid out at (null when that can't be read).
    * Device mode keeps a page at its own width whatever the window does, and then every width would
    * save the same file. A page narrower than its window can also just share it with docked
    * Developer Tools, so moving the window tells them apart.
    */
-  private async heldAt(windowWidth: number): Promise<{ at: number } | string | null> {
+  private async heldAt(
+    windowWidth: number
+  ): Promise<{ at: number } | { page: number | null } | string> {
     const width = await this.pageWidth();
-    if (width === null || width === windowWidth) return null;
+    if (width === null || width === windowWidth) return { page: width };
     const probe =
       windowWidth - PROBE_PX >= MIN_WIDTH ? windowWidth - PROBE_PX : windowWidth + PROBE_PX;
     const moved = await this.resized(probe);
     if (moved === "closed") return WINDOW_CLOSED;
     // A probe Chrome refuses can't tell the cases apart, so the capture goes ahead.
-    if (moved === "refused") return null;
+    if (moved === "refused") return { page: width };
     await this.deps.settle();
     if ((await this.pageWidth()) === width) return { at: width };
     if ((await this.resized(windowWidth)) === "closed") return WINDOW_CLOSED;
     await this.deps.settle();
-    return null;
+    // Back at the window's width, the page is laid out as it was first read.
+    return { page: width };
   }
 
   private pageWidth(): Promise<number | null> {

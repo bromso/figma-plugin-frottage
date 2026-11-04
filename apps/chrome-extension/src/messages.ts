@@ -1,5 +1,6 @@
 import type { RunStatus } from "./capture-run";
 import type { ChunkMessage } from "./chunks";
+import type { RunWidth } from "./plan-widths";
 import type { HeldTab, ReleaseOutcome } from "./tab-hold";
 
 /** Prefix of the port the page script opens to the service worker. */
@@ -25,6 +26,18 @@ export type PageMessage =
   | { type: "end" }
   | { type: "error"; message: string };
 
+/**
+ * A run at several widths. `runWidths` names each capture's device or breakpoint; a re-run from a
+ * status an older build saved has plain `widths` only.
+ */
+export type ViewportRequest = {
+  tabId: number;
+  runWidths?: RunWidth[];
+  widths?: number[];
+  collapseWrappers?: boolean;
+  versionLabel?: string;
+};
+
 /** Popup to worker. */
 export type SwMessage =
   | {
@@ -33,15 +46,13 @@ export type SwMessage =
       tabId: number;
       collapseWrappers?: boolean;
       versionLabel?: string;
+      /** The device or breakpoint this capture of a run is for. */
+      device?: RunWidth["device"];
+      breakpoint?: string;
     }
-  | {
-      target: "sw";
-      type: "viewport-start";
-      tabId: number;
-      widths: number[];
-      collapseWrappers?: boolean;
-      versionLabel?: string;
-    }
+  | ({ target: "sw"; type: "viewport-start" } & ViewportRequest)
+  /** Reads the page's breakpoints for the popup. */
+  | { target: "sw"; type: "breakpoints"; tabId: number }
   | { target: "sw"; type: "download"; url: string; filename: string }
   | { target: "sw"; type: "tab-origin"; tabId: number }
   | { target: "sw"; type: "page-width"; tabId: number }
@@ -58,14 +69,7 @@ export type SwMessage =
 /** Worker and popup messages to the offscreen document. */
 export type OffscreenMessage =
   | { target: "offscreen"; type: "run-start"; runId: string }
-  | {
-      target: "offscreen";
-      type: "viewport-start";
-      tabId: number;
-      widths: number[];
-      collapseWrappers?: boolean;
-      versionLabel?: string;
-    }
+  | ({ target: "offscreen"; type: "viewport-start" } & ViewportRequest)
   | { target: "offscreen"; type: "viewport-cancel" }
   | { target: "offscreen"; type: "inject-failed"; runId: string; detail: string }
   | { target: "offscreen"; type: "run-live"; runId: string }
@@ -76,7 +80,8 @@ export type PopupMessage = { target: "popup"; type: "status"; status: RunStatus 
 
 /**
  * `filename` is the saved basename, set by the worker for downloads. `origin`, `held`, `released`, `open`
- * and `width` answer `tab-origin`, `hold-tab`, `release-tab`, `window-open`, and `resize-window` or `page-width`.
+ * and `width` answer `tab-origin`, `hold-tab`, `release-tab`, `window-open`, and `resize-window` or `page-width`;
+ * `breakpoints` answers `breakpoints`.
  */
 export type Reply =
   | {
@@ -87,5 +92,7 @@ export type Reply =
       released?: ReleaseOutcome;
       open?: boolean;
       width?: number;
+      /** The page's breakpoints, answering `breakpoints`. */
+      breakpoints?: number[];
     }
   | { ok: false; error: string };

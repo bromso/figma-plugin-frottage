@@ -341,3 +341,21 @@ export function evalLength(
   const flat = text.replace(/\bcalc\(/gi, "(");
   return evalExpression(flat, rootPx)?.n ?? null;
 }
+
+/** Tailwind's default `min-width` boundaries, by width. */
+const TAILWIND_BREAKPOINTS: Record<number, string> = {
+  640: "sm",
+  768: "md",
+  1024: "lg",
+  1280: "xl",
+  1536: "2xl",
+};
+
+/**
+ * The Breakpoint mode name for the range that starts at `min`: Tailwind's name when the boundary
+ * is its default, otherwise `min <width>`. The range below the first boundary is `base`, which
+ * callers name themselves.
+ */
+export function breakpointName(min: number): string {
+  return TAILWIND_BREAKPOINTS[min] ?? `min ${min}`;
+}

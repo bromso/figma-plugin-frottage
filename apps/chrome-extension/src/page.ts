@@ -1,6 +1,7 @@
 import type { Capture } from "@repo/capture-schema";
 import type { StaticIconName } from "@repo/ui";
 import type { RunStatus } from "./capture-run";
+import type { RunWidth } from "./plan-widths";
 
 const RESTRICTED_SCHEMES = [
   "chrome:",
@@ -57,14 +58,41 @@ export function normaliseVersion(kind: unknown, label: unknown): CaptureVersion 
   return { label: trimmed, kind: found };
 }
 
+type VersionDevice = NonNullable<CaptureVersion["device"]>;
+
+/** A device as the format stores it, or undefined when it is not one. */
+function cleanDevice(device: unknown): VersionDevice | undefined {
+  if (!device || typeof device !== "object") return undefined;
+  const { id, name, height } = device as Record<string, unknown>;
+  const fits = (s: unknown): s is string =>
+    typeof s === "string" && s.length > 0 && s.length <= LABEL_MAX;
+  if (!fits(id) || !fits(name)) return undefined;
+  if (typeof height !== "number" || !(height > 0) || height > 100_000) return undefined;
+  return { id, name, height };
+}
+
 /**
- * The version a capture records, in the page: a viewport labelled with the width the page was laid
- * out at, which only the page knows, followed by the typed label when there is one.
+ * The version a capture records, in the page: a viewport labelled with the device's name, or the
+ * breakpoint's for an extra capture, or else the width the page was laid out at, which only the
+ * page knows; then the typed label when there is one. The device or breakpoint is kept with it.
  */
-export function pageVersion(label: unknown, innerWidth: number): CaptureVersion | undefined {
+export function pageVersion(
+  label: unknown,
+  innerWidth: number,
+  named: { device?: unknown; breakpoint?: unknown } = {}
+): CaptureVersion | undefined {
   const typed = typeof label === "string" ? label.trim() : "";
-  const width = String(innerWidth);
-  return normaliseVersion("viewport", typed ? `${width} ${typed}` : width);
+  const device = cleanDevice(named.device);
+  const breakpoint =
+    typeof named.breakpoint === "string" &&
+    named.breakpoint.length > 0 &&
+    named.breakpoint.length <= LABEL_MAX
+      ? named.breakpoint
+      : undefined;
+  const name = device?.name ?? breakpoint ?? String(innerWidth);
+  const version = normaliseVersion("viewport", typed ? `${name} ${typed}` : name);
+  if (!version) return undefined;
+  return { ...version, ...(device ? { device } : breakpoint ? { breakpoint } : {}) };
 }
 
 /**
@@ -232,8 +260,21 @@ export const DEVICES: readonly {
   { id: "watch", name: "Watch", icon: "lucide:watch", width: 198, on: false },
 ];
 
-const WIDTH_MIN = 120;
-const WIDTH_MAX = 3840;
+/** Each device's nominal height: reference data for designers, never set on the window. */
+export const DEVICE_HEIGHTS: Readonly<Record<DeviceId, number>> = {
+  tv: 2160,
+  desktop: 900,
+  laptop: 982,
+  "tablet-landscape": 834,
+  "tablet-portrait": 1194,
+  "phone-landscape": 390,
+  "phone-portrait": 844,
+  watch: 242,
+};
+
+/** The narrowest and widest widths a run captures at. */
+export const WIDTH_MIN = 120;
+export const WIDTH_MAX = 3840;
 
 /** One row of the size list: the number as typed, and whether it is ticked. */
 export type WidthChoice = { text: string; on: boolean };
@@ -299,7 +340,8 @@ export function parseChoices(raw: string | null): WidthChoice[] {
   return defaultChoices();
 }
 
-function joinList(widths: (string | number)[]): string {
+/** `a`, `a and b`, `a, b and c`. */
+export function joinList(widths: (string | number)[]): string {
   if (widths.length <= 1) return widths.join("");
   return `${widths.slice(0, -1).join(", ")} and ${widths[widths.length - 1]}`;
 }
@@ -311,13 +353,19 @@ export function viewportStatusLabel(status: RunStatus & { state: "viewport" }): 
 
 /**
  * What a re-run of a finished run sends: what the run was asked, with the wrappers setting changed
- * only when `collapseWrappers` says so.
+ * only when `collapseWrappers` says so. A run from an older build has widths only.
  */
 export function rerunRequest(
   status: RunStatus & { state: "viewport-done" },
   collapseWrappers: boolean = status.request.collapseWrappers
-): { widths: number[]; collapseWrappers: boolean; versionLabel: string } {
-  return { ...status.request, widths: [...status.request.widths], collapseWrappers };
+): { widths: number[]; runWidths?: RunWidth[]; collapseWrappers: boolean; versionLabel: string } {
+  const { runWidths } = status.request;
+  return {
+    ...status.request,
+    widths: [...status.request.widths],
+    ...(runWidths ? { runWidths: runWidths.map((w) => ({ ...w })) } : {}),
+    collapseWrappers,
+  };
 }
 
 /** What the popup says about a finished viewport run. */

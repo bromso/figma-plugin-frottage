@@ -3,6 +3,7 @@ import {
   allowAccessAndRecapture,
   captureFilename,
   captureLabel,
+  DEVICE_HEIGHTS,
   DEVICES,
   friendlyError,
   imageAdvice,
@@ -252,6 +253,52 @@ describe("pageVersion", () => {
   });
 });
 
+describe("pageVersion with a device or breakpoint", () => {
+  const laptop = { id: "laptop", name: "Laptop", height: 982 };
+
+  test("a device capture is labelled with the device's name and holds the device", () => {
+    expect(pageVersion("", 1512, { device: laptop })).toEqual({
+      label: "Laptop",
+      kind: "viewport",
+      device: laptop,
+    });
+  });
+
+  test("a typed label follows the device's name", () => {
+    expect(pageVersion("Dark", 1600, { device: laptop })?.label).toBe("Laptop Dark");
+  });
+
+  test("an extra capture is labelled with its breakpoint", () => {
+    expect(pageVersion(undefined, 1024, { breakpoint: "lg" })).toEqual({
+      label: "lg",
+      kind: "viewport",
+      breakpoint: "lg",
+    });
+  });
+
+  test("a malformed device is left out, and the width labels the capture", () => {
+    expect(pageVersion("", 1440, { device: { id: "x", name: "", height: -1 } })).toEqual({
+      label: "1440",
+      kind: "viewport",
+    });
+  });
+});
+
+describe("DEVICE_HEIGHTS", () => {
+  test("every device has its nominal height", () => {
+    expect(DEVICE_HEIGHTS).toEqual({
+      tv: 2160,
+      desktop: 900,
+      laptop: 982,
+      "tablet-landscape": 834,
+      "tablet-portrait": 1194,
+      "phone-landscape": 390,
+      "phone-portrait": 844,
+      watch: 242,
+    });
+  });
+});
+
 describe("pageOrigin", () => {
   test("is the URL's origin and path, without query or fragment", () => {
     expect(pageOrigin("https://example.com/a?b=c#d")).toBe("https://example.com/a");
@@ -446,6 +493,19 @@ describe("rerunRequest", () => {
     });
   });
 
+  test("a re-run repeats the devices and breakpoints the run was asked", () => {
+    const runWidths = [
+      { width: 1512, device: { id: "laptop" as const, name: "Laptop", height: 982 } },
+      { width: 1024, breakpoint: "lg" },
+    ];
+    expect(rerunRequest({ ...done, request: { ...done.request, runWidths } })).toEqual({
+      widths: [1512, 390],
+      runWidths,
+      collapseWrappers: true,
+      versionLabel: "Dark",
+    });
+  });
+
   test("a re-run can turn wrappers off or on without losing the rest", () => {
     expect(
       rerunRequest({ ...done, request: { ...done.request, collapseWrappers: false } }, true)
@@ -457,6 +517,12 @@ describe("viewportStatusLabel", () => {
   test("names the width and place in the run", () => {
     expect(viewportStatusLabel({ state: "viewport", index: 2, total: 3, label: "1440" })).toBe(
       "Capturing 1440 (2 of 3)…"
+    );
+  });
+
+  test("names the device", () => {
+    expect(viewportStatusLabel({ state: "viewport", index: 1, total: 6, label: "Laptop" })).toBe(
+      "Capturing Laptop (1 of 6)…"
     );
   });
 });

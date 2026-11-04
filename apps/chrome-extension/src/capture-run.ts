@@ -1,5 +1,6 @@
 import { type Capture, countNodes, LIMITS } from "@repo/capture-schema";
 import { AssetAssembler, ChunkAssembler, type ChunkMessage } from "./chunks";
+import type { RunWidth } from "./plan-widths";
 
 export type RunStatus =
   | { state: "idle" }
@@ -38,7 +39,13 @@ export type RunStatus =
       stopped?: string;
       cancelled?: boolean;
       /** What the run was asked, so a re-run from a fresh popup repeats it. */
-      request: { widths: number[]; collapseWrappers: boolean; versionLabel: string };
+      request: {
+        widths: number[];
+        /** The devices and breakpoints; missing for a run of plain widths, or from an older build. */
+        runWidths?: RunWidth[];
+        collapseWrappers: boolean;
+        versionLabel: string;
+      };
     };
 
 export type RunDeps = {

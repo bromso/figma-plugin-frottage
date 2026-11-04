@@ -21,6 +21,8 @@ type RunWindow = Window & {
   __frottageCollapse?: boolean;
   __frottageImageAccess?: boolean;
   __frottageVersionLabel?: string;
+  __frottageDevice?: unknown;
+  __frottageBreakpoint?: unknown;
 };
 
 // `void`: the script's completion value is undefined, so executeScript does not wait on the run.
@@ -29,9 +31,15 @@ void (async () => {
   const runId = win.__frottageRunId;
   const collapseWrappers = win.__frottageCollapse === true;
   const imageAccess = win.__frottageImageAccess === true;
-  // Every capture is a viewport, labelled with its width and the typed label, if any.
-  const version = pageVersion(win.__frottageVersionLabel, window.innerWidth);
+  // Every capture is a viewport, labelled with its device or breakpoint (else its width) and the
+  // typed label, if any.
+  const version = pageVersion(win.__frottageVersionLabel, window.innerWidth, {
+    device: win.__frottageDevice,
+    breakpoint: win.__frottageBreakpoint,
+  });
   win.__frottageVersionLabel = undefined;
+  win.__frottageDevice = undefined;
+  win.__frottageBreakpoint = undefined;
   win.__frottageImageAccess = undefined;
   win.__frottageRunId = undefined;
   win.__frottageCollapse = undefined;

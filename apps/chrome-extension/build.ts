@@ -1,5 +1,5 @@
-// Extension build: popup, run and offscreen pages, service worker (ESM), capture script (IIFE)
-// and manifest.
+// Extension build: popup, run and offscreen pages, service worker (ESM), capture and breakpoints
+// scripts (IIFE) and manifest.
 //   bun build.ts              one production-or-dev build (NODE_ENV decides)
 //   bun build.ts --watch      rebuild on changes under the source dirs
 //   bun build.ts --analyze    also write dist/meta-*.json
@@ -80,20 +80,20 @@ async function buildWorker() {
   await writeMetafile("meta-service-worker.json", result.metafile);
 }
 
-async function buildCaptureEntry() {
+async function buildPageScript(name: string, label: string) {
   const result = await Bun.build({
-    entrypoints: [path.join(src, "capture-entry.ts")],
+    entrypoints: [path.join(src, `${name}.ts`)],
     target: "browser",
     format: "iife",
     outdir,
-    naming: "capture-entry.[ext]",
+    naming: `${name}.[ext]`,
     minify: isProd,
     sourcemap,
     define,
     metafile: analyze,
   });
-  failOnErrors("capture script", result);
-  await writeMetafile("meta-capture-entry.json", result.metafile);
+  failOnErrors(label, result);
+  await writeMetafile(`meta-${name}.json`, result.metafile);
 }
 
 function loadManifest(): Manifest {
@@ -115,7 +115,8 @@ async function build() {
   const started = performance.now();
   await buildPages();
   await buildWorker();
-  await buildCaptureEntry();
+  await buildPageScript("capture-entry", "capture script");
+  await buildPageScript("breakpoints-entry", "breakpoints script");
   await writeManifest();
   const ms = Math.round(performance.now() - started);
   console.log(`[build] ${isProd ? "production" : "development"} build done in ${ms}ms → ${outdir}`);
