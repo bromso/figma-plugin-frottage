@@ -563,6 +563,8 @@ type SetContext = Pick<VersionContext, "port" | "onState" | "signal" | "options"
   fail(name: string, error: unknown, size?: boolean): void;
   /** What the progress counts: the dropped files, or the sizes of one file. */
   unit: FileInfo["unit"];
+  /** Adds frames the set makes beyond its count, known only once it is merged. */
+  addFrames(count: number): void;
 };
 
 type SetOutcome = { versions: VersionReport[]; report: SetReport | null; cancelled: boolean };
@@ -667,6 +669,8 @@ function devicesSpec(
     { leftOut }
   );
   plans.length = 0;
+  // Progress counted the page's own frames; a language too unlike it adds its own.
+  if (merge.languageFrames.length > 0) ctx.addFrames(merge.languageFrames.length);
   const { layers } = merge;
   const member = (frame: DeviceFrame, language?: string): SetMember => ({
     version: set.versions[frame.index] as LoadedFile,
@@ -1042,10 +1046,15 @@ export async function runImports(
           }
         : whole;
     };
-    /** The frames a set makes: a device set's ticked devices, or every version. */
+    /**
+     * The frames a set makes: a device set's ticked devices, or every version. Another language's
+     * captures share those frames; the few that get their own are added once the set is merged.
+     */
     const framesOf = (whole: VersionSet) => {
       const { versions } = keptOf(whole);
-      return isDeviceSet(whole) ? versions.filter((v) => !isExtra(v)).length : versions.length;
+      return isDeviceSet(whole)
+        ? versions.filter((v) => !isExtra(v) && !otherLanguage(v, versions)).length
+        : versions.length;
     };
     /** Progress counts frames, so extras and unticked devices are left out of it. */
     const countFrames = () => {
@@ -1145,6 +1154,11 @@ export async function runImports(
           assetsOf,
           fail,
           unit,
+          addFrames(count) {
+            counted += count;
+            index += count;
+            ctx.totalFiles = counted;
+          },
         };
         const outcome = await importSet(set, ctx, () =>
           devices ? devicesSpec(set, ctx, placement, leftOutOf(whole, set)) : modesSpec(set, ctx)

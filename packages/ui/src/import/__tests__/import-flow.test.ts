@@ -1949,6 +1949,20 @@ describe("a device set", () => {
     expect(some.at(-1)?.index).toBe(2);
   });
 
+  test("progress counts a language's frames, not its paired captures", async () => {
+    const files = (states: ImportState[]) =>
+      states.flatMap((s) => (s.step === "working" && s.total > 0 ? [s.file] : []));
+    // Every Svenska capture pairs: two frames.
+    const paired = files((await runDevices([languageSetFile(3)])).states);
+    expect(paired.every((f) => f.total === 2)).toBe(true);
+    expect(paired.at(-1)?.index).toBe(2);
+    // Phone's Svenska page gets its own frame: three.
+    const own = files((await runDevices([languageSetFile()])).states);
+    expect(own.at(-1)?.total).toBe(3);
+    expect(own.at(-1)?.index).toBe(3);
+    expect(own.every((f) => f.index <= f.total)).toBe(true);
+  });
+
   test("Cancel after beginDeviceSet cancels the sandbox and imports nothing more", async () => {
     const port = fakePort();
     const controller = new AbortController();
