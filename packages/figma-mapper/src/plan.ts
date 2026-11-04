@@ -128,7 +128,19 @@ export type PlanChildLayout = {
 
 /** A difference from the component, on the child at `path`, by index down the expanded tree. */
 export type PlanOverride =
-  | { path: number[]; kind: "text"; text: string; runs: PlanRun[] }
+  | {
+      path: number[];
+      kind: "text";
+      text: string;
+      runs: PlanRun[];
+      /**
+       * The captured text id this layer shows, in a capture with a language, so the device merge
+       * can bind it; the merge removes it.
+       */
+      source?: string;
+      /** The Language variable its characters are bound to, by `PlanVariable.key`. */
+      textKey?: string;
+    }
   | { path: number[]; kind: "image"; hash: string }
   | { path: number[]; kind: "swap"; key: string };
 

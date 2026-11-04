@@ -10,6 +10,8 @@ body { margin: 0; font: 16px/24px Arial, sans-serif; color: #111; }
 header, main { padding: 16px; }
 h1 { font-size: 32px; line-height: 40px; margin: 0 0 8px; }
 p { margin: 0 0 8px; }
+.cards { display: flex; gap: 16px; }
+x-card { display: block; width: 100px; padding: 8px; background: #eee; }
 </style>
 </head>
 <body>
@@ -17,7 +19,11 @@ p { margin: 0 0 8px; }
 <main>
 <h1>Importera vilken sida som helst</h1>
 <p>Gör en renderad sida till lager i Figma.</p>
-<a href="/lang-sv.html#more">Läs mer</a>
+<div class="cards">
+<x-card><a href="/lang-sv.html#more-1">Läs mer</a></x-card>
+<x-card><a href="/lang-sv.html#more-2">Läs mer</a></x-card>
+<x-card><a href="/lang-sv.html#more-3">Läs mer</a></x-card>
+</div>
 </main>
 </body>
 </html>

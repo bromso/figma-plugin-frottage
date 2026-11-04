@@ -47,7 +47,7 @@ export type DeviceMerge = {
   frames: DeviceFrame[];
   /** Other-language captures too unlike their device's to share its frame. */
   languageFrames: (DeviceFrame & { language: string })[];
-  /** The Language modes, the current language first; empty for a set in one language. */
+  /** The Language modes, the current language first; empty when fewer than two are kept. */
   languages: string[];
   report: string[];
 };
@@ -836,13 +836,36 @@ function languageName(op: TextOp, byId: Map<string, PlanOp>): string {
   return segment(op.name);
 }
 
+/** The top op above `op`, through its parents. */
+function rootOf(op: PlanOp, byId: Map<string, PlanOp>): PlanOp | undefined {
+  let at: PlanOp | undefined = op;
+  for (let depth = 0; at && at.parent !== null && depth < 256; depth++) at = byId.get(at.parent);
+  return at;
+}
+
+/** The text op a component's main shows at `path` down its expanded tree, into nested mains. */
+function textAt(key: string, path: number[], ops: PlanOp[]): TextOp | undefined {
+  const mainOf = (k: string) =>
+    ops.find((op) => op.op === "frame" && op.parent === null && op.component?.key === k);
+  let at = mainOf(key);
+  for (const i of path) {
+    if (!at) return undefined;
+    const from = at.op === "instance" ? mainOf(at.key) : at;
+    at = from && ops.filter((op) => op.parent === from.id)[i];
+  }
+  return at?.op === "text" ? at : undefined;
+}
+
 export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {}): DeviceMerge {
   const tagged = entries.flatMap((e) => (e.capture.language ? [e.capture.language] : []));
-  if (tagged.length === 0) {
+  const current = tagged.find((l) => l.current);
+  if (!current) {
     const { adopt: _, ...merge } = mergeSet(entries, options);
+    if (tagged.length > 0) {
+      merge.report.push("No capture in the page's own language, so languages were left out.");
+    }
     return { ...merge, languageFrames: [], languages: [] };
   }
-  const current = tagged.find((l) => l.current) ?? (tagged[0] as PageLanguage);
   const codeOf = (e: DeviceEntry) => e.capture.language?.code ?? current.code;
   // The current language's entries make the frames and every value but the texts'.
   const baseAt = entries.flatMap((e, i) => (codeOf(e) === current.code ? [i] : []));
@@ -879,6 +902,8 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
   const counts = codes.map(() => ({ onlyOther: 0, onlyBase: 0 }));
   let mixed = 0;
   let full = 0;
+  /** Paired texts no layer shows on its own: inside a repeated part with no override. */
+  let repeated = 0;
   const variables: PlanVariable[] = [];
   const takenNames = new Set<string>();
   /** A variable's values in every language, as JSON, to its key. */
@@ -913,23 +938,27 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     }
     const plan = plans[frame.index] as LayerPlan;
     const byId = new Map(plan.ops.map((op) => [op.id, op]));
-    for (const op of plan.ops) {
-      const found = op.op === "text" ? texts.get(op.id) : undefined;
-      if (op.op !== "text" || !found) continue;
+    const reached = new Set<string>();
+    /** Binds the layer showing captured text `id`, as `text`; its key, or none to stay plain. */
+    const bind = (id: string, text: string, nameOf: () => string): string | undefined => {
+      const found = texts.get(id);
+      if (!found) return undefined;
+      reached.add(id);
       if (found.mixed) {
         mixed++;
-        continue;
+        return undefined;
       }
-      // A language that didn't pair this text shows it as captured.
-      const values = codes.map((_, l) => (l === 0 ? op.text : (found.values[l] ?? op.text)));
+      // With three languages or more, one that didn't pair this text keeps the current
+      // language's text in its mode.
+      const values = codes.map((_, l) => (l === 0 ? text : (found.values[l] ?? text)));
       const content = JSON.stringify(values);
       let key = byValues.get(content);
       if (key === undefined) {
         if (variables.length >= MAX_LANGUAGE_VARIABLES) {
           full++;
-          continue;
+          return undefined;
         }
-        const name = free(languageName(op, byId), takenNames);
+        const name = free(nameOf(), takenNames);
         key = `language:${name}`;
         variables.push({
           key,
@@ -942,7 +971,40 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
         });
         byValues.set(content, key);
       }
-      op.textKey = key;
+      return key;
+    };
+    for (const op of plan.ops) {
+      if (op.op === "text") {
+        // A main's text is its first occurrence's, with the component key before its id; it is
+        // named where that occurrence's instance sits on the page.
+        const root = rootOf(op, byId);
+        const prefix = root?.op === "frame" && root.component ? `${root.component.key}/` : "";
+        const id = op.id.startsWith(prefix) ? op.id.slice(prefix.length) : op.id;
+        const placed = root && prefix ? { ...op, parent: root.id.slice(prefix.length) } : op;
+        const key = bind(id, op.text, () => languageName(placed, byId));
+        if (key) op.textKey = key;
+      } else if (op.op === "instance") {
+        for (const over of op.overrides) {
+          if (over.kind !== "text" || over.source === undefined) continue;
+          const key = bind(over.source, over.text, () => {
+            const main = textAt(op.key, over.path, plan.ops);
+            return languageName({ ...(main ?? { name: "Text" }), parent: op.id } as TextOp, byId);
+          });
+          if (key) over.textKey = key;
+        }
+      }
+    }
+    for (const [id, found] of texts) {
+      if (reached.has(id)) continue;
+      if (found.mixed) mixed++;
+      else repeated++;
+    }
+  }
+  // The captured ids were only for this; a finished plan doesn't carry them.
+  for (const plan of plans) {
+    for (const op of plan.ops) {
+      if (op.op !== "instance") continue;
+      for (const over of op.overrides) if (over.kind === "text") delete over.source;
     }
   }
 
@@ -970,6 +1032,15 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
   if (mixed > 0) {
     report.push(
       textsLine(mixed, `with mixed styles stays in ${base}.`, `with mixed styles stay in ${base}.`)
+    );
+  }
+  if (repeated > 0) {
+    report.push(
+      textsLine(
+        repeated,
+        `in a repeated part stays in ${base}.`,
+        `in repeated parts stay in ${base}.`
+      )
     );
   }
   if (full > 0) {
@@ -1005,5 +1076,6 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     );
   }
 
-  return { layers, plans, frames, languageFrames, languages: names, report };
+  const languages = names.length > 1 ? names : [];
+  return { layers, plans, frames, languageFrames, languages, report };
 }

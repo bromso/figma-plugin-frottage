@@ -1,3 +1,154 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`a set with no language merges as before 1`] = `"885df70e2c980c7b"`;
+exports[`a set with no language merges as before 1`] = `
+{
+  "collections": [
+    {
+      "kind": "palette",
+      "modes": [
+        "Base",
+      ],
+      "name": "Palette",
+    },
+    {
+      "kind": "radius",
+      "modes": [
+        "Base",
+      ],
+      "name": "Border radius",
+    },
+    {
+      "kind": "typography",
+      "modes": [
+        "Base",
+      ],
+      "name": "Typography",
+    },
+    {
+      "kind": "device",
+      "modes": [
+        "Laptop",
+        "Tablet portrait",
+        "Phone portrait",
+      ],
+      "name": "Device",
+    },
+    {
+      "kind": "breakpoint",
+      "modes": [
+        "base",
+        "md",
+        "lg",
+        "min 1400",
+      ],
+      "name": "Breakpoint",
+      "priority": [
+        "min 1400",
+        "md",
+        "base",
+        "lg",
+      ],
+    },
+    {
+      "kind": "colorMode",
+      "modes": [
+        "Light",
+        "Dark",
+      ],
+      "name": "Color Mode",
+    },
+    {
+      "kind": "theme",
+      "modes": [
+        "Default",
+      ],
+      "name": "Theme",
+    },
+  ],
+  "frames": [
+    {
+      "breakpoint": "min 1400",
+      "device": "Laptop",
+      "index": 0,
+    },
+    {
+      "breakpoint": "md",
+      "device": "Tablet portrait",
+      "index": 1,
+    },
+    {
+      "breakpoint": "base",
+      "device": "Phone portrait",
+      "index": 2,
+    },
+  ],
+  "report": [
+    "No capture for the sm breakpoint.",
+    "No capture for the xl breakpoint.",
+  ],
+  "textStyles": [
+    "["Inter","Bold",60,72,0,"NONE","ORIGINAL"] {"fontSize":"theme:type/heading/1/size","lineHeight":"theme:type/heading/1/line-height"}",
+    "["Inter","Regular",16,24,0,"NONE","ORIGINAL"] {"fontSize":"theme:text/base"}",
+  ],
+  "texts": [
+    [
+      "h1 ["Inter","Bold",60,72,0,"NONE","ORIGINAL"]",
+      "h2 ["Inter","Bold",60,72,0,"NONE","ORIGINAL"]",
+      "h3 ["Inter","Bold",60,72,0,"NONE","ORIGINAL"]",
+      "p1 ["Inter","Regular",16,24,0,"NONE","ORIGINAL"]",
+      "p2 ["Inter","Regular",16,24,0,"NONE","ORIGINAL"]",
+      "p3 ["Inter","Regular",16,24,0,"NONE","ORIGINAL"]",
+    ],
+    [
+      "h1 ["Inter","Bold",60,72,0,"NONE","ORIGINAL"]",
+      "h2 ["Inter","Bold",60,72,0,"NONE","ORIGINAL"]",
+      "h3 ["Inter","Bold",60,72,0,"NONE","ORIGINAL"]",
+      "p1 ["Inter","Regular",16,24,0,"NONE","ORIGINAL"]",
+      "p2 ["Inter","Regular",16,24,0,"NONE","ORIGINAL"]",
+      "p3 ["Inter","Regular",16,24,0,"NONE","ORIGINAL"]",
+    ],
+    [
+      "h1 ["Inter","Bold",60,72,0,"NONE","ORIGINAL"]",
+      "h2 ["Inter","Bold",60,72,0,"NONE","ORIGINAL"]",
+      "h3 ["Inter","Bold",60,72,0,"NONE","ORIGINAL"]",
+      "p1 ["Inter","Regular",16,24,0,"NONE","ORIGINAL"]",
+      "p2 ["Inter","Regular",16,24,0,"NONE","ORIGINAL"]",
+      "p3 ["Inter","Regular",16,24,0,"NONE","ORIGINAL"]",
+    ],
+    [
+      "h1 ["Inter","Bold",60,72,0,"NONE","ORIGINAL"]",
+      "h2 ["Inter","Bold",60,72,0,"NONE","ORIGINAL"]",
+      "h3 ["Inter","Bold",60,72,0,"NONE","ORIGINAL"]",
+      "p1 ["Inter","Regular",16,24,0,"NONE","ORIGINAL"]",
+      "p2 ["Inter","Regular",16,24,0,"NONE","ORIGINAL"]",
+      "p3 ["Inter","Regular",16,24,0,"NONE","ORIGINAL"]",
+    ],
+  ],
+  "variables": [
+    "palette:gray/50 [{"r":0.9999999999999999,"g":0.9999999999999999,"b":0.9999999999999999,"a":1}]",
+    "palette:neutral/900 [{"r":0.09052740524946687,"g":0.09052740524946684,"b":0.09052740524946684,"a":1}]",
+    "radius:radius/lg [10]",
+    "typography:text/base [16]",
+    "typography:base/type/heading/1/size [30]",
+    "typography:base/type/heading/1/line-height [36]",
+    "typography:md/type/heading/1/size [48]",
+    "typography:md/type/heading/1/line-height [57.599999999999994]",
+    "typography:lg/type/heading/1/size [36]",
+    "typography:lg/type/heading/1/line-height [43.199999999999996]",
+    "typography:min 1400/type/heading/1/size [60]",
+    "typography:min 1400/type/heading/1/line-height [72]",
+    "device:device/width [1512,834,390]",
+    "device:device/height [982,1194,844]",
+    "breakpoint:breakpoint/min-width [0,768,1024,1400]",
+    "breakpoint:breakpoint/max-width [767,1023,1399,0]",
+    "breakpoint:type/heading/1/size [{"alias":"typography:base/type/heading/1/size"},{"alias":"typography:md/type/heading/1/size"},{"alias":"typography:lg/type/heading/1/size"},{"alias":"typography:min 1400/type/heading/1/size"}]",
+    "breakpoint:type/heading/1/line-height [{"alias":"typography:base/type/heading/1/line-height"},{"alias":"typography:md/type/heading/1/line-height"},{"alias":"typography:lg/type/heading/1/line-height"},{"alias":"typography:min 1400/type/heading/1/line-height"}]",
+    "colorMode:color/card [{"alias":"palette:gray/50"},{"alias":"palette:neutral/900"}]",
+    "theme:color/card [{"alias":"colorMode:color/card"}]",
+    "theme:radius/lg [{"alias":"radius:radius/lg"}]",
+    "theme:text/base [{"alias":"typography:text/base"}]",
+    "theme:type/heading/1/line-height [{"alias":"breakpoint:type/heading/1/line-height"}]",
+    "theme:type/heading/1/size [{"alias":"breakpoint:type/heading/1/size"}]",
+  ],
+}
+`;

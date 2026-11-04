@@ -10,6 +10,8 @@ body { margin: 0; font: 16px/24px Arial, sans-serif; color: #111; }
 header, main { padding: 16px; }
 h1 { font-size: 32px; line-height: 40px; margin: 0 0 8px; }
 p { margin: 0 0 8px; }
+.cards { display: flex; gap: 16px; }
+x-card { display: block; width: 100px; padding: 8px; background: #eee; }
 </style>
 </head>
 <body>
@@ -17,7 +19,11 @@ p { margin: 0 0 8px; }
 <main>
 <h1>Import any page</h1>
 <p>Turn a rendered page into Figma layers.</p>
-<a href="/lang-en.html#more">Learn more</a>
+<div class="cards">
+<x-card><a href="/lang-en.html#more-1">Learn more</a></x-card>
+<x-card><a href="/lang-en.html#more-2">Learn more</a></x-card>
+<x-card><a href="/lang-en.html#more-3">Learn more</a></x-card>
+</div>
 </main>
 </body>
 </html>
