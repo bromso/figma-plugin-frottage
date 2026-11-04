@@ -49,8 +49,11 @@ const isColour = (v: PlanVarValue): v is Rgba => typeof v === "object" && "r" in
 
 const sameLength = (a: number, b: number) => Math.abs(a - b) <= PX + EPSILON;
 
-const accepts = (v: PlanVariable, scope: string) =>
-  v.scopes.includes(scope) || v.scopes.includes("ALL_SCOPES");
+/**
+ * Whether a value alone may bind a field to `v`: only where its name gave it the field's scope. A
+ * length named for nothing, as `--blur-sm`, is in every scope, and binds only by a ref.
+ */
+const accepts = (v: PlanVariable, scope: string) => v.scopes.includes(scope);
 
 /**
  * A colour to bind. The paint keeps its captured opacity: the applier sets 1 only once the variable,

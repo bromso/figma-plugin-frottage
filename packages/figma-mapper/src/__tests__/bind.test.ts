@@ -245,6 +245,24 @@ describe("bindLayers", () => {
     expect("strokesIncluded" in layout).toBe(false);
   });
 
+  test("a length named for nothing binds by its ref, never by value alone", () => {
+    const tokens = shadcnTokens();
+    tokens.cssCustomProperties["--blur-sm"] = "8px";
+    const radiusOf = (id: string, refs?: TokenRefs) => {
+      const base = el(id, [0, 0]);
+      return {
+        ...base,
+        style: { ...base.style, borderRadius: [8, 8, 8, 8] as [number, number, number, number] },
+        ...(refs ? { tokenRefs: refs } : {}),
+      };
+    };
+    const p = plan([radiusOf("plain"), radiusOf("named", { radius: "--blur-sm" })], tokens);
+    expect(frame(p, "plain").radiusKeys).toBeUndefined();
+    const key = "primitives:blur/sm";
+    expect(frame(p, "named").radiusKeys).toEqual([key, key, key, key]);
+    expect(p.report.raw?.radii).toBe(4);
+  });
+
   test("a length that doesn't hold the ref's value doesn't take it", () => {
     const base = el("a", [0, 0]);
     const node = {
