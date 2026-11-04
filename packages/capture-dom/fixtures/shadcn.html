@@ -85,6 +85,13 @@
     .text-sm { font-size: var(--text-sm); line-height: var(--tw-leading, var(--text-sm--line-height)); }
     .w-64 { width: calc(var(--spacing) * 64); }
   }
+
+  /* Tailwind v4 breakpoint utilities (range syntax) and shadcn's 1400px container. */
+  @media (width >= 40rem) { .sm-unused { display: block; } }
+  @media (width >= 48rem) { .md-unused { display: block; } }
+  @media (width >= 64rem) { .lg-unused { display: block; } }
+  @media (width >= 80rem) { .xl-unused { display: block; } }
+  @media (min-width: 1400px) { .container-unused { max-width: 1400px; } }
 </style>
 </head>
 <body class="bg-background">

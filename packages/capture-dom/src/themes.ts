@@ -25,7 +25,7 @@ export type RuleContext = { layer: number[]; parents: string[] | undefined };
 /**
  * Call `visit` for every style rule in every readable stylesheet, with the conditions (`@media`,
  * `@supports`, `@container`) it sits in. Cross-origin sheets are skipped silently. The walk
- * stops when `visit` returns false.
+ * stops when `visit` returns false. `onSkipped` is called once per sheet that could not be read.
  */
 export function walkStyleRules(
   doc: Document,
@@ -33,7 +33,8 @@ export function walkStyleRules(
     rule: CSSStyleRule,
     conditions: RuleCondition[],
     context: RuleContext
-  ) => boolean | undefined
+  ) => boolean | undefined,
+  onSkipped?: () => void
 ): void {
   const win = doc.defaultView;
   const RuleType = win?.CSSStyleRule;
@@ -119,6 +120,7 @@ export function walkStyleRules(
       walk(sheet.cssRules, [], [], undefined);
     } catch {
       // cross-origin stylesheet
+      onSkipped?.();
     }
   }
 }

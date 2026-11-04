@@ -2622,3 +2622,8 @@ test("captured in a theme, Light comes from the root's own rules, by the cascade
   expect(tokens.activeTheme).toBe("Night theme");
   expect(tokens.base).toEqual({ "--x": "#111111", "--y": "#333333", "--z": "#777777" });
 });
+
+test("the page's width breakpoints are recorded on the capture", async ({ page }) => {
+  const c = await capture(page, "shadcn.html");
+  expect(c.breakpoints).toEqual({ widths: [640, 768, 1024, 1280, 1400], unreadable: 0 });
+});

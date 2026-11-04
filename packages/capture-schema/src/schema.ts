@@ -263,6 +263,7 @@ const MAX_THEMES = 8;
 const MAX_THEME_PROPERTIES = 2000;
 const MAX_MODE_LENGTH = 40;
 const MAX_CONTEXT_LENGTH = 200;
+const MAX_BREAKPOINTS = 8;
 
 export const captureSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
@@ -281,6 +282,23 @@ export const captureSchema = z.object({
     .object({
       label: z.string().min(1).max(40),
       kind: z.enum(["viewport", "theme", "language"]),
+      /** The device a viewport capture is for: a nominal height is reference data only. */
+      device: z
+        .object({
+          id: z.string().min(1).max(40),
+          name: z.string().min(1).max(40),
+          height: z.number().positive().max(100000),
+        })
+        .optional(),
+      /** The breakpoint mode name an extra capture is for. */
+      breakpoint: z.string().min(1).max(40).optional(),
+    })
+    .optional(),
+  /** Width boundaries (px) the page's stylesheets switch at, and how many sheets could not be read. */
+  breakpoints: z
+    .object({
+      widths: z.array(z.number().int().min(1).max(10000)).max(MAX_BREAKPOINTS),
+      unreadable: z.number().int().min(0),
     })
     .optional(),
   tokens: z.object({

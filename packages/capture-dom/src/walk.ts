@@ -7,6 +7,7 @@ import type {
   TextNode,
   TokenRefs,
 } from "@repo/capture-schema";
+import { readBreakpoints } from "./breakpoints";
 import type { Rgba } from "./color";
 import { flatChildren, insideEditable, isEditable, shadowRootOf } from "./flatten";
 import { authoredTracksReader } from "./grid";
@@ -1512,6 +1513,12 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   } catch {
     // themes are best effort
   }
+  let breakpoints: ReturnType<typeof readBreakpoints> = { widths: [], unreadable: 0 };
+  try {
+    breakpoints = readBreakpoints(doc);
+  } catch {
+    // breakpoints are best effort
+  }
   const dark = win.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
   return {
     schemaVersion: 1,
@@ -1532,6 +1539,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
       ...(themes.activeTheme ? { activeTheme: themes.activeTheme } : {}),
       ...(themes.base ? { base: byName(themes.base) } : {}),
     },
+    ...(breakpoints.widths.length > 0 || breakpoints.unreadable > 0 ? { breakpoints } : {}),
     fonts: [...fonts.values()],
     assets: [],
     warnings: [...warnings.values()].map(({ first, count }) =>

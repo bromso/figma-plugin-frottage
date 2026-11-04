@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { countNodes, parseCapture } from "../index";
 import { elementNode, imageStyle, minimalCapture, textNode, treeOfThree } from "./fixtures";
 
@@ -225,4 +225,41 @@ test("a theme's mode over 40 characters or context over 200 is refused", () => {
   expect(parseCapture(withTheme({ mode: "m".repeat(40), context: "c".repeat(200) })).ok).toBe(true);
   expect(parseCapture(withTheme({ mode: "m".repeat(41) })).ok).toBe(false);
   expect(parseCapture(withTheme({ context: "c".repeat(201) })).ok).toBe(false);
+});
+
+describe("breakpoints and device versions", () => {
+  const withBp = (extra: Record<string, unknown>) => ({ ...minimalCapture(), ...extra });
+  test("a capture with breakpoints, device and breakpoint parses", () => {
+    const input = withBp({
+      breakpoints: { widths: [640, 1024], unreadable: 1 },
+      version: {
+        label: "Tablet",
+        kind: "viewport",
+        device: { id: "tablet-portrait", name: "Tablet portrait", height: 1194 },
+        breakpoint: "md",
+      },
+    });
+    const result = parseCapture(input);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.capture.breakpoints).toEqual({ widths: [640, 1024], unreadable: 1 });
+      expect(result.capture.version?.device?.height).toBe(1194);
+      expect(result.capture.version?.breakpoint).toBe("md");
+    }
+  });
+  test("nine widths, a long name or a negative height are refused", () => {
+    const nine = Array.from({ length: 9 }, (_, i) => i + 1);
+    expect(parseCapture(withBp({ breakpoints: { widths: nine, unreadable: 0 } })).ok).toBe(false);
+    expect(parseCapture(withBp({ breakpoints: { widths: [20000], unreadable: 0 } })).ok).toBe(
+      false
+    );
+    const v = (device: unknown) => withBp({ version: { label: "A", kind: "viewport", device } });
+    expect(parseCapture(v({ id: "a", name: "x".repeat(41), height: 10 })).ok).toBe(false);
+    expect(parseCapture(v({ id: "a", name: "A", height: -1 })).ok).toBe(false);
+  });
+  test("an older capture without them parses unchanged", () => {
+    const result = parseCapture(minimalCapture());
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.capture.breakpoints).toBeUndefined();
+  });
 });
