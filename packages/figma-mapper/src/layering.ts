@@ -253,11 +253,15 @@ export function orderVariables(variables: PlanVariable[], modes: string[] = []):
     if (ga !== gb || ma !== mb) return ga - gb || ma - mb;
     const stable = (at.get(a.key) as number) - (at.get(b.key) as number);
     if (ma > 0) return stable;
+    // Multi-mode variables keep their incoming order, after the single-mode ones, so a group that
+    // mixes the two still compares transitively.
+    const multiA = a.values.length > 1;
+    if (multiA !== b.values.length > 1) return multiA ? 1 : -1;
+    if (multiA) return stable;
     const na = numberIn(a.name);
     const nb = numberIn(b.name);
     if ((na === null) !== (nb === null)) return na === null ? 1 : -1;
     if (na !== null && nb !== null) return na - nb || stable;
-    if (a.values.length > 1 || b.values.length > 1) return stable;
     const va = numberOf(a);
     const vb = numberOf(b);
     if (va !== null && vb !== null && va !== vb) return va - vb;

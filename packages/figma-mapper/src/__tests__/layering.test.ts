@@ -249,6 +249,34 @@ describe("layerCollections", () => {
     ]);
   });
 
+  test("orderVariables puts a group's single-mode variables first, its multi-mode ones after in incoming order", () => {
+    const v = (name: string, values: number[]): PlanVariable => ({
+      key: `typography:${name}`,
+      name,
+      collection: "typography",
+      type: "FLOAT",
+      values,
+      description: "",
+      scopes: ["FONT_SIZE"],
+    });
+    const input = [
+      v("text/10", [10]),
+      v("text/9", [9, 90]),
+      v("text/1", [1]),
+      v("text/3", [3, 30]),
+      v("text/2", [2]),
+    ];
+    const want = ["text/1", "text/2", "text/10", "text/9", "text/3"];
+    expect(orderVariables(input, []).map((x) => x.name)).toEqual(want);
+    expect(orderVariables([...input].reverse(), []).map((x) => x.name)).toEqual([
+      "text/1",
+      "text/2",
+      "text/10",
+      "text/3",
+      "text/9",
+    ]);
+  });
+
   test("collections come in creation order with their modes", () => {
     const { layers } = setup();
     expect(layers.collections).toEqual([
