@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-04-frottage-devices-themes-languages-design.md` (Stage 1), on top of `2026-11-04-frottage-layered-collections-design.md`.
 
+## Facts checked 2026-11-04
+
+- Context7 (`/figma/plugin-typings`): every `SceneNode` (Section included) has `ExplicitVariableModesMixin`; `PageNode` too, and needs `loadAsync()` under `dynamic-page`. `figma.clientStorage.getAsync/setAsync` store JSON per user (not per file), so a remembered mode limit is the user's last seen limit, used only for a warning.
+- Context7 (Chrome extensions): `activeTab` grants temporary host access to the current tab after the user clicks the toolbar action; `scripting.executeScript({ target: { tabId }, files })` injects with it and returns per-frame results.
+- Measured in Figma desktop (owner's file, temp page removed): a Section with explicit Color Mode `Dark` recolours child frames through Theme → Color Mode → Palette aliases (three levels); each child frame's own explicit Device mode drives a width bound to `device/width` (1512 on Laptop).
+
 ## Global Constraints
 
 - Branch `feat/frottage-layered-collections` (continues it; local commits only until the owner says otherwise).
