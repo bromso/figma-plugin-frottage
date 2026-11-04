@@ -6,6 +6,7 @@ import {
   captureWidth,
   DEFAULT_IMPORT_OPTIONS,
   type DeviceEntry,
+  type DeviceFrame,
   type FontRef,
   type ImportOptions,
   type ImportReport,
@@ -216,8 +217,11 @@ export type ImportPort = {
   cancel(): Promise<void>;
 };
 
-/** A device frame's Device mode, and its Breakpoint mode when the page has any. */
-type DeviceModes = { mode: string; breakpoint: string | null };
+/**
+ * A device frame's Device mode, and its Breakpoint mode when the page has any. `language` is for a
+ * frame of another language's page, which goes in that language's own section.
+ */
+type DeviceModes = { mode: string; breakpoint: string | null; language?: string };
 
 /** A collection's modes as the sandbox settled them: those it has, and those added to it now. */
 type SettledModes = { kind: string; collection: string; created: string[]; added: string[] };
@@ -648,13 +652,18 @@ function devicesSpec(
   );
   plans.length = 0;
   const { layers } = merge;
+  const member = (frame: DeviceFrame, language?: string): SetMember => ({
+    version: set.versions[frame.index] as LoadedFile,
+    plan: merge.plans[frame.index] as Plan,
+    label: frame.device,
+    device: { mode: frame.device, breakpoint: frame.breakpoint, ...(language ? { language } : {}) },
+  });
   return {
-    members: merge.frames.map((frame) => ({
-      version: set.versions[frame.index] as LoadedFile,
-      plan: merge.plans[frame.index] as Plan,
-      label: frame.device,
-      device: { mode: frame.device, breakpoint: frame.breakpoint },
-    })),
+    // The page's own frames, then the languages too unlike it to share them.
+    members: [
+      ...merge.frames.map((frame) => member(frame)),
+      ...merge.languageFrames.map((frame) => member(frame, frame.language)),
+    ],
     async open() {
       const first = set.versions[0] as LoadedFile;
       await port.beginDeviceSet({
@@ -669,13 +678,9 @@ function devicesSpec(
       const lines: string[] = [];
       // The modes Figma made, not the ones planned: a mode limit can leave some out.
       const settled = result.layers?.modes ?? [];
-      const made = (kind: "device" | "breakpoint") =>
-        settled.find((m) => m.kind === kind)?.created ?? [];
-      const devices = made("device");
-      const breakpoints = made("breakpoint");
-      if (devices.length > 0) lines.push(`${COLLECTION_NAMES.device}: ${devices.join(", ")}`);
-      if (breakpoints.length > 0) {
-        lines.push(`${COLLECTION_NAMES.breakpoint}: ${breakpoints.join(", ")}`);
+      for (const kind of ["device", "breakpoint", "language"] as const) {
+        const made = settled.find((m) => m.kind === kind)?.created ?? [];
+        if (made.length > 0) lines.push(`${COLLECTION_NAMES[kind]}: ${made.join(", ")}`);
       }
       for (const { collection, added } of settled) {
         if (added.length > 0) lines.push(`Modes added: ${collection} ${added.join(", ")}.`);

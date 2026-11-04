@@ -22,6 +22,7 @@ import {
   fontFile,
   frottageFile,
   imageFile,
+  languageSetFile,
   namedFile,
   setFile,
   setFileWithImage,
@@ -1709,6 +1710,56 @@ describe("a device set", () => {
       "Tablet portrait",
       "Phone portrait",
     ]);
+  });
+
+  test("a language too unlike the page's own gets its own frame, in that language's section", async () => {
+    const { port, last } = await runDevices([languageSetFile()]);
+    expect(
+      port.deviceSetMeta?.layers.collections.find((c) => c.kind === "language")?.modes
+    ).toEqual(["English", "Svenska"]);
+    expect(port.begins.map((b) => [b.version?.label, b.device])).toEqual([
+      ["Laptop", { mode: "Laptop", breakpoint: "min 1512" }],
+      ["Phone", { mode: "Phone", breakpoint: "base" }],
+      ["Phone", { mode: "Phone", breakpoint: "base", language: "Svenska" }],
+    ]);
+    expect(port.begins.map((b) => b.version?.index)).toEqual([0, 1, 2]);
+    if (last.step !== "done") throw new Error(last.step);
+    const notes = last.sets[0]?.notes ?? [];
+    expect(notes).toContain("Language: English, Svenska");
+    expect(notes).toContain(
+      "The Svenska page differs too much from English to share one frame on Phone."
+    );
+  });
+
+  test("the report names the Language modes Figma added, and the ones it didn't make", async () => {
+    const port = fakePort();
+    port.setResult = {
+      layers: {
+        modesDropped: ["Svenska"],
+        modes: [{ kind: "language", collection: "Language", created: ["English"], added: [] }],
+      },
+    };
+    const { last } = await runDevices([languageSetFile(3)], port);
+    if (last.step !== "done") throw new Error(last.step);
+    const notes = last.sets[0]?.notes ?? [];
+    expect(notes).toContain("Language: English");
+    expect(notes).toContain("Not created: Svenska.");
+    port.setResult = {
+      layers: {
+        modesDropped: [],
+        modes: [
+          {
+            kind: "language",
+            collection: "Language",
+            created: ["English", "Svenska", "Deutsch"],
+            added: ["Deutsch"],
+          },
+        ],
+      },
+    };
+    const again = await runDevices([languageSetFile(3)], port);
+    if (again.last.step !== "done") throw new Error(again.last.step);
+    expect(again.last.sets[0]?.notes).toContain("Modes added: Language Deutsch.");
   });
 
   test("the report names the modes Figma made, and the ones it didn't", async () => {

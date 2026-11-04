@@ -42,8 +42,11 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     fonts: FontRef[];
     totalOps: number;
     version?: { index: number; label: string };
-    /** A device set's frame: its Device mode, and its Breakpoint mode when the page has any. */
-    device?: { mode: string; breakpoint: string | null };
+    /**
+     * A device set's frame: its Device mode, and its Breakpoint mode when the page has any.
+     * `language` puts a frame of another language's page in that language's own section.
+     */
+    device?: { mode: string; breakpoint: string | null; language?: string };
   }): void;
   importTokens(tokens: PlanTokens, options: ImportOptions): void;
   importModes(tokens: PlanVersionTokens, options: ImportOptions): { droppedVersions: number[] };

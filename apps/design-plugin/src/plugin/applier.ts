@@ -43,8 +43,12 @@ export type ImportMeta = {
   totalOps: number;
   /** One version of a set, which gets the name and mode that go with its place in it. */
   version?: { index: number; label: string };
-  /** In a device set, the version's Device mode and, for a page with breakpoints, its Breakpoint mode. */
-  device?: { mode: string; breakpoint: string | null };
+  /**
+   * In a device set, the version's Device mode and, for a page with breakpoints, its Breakpoint
+   * mode. `language` is for a page in another language too unlike the page's own to share its
+   * frame, which goes in a section of that language's.
+   */
+  device?: { mode: string; breakpoint: string | null; language?: string };
 };
 
 /** A page captured on several devices, imported as one frame per device in one section. */
@@ -97,15 +101,24 @@ export type SetResult = TokenCounts & {
   plainVersions: number[];
 };
 
+/** A device set's section for one other language's frames, and where its next frame goes. */
+type LanguageSection = { section: SectionNode; x: number };
+
 /** A set of versions under way. Its finished frames and sections are held until `endSet`. */
 type HeldSet = {
   page: PageNode;
   /** Where the next frame goes, in the section for a device set. */
   x: number;
   y: number;
-  finished: { root: FrameNode; components: ComponentSet }[];
+  /** Each frame, its mains, and the section it sits in for a device set. */
+  finished: { root: FrameNode; components: ComponentSet; box?: SectionNode }[];
   /** A device set's section, which holds its frames. */
   section?: SectionNode;
+  /** A device set's page title and its own language, which its sections are named and set by. */
+  title?: string;
+  language?: string;
+  /** A device set's sections for frames in another language, by language, right of `section`. */
+  others: Map<string, LanguageSection>;
   /** The page a device set made for itself, which goes if the set does. */
   createdPage?: PageNode;
   /** The page the user was on before it, which a cancelled set goes back to. */
@@ -228,6 +241,8 @@ export function createApplier(api: PluginAPI) {
   let modeRefused = false;
   /** This version's Device and Breakpoint modes, in a device set. */
   let deviceModes: ImportMeta["device"] | null = null;
+  /** The section of another language this version goes in, in a device set. */
+  let languageBox: LanguageSection | null = null;
 
   /** Clears the version in hand and removes what it left. The set around it, if any, stays. */
   function clearVersion() {
@@ -272,6 +287,7 @@ export function createApplier(api: PluginAPI) {
     versionIndex = null;
     modeRefused = false;
     deviceModes = null;
+    languageBox = null;
   }
 
   function reset() {
@@ -284,10 +300,12 @@ export function createApplier(api: PluginAPI) {
       }
       section.discard();
     }
-    try {
-      held?.section?.remove(); // emptied above
-    } catch {
-      // already gone
+    for (const box of held ? sectionsOf(held) : []) {
+      try {
+        box.remove(); // emptied above
+      } catch {
+        // already gone
+      }
     }
     // A page made for the set goes with it, once the user is off it.
     const made = held?.createdPage;
@@ -330,7 +348,7 @@ export function createApplier(api: PluginAPI) {
     await cleaning;
     if (stale) api.commitUndo();
     const target = api.currentPage;
-    held = { page: target, x: clearOf(target), y: 0, finished: [], plain: [] };
+    held = { page: target, x: clearOf(target), y: 0, finished: [], plain: [], others: new Map() };
   }
 
   /** A new page named after the site, numbered on if a page has that name already. */
@@ -353,8 +371,9 @@ export function createApplier(api: PluginAPI) {
   /**
    * Opens a device set: settles its merged layers once, then a section, on the page open now or a
    * new one, takes a frame per device from `begin` to `end`, and `endSet` keeps them. The section
-   * opens on the Color Mode the page was captured in; each frame sets its own Device and Breakpoint
-   * modes. The user stays on the page they are on, as a single import leaves them.
+   * opens on the Color Mode the page was captured in, and on its language; each frame sets its own
+   * Device and Breakpoint modes. The user stays on the page they are on, as a single import leaves
+   * them.
    */
   async function beginDeviceSet(meta: DeviceSetMeta): Promise<void> {
     const stale = active || held !== null;
@@ -394,6 +413,8 @@ export function createApplier(api: PluginAPI) {
       if (createdPage) await dropPage(createdPage, previousPage);
       throw e;
     }
+    // The Language collection's first mode is the page's own language.
+    const language = meta.layers.collections.find((c) => c.kind === "language")?.modes[0];
     const set: HeldSet = {
       page: target,
       x: SECTION_PADDING,
@@ -401,6 +422,9 @@ export function createApplier(api: PluginAPI) {
       finished: [],
       plain: [],
       section,
+      title: meta.name,
+      ...(language ? { language } : {}),
+      others: new Map(),
       ...(createdPage ? { createdPage, previousPage } : {}),
     };
     held = set;
@@ -414,7 +438,7 @@ export function createApplier(api: PluginAPI) {
     };
     await own.resolve(plan, meta.options, tokenRuntime());
     if (held !== set) return; // cancelled meanwhile
-    openOnColorMode(section);
+    openSection(section, language);
   }
 
   /**
@@ -432,16 +456,47 @@ export function createApplier(api: PluginAPI) {
 
   /**
    * Puts a device set's section, or the section of a device's mains, on the Color Mode the page
-   * was captured in, which every frame and main in it then reads.
+   * was captured in and on the Language mode of `language`, which every frame and main in it then
+   * reads.
    */
-  function openOnColorMode(node: SectionNode): void {
-    const mode = tokens?.openingMode();
-    if (!mode) return;
-    try {
-      node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
-    } catch {
-      tokens?.failed();
+  function openSection(node: SectionNode, language: string | undefined): void {
+    const modes = [
+      tokens?.openingMode(),
+      language === undefined ? null : tokens?.layerMode("language", language),
+    ];
+    for (const mode of modes) {
+      if (!mode) continue;
+      try {
+        node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
+      } catch {
+        tokens?.failed();
+      }
     }
+  }
+
+  /**
+   * The section for a device set's frames in another language, made with the first of them, right
+   * of the sections before it, on that language.
+   */
+  function sectionFor(set: HeldSet, language: string): LanguageSection {
+    const known = set.others.get(language);
+    if (known) return known;
+    const main = set.section as SectionNode;
+    const section = api.createSection();
+    try {
+      section.name = `${set.title} — ${language}`;
+      if (section.parent !== set.page) set.page.appendChild(section);
+      const before = [main, ...[...set.others.values()].map((o) => o.section)];
+      section.x = Math.max(...before.map((b) => b.x + b.width)) + VERSION_GAP;
+      section.y = main.y;
+    } catch (e) {
+      section.remove();
+      throw e;
+    }
+    openSection(section, language);
+    const box = { section, x: SECTION_PADDING };
+    set.others.set(language, box);
+    return box;
   }
 
   async function begin(meta: ImportMeta): Promise<void> {
@@ -457,6 +512,7 @@ export function createApplier(api: PluginAPI) {
     active = true;
     versionIndex = set ? (meta.version?.index ?? null) : null;
     deviceModes = set ? (meta.device ?? null) : null;
+    const language = set?.section ? meta.device?.language : undefined;
     rootName = meta.version ? `${meta.name} — ${meta.version.label}` : meta.name;
     page = set?.page ?? api.currentPage;
     components = createComponentSet(
@@ -469,13 +525,14 @@ export function createApplier(api: PluginAPI) {
         mode: setMode,
       },
       page,
-      // A device set's mains read the Color Mode its section opens on, as their instances do.
-      set?.section ? openOnColorMode : undefined
+      // A device set's mains read the modes their frame's section opens on, as their instances do.
+      set?.section ? (section) => openSection(section, language ?? set.language) : undefined
     );
+    languageBox = set && language !== undefined ? sectionFor(set, language) : null;
     await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
     fallbackOk = loadedFonts.has(fontKey(FALLBACK));
-    container = set?.section ?? page;
-    rootX = set ? set.x : clearOf(page);
+    container = languageBox?.section ?? set?.section ?? page;
+    rootX = languageBox ? languageBox.x : set ? set.x : clearOf(page);
     rootY = set ? set.y : 0;
   }
 
@@ -853,6 +910,21 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
+  /**
+   * Binds a text's characters to its Language variable, once they are set. A refused binding
+   * counts and leaves the text as it is.
+   */
+  function bindText(node: TextNode, key: string | undefined) {
+    const set = bindable();
+    const variable = set?.text(key);
+    if (!set || !variable) return;
+    try {
+      node.setBoundVariable("characters", variable);
+    } catch {
+      set.failed();
+    }
+  }
+
   /** The style goes first, as linking one overrides the range's own type fields. */
   async function runProps(node: TextNode, run: PlanRun, start: number, end: number) {
     const styleId = bindable()?.textStyleId(run.styleKey);
@@ -999,6 +1071,7 @@ export function createApplier(api: PluginAPI) {
     join(parent, node, op);
     node.name = op.name;
     await setText(node, op, font);
+    bindText(node, op.textKey);
     node.textAlignHorizontal = op.align;
     // Figma's Inter runs slightly wider than the browser's, so a box sized to the
     // captured width can wrap differently. Single-line text never wraps; wrapped
@@ -1111,6 +1184,7 @@ export function createApplier(api: PluginAPI) {
       if (node.type !== "TEXT") throw new Error("not text");
       const before = node.height;
       await setText(node, override, usableFont(override.runs[0]?.fontName ?? FALLBACK));
+      bindText(node, override.textKey);
       noteGainedLine(node, before, override.runs);
     }
   }
@@ -1363,9 +1437,8 @@ export function createApplier(api: PluginAPI) {
       tracker.closeOpen();
       sliceStart = Date.now();
       if (!(await tracker.drain(overBudget, () => breathe(run)))) return CANCELLED;
-      const box = held?.section;
-      if (box && held)
-        layoutFailures += fitSection(box, [...held.finished.map((f) => f.root), done]);
+      const box = languageBox?.section ?? held?.section;
+      if (box && held) layoutFailures += fitSection(box, [...framesIn(held, box), done]);
       try {
         // A device set's frames sit in its section; their mains go under it, on the page.
         const under = box ? { x: box.x + done.x, y: box.y + box.height + VERSION_GAP } : undefined;
@@ -1387,9 +1460,15 @@ export function createApplier(api: PluginAPI) {
       };
       if (held) {
         // Kept, but only until the set is: `reset` still removes these.
-        held.finished.push({ root: done, components: components as ComponentSet });
+        held.finished.push({
+          root: done,
+          components: components as ComponentSet,
+          ...(box ? { box } : {}),
+        });
         if (deviceModes && modeRefused && versionIndex !== null) held.plain.push(versionIndex);
-        held.x = done.x + done.width + VERSION_GAP;
+        const next = done.x + done.width + VERSION_GAP;
+        if (languageBox) languageBox.x = next;
+        else held.x = next;
       } else {
         tokens = null; // keep the tokens the layers use
       }
@@ -1413,19 +1492,30 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
+  /** The frames a device set has finished in one of its sections. */
+  const framesIn = (set: HeldSet, box: SectionNode) =>
+    set.finished.flatMap((f) => (f.box === box ? [f.root] : []));
+
+  /** A device set's sections: its own, then each other language's. */
+  const sectionsOf = (set: HeldSet) =>
+    set.section ? [set.section, ...[...set.others.values()].map((o) => o.section)] : [];
+
   /**
    * One row of sections under the tallest frame, each at its frame's x, or further right when the
    * section before it runs on past there: a section can be wider than its frame.
    */
-  function placeSections({ finished, section: box }: HeldSet): number {
+  function placeSections(set: HeldSet): number {
+    const { finished } = set;
     try {
-      // A device set's frames sit in its section, so its mains go under that.
-      const bottom = box
-        ? box.y + box.height
-        : Math.max(...finished.map(({ root: r }) => r.y + r.height));
-      const offset = box ? box.x : 0;
+      // A device set's frames sit in its sections, so their mains go under those.
+      const boxes = sectionsOf(set);
+      const bottom =
+        boxes.length > 0
+          ? Math.max(...boxes.map((b) => b.y + b.height))
+          : Math.max(...finished.map(({ root: r }) => r.y + r.height));
       let left = Number.NEGATIVE_INFINITY;
-      for (const { root: frame, components: section } of finished) {
+      for (const { root: frame, components: section, box } of finished) {
+        const offset = box ? box.x : 0;
         const right = section.moveTo(Math.max(offset + frame.x, left), bottom + VERSION_GAP);
         if (right !== null) left = right + VERSION_GAP;
       }
@@ -1447,6 +1537,38 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
+  /**
+   * Sizes a device set's sections to their frames, and puts each other language's in a row right of
+   * the page's own. One that holds no frame goes. Gives the count Figma refused.
+   */
+  function arrangeSections(set: HeldSet): number {
+    const main = set.section;
+    if (!main) return 0;
+    let failures = fitSection(main, framesIn(set, main));
+    let right = main.x + main.width;
+    for (const [language, { section }] of set.others) {
+      const frames = framesIn(set, section);
+      if (frames.length === 0) {
+        try {
+          section.remove();
+        } catch {
+          // It stays, empty: the user can remove it.
+        }
+        set.others.delete(language);
+        continue;
+      }
+      failures += fitSection(section, frames);
+      try {
+        section.x = right + VERSION_GAP;
+        section.y = main.y;
+        right = section.x + section.width;
+      } catch {
+        failures++;
+      }
+    }
+    return failures;
+  }
+
   /** Keeps the versions that finished, as one undo step. With none, nothing stays, tokens neither. */
   async function endSet(): Promise<SetResult> {
     if (!held) throw new Error("set not started");
@@ -1457,10 +1579,10 @@ export function createApplier(api: PluginAPI) {
       return NO_SET;
     }
     const frames = finished.map((f) => f.root);
-    let layoutFailures = section ? fitSection(section, frames) : 0;
+    let layoutFailures = arrangeSections(held);
     layoutFailures += placeSections(held);
     api.commitUndo();
-    select(target, section ? [section] : frames);
+    select(target, section ? sectionsOf(held) : frames);
     const result = {
       ...(tokens?.counts() ?? NO_TOKENS),
       rootIds: frames.map((f) => f.id),
