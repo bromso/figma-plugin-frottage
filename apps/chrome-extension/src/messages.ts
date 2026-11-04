@@ -39,6 +39,8 @@ export type ViewportRequest = {
   versionLabel?: string;
   /** Which themes to import, when the page has a choice. */
   themes?: { light: boolean; dark: boolean };
+  /** The languages to capture, current first; sent only when more than the current one is ticked. */
+  languages?: PageLanguage[];
 };
 
 /** Popup to worker. */

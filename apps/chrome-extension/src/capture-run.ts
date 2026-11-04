@@ -1,4 +1,4 @@
-import { type Capture, countNodes, LIMITS } from "@repo/capture-schema";
+import { type Capture, countNodes, LIMITS, type PageLanguage } from "@repo/capture-schema";
 import { AssetAssembler, ChunkAssembler, type ChunkMessage } from "./chunks";
 import type { RunWidth } from "./plan-widths";
 
@@ -47,6 +47,8 @@ export type RunStatus =
         versionLabel: string;
         /** Which themes to import, when the run was asked. */
         themes?: { light: boolean; dark: boolean };
+        /** Which languages to capture, current first; missing for a run of the current one only. */
+        languages?: PageLanguage[];
       };
     };
 

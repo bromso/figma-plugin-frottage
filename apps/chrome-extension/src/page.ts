@@ -1,4 +1,4 @@
-import type { Capture } from "@repo/capture-schema";
+import type { Capture, PageLanguage } from "@repo/capture-schema";
 import type { StaticIconName } from "@repo/ui";
 import type { RunStatus } from "./capture-run";
 import type { RunWidth } from "./plan-widths";
@@ -433,6 +433,7 @@ export function rerunRequest(
   runWidths?: RunWidth[];
   collapseWrappers: boolean;
   themes?: { light: boolean; dark: boolean };
+  languages?: PageLanguage[];
 } {
   const { runWidths } = status.request;
   // A label saved by an older build is left behind: the popup no longer asks for one.
@@ -441,6 +442,9 @@ export function rerunRequest(
     ...(runWidths ? { runWidths: runWidths.map((w) => ({ ...w })) } : {}),
     collapseWrappers,
     ...(status.request.themes ? { themes: { ...status.request.themes } } : {}),
+    ...(status.request.languages
+      ? { languages: status.request.languages.map((l) => ({ ...l })) }
+      : {}),
   };
 }
 
@@ -483,4 +487,76 @@ export function applyProbe(
     themes: { light: current.light, dark: current.dark && start.darkEnabled },
     darkEnabled: start.darkEnabled,
   };
+}
+
+/**
+ * The Languages boxes as the popup first shows them: every language the probe found, with only the
+ * current one ticked. Fewer than two, or a probe that failed, shows no group.
+ */
+export function initialLanguages(probe: { ok: boolean; languages?: PageLanguage[] } | undefined): {
+  languages: PageLanguage[];
+  ticked: string[];
+} {
+  const languages =
+    probe?.ok && probe.languages && probe.languages.length > 1 ? probe.languages : [];
+  return { languages, ticked: languages.filter((l) => l.current).map((l) => l.code) };
+}
+
+/** The boxes once the probe answers; ones the user already changed are kept, if still listed. */
+export function applyLanguages(
+  current: string[],
+  touched: boolean,
+  reply: { ok: boolean; languages?: PageLanguage[] } | undefined
+): { languages: PageLanguage[]; ticked: string[] } {
+  const start = initialLanguages(reply);
+  if (!touched) return start;
+  const listed = new Set(start.languages.map((l) => l.code));
+  const kept = new Set(current.filter((code) => listed.has(code)));
+  for (const code of start.ticked) kept.add(code);
+  return {
+    languages: start.languages,
+    ticked: start.languages.map((l) => l.code).filter((c) => kept.has(c)),
+  };
+}
+
+/** The ticked languages, current first and the page's order after it; the current is always in. */
+export function tickedLanguages(languages: PageLanguage[], ticked: string[]): PageLanguage[] {
+  const on = languages.filter((l) => l.current || ticked.includes(l.code));
+  return [...on.filter((l) => l.current), ...on.filter((l) => !l.current)];
+}
+
+/** The popup's line about the captures a run makes, or null unless more than one language is ticked. */
+export function captureCountLine(
+  devices: number,
+  languages: number,
+  extras: number
+): string | null {
+  if (languages <= 1) return null;
+  const total = devices * languages + extras;
+  const plus = extras > 0 ? `, plus ${extras} for breakpoints` : "";
+  return `${total} captures: ${devices} ${devices === 1 ? "device" : "devices"} × ${languages} languages${plus}`;
+}
+
+function originOf(url: string): string | null {
+  try {
+    const { origin } = new URL(url);
+    return origin === "null" ? null : origin;
+  } catch {
+    return null;
+  }
+}
+
+/** The permission patterns for the languages that live on another origin than `here`, once each. */
+export function otherOrigins(languages: PageLanguage[], here: string): string[] {
+  const own = originOf(here);
+  const origins = languages.flatMap((l) => {
+    const origin = originOf(l.url);
+    return origin && origin !== own ? [`${origin}/*`] : [];
+  });
+  return [...new Set(origins)];
+}
+
+/** What the popup says about a language it couldn't get access to. */
+export function leftOutLine(language: PageLanguage): string {
+  return `${language.name} needs access to ${new URL(language.url).host}, so it was left out.`;
 }
