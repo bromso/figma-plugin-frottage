@@ -274,7 +274,7 @@ export function createLayerSet(api: PluginAPI) {
     const kept = new Map<string, string>(
       fresh ? [] : labels.flatMap((l) => (named.has(l) ? [[l, named.get(l) as string]] : []))
     );
-    if (asDefault !== null) kept.set(asDefault, collection.defaultModeId);
+    if (asDefault !== null && !kept.has(asDefault)) kept.set(asDefault, collection.defaultModeId);
     const wanted = ranked.filter((l) => !kept.has(l));
     /** Room for `limit` modes in all: the wanted labels kept, smallest to largest. */
     const pick = (limit: number | null) => {
@@ -494,6 +494,13 @@ export function createLayerSet(api: PluginAPI) {
     };
 
     /**
+     * The value a missing mode falls back to: a Breakpoint variable's widest mode, its last, since
+     * the modes run narrowest to widest; any other's first.
+     */
+    const widest = (v: PlanVariable): PlanVarValue | undefined =>
+      v.collection === "breakpoint" ? v.values[v.values.length - 1] : v.values[0];
+
+    /**
      * A plan value as Figma holds it: an alias goes to the variable its key settled on. With no
      * variable for it, down the chain to the first that has one, or to the value at its foot, so
      * that the theme still reads right.
@@ -502,7 +509,7 @@ export function createLayerSet(api: PluginAPI) {
       if (typeof value !== "object" || !("alias" in value)) return value;
       const target = variables.get(value.alias);
       if (target) return api.variables.createVariableAlias(target);
-      const next = planned.get(value.alias)?.values[0];
+      const next = widest(planned.get(value.alias) ?? { collection: "", values: [] });
       if (next === undefined || depth >= CREATION_ORDER.length) throw new Error("alias to nothing");
       return figmaValue(next, depth + 1);
     };
@@ -577,7 +584,7 @@ export function createLayerSet(api: PluginAPI) {
     };
 
     const settleVariable = async (token: PlanVariable): Promise<void> => {
-      const [lead] = token.values;
+      const lead = widest(token);
       if (lead === undefined) throw new Error("no value");
       const first = figmaValue(lead);
       if (token.collection === "palette" && token.type === "COLOR" && theirs.size > 0) {

@@ -794,6 +794,52 @@ describe("device and breakpoint modes", () => {
     expect(set.counts().modesDropped).toEqual(["sm"]);
   });
 
+  describe("a Breakpoint collection already there", () => {
+    const labels = ["base", "md", "lg"];
+    const plan = () =>
+      layers({
+        collections: collectionsFor(["Light", "Dark"]).map((c) =>
+          c.kind === "breakpoint" ? { ...c, modes: labels } : c
+        ),
+        variables: [...ALL, sized("breakpoint", "breakpoint/min-width", [0, 768, 1024])],
+      });
+    const seeded = (f: Fake, modes: string[]) => {
+      const old = f.tokens.seedCollection("Breakpoint", modes);
+      old.setSharedPluginData("frottage", "collection", "example.com#layer:breakpoint");
+      return old;
+    };
+
+    test("a mode already named for a label keeps it, whatever the default mode is called", async () => {
+      const f = fakeFigma();
+      const old = seeded(f, ["Mode 1", "base"]);
+      const [, baseMode] = old.modes;
+      const set = await settle(f, plan());
+      expect(set.modeOf("breakpoint", "base")?.modeId).toBe(baseMode.modeId);
+      expect(modesOf(old)).toEqual(["Mode 1", "base", "md", "lg"]);
+      const width = variableIn(f, "Breakpoint", "breakpoint/min-width");
+      expect(width.valuesByMode[baseMode.modeId]).toBe(0);
+      expect(width.valuesByMode[modeId(old, "md")]).toBe(768);
+      expect(width.valuesByMode[modeId(old, "lg")]).toBe(1024);
+    });
+
+    test("a mode outside the labels reads the widest, not the narrowest", async () => {
+      const f = fakeFigma();
+      const old = seeded(f, ["Mode 1", "base"]);
+      await settle(f, plan());
+      const width = variableIn(f, "Breakpoint", "breakpoint/min-width");
+      expect(width.valuesByMode[old.defaultModeId]).toBe(1024);
+    });
+
+    test("a default mode with none of the labels still becomes the first's", async () => {
+      const f = fakeFigma();
+      const old = seeded(f, ["Mode 1"]);
+      await settle(f, plan());
+      expect(modesOf(old)).toEqual(["Mode 1", "md", "lg"]);
+      const width = variableIn(f, "Breakpoint", "breakpoint/min-width");
+      expect(width.valuesByMode[old.defaultModeId]).toBe(0);
+    });
+  });
+
   test("getModeLimit ignores a stored value that is not a positive whole number", async () => {
     const f = fakeFigma();
     for (const bad of ["3", -1, 0, 2.5, null, { n: 3 }]) {
