@@ -1,4 +1,4 @@
-import { MAX_VARIABLES } from "./catalogue";
+import { COLOR_SCOPES, MAX_VARIABLES } from "./catalogue";
 import { primitiveName, sameColour } from "./infer";
 import type {
   PlanCollection,
@@ -20,6 +20,9 @@ import type {
  * Spacing, Border radius and Typography; whatever switches by mode in Color Mode; and a final,
  * single-mode Theme with one token per variable a layer, text style or style uses, each aliasing
  * its source. Every binding moves to its Theme token.
+ *
+ * This is not a pure function: it rekeys `plan.ops` and `plan.textStyles`, and the input's effect
+ * and gradient styles, in place. The returned variables and collections are new.
  */
 
 /** Creation order: each collection only aliases the ones before it. */
@@ -265,7 +268,11 @@ export function layerCollections(layers: StagedLayers, plan: LayeringPlan): Plan
         dropped++;
         return value;
       }
-      const name = free(paletteName(primitiveName(value, rawNames)), paletteNames);
+      const alpha = (value as { a?: number }).a ?? 1;
+      const opaque = alpha >= 1 - 1e-6;
+      // A translucent colour is named for its alpha too: `gray/50-a10`, not `gray/50-2`.
+      const base = paletteName(primitiveName(value, opaque ? rawNames : new Set()));
+      const name = free(opaque ? base : `${base}-a${Math.round(alpha * 100)}`, paletteNames);
       rawNames.add(`color/${name.replace("/", "-")}`);
       const entry: PlanVariable = {
         key: `palette:${name}`,
@@ -276,7 +283,7 @@ export function layerCollections(layers: StagedLayers, plan: LayeringPlan): Plan
         description: `${
           v.cssVar ? `From the site: ${v.cssVar}` : `Inferred: value of ${v.name}`
         } (${layers.modes[i] ?? BASE_MODE})`,
-        scopes: v.scopes,
+        scopes: [...COLOR_SCOPES],
       };
       moved.set(entry.key, entry);
       palette.push(entry);

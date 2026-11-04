@@ -406,6 +406,31 @@ describe("layerCollections", () => {
       expect(border.alias).not.toBe("palette:white");
     });
 
+    test("a translucent entry is named for its alpha, and unique", () => {
+      const layers = colours();
+      layers.variables.push(
+        variable("theme", "ring", "COLOR", [white, { ...oklchDark, a: 0.5 }], COLOR_SCOPES)
+      );
+      const out = run(layers);
+      const border = get(out, "colorMode:color/border").values[1] as { alias: string };
+      expect(get(out, border.alias).name).toMatch(/^gray\/\d+-a10$/);
+      const ring = get(out, "colorMode:color/ring").values[1] as { alias: string };
+      expect(get(out, ring.alias).name).toMatch(/^gray\/\d+-a50$/);
+      const names = out.variables.filter((v) => v.collection === "palette").map((v) => v.name);
+      expect(new Set(names).size).toBe(names.length);
+    });
+
+    test("a synthesised palette entry takes full colour scopes, not its first user's", () => {
+      const layers = colours();
+      const bg = layers.variables.find(
+        (v) => v.name === "background"
+      ) as PlanVariable<StagedCollection>;
+      bg.scopes = ["TEXT_FILL"];
+      const out = run(layers);
+      const dark = get(out, "colorMode:color/background").values[1] as { alias: string };
+      expect(get(out, dark.alias).scopes).toEqual(COLOR_SCOPES);
+    });
+
     test("every Color Mode colour value is an alias to Palette", () => {
       const out = run(colours());
       for (const v of out.variables.filter((x) => x.collection === "colorMode")) {
