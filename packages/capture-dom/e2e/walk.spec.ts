@@ -2485,6 +2485,8 @@ type MappedFrame = {
   };
 };
 
+const RADIUS_LG = 10;
+
 function mapLayered(c: Capture) {
   const plan = mapCapture(c, [{ family: "Inter", style: "Regular" }], {
     ...DEFAULT_IMPORT_OPTIONS,
@@ -2505,12 +2507,30 @@ function mapLayered(c: Capture) {
     );
     return plan.ops.find((o) => o.op === "frame" && o.id === node.id) as unknown as MappedFrame;
   };
-  const values = (key: string) => {
+  const variable = (key: string) => {
     const v = layers.variables.find((x) => x.key === key);
     if (!v) throw new Error(`no variable ${key}`);
-    return v.values as { r: number; g: number; b: number; a: number }[];
+    return v;
   };
-  return { plan, layers, byClass, byText, values };
+  /** A key followed through its `{ alias }` chain: the final value and the keys passed. Color Mode picks by mode. */
+  const resolve = (key: string, mode = 0) => {
+    const chain = [key];
+    let at = variable(key);
+    for (let i = 0; i < 10; i++) {
+      const value = at.values[at.collection === "colorMode" ? mode : 0] as unknown;
+      if (typeof value === "object" && value !== null && "alias" in value) {
+        const next = (value as { alias: string }).alias;
+        chain.push(next);
+        at = variable(next);
+      } else return { value, chain };
+    }
+    throw new Error(`alias loop at ${key}`);
+  };
+  const values = (key: string) =>
+    layers.modes.map(
+      (_, i) => resolve(key, i).value as { r: number; g: number; b: number; a: number }
+    );
+  return { plan, layers, byClass, byText, values, resolve };
 }
 
 for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
@@ -2523,7 +2543,7 @@ for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
     expect(c.tokens.activeTheme).toBe(dark ? "Dark" : undefined);
     expect(c.tokens.themes?.map((t) => t.mode)).toEqual(["Dark"]);
 
-    const { layers, byClass, byText, values } = mapLayered(c);
+    const { layers, byClass, byText, values, resolve } = mapLayered(c);
     expect(layers.modes).toEqual(["Light", "Dark"]);
     expect(layers.activeMode).toBe(dark ? "Dark" : "Light");
     expect(layers.themeSource).toBe("site");
@@ -2531,7 +2551,7 @@ for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
     // Light is the light page's whichever way it was captured; Dark the dark one's.
     const white = { r: 1, g: 1, b: 1, a: 1 };
     for (const name of ["background", "card", "popover"]) {
-      const [light, darkValue] = values(`theme:${name}`);
+      const [light, darkValue] = values(`theme:color/${name}`);
       expect(light).toMatchObject({
         r: expect.closeTo(white.r, 3),
         g: expect.closeTo(white.g, 3),
@@ -2540,28 +2560,37 @@ for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
       expect(darkValue?.r).toBeLessThan(0.3);
     }
     // In Dark, card, popover and background are three colours.
-    const darks = ["background", "card", "popover"].map((n) => values(`theme:${n}`)[1]?.r);
+    const darks = ["background", "card", "popover"].map((n) => values(`theme:color/${n}`)[1]?.r);
     expect(new Set(darks.map((r) => r?.toFixed(3))).size).toBe(3);
-    expect(values("theme:border")[1]?.a).toBeCloseTo(0.1, 2);
+    expect(values("theme:color/border")[1]?.a).toBeCloseTo(0.1, 2);
 
     const card = byClass("card");
     const popover = byClass("popover");
-    expect(byClass("bg-background").fills[0]?.colorKey).toBe("theme:background");
-    expect(card.fills[0]?.colorKey).toBe("theme:card");
-    expect(popover.fills[0]?.colorKey).toBe("theme:popover");
-    expect(card.strokes?.colorKey).toBe("theme:border");
-    expect(card.radiusKeys).toEqual(Array(4).fill("primitives:radius/lg"));
+    expect(byClass("bg-background").fills[0]?.colorKey).toBe("theme:color/background");
+    expect(card.fills[0]?.colorKey).toBe("theme:color/card");
+    expect(popover.fills[0]?.colorKey).toBe("theme:color/popover");
+    expect(card.strokes?.colorKey).toBe("theme:color/border");
+    // Radius and spacing bind to Theme tokens whose chains end in the raw collections.
+    const end = (key: string | null | undefined, collection: string, px: number) => {
+      const { value, chain } = resolve(key as string);
+      expect(key?.startsWith("theme:")).toBe(true);
+      expect(chain.at(-1)?.startsWith(`${collection}:`)).toBe(true);
+      expect(value).toBe(px);
+    };
+    for (const key of card.radiusKeys ?? []) end(key, "radius", RADIUS_LG);
+    expect(card.radiusKeys).toHaveLength(4);
 
     // Padding inside a border binds too: `border p-6` is 25 px from the edge, 24 inside the stroke.
-    const six = "primitives:spacing/6";
-    expect(card.layout.spacingKeys?.padding).toEqual([six, six, six, six]);
+    const six = card.layout.spacingKeys?.padding ?? [];
+    expect(six).toHaveLength(4);
+    for (const key of six) end(key, "spacing", 24);
     expect(card.layout.padding).toEqual([25, 25, 25, 25]);
     expect(card.layout.strokesIncluded).toBe(true);
-    const four = "primitives:spacing/4";
-    expect(popover.layout.spacingKeys?.padding).toEqual([four, four, four, four]);
+    for (const key of popover.layout.spacingKeys?.padding ?? []) end(key, "spacing", 16);
+    expect(popover.layout.spacingKeys?.padding).toHaveLength(4);
     const cancel = byText("Cancel");
-    const [two, three] = ["primitives:spacing/2", "primitives:spacing/3"];
-    expect(cancel.layout.spacingKeys?.padding).toEqual([two, three, two, three]);
+    const pad = cancel.layout.spacingKeys?.padding ?? [];
+    for (const [i, px] of [8, 12, 8, 12].entries()) end(pad[i], "spacing", px);
   });
 }
 
