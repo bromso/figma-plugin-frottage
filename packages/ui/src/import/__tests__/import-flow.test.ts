@@ -1608,6 +1608,17 @@ describe("a device set", () => {
     expect(breakpoint?.modes).toEqual(["min 1400", "md", "base"]);
   });
 
+  test("an unticked extra's breakpoint isn't reported as having no capture", async () => {
+    const { last } = await runDevices([devicesFile()], fakePort(), (_, d) => ({
+      ...d,
+      contents: { devices: [true, true, true], extras: [false], placement: "new-page" },
+    }));
+    if (last.step !== "done") throw new Error(last.step);
+    const notes = last.sets[0]?.notes ?? [];
+    expect(notes).not.toContain("No capture for the lg breakpoint.");
+    expect(notes).toContain("No capture for the sm breakpoint.");
+  });
+
   test("the review's summary follows the ticks", async () => {
     let collections = "";
     await runDevices([devicesFile()], fakePort(), (review, d) => {

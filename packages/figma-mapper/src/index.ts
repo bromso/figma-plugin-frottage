@@ -6,6 +6,7 @@ export {
   type DeviceFrame,
   type DeviceMerge,
   deviceWidth,
+  type MergeOptions,
   mergeDevices,
 } from "./devices";
 export { matchFont } from "./fonts";

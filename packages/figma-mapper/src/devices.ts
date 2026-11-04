@@ -223,7 +223,12 @@ const TYPE_FIELDS = [
   { field: "letterSpacing", suffix: "tracking", scope: "LETTER_SPACING" },
 ] as const;
 
-export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
+export type MergeOptions = {
+  /** Breakpoints whose extra capture the user left out: not reported as having none. */
+  leftOut?: string[];
+};
+
+export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {}): DeviceMerge {
   const report: string[] = [];
   // Widest first; the widest entry is the primary one, and wins a tie.
   const order = entries
@@ -247,7 +252,9 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
     const sheets = unreadable === 1 ? "1 stylesheet" : `${unreadable} stylesheets`;
     report.push(`Breakpoints from ${sheets} couldn't be read.`);
   }
-  for (const name of missing) report.push(`No capture for the ${name} breakpoint.`);
+  for (const name of missing) {
+    if (!options.leftOut?.includes(name)) report.push(`No capture for the ${name} breakpoint.`);
+  }
   const modeNames = ranges.map((r) => r.name);
   /** The widest range, whose value a token that can't switch by breakpoint keeps. */
   const widest = ranges.reduce((best, r, at) => (r.min > (ranges[best]?.min ?? -1) ? at : best), 0);

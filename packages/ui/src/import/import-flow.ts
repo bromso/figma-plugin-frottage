@@ -620,10 +620,16 @@ export function plainFramesLine(count: number): string {
 }
 
 /** A page captured on devices, and extra captures for its breakpoints: a frame per device. */
-function devicesSpec(set: VersionSet, ctx: SetContext, placement: Placement): SetSpec {
+function devicesSpec(
+  set: VersionSet,
+  ctx: SetContext,
+  placement: Placement,
+  leftOut: string[]
+): SetSpec {
   const { port, signal, options, plans } = ctx;
   const merge = mergeDevices(
-    set.versions.map((v, i): DeviceEntry => ({ capture: v.capture, plan: plans[i] as Plan }))
+    set.versions.map((v, i): DeviceEntry => ({ capture: v.capture, plan: plans[i] as Plan })),
+    { leftOut }
   );
   plans.length = 0;
   const { layers } = merge;
@@ -1051,7 +1057,7 @@ export async function runImports(
           unit,
         };
         const outcome = await importSet(set, ctx, () =>
-          devices ? devicesSpec(set, ctx, placement) : modesSpec(set, ctx)
+          devices ? devicesSpec(set, ctx, placement, leftOutOf(whole, set)) : modesSpec(set, ctx)
         );
         if (outcome.cancelled) return cancelled();
         versions.push(...outcome.versions);
@@ -1139,6 +1145,14 @@ async function reviewContents(
     ),
     summarize,
   };
+}
+
+/** The breakpoints of the extras the user unticked in the review. */
+function leftOutOf(whole: VersionSet, kept: VersionSet): string[] {
+  return whole.versions.flatMap((v) => {
+    const breakpoint = v.capture.version?.breakpoint;
+    return isExtra(v) && breakpoint && !kept.versions.includes(v) ? [breakpoint] : [];
+  });
 }
 
 /** The review's ticks are untrusted: anything that isn't false stays ticked. */

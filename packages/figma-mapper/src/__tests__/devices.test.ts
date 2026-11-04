@@ -323,6 +323,12 @@ describe("mergeDevices", () => {
     expect(mergeDevices(mainline()).report.some((l) => l.includes("stylesheet"))).toBe(false);
   });
 
+  test("a breakpoint whose extra the user left out isn't reported as having no capture", () => {
+    const { report } = mergeDevices(mainline().slice(0, 3), { leftOut: ["lg"] });
+    expect(report).not.toContain("No capture for the lg breakpoint.");
+    expect(report).toContain("No capture for the sm breakpoint.");
+  });
+
   test("frames list the devices with their modes, and no extra", () => {
     const { frames } = mergeDevices(mainline());
     expect(frames).toEqual([
