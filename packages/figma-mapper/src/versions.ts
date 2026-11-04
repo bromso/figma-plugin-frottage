@@ -121,7 +121,7 @@ function joinSpacing(
 }
 
 /** A later version's text styles: `shared` seeds read a token that another seed joined. */
-type StyleJoins = {
+export type StyleJoins = {
   joins: Map<PlanTextStyle, PlanTextStyle>;
   shared: Map<PlanTextStyle, PlanTextStyle>;
 };
@@ -133,9 +133,9 @@ function fixedLook(s: PlanTextStyle): string {
 }
 
 /** Per text style, how many times each string is set in it. */
-type TextCounts = Map<string, Map<string, number>>;
+export type TextCounts = Map<string, Map<string, number>>;
 
-function textsOf(ops: PlanOp[]): TextCounts {
+export function textsOf(ops: PlanOp[]): TextCounts {
   const counts: TextCounts = new Map();
   const add = (text: string, runs: PlanRun[]) => {
     for (const { styleKey, start, end } of runs) {
@@ -212,7 +212,11 @@ function ranksOf(styles: PlanTextStyle[]): Map<PlanTextStyle, string> {
   return ranks;
 }
 
-function joinStyles(
+/**
+ * A later version's text styles joined to the seeds: by shared text, then by the same value in the
+ * same role, then by rank. Used by `mergeVersions` and by `mergeDevices`.
+ */
+export function joinStyles(
   seeds: PlanTextStyle[],
   tokens: PlanTextStyle[],
   seedTexts: TextCounts,

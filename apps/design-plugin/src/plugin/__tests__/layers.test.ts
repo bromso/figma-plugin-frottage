@@ -23,6 +23,8 @@ const NAMES = {
   spacing: "Spacing",
   radius: "Border radius",
   typography: "Typography",
+  device: "Device",
+  breakpoint: "Breakpoint",
   colorMode: "Color Mode",
   theme: "Theme",
 } as const;

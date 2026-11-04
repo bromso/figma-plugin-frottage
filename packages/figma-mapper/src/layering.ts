@@ -26,20 +26,25 @@ import type {
  */
 
 /** Creation order: each collection only aliases the ones before it. */
-const ORDER: PlanCollectionKind[] = [
+export const COLLECTION_ORDER: PlanCollectionKind[] = [
   "palette",
   "spacing",
   "radius",
   "typography",
+  "device",
+  "breakpoint",
   "colorMode",
   "theme",
 ];
+const ORDER = COLLECTION_ORDER;
 
 export const COLLECTION_NAMES: Record<PlanCollectionKind, string> = {
   palette: "Palette",
   spacing: "Spacing",
   radius: "Border radius",
   typography: "Typography",
+  device: "Device",
+  breakpoint: "Breakpoint",
   colorMode: "Color Mode",
   theme: "Theme",
 };

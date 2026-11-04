@@ -51,6 +51,8 @@ const CREATION_ORDER: PlanCollectionKind[] = [
   "spacing",
   "radius",
   "typography",
+  "device",
+  "breakpoint",
   "colorMode",
   "theme",
 ];
@@ -59,6 +61,8 @@ const ONE_MODE: Record<PlanCollectionKind, string> = {
   spacing: "Base",
   radius: "Base",
   typography: "Base",
+  device: "Default",
+  breakpoint: "base",
   colorMode: "Light",
   theme: "Default",
 };

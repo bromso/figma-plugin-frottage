@@ -1,7 +1,8 @@
 export { buildCatalogue, type Catalogue } from "./catalogue";
 export { extractComponents } from "./components";
+export { type DeviceEntry, type DeviceFrame, type DeviceMerge, mergeDevices } from "./devices";
 export { matchFont } from "./fonts";
-export { COLLECTION_NAMES, layerCollections, paletteName } from "./layering";
+export { COLLECTION_NAMES, COLLECTION_ORDER, layerCollections, paletteName } from "./layering";
 export { inferChildLayout, inferLayout } from "./layout";
 export { batchOps, type MissingFont, mapCapture, missingFonts } from "./map";
 export { isReadableName, layerName } from "./names";

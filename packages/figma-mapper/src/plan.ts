@@ -336,12 +336,17 @@ export type PlanSpacing = {
 /** A variable's value in one mode: a colour in 0..1, a number, a string, or another variable's key. */
 export type PlanVarValue = (PlanRgb & { a: number }) | number | string | { alias: string };
 
-/** The collections a single-page import makes, in the order they are created. */
+/**
+ * The collections an import makes, in the order they are created. Device and Breakpoint come only
+ * from a set of device captures.
+ */
 export type PlanCollectionKind =
   | "palette"
   | "spacing"
   | "radius"
   | "typography"
+  | "device"
+  | "breakpoint"
   | "colorMode"
   | "theme";
 
