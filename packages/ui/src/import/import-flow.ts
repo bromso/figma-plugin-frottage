@@ -2,20 +2,24 @@ import { type Capture, FrottageFileError, unpackFrottageSet } from "@repo/captur
 import { sha256Hex } from "@repo/capture-schema/hash";
 import {
   batchOps,
+  COLLECTION_NAMES,
   DEFAULT_IMPORT_OPTIONS,
+  type DeviceEntry,
   type FontRef,
   type ImportOptions,
   type ImportReport,
   mapCapture,
+  mergeDevices,
   mergeVersions,
   missingFonts,
+  type PlanLayers,
   type PlanOp,
   type PlanTokens,
   type PlanVersionTokens,
   stripTokens,
 } from "@repo/figma-mapper";
 import { messageForError } from "./messages";
-import { groupVersions, type LoadedFile, type VersionSet } from "./versions";
+import { groupVersions, isExtra, type LoadedFile, type VersionSet } from "./versions";
 
 export { messageForError };
 
@@ -91,6 +95,24 @@ export type FileFailure = {
   size?: boolean;
 };
 
+export type Placement = "new-page" | "current-page";
+
+/** What a device set's collections and mode warnings come to, for the ticks given. */
+export type ContentsSummary = { collections: string; overLimit: string[] };
+
+/** What a device set holds, shown before import: its captures, ticked, and what they make. */
+export type ReviewContents = {
+  devices: { name: string; width: number; on: boolean }[];
+  extras: { breakpoint: string; width: number; on: boolean }[];
+  /** The collections the ticked captures make, in one line. */
+  collections: string;
+  placement: Placement;
+  /** One warning per collection that needs more modes than the remembered limit. */
+  overLimit: string[];
+  /** The line and warnings again, for other ticks: one boolean per device and per extra. */
+  summarize?: (devices: boolean[], extras: boolean[]) => ContentsSummary;
+};
+
 export type ImportState =
   | { step: "idle" }
   | {
@@ -100,6 +122,10 @@ export type ImportState =
       families: string[];
       options: ImportOptions;
       hostname: string;
+      /** The first device set of the drop, when it has one. */
+      contents?: ReviewContents;
+      /** The user asked for the options, which a device set's review otherwise keeps closed. */
+      optionsOpen?: boolean;
     }
   | {
       step: "working";
@@ -124,11 +150,21 @@ export type ImportPort = {
   listFonts(): Promise<FontRef[]>;
   /** Opens a set of versions; only `endSet` or `cancel` closes it. */
   beginSet(): Promise<void>;
+  /** Opens a device set with its merged layers; only `endSet` or `cancel` closes it. */
+  beginDeviceSet(meta: {
+    name: string;
+    layers: PlanLayers;
+    options: ImportOptions;
+    placement: Placement;
+  }): Promise<void>;
+  /** The mode limit Figma last refused a mode at, or null. */
+  getModeLimit(): Promise<number | null>;
   begin(meta: {
     name: string;
     fonts: FontRef[];
     totalOps: number;
     version?: { index: number; label: string };
+    device?: DeviceModes;
   }): Promise<void>;
   tokens(tokens: PlanTokens, options: ImportOptions): Promise<void>;
   /** A set's tokens. Gives the versions that got no mode, which must lose their tokens. */
@@ -167,9 +203,14 @@ export type ImportPort = {
   cancel(): Promise<void>;
 };
 
+/** A device frame's Device mode, and its Breakpoint mode when the page has any. */
+type DeviceModes = { mode: string; breakpoint: string | null };
+
 type SetResult = {
   rootIds: string[];
   layoutFailures: number;
+  /** A device set's frames that got no Device or Breakpoint mode. */
+  plainVersions?: number[];
   stylesCreated: number;
   stylesReused: number;
   variablesCreated: number;
@@ -179,8 +220,15 @@ type SetResult = {
   modesDropped: number;
 };
 
-/** What the user confirmed in the review step. `fonts` maps a missing family to a chosen one. */
-export type ReviewDecision = { options: ImportOptions; fonts: ReadonlyMap<string, string> };
+/**
+ * What the user confirmed in the review step. `fonts` maps a missing family to a chosen one;
+ * `contents` has a tick per device and per extra of the review's contents, and where they go.
+ */
+export type ReviewDecision = {
+  options: ImportOptions;
+  fonts: ReadonlyMap<string, string>;
+  contents?: { devices: boolean[]; extras: boolean[]; placement: Placement };
+};
 
 export type ReviewSession = {
   /** Review even when no font is missing. */
@@ -322,6 +370,8 @@ export type PreparedVersion = {
   version: { name: string; label: string };
   /** This version's index in its set, when it's in one of two or more. */
   setIndex?: number;
+  /** A device set's frame: its modes. It sends its own tokens, which carry the set's layers. */
+  device?: DeviceModes;
 };
 
 type VersionContext = {
@@ -388,7 +438,7 @@ export async function importVersion(
   ctx: VersionContext
 ): Promise<VersionReport | null> {
   const { port, onState, signal, file } = ctx;
-  const { plan, assets, version, setIndex } = prepared;
+  const { plan, assets, version, setIndex, device } = prepared;
   const inSet = setIndex !== undefined;
   const before = ctx.progress?.done ?? 0;
   let begun = false;
@@ -410,11 +460,13 @@ export async function importVersion(
       fonts: plan.fonts,
       totalOps: plan.ops.length,
       ...(inSet ? { version: { index: setIndex, label: version.label } } : {}),
+      ...(device ? { device } : {}),
     });
     // A Cancel pressed while begin ran waits for it to return, then undoes what it made.
     if (signal?.aborted) return await stop();
-    // A set's tokens went ahead of its first version.
-    if (!inSet) await port.tokens(plan.tokens, ctx.options);
+    // A set's tokens went ahead of its first version. A device set's layers did, but each device
+    // still sends its own text styles, with the layers they bind to.
+    if (!inSet || device) await port.tokens(plan.tokens, ctx.options);
 
     for (const hash of plan.assetHashes) {
       if (signal?.aborted) return await stop();
@@ -472,20 +524,119 @@ type SetContext = Pick<VersionContext, "port" | "onState" | "signal" | "options"
 
 type SetOutcome = { versions: VersionReport[]; report: SetReport | null; cancelled: boolean };
 
-/**
- * Create the versions of one page as one set: one token collection, a mode per version, one undo
- * step. A version that fails is named and the others stay, and a set with none left is undone.
- * Cancel takes back the whole set.
- */
-async function importSet(set: VersionSet, ctx: SetContext): Promise<SetOutcome> {
-  const { port, onState, signal, options, plans, fail, unit } = ctx;
-  /** A version named by its size first, since the page title is the same for all of a file. */
-  const nameOf = (v: LoadedFile) => {
-    const label = v.capture.version?.label;
-    return label ? `${label} · ${v.name}` : v.name;
+/** One frame of a set: its version, its plan, and the label its frame and mode go by. */
+type SetMember = { version: LoadedFile; plan: Plan; label: string; device?: DeviceModes };
+
+/** How one kind of set opens and reports. Made inside the set's try, so a merge that throws fails it. */
+type SetSpec = {
+  members: SetMember[];
+  /** Opens the set in the sandbox. Gives the members that got no mode, or null when cancelled. */
+  open(): Promise<Set<number> | null>;
+  /** The set's report lines, from what `endSet` gave. */
+  notes(result: SetResult): string[];
+  /** Whether a member left without its mode counts as a plain frame of `modesDropped`. */
+  modesOwnFrames: boolean;
+};
+
+/** A version named by its size first, since the page title is the same for all of a file. */
+const nameOf = (v: LoadedFile) => {
+  const label = v.capture.version?.label;
+  return label ? `${label} · ${v.name}` : v.name;
+};
+
+/** A set of theme or language versions: one token collection, a mode per version (Stage 3). */
+function modesSpec(set: VersionSet, ctx: SetContext): SetSpec {
+  const { port, signal, options, plans } = ctx;
+  const merged = mergeVersions(
+    set.versions.map((v, i) => ({
+      label: v.capture.version?.label ?? "",
+      plan: plans[i] as Plan,
+      cssValues: v.capture.tokens.cssCustomProperties,
+    }))
+  );
+  plans.length = 0;
+  return {
+    // Mode names are the labels made unique, so the frames are told apart the same way.
+    members: set.versions.map((version, i) => ({
+      version,
+      plan: merged.plans[i] as Plan,
+      label: merged.tokens.modes[i] ?? "",
+    })),
+    async open() {
+      await port.beginSet();
+      if (signal?.aborted) return null;
+      return new Set((await port.importModes(merged.tokens, options)).droppedVersions);
+    },
+    notes: () => merged.report,
+    modesOwnFrames: true,
   };
+}
+
+/** The sentence for frames a device set left without their Device or Breakpoint mode. */
+export function plainFramesLine(count: number): string {
+  return count === 1
+    ? "1 frame couldn't get its device or breakpoint modes and uses the first mode's values."
+    : `${count} frames couldn't get their device or breakpoint modes and use the first mode's values.`;
+}
+
+/** A page captured on devices, and extra captures for its breakpoints: a frame per device. */
+function devicesSpec(set: VersionSet, ctx: SetContext, placement: Placement): SetSpec {
+  const { port, signal, options, plans } = ctx;
+  const merge = mergeDevices(
+    set.versions.map((v, i): DeviceEntry => ({ capture: v.capture, plan: plans[i] as Plan }))
+  );
+  plans.length = 0;
+  const { layers } = merge;
+  const modesOf = (kind: "device" | "breakpoint") =>
+    layers.collections.find((c) => c.kind === kind)?.modes ?? [];
+  return {
+    members: merge.frames.map((frame) => ({
+      version: set.versions[frame.index] as LoadedFile,
+      plan: merge.plans[frame.index] as Plan,
+      label: frame.device,
+      device: { mode: frame.device, breakpoint: frame.breakpoint },
+    })),
+    async open() {
+      const first = set.versions[0] as LoadedFile;
+      await port.beginDeviceSet({
+        name: importName(first.capture.source),
+        layers,
+        options,
+        placement,
+      });
+      return signal?.aborted ? null : new Set();
+    },
+    notes(result) {
+      const lines: string[] = [];
+      const devices = modesOf("device");
+      const breakpoints = modesOf("breakpoint");
+      if (devices.length > 0) lines.push(`${COLLECTION_NAMES.device}: ${devices.join(", ")}`);
+      if (breakpoints.length > 0) {
+        lines.push(`${COLLECTION_NAMES.breakpoint}: ${breakpoints.join(", ")}`);
+      }
+      lines.push(...merge.report);
+      const plain = result.plainVersions?.length ?? 0;
+      if (plain > 0) lines.push(plainFramesLine(plain));
+      return lines;
+    },
+    modesOwnFrames: false,
+  };
+}
+
+/**
+ * Create one page's set of frames: one collection set, the modes each frame takes, one undo step.
+ * A frame that fails is named and the others stay, and a set with none left is undone. Cancel
+ * takes back the whole set.
+ */
+async function importSet(
+  set: VersionSet,
+  ctx: SetContext,
+  makeSpec: () => SetSpec
+): Promise<SetOutcome> {
+  const { port, onState, signal, options, fail, unit } = ctx;
   const kept: VersionReport[] = [];
   const failed = new Set<LoadedFile>();
+  let members: SetMember[] = [];
   let open = false;
   const cancelled = { versions: [], report: null, cancelled: true };
   const stop = async () => {
@@ -497,40 +648,33 @@ async function importSet(set: VersionSet, ctx: SetContext): Promise<SetOutcome> 
   };
 
   try {
-    const merged = mergeVersions(
-      set.versions.map((v, i) => ({
-        label: v.capture.version?.label ?? "",
-        plan: plans[i] as Plan,
-        cssValues: v.capture.tokens.cssCustomProperties,
-      }))
-    );
-    plans.length = 0;
-    const total = merged.plans.reduce((sum, plan) => sum + plan.ops.length, 0);
+    const spec = makeSpec();
+    members = spec.members;
+    const total = members.reduce((sum, m) => sum + m.plan.ops.length, 0);
 
-    // Set first: a beginSet that fails halfway may still have created state to cancel.
+    // Set first: an open that fails halfway may still have created state to cancel.
     open = true;
-    await port.beginSet();
-    if (signal?.aborted) return await stop();
-    const dropped = new Set((await port.importModes(merged.tokens, options)).droppedVersions);
+    const dropped = await spec.open();
+    if (!dropped || signal?.aborted) return await stop();
 
     let plainFrames = 0;
     let done = 0;
-    for (const [i, version] of set.versions.entries()) {
+    for (const [i, member] of members.entries()) {
       if (signal?.aborted) return await stop();
+      const { version } = member;
       const index = ctx.firstFile + i;
       const file: FileInfo = { index, total: ctx.totalFiles, name: version.name, unit };
       onState({ step: "working", done, total, file });
-      const merging = merged.plans[i] as Plan;
-      const plan = dropped.has(i) ? stripTokens(merging) : merging;
+      const plan = dropped.has(i) ? stripTokens(member.plan) : member.plan;
       try {
         const report = await importVersion(
           {
             plan,
             assets: await ctx.assetsOf(version),
             rootName: importName(version.capture.source),
-            // Mode names are the labels made unique, so the frames are told apart the same way.
-            version: { name: version.name, label: merged.tokens.modes[i] ?? "" },
+            version: { name: version.name, label: member.label },
             setIndex: i,
+            ...(member.device ? { device: member.device } : {}),
           },
           { port, onState, signal, options, file, progress: { done, total } }
         );
@@ -545,8 +689,8 @@ async function importSet(set: VersionSet, ctx: SetContext): Promise<SetOutcome> 
         fail(nameOf(version), error, version.several);
       }
       done += plan.ops.length;
-      // Let this version's plan go before the next is made.
-      merged.plans[i] = undefined as unknown as Plan;
+      // Let this frame's plan go before the next is made.
+      member.plan = undefined as unknown as Plan;
     }
 
     if (signal?.aborted) return await stop();
@@ -559,7 +703,7 @@ async function importSet(set: VersionSet, ctx: SetContext): Promise<SetOutcome> 
       report: {
         name: importName((set.versions[0] as LoadedFile).capture.source),
         modes: result.modes,
-        modesDropped: result.modesDropped,
+        modesDropped: spec.modesOwnFrames ? result.modesDropped : 0,
         plainFrames,
         stylesCreated: result.stylesCreated,
         stylesReused: result.stylesReused,
@@ -567,11 +711,11 @@ async function importSet(set: VersionSet, ctx: SetContext): Promise<SetOutcome> 
         variablesReused: result.variablesReused,
         tokenFailures: result.tokenFailures,
         layoutFailures: result.layoutFailures,
-        notes: merged.report,
+        notes: spec.notes(result),
       },
     };
   } catch (error) {
-    // Nothing of the set is left, so every version of it failed.
+    // Nothing of the set is left, so every frame of it failed.
     if (open) {
       try {
         await port.cancel();
@@ -579,10 +723,58 @@ async function importSet(set: VersionSet, ctx: SetContext): Promise<SetOutcome> 
         // The failures below are what matter.
       }
     }
-    for (const version of set.versions)
+    const frames = members.length > 0 ? members.map((m) => m.version) : set.versions;
+    for (const version of frames)
       if (!failed.has(version)) fail(nameOf(version), error, version.several);
     return { versions: [], report: null, cancelled: false };
   }
+}
+
+/** Whether a set imports as devices: two or more captures, none of them a theme or a language. */
+export function isDeviceSet(set: VersionSet): boolean {
+  return (
+    set.versions.length > 1 &&
+    set.versions.every((v) => (v.capture.version?.kind ?? "viewport") === "viewport")
+  );
+}
+
+/** Collections that switch by mode, listed with their counts; the rest are listed by name. */
+const SWITCHING = new Set(["device", "breakpoint", "colorMode"]);
+
+/** The collections a device set's layers make, in one line, and the modes over `limit`. */
+export function summarizeLayers(layers: PlanLayers, limit: number | null): ContentsSummary {
+  const switching: string[] = [];
+  const named: string[] = [];
+  const overLimit: string[] = [];
+  for (const { kind, name, modes } of layers.collections) {
+    if (!SWITCHING.has(kind)) {
+      named.push(name);
+      continue;
+    }
+    const n = modes.length;
+    switching.push(
+      switching.length === 0 ? `${name} ${n} ${n === 1 ? "mode" : "modes"}` : `${name} ${n}`
+    );
+    if (limit !== null && n > limit) {
+      overLimit.push(
+        `${name} needs ${n} modes. This file allows ${limit}, so ${n - limit} will be left out.`
+      );
+    }
+  }
+  const parts = [...switching, ...(named.length > 0 ? [named.join(", ")] : [])];
+  return { collections: parts.join(" · "), overLimit };
+}
+
+/** The versions of a device set the ticks keep: one tick per device, then one per extra. */
+function ticked<T>(
+  versions: T[],
+  isExtraAt: (v: T) => boolean,
+  devices: boolean[],
+  extras: boolean[]
+): T[] {
+  let d = 0;
+  let e = 0;
+  return versions.filter((v) => (isExtraAt(v) ? extras[e++] : devices[d++]) !== false);
 }
 
 /**
@@ -677,20 +869,28 @@ export async function runImports(
 
     const missing = new Map<string, string>();
     let firstPlan: Plan | undefined;
-    // A page imported on its own gets the Primitives and Theme collections; a set keeps one.
+    // A page imported on its own, or on devices, gets the layered collections; a set of themes or
+    // languages keeps one.
     const alone = (o: ImportOptions) => ({ ...o, layers: true });
+    const layered = new Set(sets.filter(isDeviceSet).flatMap((s) => s.versions));
+    /** The review shows the first device set's contents, from these plans. */
+    const firstDevices = sets.find(isDeviceSet);
+    const previewPlans = new Map<LoadedFile, Plan>();
     for (const v of ordered) {
-      const plan = mapCapture(
-        v.capture,
-        available,
-        ordered.length === 1 ? alone(options) : options
-      );
+      const layers = ordered.length === 1 || layered.has(v);
+      const plan = mapCapture(v.capture, available, layers ? alone(options) : options);
       if (ordered.length === 1) firstPlan = plan;
+      if (session && firstDevices?.versions.includes(v)) previewPlans.set(v, plan);
       mergeMissing(missing, missingFonts(plan.report, available));
     }
+    const contents =
+      session && firstDevices
+        ? await reviewContents(firstDevices, previewPlans, await readModeLimit(port))
+        : undefined;
 
     let overrides: Record<string, string> | undefined;
-    if (session && (missing.size > 0 || session.forceReview)) {
+    let deviceChoice: ReviewDecision["contents"];
+    if (session && (missing.size > 0 || session.forceReview || contents)) {
       const families = [...new Set(available.map((f) => f.family))];
       const reviewFonts: ReviewFont[] = [];
       for (const [family, nearest] of missing) {
@@ -698,9 +898,17 @@ export async function runImports(
         const choice = typeof stored === "string" && families.includes(stored) ? stored : nearest;
         reviewFonts.push({ family, choice });
       }
-      onState({ step: "review", missing: reviewFonts, families, options, hostname });
+      onState({
+        step: "review",
+        missing: reviewFonts,
+        families,
+        options,
+        hostname,
+        ...(contents ? { contents, optionsOpen: session.forceReview } : {}),
+      });
       const decision = await session.decide();
       if (!decision) return onState({ step: "idle" });
+      if (contents) deviceChoice = sanitizeContents(decision.contents);
       // The review is gone: show progress at once, with a Cancel that works.
       onState(working(1, ordered[0]?.name ?? ""));
       options = sanitizeOptions(decision.options);
@@ -718,6 +926,8 @@ export async function runImports(
       if (hostname) await writePref(port, `options:${hostname}`, options);
       for (const [family, chosen] of changed) await writePref(port, `font:${family}`, chosen);
     }
+    // The review is over, and its summary with it: the plans go, to be made again below.
+    previewPlans.clear();
 
     // A set's plans are built after the review and before its first begin, so their tokens can be
     // merged; each plan is dropped once its version is created.
@@ -740,20 +950,33 @@ export async function runImports(
       }
       return again.assets;
     };
+    const placement = deviceChoice?.placement ?? "new-page";
     let index = 0;
-    for (const set of sets) {
+    for (const whole of sets) {
       const firstFile = index + 1;
-      index += set.versions.length;
+      index += whole.versions.length;
       if (signal?.aborted) return cancelled();
+      const devices = isDeviceSet(whole);
+      // The captures the user unticked are left out, of the set the review showed.
+      const choice = devices && whole === firstDevices ? deviceChoice : undefined;
+      const set = choice
+        ? {
+            ...whole,
+            versions: ticked(whole.versions, isExtra, choice.devices, choice.extras),
+          }
+        : whole;
+      // With every device unticked there is nothing to make.
+      if (devices && !set.versions.some((v) => !isExtra(v))) continue;
       // A set counts uses across its versions, in `mergeVersions`, so each plan proposes them all.
-      const planOptions = set.versions.length > 1 ? { ...options, tokenFloor: 1 } : alone(options);
+      const planOptions =
+        set.versions.length > 1 && !devices ? { ...options, tokenFloor: 1 } : alone(options);
       const plans = set.versions.map(
         (v) => firstPlan ?? mapCapture(v.capture, available, planOptions, overrides)
       );
 
-      if (set.versions.length > 1) {
+      if (set.versions.length > 1 || devices) {
         onState(working(firstFile, set.versions[0]?.name ?? ""));
-        const outcome = await importSet(set, {
+        const ctx: SetContext = {
           port,
           onState,
           signal,
@@ -764,7 +987,10 @@ export async function runImports(
           assetsOf,
           fail,
           unit,
-        });
+        };
+        const outcome = await importSet(set, ctx, () =>
+          devices ? devicesSpec(set, ctx, placement) : modesSpec(set, ctx)
+        );
         if (outcome.cancelled) return cancelled();
         versions.push(...outcome.versions);
         if (outcome.report) reports.push(outcome.report);
@@ -802,6 +1028,64 @@ export async function runImports(
   } catch (error) {
     onState({ step: "error", message: messageForError(error) });
   }
+}
+
+async function readModeLimit(port: ImportPort): Promise<number | null> {
+  try {
+    const limit = await port.getModeLimit();
+    return typeof limit === "number" && limit > 0 ? limit : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A device set's contents as the review shows them, all ticked, with what they make. */
+async function reviewContents(
+  set: VersionSet,
+  plans: ReadonlyMap<LoadedFile, Plan>,
+  limit: number | null
+): Promise<ReviewContents> {
+  await yieldToPaint();
+  const width = (v: LoadedFile) => Math.round(v.capture.source.viewport.w);
+  const devices = set.versions.filter((v) => !isExtra(v));
+  const extras = set.versions.filter(isExtra);
+  const summarize = (deviceTicks: boolean[], extraTicks: boolean[]): ContentsSummary => {
+    const kept = ticked(set.versions, isExtra, deviceTicks, extraTicks);
+    if (!kept.some((v) => !isExtra(v))) return { collections: "", overLimit: [] };
+    const entries = kept.map(
+      (v): DeviceEntry => ({ capture: v.capture, plan: plans.get(v) as Plan })
+    );
+    return summarizeLayers(mergeDevices(entries).layers, limit);
+  };
+  return {
+    devices: devices.map((v) => ({
+      name: v.capture.version?.device?.name ?? v.capture.version?.label ?? String(width(v)),
+      width: width(v),
+      on: true,
+    })),
+    extras: extras.map((v) => ({
+      breakpoint: v.capture.version?.breakpoint ?? "",
+      width: width(v),
+      on: true,
+    })),
+    placement: "new-page",
+    ...summarize(
+      devices.map(() => true),
+      extras.map(() => true)
+    ),
+    summarize,
+  };
+}
+
+/** The review's ticks are untrusted: anything that isn't false stays ticked. */
+function sanitizeContents(raw: ReviewDecision["contents"]): ReviewDecision["contents"] {
+  if (!raw) return undefined;
+  const ticks = (list: unknown) => (Array.isArray(list) ? list.map((t) => t !== false) : []);
+  return {
+    devices: ticks(raw.devices),
+    extras: ticks(raw.extras),
+    placement: raw.placement === "current-page" ? "current-page" : "new-page",
+  };
 }
 
 /** A file re-read for its images must still hold the images it held when it was planned. */

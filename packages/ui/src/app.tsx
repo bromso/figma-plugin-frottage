@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { type ContentsChoice, ContentsSection } from "./import/contents";
 import { FontTable } from "./import/font-table";
 import {
   failuresHeading,
@@ -273,6 +274,28 @@ function Review({
   const headingRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => headingRef.current?.focus(), []);
   const [choices, setChoices] = useState<ReadonlyMap<string, string>>(new Map());
+  const { contents } = state;
+  const [picked, setPicked] = useState<ContentsChoice | null>(() =>
+    contents
+      ? {
+          devices: contents.devices.map((d) => d.on),
+          extras: contents.extras.map((e) => e.on),
+          placement: contents.placement,
+        }
+      : null
+  );
+  // The line and warnings follow the ticks; as shown at first until one changes.
+  const summary = useMemo(() => {
+    if (!contents || !picked) return null;
+    const first = { collections: contents.collections, overLimit: contents.overLimit };
+    const unchanged =
+      picked.devices.every((on, i) => on === contents.devices[i]?.on) &&
+      picked.extras.every((on, i) => on === contents.extras[i]?.on);
+    return unchanged ? first : (contents.summarize?.(picked.devices, picked.extras) ?? first);
+  }, [contents, picked]);
+  // A device set always shows its contents, so the options wait behind a button unless asked for.
+  const [showOptions, setShowOptions] = useState(!contents || state.optionsOpen === true);
+  const noDevice = picked !== null && !picked.devices.some(Boolean);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">
@@ -282,10 +305,24 @@ function Review({
         data-testid="review-scroll"
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto"
       >
-        {state.hostname && (
+        {contents && picked && summary && (
+          <ContentsSection
+            contents={contents}
+            choice={picked}
+            summary={summary}
+            onChange={setPicked}
+          />
+        )}
+        {state.hostname && showOptions && (
           <p className="text-figma-text-secondary">Settings for {state.hostname}</p>
         )}
-        <OptionsSheet options={options} onChange={setOptions} />
+        {showOptions ? (
+          <OptionsSheet options={options} onChange={setOptions} />
+        ) : (
+          <Button variant="secondary" className="self-start" onClick={() => setShowOptions(true)}>
+            Options
+          </Button>
+        )}
         {state.missing.length > 0 && (
           <FontTable
             fonts={state.missing}
@@ -300,12 +337,14 @@ function Review({
           Cancel
         </Button>
         <Button
+          disabled={noDevice}
           onClick={() =>
             onDecide({
               options,
               fonts: new Map(
                 state.missing.map((m) => [m.family, choices.get(m.family) ?? m.choice])
               ),
+              ...(picked ? { contents: picked } : {}),
             })
           }
         >
@@ -486,7 +525,7 @@ function App({ port }: { port?: ImportPort }) {
 
       {state.step === "done" && (
         <>
-          {state.versions.length > 1 || state.failures.length > 0 ? (
+          {state.versions.length > 1 || state.failures.length > 0 || state.sets.length > 0 ? (
             <VersionsReport state={state} headingRef={headingRef} />
           ) : (
             <Report state={state} headingRef={headingRef} />

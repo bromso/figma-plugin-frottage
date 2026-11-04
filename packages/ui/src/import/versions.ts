@@ -24,14 +24,23 @@ export function pageKey(url: string): string {
 
 const KINDS = ["viewport", "theme", "language"];
 
+/** An extra capture: one taken for a breakpoint range no device covers, which makes no frame. */
+export function isExtra(file: LoadedFile): boolean {
+  const version = file.capture.version;
+  return version?.breakpoint !== undefined && version.device === undefined;
+}
+
 /**
- * Viewports, then themes, then languages; within a kind, widest first, then by label. The order
- * doesn't depend on which file came first, since the first version names a set's tokens.
+ * Viewports, then themes, then languages; within a kind, devices before extra captures, then
+ * widest first, then by label. The order doesn't depend on which file came first, since the first
+ * version names a set's tokens.
  */
 function compareVersions(a: LoadedFile, b: LoadedFile): number {
   const [x, y] = [a.capture, b.capture];
   const kinds = KINDS.indexOf(x.version?.kind ?? "") - KINDS.indexOf(y.version?.kind ?? "");
   if (kinds !== 0) return kinds;
+  const extras = Number(isExtra(a)) - Number(isExtra(b));
+  if (extras !== 0) return extras;
   const widths = y.source.viewport.w - x.source.viewport.w;
   if (widths !== 0) return widths;
   const [p = "", q = ""] = [x.version?.label, y.version?.label];

@@ -206,7 +206,7 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
   if (fromDevices) {
     report.push("This page records no breakpoints, so each device width was used as one.");
   }
-  for (const name of missing) report.push(`No capture for the ${name} breakpoint`);
+  for (const name of missing) report.push(`No capture for the ${name} breakpoint.`);
   const modeNames = ranges.map((r) => r.name);
 
   const deviceAt = entries.flatMap((e, i) => (isDevice(e) ? [i] : []));

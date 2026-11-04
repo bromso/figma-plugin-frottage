@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { unpackFrottage } from "@repo/capture-schema";
+import { unpackFrottage, unpackFrottageSet } from "@repo/capture-schema";
 import { groupVersions, type LoadedFile, pageKey } from "../versions";
-import { versionFile } from "./helpers";
+import { deviceSetFile, versionFile } from "./helpers";
 
 async function load(file: File): Promise<LoadedFile> {
   const { capture, assets } = unpackFrottage(new Uint8Array(await file.arrayBuffer()));
@@ -91,5 +91,26 @@ describe("groupVersions", () => {
     expect(pageKey("https://example.com/a/?x=1#top")).toBe("https://example.com/a");
     expect(pageKey("https://example.com/a")).toBe(pageKey("https://example.com/a/"));
     expect(pageKey("not a url/")).toBe("not a url");
+  });
+
+  test("devices come widest first, and extra breakpoint captures after them", async () => {
+    const file = deviceSetFile({
+      devices: [
+        { name: "Phone portrait", width: 390 },
+        { name: "Laptop", width: 1512 },
+      ],
+      extras: [{ breakpoint: "lg", width: 1024 }],
+    });
+    const { captures, assets } = unpackFrottageSet(new Uint8Array(await file.arrayBuffer()));
+    const files = captures.map((capture) => ({
+      name: capture.version?.label ?? "",
+      capture,
+      assets,
+    }));
+    expect(names(groupVersions(files)[0]?.versions ?? [])).toEqual([
+      "Laptop",
+      "Phone portrait",
+      "1024",
+    ]);
   });
 });

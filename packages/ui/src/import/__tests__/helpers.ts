@@ -201,6 +201,12 @@ export type FakePort = ImportPort & {
   batches: PlanOp[][];
   modesSent?: PlanVersionTokens;
   droppedVersions: number[];
+  /** What `beginDeviceSet` was given, last. */
+  deviceSetMeta?: Parameters<ImportPort["beginDeviceSet"]>[0];
+  /** Every `tokens` call, in order. */
+  tokensCalls: PlanTokens[];
+  /** What `getModeLimit` gives. */
+  modeLimit: number | null;
 };
 
 export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular" }]): FakePort {
@@ -211,6 +217,8 @@ export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular"
     begins: [],
     batches: [],
     droppedVersions: [],
+    tokensCalls: [],
+    modeLimit: null,
     setResult: {},
     async getPrefs(key) {
       port.log.push(`getPrefs ${key}`);
@@ -229,6 +237,14 @@ export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular"
       port.log.push("beginSet");
       if (port.failOn === "beginSet") throw new Error("boom");
     },
+    async beginDeviceSet(meta) {
+      port.log.push("beginDeviceSet");
+      port.deviceSetMeta = meta;
+      if (port.failOn === "beginSet") throw new Error("boom");
+    },
+    async getModeLimit() {
+      return port.modeLimit;
+    },
     async begin(meta) {
       port.log.push("begin");
       port.beginMeta = meta;
@@ -242,6 +258,7 @@ export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular"
     async tokens(tokens, options) {
       port.log.push("tokens");
       port.tokensSent = tokens;
+      port.tokensCalls.push(tokens);
       port.tokensOptions = options;
     },
     async image() {
@@ -267,6 +284,7 @@ export function fakePort(fonts: FontRef[] = [{ family: "Inter", style: "Regular"
       return {
         rootIds: ["1:2"],
         layoutFailures: 0,
+        plainVersions: [],
         stylesCreated: 0,
         stylesReused: 0,
         variablesCreated: 0,
@@ -395,4 +413,43 @@ export function setFileWithImage(widths: number[], good = true, name = "set.frot
       ];
     },
   });
+}
+
+/**
+ * A File of one page captured on devices, plus extra captures for breakpoint ranges no device
+ * covers. Every capture records the page's breakpoint boundaries.
+ */
+export function deviceSetFile(opts: {
+  name?: string;
+  url?: string;
+  devices: { name: string; width: number; height?: number }[];
+  extras?: { breakpoint: string; width: number }[];
+  breakpoints?: number[];
+}): File {
+  const make = (width: number) => {
+    const capture = captureWithTexts(1);
+    capture.source.url = opts.url ?? "https://example.com/";
+    capture.source.title = "Example";
+    capture.source.viewport = { w: width, h: 800 };
+    if (opts.breakpoints) capture.breakpoints = { widths: opts.breakpoints, unreadable: 0 };
+    return capture;
+  };
+  const devices = opts.devices.map(({ name, width, height }) => {
+    const capture = make(width);
+    const id = name.toLowerCase().replace(/\s+/g, "-");
+    capture.version = {
+      label: name,
+      kind: "viewport",
+      device: { id, name, height: height ?? 800 },
+    };
+    return capture;
+  });
+  const extras = (opts.extras ?? []).map(({ breakpoint, width }) => {
+    const capture = make(width);
+    capture.version = { label: String(width), kind: "viewport", breakpoint };
+    return capture;
+  });
+  // Extras first, so the import has to put them after the devices.
+  const bytes = packFrottageSet([...extras, ...devices], new Map());
+  return new File([bytes as BlobPart], opts.name ?? "devices.frottage");
 }

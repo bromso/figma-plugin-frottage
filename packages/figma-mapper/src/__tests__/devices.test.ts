@@ -198,8 +198,8 @@ describe("mergeDevices", () => {
   test("breakpoints with a capture become modes; the ones without are dropped and reported", () => {
     const { layers, report } = mergeDevices(mainline());
     expect(modesOf(layers, "Breakpoint")).toEqual(["base", "md", "lg", "min 1400"]);
-    expect(report).toContain("No capture for the sm breakpoint");
-    expect(report).toContain("No capture for the xl breakpoint");
+    expect(report).toContain("No capture for the sm breakpoint.");
+    expect(report).toContain("No capture for the xl breakpoint.");
     expect(varOf(layers, "breakpoint:breakpoint/min-width")?.values).toEqual([0, 768, 1024, 1400]);
     expect(varOf(layers, "breakpoint:breakpoint/max-width")?.values).toEqual([639, 1023, 1279, 0]);
   });

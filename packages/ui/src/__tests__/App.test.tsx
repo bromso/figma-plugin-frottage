@@ -3,12 +3,14 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import App from "../app";
 import {
+  deviceSetFile,
   downscaledFile,
   type FakePort,
   fakePort,
   fontFile,
   frottageFile,
   repeatedFile,
+  setFile,
   themedFile,
   versionFile,
 } from "../import/__tests__/helpers";
@@ -60,6 +62,8 @@ describe("App (import screen)", () => {
     fireEvent.change(input, {
       target: { files: [frottageFile(1), frottageFile(1, 1, "second.frottage")] },
     });
+    // Two captures of one page are devices, which always show what the file holds first.
+    fireEvent.click(await screen.findByRole("button", { name: "Import" }));
     expect(await screen.findByText("Import complete")).toBeInTheDocument();
     expect(screen.getByText(/page\.frottage/)).toBeInTheDocument();
     expect(screen.getByText(/second\.frottage/)).toBeInTheDocument();
@@ -521,9 +525,10 @@ describe("App (theme report)", () => {
 });
 
 describe("App (a set of versions)", () => {
+  // Theme versions keep a mode per version in one collection.
   const pair = () => [
-    versionFile({ name: "wide", width: 1512, label: "1512" }),
-    versionFile({ name: "narrow", width: 834, label: "834" }),
+    versionFile({ name: "wide", width: 1512, label: "1512", kind: "theme" }),
+    versionFile({ name: "narrow", width: 834, label: "834", kind: "theme" }),
   ];
   async function imported(result: FakePort["setResult"], failVersion?: number) {
     const user = userEvent.setup();
@@ -554,5 +559,89 @@ describe("App (a set of versions)", () => {
     await imported({ modes: 2 }, 1);
     expect(screen.getByRole("alert")).toHaveTextContent("narrow");
     expect(screen.getByText("1512 · wide")).toBeInTheDocument();
+  });
+});
+
+describe("App (a device set)", () => {
+  const devicesFile = () =>
+    deviceSetFile({
+      devices: [
+        { name: "Laptop", width: 1512, height: 982 },
+        { name: "Tablet portrait", width: 834, height: 1194 },
+        { name: "Phone portrait", width: 390, height: 844 },
+      ],
+      extras: [{ breakpoint: "lg", width: 1024 }],
+      breakpoints: [640, 768, 1024, 1400],
+    });
+  async function chosen(port: FakePort = fakePort(), file = devicesFile()) {
+    const user = userEvent.setup();
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose .frottage files"), file);
+    await screen.findByText("What's in this file");
+    return { user, port };
+  }
+
+  it("shows what the file holds, all ticked, before anything is created", async () => {
+    const { port } = await chosen();
+    for (const name of ["Laptop 1512", "Tablet portrait 834", "Phone portrait 390"]) {
+      expect(screen.getByRole("checkbox", { name })).toBeChecked();
+    }
+    expect(screen.getByRole("checkbox", { name: "lg breakpoint 1024" })).toBeChecked();
+    expect(
+      screen.getByText("Breakpoint captures make no frames. They give the Breakpoint values.")
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^Device 3 modes · Breakpoint 4 · .*Theme$/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "New page" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Current page" })).not.toBeChecked();
+    expect(port.log).not.toContain("beginDeviceSet");
+  });
+
+  it("an unticked device leaves the line and the import", async () => {
+    const { user, port } = await chosen();
+    await user.click(screen.getByRole("checkbox", { name: "Tablet portrait 834" }));
+    expect(screen.getByText(/^Device 2 modes · /)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(port.begins.map((b) => b.device?.mode)).toEqual(["Laptop", "Phone portrait"]);
+  });
+
+  it("Import needs a device", async () => {
+    const { user } = await chosen();
+    for (const name of ["Laptop 1512", "Tablet portrait 834", "Phone portrait 390"]) {
+      await user.click(screen.getByRole("checkbox", { name }));
+    }
+    expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+  });
+
+  it("Current page reaches the sandbox", async () => {
+    const { user, port } = await chosen();
+    await user.click(screen.getByRole("radio", { name: "Current page" }));
+    await user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(port.deviceSetMeta?.placement).toBe("current-page");
+  });
+
+  it("warns when a collection needs more modes than the file allowed before", async () => {
+    const port = fakePort();
+    port.modeLimit = 2;
+    await chosen(port);
+    expect(
+      screen.getByText("Device needs 3 modes. This file allows 2, so 1 will be left out.")
+    ).toBeInTheDocument();
+  });
+
+  it("an older file of widths lists each width once", async () => {
+    await chosen(fakePort(), setFile({ widths: [834, 1512, 390] }));
+    expect(screen.getByRole("checkbox", { name: "1512" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "390" })).toBeChecked();
+  });
+
+  it("the report names the Device and Breakpoint modes and a range with no capture", async () => {
+    const { user } = await chosen();
+    await user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(screen.getByText("Device: Laptop, Tablet portrait, Phone portrait")).toBeInTheDocument();
+    expect(screen.getByText("Breakpoint: base, md, lg, min 1400")).toBeInTheDocument();
+    expect(screen.getByText("No capture for the sm breakpoint.")).toBeInTheDocument();
   });
 });
