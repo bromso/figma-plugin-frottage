@@ -110,6 +110,71 @@ describe("pairTexts", () => {
     expect([...r.mixed]).toEqual(["a"]);
   });
 
+  test("an underline-only inline link marks the text mixed", () => {
+    const base = page(
+      el(
+        "m",
+        [0, 0],
+        [
+          t("a", "Read the docs", undefined, [
+            run({ end: 9 }),
+            run({ start: 9, end: 13, decoration: "underline", href: "https://site.test/docs" }),
+          ]),
+        ],
+        tagged("p")
+      )
+    );
+    const other = page(el("m", [0, 0], [t("x", "Läs dokumenten")], tagged("p")));
+    expect([...pairTexts(base, other, same).mixed]).toEqual(["a"]);
+  });
+
+  test("a link run styled like the rest still marks the text mixed", () => {
+    const base = page(
+      el(
+        "m",
+        [0, 0],
+        [
+          t("a", "Read docs", undefined, [
+            run({ end: 5 }),
+            run({ start: 5, end: 9, href: "https://site.test/docs" }),
+          ]),
+        ],
+        tagged("p")
+      )
+    );
+    const other = page(el("m", [0, 0], [t("x", "Läs")], tagged("p")));
+    expect([...pairTexts(base, other, same).mixed]).toEqual(["a"]);
+  });
+
+  test("runs differing in letter spacing, line height or transform are mixed", () => {
+    for (const over of [{ letterSpacing: 1 }, { lineHeight: 24 }, { transform: "uppercase" }]) {
+      const base = page(
+        el(
+          "m",
+          [0, 0],
+          [t("a", "Hello", undefined, [run({ end: 2 }), run({ start: 2, ...over })])],
+          tagged("p")
+        )
+      );
+      const other = page(el("m", [0, 0], [t("x", "Hej")], tagged("p")));
+      expect([...pairTexts(base, other, same).mixed]).toEqual(["a"]);
+    }
+  });
+
+  test("a text that is one whole link isn't mixed", () => {
+    const href = "https://site.test/docs";
+    const base = page(
+      el(
+        "m",
+        [0, 0],
+        [t("a", "Docs", undefined, [run({ end: 2, href }), run({ start: 2, end: 4, href })])],
+        tagged("p")
+      )
+    );
+    const other = page(el("m", [0, 0], [t("x", "Dokument", href)], tagged("p")));
+    expect([...pairTexts(base, other, same).mixed]).toEqual([]);
+  });
+
   test("no texts gives rate 1", () => {
     const r = pairTexts(page(), page(), same);
     expect(r.rate).toBe(1);

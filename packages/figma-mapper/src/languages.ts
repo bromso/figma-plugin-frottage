@@ -63,9 +63,21 @@ const trim = (url: string) => url.replace(/\/+$/, "");
 const counts = (t: TextNode) => t.visible && t.text.trim() !== "";
 const linkOf = (t: TextNode) => t.runs.find((r) => r.href)?.href;
 
+/** A text is mixed when its runs differ in anything Figma would restyle, or in their link. */
 function isMixed(...texts: TextNode[]): boolean {
   const look = (r: TextNode["runs"][number]) =>
-    JSON.stringify([r.family, r.weight, r.style, r.size, r.color]);
+    JSON.stringify([
+      r.family,
+      r.weight,
+      r.style,
+      r.size,
+      r.color,
+      r.decoration,
+      r.letterSpacing,
+      r.lineHeight,
+      r.transform,
+      r.href ?? null,
+    ]);
   return texts.some((t) => t.runs.some((r) => look(r) !== look(t.runs[0] as typeof r)));
 }
 
