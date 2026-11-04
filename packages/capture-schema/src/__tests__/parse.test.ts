@@ -216,3 +216,13 @@ test("an active theme over 40 characters, or base values past 2,000, are refused
   expect(parseCapture(withTokens({ base: props(2001) })).ok).toBe(false);
   expect(parseCapture(withTokens({ base: { "--a": 1 } })).ok).toBe(false);
 });
+
+test("a theme's mode over 40 characters or context over 200 is refused", () => {
+  const withTheme = (theme: object) => ({
+    ...minimalCapture(),
+    tokens: { cssCustomProperties: {}, themes: [{ ...themeOf(1), ...theme }] },
+  });
+  expect(parseCapture(withTheme({ mode: "m".repeat(40), context: "c".repeat(200) })).ok).toBe(true);
+  expect(parseCapture(withTheme({ mode: "m".repeat(41) })).ok).toBe(false);
+  expect(parseCapture(withTheme({ context: "c".repeat(201) })).ok).toBe(false);
+});

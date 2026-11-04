@@ -30,6 +30,8 @@ const LIGHT = "Light";
 const MAX_ALIAS_DEPTH = 16;
 /** Variables per import, so that a page with thousands of custom properties can't flood a file. */
 export const MAX_VARIABLES = 1000;
+/** Custom properties read per import; the rest, in name order, are counted as dropped. */
+export const MAX_PROPERTIES = 5000;
 /** The largest `--spacing*n` step made on demand. */
 const MAX_SPACING_STEP = 1000;
 /** Prefixes frameworks put on their own properties; the name is what follows. */
@@ -52,6 +54,21 @@ type Spec = {
   value: PlanVarValue;
   scopes: string[];
 };
+
+/** The entries of `from` named in `names`, as own properties. */
+function pick(from: Record<string, string>, names: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of names) {
+    if (!Object.hasOwn(from, name)) continue;
+    Object.defineProperty(out, name, {
+      value: from[name],
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
+  return out;
+}
 
 /** Tailwind's `--tw-*` properties are internals and never become tokens. */
 export const usable = (prop: string) => SAFE_PROPERTY.test(prop) && !/^--tw-/i.test(prop);
@@ -153,8 +170,18 @@ function classify(
 }
 
 export function buildCatalogue(capture: Capture): Catalogue {
-  const root = capture.tokens.cssCustomProperties;
-  const authored = capture.tokens.authored ?? {};
+  // A hostile page can list tens of thousands: only the first in name order are read.
+  // Capture lists them in name order; the order they come in is kept.
+  let names = Object.keys(capture.tokens.cssCustomProperties);
+  let unread = 0;
+  if (names.length > MAX_PROPERTIES) {
+    const sorted = [...names].sort();
+    unread = sorted.slice(MAX_PROPERTIES).filter(usable).length;
+    const kept = new Set(sorted.slice(0, MAX_PROPERTIES));
+    names = names.filter((name) => kept.has(name));
+  }
+  const root = pick(capture.tokens.cssCustomProperties, names);
+  const authored = pick(capture.tokens.authored ?? {}, Object.keys(root));
   const themes = capture.tokens.themes ?? [];
   // Authored text where there is one, so a context's change reaches what is built on it.
   const rootAuthored = { ...root, ...authored };
@@ -263,7 +290,7 @@ export function buildCatalogue(capture: Capture): Catalogue {
   }
 
   // The cap: theme variables first, then primitives in property order.
-  let dropped = 0;
+  let dropped = unread;
   const themeVars = variables.filter((v) => v.collection === "theme");
   const kept = new Set([
     ...themeVars.slice(0, MAX_VARIABLES),
@@ -273,7 +300,7 @@ export function buildCatalogue(capture: Capture): Catalogue {
   ]);
   if (kept.size < variables.length) {
     const gone = new Map(variables.filter((v) => !kept.has(v)).map((v) => [v.key, v]));
-    dropped = gone.size;
+    dropped += gone.size;
     for (const v of gone.values()) byKey.delete(v.key);
     for (const [prop, v] of byCssVar) if (gone.has(v.key)) byCssVar.delete(prop);
     // A theme value aliased to a dropped primitive holds the primitive's value instead.

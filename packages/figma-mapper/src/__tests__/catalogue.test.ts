@@ -311,4 +311,42 @@ describe("buildCatalogue", () => {
     expect(cat.resolveRef("--color-white")).toBeNull();
     expectColour(cat.byCssVar.get("--surface")?.values[0], "#ffffff");
   });
+
+  test("a hostile page with eight 2,000-property themes over 10,000 root properties is quick", () => {
+    const capture = cap(el("root", [0, 0]));
+    const root: Record<string, string> = {};
+    const authored: Record<string, string> = {};
+    for (let i = 0; i < 10_000; i++) {
+      root[`--c${i}`] = `#${(i % 0xffffff).toString(16).padStart(6, "0")}`;
+      if (i > 0) authored[`--c${i}`] = `var(--c${i - 1})`;
+    }
+    const themes = Array.from({ length: 8 }, (_, k) => {
+      const properties: Record<string, string> = {};
+      for (let j = 0; j < 2000; j++) properties[`--c${(k * 1250 + j) % 10_000}`] = "#000000";
+      return { context: `.t${k}`, mode: `T${k}`, properties };
+    });
+    capture.tokens = { cssCustomProperties: root, authored, themes };
+    const start = performance.now();
+    const cat = buildCatalogue(capture);
+    expect(performance.now() - start).toBeLessThan(1000);
+    expect(cat.modes).toHaveLength(9);
+  });
+
+  test("only the first 5,000 properties in name order are read; the rest count as dropped", () => {
+    const capture = cap(el("root", [0, 0]));
+    const root: Record<string, string> = {};
+    // Listed out of order: the cut goes by name.
+    for (let i = 19; i >= 0; i--) root[`--z${String(i).padStart(2, "0")}`] = `${i + 1}px`;
+    for (let i = 0; i < 4_990; i++) root[`--a${String(i).padStart(4, "0")}`] = "ease-in";
+    capture.tokens = {
+      cssCustomProperties: root,
+      authored: { "--z19": "var(--z00)" },
+      themes: [{ context: ".dark", mode: "Dark", properties: { "--z15": "2px" } }],
+    };
+    const cat = buildCatalogue(capture);
+    expect(cat.resolveRef("--z09")?.name).toBe("z09");
+    expect(cat.resolveRef("--z10")).toBeNull();
+    expect(cat.resolveRef("--z15")).toBeNull();
+    expect(cat.dropped).toBe(10);
+  });
 });

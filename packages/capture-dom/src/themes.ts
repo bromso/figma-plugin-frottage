@@ -7,6 +7,8 @@ type Themes = NonNullable<Capture["tokens"]["themes"]>;
 // Mirror the schema's limits.
 const MAX_THEMES = 8;
 const MAX_THEME_PROPERTIES = 2000;
+const MAX_MODE_LENGTH = 40;
+const MAX_CONTEXT_LENGTH = 200;
 const DARK_MEDIA = "@media (prefers-color-scheme: dark)";
 
 /** A condition a rule sits in: `applies` is whether it holds in this page now. */
@@ -204,24 +206,24 @@ export function readThemes(
   const base = new Map<string, Place & { value: string }>();
   let order = 0;
   const add = (context: string, mode: string, rule: CSSStyleRule, applies: boolean) => {
-    let theme = byMode.get(mode);
-    if (!theme) {
-      if (byMode.size >= MAX_THEMES) return;
-      theme = { context, mode, properties: {} };
-      byMode.set(mode, theme);
-    }
-    if (applies) active.add(mode);
+    // Names past the schema's lengths are skipped, and leave their place to the next.
+    if (mode.length > MAX_MODE_LENGTH || context.length > MAX_CONTEXT_LENGTH) return;
+    const known = byMode.get(mode);
+    if (!known && byMode.size >= MAX_THEMES) return;
+    const properties = known?.properties ?? {};
+    let count = Object.keys(properties).length;
     for (const name of Array.from(rule.style)) {
       if (!name.startsWith("--") || name.startsWith("--tw-")) continue;
-      if (
-        !(name in theme.properties) &&
-        Object.keys(theme.properties).length >= MAX_THEME_PROPERTIES
-      ) {
-        break;
-      }
+      if (!(name in properties) && count >= MAX_THEME_PROPERTIES) break;
       const value = rule.style.getPropertyValue(name).trim();
-      if (isTokenValue(value, isColor)) theme.properties[name] = value;
+      if (!isTokenValue(value, isColor)) continue;
+      if (!(name in properties)) count++;
+      properties[name] = value;
     }
+    // A context with nothing usable takes no place.
+    if (count === 0) return;
+    if (!known) byMode.set(mode, { context, mode, properties });
+    if (applies) active.add(mode);
   };
   const addBase = (rule: CSSStyleRule, place: Place) => {
     for (const name of Array.from(rule.style)) {
@@ -268,7 +270,7 @@ export function readThemes(
   } catch {
     // themes are best effort
   }
-  const themes = [...byMode.values()].filter((t) => Object.keys(t.properties).length > 0);
+  const themes = [...byMode.values()];
   const out: ReadThemes = {};
   if (themes.length === 0) return out;
   out.themes = themes;

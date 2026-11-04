@@ -136,6 +136,21 @@ describe("readThemes", () => {
     expect(themes(css)).toHaveLength(8);
   });
 
+  test("a context with nothing usable takes none of the eight places", () => {
+    const empty = Array.from({ length: 8 }, (_, i) => `.theme-e${i}{--u:url(x.png)}`).join("");
+    const found = themes(`${empty}.dark{--a:#000}`);
+    expect(found?.map((t) => t.mode)).toEqual(["Dark"]);
+  });
+
+  test("a mode name over 40 characters or a context over 200 is skipped, not the ones after", () => {
+    const longMode = `.theme-${"x".repeat(40)}{--a:#111}`;
+    const longContext = `:root[data-theme="${"y".repeat(200)}"]{--a:#222}`;
+    const rest = Array.from({ length: 8 }, (_, i) => `.theme-${i}{--a:#00${i}}`).join("");
+    const found = themes(`${longMode}${longContext}${rest}`);
+    expect(found).toHaveLength(8);
+    expect(found?.every((t) => t.mode.length <= 40 && t.context.length <= 200)).toBe(true);
+  });
+
   test("keeps 2,000 properties of a context", () => {
     const body = Array.from({ length: 2100 }, (_, i) => `--p${i}:1px`).join(";");
     const found = themes(`.dark{${body}}`);

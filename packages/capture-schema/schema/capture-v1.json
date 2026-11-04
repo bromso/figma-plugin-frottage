@@ -112,10 +112,12 @@
             "type": "object",
             "properties": {
               "context": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 200
               },
               "mode": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 40
               },
               "properties": {
                 "type": "object",

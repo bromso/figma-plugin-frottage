@@ -262,6 +262,7 @@ export type CaptureNode = ElementNode | TextNode | ImageNode | SvgNode | Placeho
 const MAX_THEMES = 8;
 const MAX_THEME_PROPERTIES = 2000;
 const MAX_MODE_LENGTH = 40;
+const MAX_CONTEXT_LENGTH = 200;
 
 export const captureSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
@@ -290,8 +291,8 @@ export const captureSchema = z.object({
     themes: z
       .array(
         z.object({
-          context: z.string(),
-          mode: z.string(),
+          context: z.string().max(MAX_CONTEXT_LENGTH),
+          mode: z.string().max(MAX_MODE_LENGTH),
           properties: z
             .record(z.string(), z.string())
             .refine((p) => Object.keys(p).length <= MAX_THEME_PROPERTIES, "too many properties"),
