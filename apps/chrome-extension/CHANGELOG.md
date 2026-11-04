@@ -1,5 +1,18 @@
 # @repo/chrome-extension
 
+## 0.3.0
+
+### Minor Changes
+
+- [#9](https://github.com/bromso/figma-plugin-frottage/pull/9) [`20de74e`](https://github.com/bromso/figma-plugin-frottage/commit/20de74e2c0454e629d91a10e6ad1b88dcb64f1e0) Thanks [@bromso](https://github.com/bromso)! - Captures each device by name, adds captures for breakpoints no device covers, and imports them as Device and Breakpoint collections with one frame per device in a section.
+
+### Patch Changes
+
+- Updated dependencies [[`20de74e`](https://github.com/bromso/figma-plugin-frottage/commit/20de74e2c0454e629d91a10e6ad1b88dcb64f1e0), [`a349d00`](https://github.com/bromso/figma-plugin-frottage/commit/a349d001179ed38d82ed1d61dbeb087f5fe35938), [`e4f9148`](https://github.com/bromso/figma-plugin-frottage/commit/e4f9148143d5d990577eaebde9578da60ff2805a), [`ed1ef1e`](https://github.com/bromso/figma-plugin-frottage/commit/ed1ef1e98245a17d3529e96ac7a8238d8225d98a)]:
+  - @repo/capture-schema@0.3.0
+  - @repo/capture-dom@0.3.0
+  - @repo/ui@2.2.0
+
 ## 0.2.0
 
 ### Minor Changes
