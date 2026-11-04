@@ -2559,6 +2559,11 @@ for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
       });
       expect(darkValue?.r).toBeLessThan(0.3);
     }
+    // A colour passes Theme, then Color Mode, then Palette: each layer aliases the one before.
+    for (const name of ["background", "card", "popover", "border"]) {
+      const kinds = resolve(`theme:color/${name}`).chain.map((k) => k.split(":")[0]);
+      expect(kinds).toEqual(["theme", "colorMode", "palette"]);
+    }
     // In Dark, card, popover and background are three colours.
     const darks = ["background", "card", "popover"].map((n) => values(`theme:color/${n}`)[1]?.r);
     expect(new Set(darks.map((r) => r?.toFixed(3))).size).toBe(3);

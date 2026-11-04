@@ -451,14 +451,14 @@ describe("App (theme report)", () => {
 
   it("lists the modes of a site theme, and not the no-theme line", async () => {
     await imported(themedFile(dark, ["#ffffff"]));
-    expect(screen.getByText("Theme modes: Light, Dark")).toBeInTheDocument();
+    expect(screen.getByText("Color Mode: Light, Dark")).toBeInTheDocument();
     expect(screen.queryByText(NO_THEME)).toBeNull();
   });
 
   it("says when no theme was found, and lists no modes", async () => {
     await imported(frottageFile(0));
     expect(screen.getByText(NO_THEME)).toBeInTheDocument();
-    expect(screen.queryByText(/Theme modes:/)).toBeNull();
+    expect(screen.queryByText(/Color Mode:/)).toBeNull();
     expect(screen.queryByText(/Inferred from use/)).toBeNull();
     expect(screen.queryByText(/near twin/)).toBeNull();
     expect(screen.queryByText(/This file allows fewer modes/)).toBeNull();
@@ -499,7 +499,7 @@ describe("App (theme report)", () => {
       layers: { variablesRenamed: 0, modesDropped: [], legacyCollections: true },
     });
     expect(screen.getByText(LEGACY)).toBeInTheDocument();
-    expect(screen.getByText("Theme modes: Light, Dark")).toBeInTheDocument();
+    expect(screen.getByText("Color Mode: Light, Dark")).toBeInTheDocument();
     cleanup();
     await imported(themedFile(dark, ["#ffffff"]), {
       layers: { variablesRenamed: 0, modesDropped: [], legacyCollections: false },

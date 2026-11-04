@@ -22,7 +22,7 @@ function themeLines({ report, theme }: VersionResult): string[] {
   if (!theme) return [];
   const lines: string[] = [];
   const modes = report.themeModes ?? [];
-  if (modes.length > 1) lines.push(`Theme modes: ${modes.join(", ")}`);
+  if (modes.length > 1) lines.push(`Color Mode: ${modes.join(", ")}`);
   else if (theme.source !== "site") {
     lines.push(
       "No theme found in the stylesheet. To add a dark mode, capture the page again in dark and import both as versions."
