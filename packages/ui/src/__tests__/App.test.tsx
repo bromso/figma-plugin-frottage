@@ -492,6 +492,21 @@ describe("App (theme report)", () => {
     ).toBeInTheDocument();
   });
 
+  it("says earlier collections were left as they are, only when the sandbox found them", async () => {
+    const LEGACY =
+      "This file has collections from an earlier Frottage version. They were left as they are.";
+    await imported(themedFile(dark, ["#ffffff"]), {
+      layers: { variablesRenamed: 0, modesDropped: [], legacyCollections: true },
+    });
+    expect(screen.getByText(LEGACY)).toBeInTheDocument();
+    expect(screen.getByText("Theme modes: Light, Dark")).toBeInTheDocument();
+    cleanup();
+    await imported(themedFile(dark, ["#ffffff"]), {
+      layers: { variablesRenamed: 0, modesDropped: [], legacyCollections: false },
+    });
+    expect(screen.queryByText(LEGACY)).toBeNull();
+  });
+
   it("reports the modes the file had no room for and the variables added as new ones", async () => {
     await imported(themedFile(dark, ["#ffffff"]), {
       layers: { variablesRenamed: 2, modesDropped: ["Dark"] },

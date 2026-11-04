@@ -66,6 +66,8 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
       variablesReused: number;
       variablesRenamed: number;
       modesDropped: string[];
+      /** The file already has the `· Primitives` and `· Theme` collections of an earlier version. */
+      legacyCollections?: boolean;
       stylesCreated: number;
     };
   };

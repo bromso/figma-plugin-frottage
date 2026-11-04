@@ -184,7 +184,7 @@ export type FakePort = ImportPort & {
     variablesCreated?: number;
     variablesReused?: number;
     tokenFailures?: number;
-    layers?: { variablesRenamed: number; modesDropped: string[] };
+    layers?: { variablesRenamed: number; modesDropped: string[]; legacyCollections?: boolean };
   };
   /** What `endSet` gives, on top of zero counts. */
   setResult: Partial<Awaited<ReturnType<ImportPort["endSet"]>>>;

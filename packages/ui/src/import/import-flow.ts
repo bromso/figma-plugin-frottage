@@ -59,6 +59,8 @@ export type ThemeReport = {
   variablesRenamed: number;
   /** Theme modes the file had no room for. */
   modesDropped: string[];
+  /** The file has collections from an earlier Frottage version, which were left as they are. */
+  legacyCollections: boolean;
 };
 
 export type VersionReport = VersionResult & { name: string; label: string };
@@ -158,7 +160,7 @@ export type ImportPort = {
     variablesCreated?: number;
     variablesReused?: number;
     tokenFailures?: number;
-    layers?: { variablesRenamed: number; modesDropped: string[] };
+    layers?: { variablesRenamed: number; modesDropped: string[]; legacyCollections?: boolean };
   }>;
   endSet(): Promise<SetResult>;
   /** Takes back the import in hand: a whole set, when one is open. */
@@ -348,6 +350,7 @@ function versionResult(
             inferred: layers.notes.inferred,
             variablesRenamed: result.layers?.variablesRenamed ?? 0,
             modesDropped: result.layers?.modesDropped ?? [],
+            legacyCollections: result.layers?.legacyCollections ?? false,
           },
         }
       : {}),

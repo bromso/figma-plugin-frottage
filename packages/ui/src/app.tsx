@@ -48,6 +48,11 @@ function themeLines({ report, theme }: VersionResult): string[] {
         : `${theme.variablesRenamed} variables had changed values and were added as new ones.`
     );
   }
+  if (theme.legacyCollections) {
+    lines.push(
+      "This file has collections from an earlier Frottage version. They were left as they are."
+    );
+  }
   return lines;
 }
 
