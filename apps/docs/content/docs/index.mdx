@@ -17,6 +17,20 @@ Frottage imports rendered web pages into editable Figma designs. A Chrome extens
 - **CI/CD pipeline** that validates every change
 - **Changesets** for version management
 
+## Tokens and themes
+
+On a single-page import, Frottage creates two variable collections named for the site. `<hostname> · Primitives` holds the raw colours, spacing, radius and type values, named from the site's own CSS custom properties with framework prefixes such as `--bs-` removed. `<hostname> · Theme` holds semantic variables such as `background`, `primary` and `border`. It has a `Light` mode and one mode for every theme the stylesheet defines, such as `Dark` read from a `.dark { … }` block, `[data-theme]` or `prefers-color-scheme: dark`. Theme variables alias primitives when the site's CSS does.
+
+Each layer binds to the token its CSS used, so a card and the page background stay different in Dark even when both are white in Light. Without a named token, a layer binds to a unique exact value. The page frame opens in Light. Switch its Theme mode to Dark to recolour the page.
+
+On sites without named tokens, Frottage infers a few clearly evidenced roles: background, foreground, border, primary, muted and muted-foreground. Their descriptions start with "Inferred:". Unnamed colours are named by family and lightness step. Near-identical colours stay separate, with a note "Near twin of …".
+
+Repeated shadows become effect styles and repeated gradients become paint styles. Text styles bind size, line height, letter spacing, family and weight to type variables where the site defines them.
+
+A re-import reuses Frottage's own collections. It never edits your styles or variables, and creates `name (2)` when a value changed. Version sets of several widths keep a single collection.
+
+The report lists the theme modes found, or "No theme found in the stylesheet…" with the option to capture and label each theme. It also lists inferred roles, near twins, raw values left unbound, modes the plan could not create and renamed variables.
+
 ## Good to know
 
 Closing the plugin during an import can leave its styles and variables in the file; the next import reuses them.

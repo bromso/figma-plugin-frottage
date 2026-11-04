@@ -22,6 +22,7 @@ Capture a page with the Chrome extension: tick the sizes you want (TV, Desktop, 
 - **Paint and transforms** — gradients, filters, rotation and z-index order come through as native fills, effects and layers
 - **Image access** — images a site blocks from the page can be fetched by the extension, after you allow it with one click
 - **Styles and variables** — repeated values become text styles and colour variables, and lengths held by custom properties named for spacing, such as `--space-4` or `--gutter`, become spacing variables, all reused on later imports
+- **Tokens and themes** — a single-page import creates `<hostname> · Primitives` and `<hostname> · Theme` variable collections, with a `Light` mode plus every theme the stylesheet defines, such as `Dark`. Layers bind to the token the site's CSS used, so switching the page frame's Theme mode recolours it. Without named tokens, a few clearly evidenced roles are inferred and labelled "Inferred"; the report lists modes, inferred roles, near twins and unbound values
 - **Versions of a page** — capture several sizes in one file, or label a capture by theme or language, then import the files together as a set: one frame per version side by side, each on its own mode of one variable collection, so switching a mode changes values, not structure. Files group by page URL, so language versions at different URLs import as separate pages
 - **Import options** — remembered per site, with a replacement picked for each missing font
 - **Turborepo monorepo** with Bun package manager — fast installs, cached builds
