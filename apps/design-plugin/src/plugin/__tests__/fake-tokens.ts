@@ -13,6 +13,8 @@ export type TokenOptions = {
   failVariableName?: string;
   /** A text style field that refuses its variable, as `setBoundVariable` can. */
   failStyleBinding?: string;
+  /** A corner radius field that refuses its variable. */
+  failRadiusBinding?: string;
   /** Modes a collection can hold: 10 on this owner's plan, 1 on Starter. */
   modeLimit?: number;
 };
@@ -31,6 +33,15 @@ const BINDABLE_LENGTHS = [
   "gridRowGap",
   "gridColumnGap",
 ];
+const CORNERS = ["topLeftRadius", "topRightRadius", "bottomRightRadius", "bottomLeftRadius"];
+/** Text style fields Figma binds, with the variable type each takes. */
+const STYLE_FIELDS: Record<string, string> = {
+  fontSize: "FLOAT",
+  lineHeight: "FLOAT",
+  letterSpacing: "FLOAT",
+  fontWeight: "FLOAT",
+  fontFamily: "STRING",
+};
 
 const fontId = (f: Font) => `${f.family}|${f.style}`;
 const hop = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -140,10 +151,10 @@ export function tokenModel(
         return;
       }
       if (typeof variable === "string") throw new Error("dynamic-page needs the variable");
-      if (!["fontSize", "lineHeight", "letterSpacing"].includes(field))
-        throw new Error(`can't bind ${field}`);
+      const type = STYLE_FIELDS[field];
+      if (!type) throw new Error(`can't bind ${field}`);
       if (!variables.has(variable?.id)) throw new Error("unknown variable");
-      if (variable.resolvedType !== "FLOAT") throw new Error("needs a number variable");
+      if (variable.resolvedType !== type) throw new Error(`needs a ${type} variable`);
       if (!loaded.has(fontId(state.fontName))) throw new Error("font not loaded");
       style.boundVariables = {
         ...style.boundVariables,
@@ -499,11 +510,13 @@ export function tokenModel(
     },
 
     installNode(node: FakeNode) {
-      // Frames bind lengths to number variables; a refused field or variable throws as in Figma.
+      // Frames bind lengths and radii to number variables; a refused one throws as in Figma.
       node.setBoundVariable = (field: string, variable: Fake) => {
         called("node.setBoundVariable");
         if (typeof variable === "string") throw new Error("dynamic-page needs the variable");
-        if (!BINDABLE_LENGTHS.includes(field)) throw new Error(`can't bind ${field}`);
+        if (![...BINDABLE_LENGTHS, ...CORNERS].includes(field))
+          throw new Error(`can't bind ${field}`);
+        if (opts.failRadiusBinding === field) throw new Error(`${field} refused`);
         if (variable === null) {
           const { [field]: _gone, ...rest } = node.boundVariables ?? {};
           node.boundVariables = rest;
@@ -526,6 +539,14 @@ export function tokenModel(
       };
       link("setFillStyleIdAsync", "fillStyleId");
       link("setStrokeStyleIdAsync", "strokeStyleId");
+      // Linking an effect style replaces the node's effects with the style's.
+      node.setEffectStyleIdAsync = async (id: string) => {
+        called("setEffectStyleIdAsync");
+        await hop();
+        const style = knownStyle(effectStyles, id);
+        node.effects = style.effects;
+        node.effectStyleId = id;
+      };
     },
 
     installText(t: FakeNode, chars: () => string, layout: () => void) {

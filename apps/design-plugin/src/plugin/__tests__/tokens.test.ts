@@ -188,7 +188,7 @@ describe("creating tokens", () => {
 });
 
 describe("binding", () => {
-  test("a paint with a token is bound to its variable, keeping its opacity", async () => {
+  test("a paint with a token is bound to its variable, at opacity 1", async () => {
     const f = fakeFigma();
     await runImport(f);
     const [variable] = variablesIn(f) as [any];
@@ -1255,5 +1255,77 @@ describe("spacing variables", () => {
     expect(variablesIn(f)).toHaveLength(0);
     expect(bound(f)).toEqual({});
     expect(f.frame("Import").itemSpacing).toBe(10);
+  });
+});
+
+describe("a text style's bindings on the layered path", () => {
+  const variable = (name: string, type: "FLOAT" | "STRING", value: number | string) => ({
+    key: `primitives:${name}`,
+    name,
+    collection: "primitives" as const,
+    type,
+    values: [value],
+    description: `From the site: --${name.replace("/", "-")}`,
+    scopes: ["ALL_SCOPES"],
+  });
+  const size = variable("text/base", "FLOAT", 16);
+  const leading = variable("leading/base", "FLOAT", 24);
+  const family = variable("font/sans", "STRING", "Inter");
+  const weight = variable("font-weight/normal", "FLOAT", 400);
+  const bind = {
+    fontSize: size.key,
+    lineHeight: leading.key,
+    fontFamily: family.key,
+    fontWeight: weight.key,
+  };
+  const layered = (style: PlanTextStyle = { ...body, bind }): PlanTokens =>
+    tokens({
+      textStyles: [style],
+      colors: [],
+      layers: {
+        hostname: "example.com",
+        modes: ["Light"],
+        themeSource: "none",
+        variables: [size, leading, family, weight],
+        effectStyles: [],
+        gradientStyles: [],
+        notes: { twins: [], inferred: [], droppedPrimitives: 0 },
+      },
+    });
+  const idOf = (f: Fake, name: string) => variablesIn(f).find((v: any) => v.name === name)?.id;
+
+  test("a style made by this import is bound to its variables", async () => {
+    const f = fakeFigma();
+    const r = await runImport(f, layered());
+    const [style] = stylesIn(f) as [any];
+    expect(style.boundVariables.fontSize.id).toBe(idOf(f, "text/base"));
+    expect(style.boundVariables.lineHeight.id).toBe(idOf(f, "leading/base"));
+    expect(style.boundVariables.fontFamily.id).toBe(idOf(f, "font/sans"));
+    expect(style.boundVariables.fontWeight.id).toBe(idOf(f, "font-weight/normal"));
+    expect(r.tokenFailures).toBe(0);
+  });
+
+  test("a field Figma refuses stays plain and counts", async () => {
+    const f = fakeFigma({ failStyleBinding: "fontWeight" });
+    const r = await runImport(f, layered());
+    const [style] = stylesIn(f) as [any];
+    expect(Object.keys(style.boundVariables)).toEqual(["fontSize", "lineHeight", "fontFamily"]);
+    expect(r.tokenFailures).toBe(1);
+  });
+
+  test("a Frottage style from an earlier import is reused as it is", async () => {
+    const f = fakeFigma();
+    await runImport(f, tokens({ colors: [] }));
+    const [style] = stylesIn(f) as [any];
+    await runImport(f, layered());
+    expect(stylesIn(f)).toEqual([style]);
+    expect(style.boundVariables).toBeUndefined();
+  });
+
+  test("with tokens off nothing is bound", async () => {
+    const f = fakeFigma();
+    await runImport(f, layered(), options({ tokens: false }));
+    expect(stylesIn(f)).toEqual([]);
+    expect(variablesIn(f)).toEqual([]);
   });
 });

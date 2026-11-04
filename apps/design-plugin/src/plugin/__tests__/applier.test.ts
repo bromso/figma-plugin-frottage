@@ -1,5 +1,14 @@
-import { expect, test } from "bun:test";
-import type { FontRef, PlanOp, PlanRun } from "@repo/figma-mapper";
+import { describe, expect, test } from "bun:test";
+import {
+  DEFAULT_IMPORT_OPTIONS,
+  type FontRef,
+  type PlanEffect,
+  type PlanLayers,
+  type PlanOp,
+  type PlanRun,
+  type PlanTokens,
+  type PlanVariable,
+} from "@repo/figma-mapper";
 import { createApplier } from "../applier";
 import { type FakeNode, fakeFigma } from "./fake-figma";
 
@@ -1021,4 +1030,209 @@ test("image, svg and missing-image layers rotate too", async () => {
   expect(gone.rotation).toBeCloseTo(-45, 6);
   const [cx, cy] = centreOf(img);
   expect([cx, cy].map((n) => Math.round(n * 1e6) / 1e6)).toEqual([30, 20]);
+});
+
+describe("binding to the Primitives and Theme collections", () => {
+  type Rgba = { r: number; g: number; b: number; a: number };
+  const WHITE: Rgba = { r: 1, g: 1, b: 1, a: 1 };
+  const SHADE: Rgba = { r: 0, g: 0, b: 0, a: 0.5 };
+  const BLACK = { r: 0, g: 0, b: 0 };
+  const radius: PlanVariable = {
+    key: "primitives:radius/lg",
+    name: "radius/lg",
+    collection: "primitives",
+    type: "FLOAT",
+    values: [8],
+    description: "From the site: --radius",
+    scopes: ["CORNER_RADIUS"],
+    cssVar: "--radius",
+  };
+  // Opaque in Light, translucent in Dark: the variable carries the alpha.
+  const card: PlanVariable = {
+    key: "theme:card",
+    name: "card",
+    collection: "theme",
+    type: "COLOR",
+    values: [WHITE, SHADE],
+    description: "From the site: --card",
+    scopes: ["ALL_SCOPES"],
+    cssVar: "--card",
+  };
+  const shadow: PlanEffect = {
+    type: "DROP_SHADOW",
+    color: { r: 0, g: 0, b: 0, a: 0.25 },
+    offset: { x: 0, y: 1 },
+    radius: 2,
+    spread: 0,
+  };
+  const gradientPaint = {
+    type: "GRADIENT_LINEAR" as const,
+    transform: [
+      [1, 0, 0],
+      [0, 1, 0],
+    ] as [[number, number, number], [number, number, number]],
+    stops: [
+      { position: 0, color: WHITE },
+      { position: 1, color: { ...BLACK, a: 1 } },
+    ],
+  };
+  const layers: PlanLayers = {
+    hostname: "example.com",
+    modes: ["Light", "Dark"],
+    themeSource: "site",
+    variables: [card, radius],
+    effectStyles: [{ key: "shadow:sm", name: "shadow/sm", shadows: [shadow], colorKeys: [null] }],
+    gradientStyles: [
+      { key: "gradient:1", name: "gradient/1", paint: gradientPaint, stopKeys: [card.key, null] },
+    ],
+    notes: { twins: [], inferred: [], droppedPrimitives: 0 },
+  };
+  const plan: PlanTokens = { textStyles: [], colors: [], collection: "example.com", layers };
+
+  async function layered(ops: PlanOp[], over: object = {}, tokens = true) {
+    const f = fakeFigma(over);
+    const a = createApplier(f.figma);
+    await a.begin(meta);
+    await a.importTokens(plan, { ...DEFAULT_IMPORT_OPTIONS, tokens });
+    await a.applyBatch(ops);
+    const r = await a.end();
+    return { f, r, root: f.node(r.rootId) };
+  }
+  const variableNamed = (f: ReturnType<typeof fakeFigma>, name: string): any =>
+    [...f.tokens.variables.values()].find((v) => v.name === name);
+  const collectionNamed = (f: ReturnType<typeof fakeFigma>, name: string): any =>
+    [...f.tokens.collections.values()].find((c) => c.name === name);
+  const allKeys = [radius.key, radius.key, radius.key, radius.key] as [
+    string,
+    string,
+    string,
+    string,
+  ];
+
+  test("a frame's four corners bind to their radius variables", async () => {
+    const { f, root } = await layered([frame("a", null, { radiusKeys: allKeys })]);
+    const id = variableNamed(f, "radius/lg").id;
+    for (const corner of [
+      "topLeftRadius",
+      "topRightRadius",
+      "bottomRightRadius",
+      "bottomLeftRadius",
+    ]) {
+      expect(root.boundVariables?.[corner]?.id).toBe(id);
+    }
+    expect(root.topLeftRadius).toBe(1);
+  });
+
+  test("a corner without a key, or one Figma refuses, keeps its raw value", async () => {
+    const keys = [radius.key, undefined, "primitives:radius/none", radius.key];
+    const { f, root, r } = await layered([frame("a", null, { radiusKeys: keys })], {
+      failRadiusBinding: "bottomLeftRadius",
+    });
+    expect(Object.keys(root.boundVariables ?? {})).toEqual(["topLeftRadius"]);
+    expect(root.bottomLeftRadius).toBe(4);
+    expect(r.tokenFailures).toBe(1);
+    expect(variableNamed(f, "radius/lg")).toBeDefined();
+  });
+
+  test("a translucent paint bound to a variable holding alpha takes opacity 1", async () => {
+    const fills = [{ type: "SOLID", color: BLACK, opacity: 0.5, colorKey: card.key }];
+    const stroke = {
+      color: BLACK,
+      opacity: 0.5,
+      colorKey: card.key,
+      weights: { top: 1, right: 1, bottom: 1, left: 1 },
+    };
+    const run_ = { ...run(0, 5, inter), opacity: 0.5, colorKey: card.key };
+    const { f, root } = await layered([
+      frame("a", null, { fills, strokes: stroke, childCount: 1 }),
+      textOp("t", "a", [run_]),
+    ]);
+    const id = variableNamed(f, "card").id;
+    const runFill = root.children[0].ranges.find((x: any) => x.m === "setRangeFills").v[0];
+    for (const paint of [root.fills[0], root.strokes[0], runFill]) {
+      expect(paint.boundVariables.color.id).toBe(id);
+      expect(paint.opacity).toBe(1);
+    }
+  });
+
+  test("a paint whose binding fails keeps its captured opacity", async () => {
+    const fills = [{ type: "SOLID", color: BLACK, opacity: 0.5, colorKey: card.key }];
+    const { root, r } = await layered([frame("a", null, { fills })], {
+      failTokens: ["setBoundVariableForPaint"],
+    });
+    expect(root.fills[0].boundVariables).toBeUndefined();
+    expect(root.fills[0].opacity).toBe(0.5);
+    expect(r.tokenFailures).toBe(1);
+  });
+
+  test("a frame whose shadows match an effect style links it and sets no loose effects", async () => {
+    const { f, root } = await layered([
+      frame("a", null, { effects: [shadow], effectStyleKey: "shadow:sm" }),
+    ]);
+    const [style] = [...f.tokens.effectStyles.values()];
+    expect(root.effectStyleId).toBe(style.id);
+    expect(root.effects).toBe(style.effects);
+  });
+
+  test("a frame whose effect style is missing keeps its effects loose", async () => {
+    const { root } = await layered([
+      frame("a", null, { effects: [shadow], effectStyleKey: "shadow:nothing" }),
+    ]);
+    expect(root.effectStyleId).toBeUndefined();
+    expect(root.effects).toHaveLength(1);
+    expect(root.effects[0].radius).toBe(2);
+  });
+
+  test("a frame whose effect style won't link keeps its effects loose", async () => {
+    const { root, r } = await layered(
+      [frame("a", null, { effects: [shadow], effectStyleKey: "shadow:sm" })],
+      { failTokens: ["setEffectStyleIdAsync"] }
+    );
+    expect(root.effectStyleId).toBeUndefined();
+    expect(root.effects).toHaveLength(1);
+    expect(r.tokenFailures).toBe(1);
+  });
+
+  test("a gradient fill with a style links the paint style", async () => {
+    const fills = [{ ...gradientPaint, gradientStyleKey: "gradient:1" }];
+    const { f, root } = await layered([frame("a", null, { fills })]);
+    const [style] = [...f.tokens.paintStyles.values()];
+    expect(root.fillStyleId).toBe(style.id);
+  });
+
+  test("the imported root opens on the Theme collection's Light mode", async () => {
+    const { f, root } = await layered([frame("a", null, { childCount: 1 }), frame("b", "a")]);
+    const theme = collectionNamed(f, "example.com · Theme");
+    const light = theme.modes.find((m: { name: string }) => m.name === "Light").modeId;
+    expect(root.explicitModes).toEqual({ [theme.id]: light });
+    expect(root.children[0].explicitModes).toEqual({});
+  });
+
+  test("a refused Light mode counts and the page still imports", async () => {
+    const { root, r } = await layered([frame("a")], { failExplicitMode: true });
+    expect(root.explicitModes).toEqual({});
+    expect(r.tokenFailures).toBe(1);
+  });
+
+  test("with tokens off nothing is bound", async () => {
+    const fills = [{ type: "SOLID", color: BLACK, opacity: 0.5, colorKey: card.key }];
+    const { f, root } = await layered(
+      [
+        frame("a", null, {
+          fills,
+          radiusKeys: allKeys,
+          effects: [shadow],
+          effectStyleKey: "shadow:sm",
+        }),
+      ],
+      {},
+      false
+    );
+    expect(f.tokens.variables.size).toBe(0);
+    expect(root.boundVariables).toBeUndefined();
+    expect(root.fills[0]).toEqual({ type: "SOLID", color: BLACK, opacity: 0.5 });
+    expect(root.effectStyleId).toBeUndefined();
+    expect(root.effects).toHaveLength(1);
+    expect(root.explicitModes).toEqual({});
+  });
 });

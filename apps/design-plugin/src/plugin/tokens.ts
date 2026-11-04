@@ -411,7 +411,7 @@ export async function usedVariables(
       if (shadow) note(effect.boundVariables?.color?.id);
     }
   }
-  if (variables.some((v) => v.resolvedType === "FLOAT")) {
+  if (variables.some((v) => v.resolvedType !== "COLOR")) {
     for (const style of await api.getLocalTextStylesAsync()) {
       for (const alias of Object.values(style.boundVariables ?? {})) note(alias.id);
     }
@@ -425,6 +425,8 @@ export function createTokenSet(api: PluginAPI) {
   const spacing = new Map<string, Variable>();
   const counts = { ...NO_TOKENS };
   let createdStyles: TextStyle[] = [];
+  /** Styles made just now with fields to bind, once the layers' variables are there. */
+  let styleBinds: { style: TextStyle; bind: NonNullable<PlanTextStyle["bind"]> }[] = [];
   let createdVariables: Variable[] = [];
   let createdCollection: VariableCollection | null = null;
   /** Modes added to a collection that was already there. A created one goes whole. */
@@ -504,6 +506,7 @@ export function createTokenSet(api: PluginAPI) {
         }
         const style = createStyle(token, taken);
         createdStyles.push(style);
+        if (token.bind) styleBinds.push({ style, bind: token.bind });
         styleIds.set(token.key, style.id);
         counts.stylesCreated++;
       } catch {
@@ -1246,6 +1249,25 @@ export function createTokenSet(api: PluginAPI) {
     }
   }
 
+  /** Binds the styles made just now to the layers' variables. A refused field stays plain. */
+  async function bindStyles(set: ReturnType<typeof createLayerSet>, runtime: TokenRuntime) {
+    const binds = styleBinds;
+    styleBinds = [];
+    for (const { style, bind } of binds) {
+      if (runtime.overBudget()) await runtime.breathe();
+      if (closed) return;
+      for (const [field, key] of Object.entries(bind) as [VariableBindableTextField, string][]) {
+        const variable = set.variable(key);
+        if (!variable) continue;
+        try {
+          style.setBoundVariable(field, variable);
+        } catch {
+          failed();
+        }
+      }
+    }
+  }
+
   /** Takes back a variable made just now. */
   function dropVariable(variable: Variable): void {
     createdVariables = createdVariables.filter((v) => v !== variable);
@@ -1262,6 +1284,7 @@ export function createTokenSet(api: PluginAPI) {
     const collection = createdCollection;
     const modes = createdModes;
     createdStyles = [];
+    styleBinds = [];
     createdVariables = [];
     createdCollection = null;
     createdModes = [];
@@ -1304,6 +1327,7 @@ export function createTokenSet(api: PluginAPI) {
       if (closed || !plan.layers) return;
       layers ??= createLayerSet(api);
       await layers.resolve(plan.layers, options, runtime);
+      if (!closed) await bindStyles(layers, runtime);
     },
 
     /** As `resolve`, for a set of versions: one mode for each, as far as the file allows. */
@@ -1342,6 +1366,8 @@ export function createTokenSet(api: PluginAPI) {
     radius: (key: string | null | undefined) => (key ? layers?.variable(key) : undefined),
     effectStyleId: (key: string | undefined) => (key ? layers?.effectStyleId(key) : undefined),
     gradientStyleId: (key: string | undefined) => (key ? layers?.gradientStyleId(key) : undefined),
+    /** A Theme mode by its label, or null without layers or room for it. */
+    themeMode: (name: string) => layers?.themeMode(name) ?? null,
     failed,
     counts(): TokenCounts {
       if (!layers) return { ...counts };
