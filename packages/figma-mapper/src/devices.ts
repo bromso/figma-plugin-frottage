@@ -68,6 +68,17 @@ function free(name: string, taken: Set<string>): string {
   return out;
 }
 
+/** `shadow/1` free, or the next free number (`shadow/2`); a name with no number goes as `free`. */
+function numbered(name: string, taken: Set<string>): string {
+  const m = /^(.*\/)(\d+)$/.exec(name);
+  if (!m) return free(name, taken);
+  let n = Number(m[2]);
+  while (taken.has(`${m[1]}${n}`)) n++;
+  const out = `${m[1]}${n}`;
+  taken.add(out);
+  return out;
+}
+
 /** Unique labels, a repeat getting ` (2)` and on. */
 function uniqueLabels(labels: string[]): string[] {
   const taken = new Set<string>();
@@ -94,12 +105,17 @@ function emptyLayers(hostname: string): PlanLayers {
 
 /**
  * The page's Breakpoint modes, each read from the widest entry in it. Ranges no entry falls in are
- * left out and named in `missing`. With no boundaries there is one range and no Breakpoint mode.
+ * left out and named in `missing`. A page that records no boundaries uses its device widths, and
+ * with one device there is one range and no Breakpoint mode.
  */
 function rangesOf(entries: DeviceEntry[], order: number[]) {
-  const boundaries = [
+  const recorded = [
     ...new Set(entries.flatMap((e) => e.capture.breakpoints?.widths ?? []).filter((w) => w > 0)),
   ].sort((a, b) => a - b);
+  // A page that records none still differs by device: each device width but the narrowest is one.
+  const deviceWidths = [...new Set(entries.filter(isDevice).map(widthOf))].sort((a, b) => a - b);
+  const fromDevices = recorded.length === 0 && deviceWidths.length > 1;
+  const boundaries = fromDevices ? deviceWidths.slice(1) : recorded;
   const all: Omit<Range, "owner">[] =
     boundaries.length === 0
       ? [{ name: BASE_RANGE, min: 0, max: null }]
@@ -122,7 +138,7 @@ function rangesOf(entries: DeviceEntry[], order: number[]) {
     if (owner === undefined) missing.push(range.name);
     else ranges.push({ ...range, owner });
   }
-  return { ranges, missing, breakpoints: boundaries.length > 0 };
+  return { ranges, missing, breakpoints: boundaries.length > 0, fromDevices };
 }
 
 type Rekey = (key: string) => string | undefined;
@@ -186,7 +202,10 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
     entries[i]?.plan.tokens.layers ?? emptyLayers(entries[i]?.plan.tokens.collection ?? "");
   const top = layersAt(primary);
 
-  const { ranges, missing, breakpoints } = rangesOf(entries, order);
+  const { ranges, missing, breakpoints, fromDevices } = rangesOf(entries, order);
+  if (fromDevices) {
+    report.push("This page records no breakpoints, so each device width was used as one.");
+  }
   for (const name of missing) report.push(`No capture for the ${name} breakpoint`);
   const modeNames = ranges.map((r) => r.name);
 
@@ -214,7 +233,9 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
   let dropped = 0;
   const reserved = breakpoints ? FIXED_VARIABLES : FIXED_VARIABLES / 2;
   const tokens: PlanVariable[] = [];
-  const room = (more = 1) => merged.size + tokens.length + reserved + more <= MAX_VARIABLES;
+  const bpVariables: PlanVariable[] = [];
+  const room = (more = 1) =>
+    merged.size + tokens.length + bpVariables.length + reserved + more <= MAX_VARIABLES;
 
   for (const i of order) {
     const layers = layersAt(i);
@@ -275,7 +296,6 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
 
   const themeNames = namesIn("theme");
   const bpNames = namesIn("breakpoint");
-  const bpVariables: PlanVariable[] = [];
 
   /**
    * One raw variable per mode, `<mode>/<name>` in its collection, and a Breakpoint variable `name`
@@ -439,7 +459,13 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
       });
       for (const { field, suffix, scope } of TYPE_FIELDS) {
         const values = inMode.map((s) => (s ?? original)[field]);
-        if (values.some((v) => v === null) || new Set(values).size < 2) continue;
+        if (new Set(values).size < 2) continue;
+        if (values.some((v) => v === null)) {
+          report.push(
+            `${seed.name} line height stays the same at every breakpoint because it is automatic at some.`
+          );
+          continue;
+        }
         if (switches(seed.bind?.[field])) continue;
         if (!room(ranges.length + 2)) {
           dropped += ranges.length + 2;
@@ -470,6 +496,48 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
         seed.bind = { ...seed.bind, [field]: key };
       }
     });
+  }
+
+  // ---------- A device sharing a range with a wider capture shows that capture's values.
+
+  const nameOf = (i: number) => {
+    const at = deviceAt.indexOf(i);
+    return at >= 0
+      ? (deviceNames[at] as string)
+      : `the ${widthOf(entries[i] as DeviceEntry)} capture`;
+  };
+  const resolvedIn = (i: number, name: string) => {
+    const key = sourceIn(i, name);
+    return key === undefined ? undefined : JSON.stringify(resolved(key));
+  };
+  const looksOf = (i: number) => {
+    const sets = joinsAt.get(i);
+    return originals.map((s) => {
+      const style = i === primary ? s : (sets?.joins.get(s) ?? sets?.shared.get(s));
+      return style ? JSON.stringify([style.fontSize, style.lineHeight, style.letterSpacing]) : null;
+    });
+  };
+  if (breakpoints) {
+    for (const i of deviceAt) {
+      const w = widthOf(entries[i] as DeviceEntry);
+      const range = ranges.find((r) => w >= r.min && (r.max === null || w < r.max));
+      if (!range || range.owner === i) continue;
+      const owner = range.owner;
+      const tokenDiffers = [...themeIn(i).keys()].some((name) => {
+        const mine = resolvedIn(i, name);
+        const theirs = resolvedIn(owner, name);
+        return mine !== undefined && theirs !== undefined && mine !== theirs;
+      });
+      const ownerLooks = looksOf(owner);
+      const styleDiffers = looksOf(i).some(
+        (look, at) => look !== null && ownerLooks[at] != null && look !== ownerLooks[at]
+      );
+      if (tokenDiffers || styleDiffers) {
+        report.push(
+          `${nameOf(i)} shares the ${range.name} breakpoint with ${nameOf(owner)} and uses its values.`
+        );
+      }
+    }
   }
 
   // ---------- Prune what a split or clash left with nothing aliasing it.
@@ -572,12 +640,15 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
   const gradientStyles: PlanLayers["gradientStyles"] = [];
   const styleColors = new Map<string, NonNullable<PlanLayers["styleColors"]>[number]>();
   const inferred = new Set<string>();
+  const effectNames = new Set<string>();
+  const gradientNames = new Set<string>();
   for (const i of order) {
     const layers = layersAt(i);
     for (const style of layers.effectStyles) {
       if (effectStyles.some((s) => s.key === style.key)) continue;
       effectStyles.push({
         ...style,
+        name: numbered(style.name, effectNames),
         colorKeys: style.colorKeys.map((key) => (key === null ? null : (themeKey(key) ?? null))),
       });
     }
@@ -585,6 +656,7 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
       if (gradientStyles.some((s) => s.key === style.key)) continue;
       gradientStyles.push({
         ...style,
+        name: numbered(style.name, gradientNames),
         stopKeys: style.stopKeys.map((key) => (key === null ? null : (themeKey(key) ?? null))),
       });
     }

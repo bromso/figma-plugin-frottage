@@ -280,38 +280,154 @@ describe("mergeDevices", () => {
   });
 
   test("two devices in one range both get it, and the range takes the wider one's values", () => {
-    const { layers, frames } = mergeDevices([
+    const { layers, frames, report } = mergeDevices([
       entry({ width: 1440, heading: 56, version: device("Desktop", 900) }),
       entry({ width: 1512, heading: 60, version: device("Laptop", 982) }),
       entry({ width: 390, heading: 30, version: device("Phone portrait", 844) }),
     ]);
     expect(frames.map((f) => f.breakpoint)).toEqual(["min 1400", "min 1400", "base"]);
     expect(varOf(layers, "typography:min 1400/type/heading/1/size")?.values).toEqual([60]);
+    expect(report).toContain(
+      "Desktop shares the min 1400 breakpoint with Laptop and uses its values."
+    );
   });
 
-  test("no boundaries: no Breakpoint collection and no breakpoint on any frame", () => {
+  test("a device sharing a range with the same values is not reported", () => {
+    const { report } = mergeDevices([
+      entry({ width: 1440, heading: 60, version: device("Desktop", 900) }),
+      entry({ width: 1512, heading: 60, version: device("Laptop", 982) }),
+    ]);
+    expect(report.some((line) => line.includes("shares"))).toBe(false);
+  });
+
+  /** The value a Theme token holds in a Breakpoint mode, following every alias. */
+  const valueIn = (layers: PlanLayers, key: string, mode: string): PlanVarValue | undefined => {
+    const modes = new Map(layers.collections.map((c) => [c.kind, c.modes]));
+    let v = varOf(layers, key);
+    for (let depth = 0; v && depth < 8; depth++) {
+      const at = v.collection === "breakpoint" ? (modes.get("breakpoint")?.indexOf(mode) ?? 0) : 0;
+      const value = v.values[at];
+      const alias = aliasOf(value);
+      if (!alias) return value;
+      v = varOf(layers, alias);
+    }
+    return undefined;
+  };
+
+  test("no recorded boundaries: each device width but the narrowest becomes one", () => {
     const entries = mainline({ boundaries: null }).slice(0, 3);
-    const { layers, frames, plans } = mergeDevices(entries);
-    expect(layers.collections.map((c) => c.kind)).not.toContain("breakpoint");
-    expect(frames.map((f) => f.breakpoint)).toEqual([null, null, null]);
+    const { layers, frames, plans, report } = mergeDevices(entries);
+    expect(report).toContain(
+      "This page records no breakpoints, so each device width was used as one."
+    );
+    expect(modesOf(layers, "Breakpoint")).toEqual(["base", "min 834", "min 1512"]);
+    expect(varOf(layers, "breakpoint:breakpoint/min-width")?.values).toEqual([0, 834, 1512]);
+    expect(frames.map((f) => f.breakpoint)).toEqual(["min 1512", "min 834", "base"]);
     expect(modesOf(layers, "Device")).toEqual(["Laptop", "Tablet portrait", "Phone portrait"]);
+    const size = "theme:type/heading/1/size";
+    expect(valueIn(layers, size, "min 1512")).toBe(60);
+    expect(valueIn(layers, size, "min 834")).toBe(48);
+    expect(valueIn(layers, size, "base")).toBe(30);
+    expect(report.some((line) => line.startsWith("No capture"))).toBe(false);
+    expectResolves(layers, plans);
+  });
+
+  test("one device and no boundaries: no Breakpoint collection and no breakpoint", () => {
+    const { layers, frames, plans, report } = mergeDevices(
+      mainline({ boundaries: null }).slice(0, 1)
+    );
+    expect(layers.collections.map((c) => c.kind)).not.toContain("breakpoint");
+    expect(frames).toEqual([{ index: 0, device: "Laptop", breakpoint: null }]);
+    expect(report).toEqual([]);
     expectResolves(layers, plans);
   });
 
   test("older captures with only a width become Device modes named by it", () => {
-    const { layers, frames } = mergeDevices([
-      entry({ width: 1512, heading: 60 }),
-      entry({ width: 834, heading: 48 }),
-      entry({ width: 390, heading: 30 }),
-    ]);
+    const entries = [
+      entry({ width: 1512, heading: 60, boundaries: null }),
+      entry({ width: 834, heading: 48, boundaries: null }),
+      entry({ width: 390, heading: 30, boundaries: null }),
+    ];
+    for (const e of entries) {
+      expect(e.capture.breakpoints).toBeUndefined();
+      expect(e.capture.version).toBeUndefined();
+    }
+    const { layers, frames, plans } = mergeDevices(entries);
     expect(modesOf(layers, "Device")).toEqual(["1512", "834", "390"]);
     expect(varOf(layers, "device:device/height")?.values).toEqual([0, 0, 0]);
-    expect(frames.map((f) => f.device)).toEqual(["1512", "834", "390"]);
+    expect(frames).toEqual([
+      { index: 0, device: "1512", breakpoint: "min 1512" },
+      { index: 1, device: "834", breakpoint: "min 834" },
+      { index: 2, device: "390", breakpoint: "base" },
+    ]);
+    // The phone's heading reads the phone's size through its Breakpoint mode.
+    expect(valueIn(layers, "theme:type/heading/1/size", "base")).toBe(30);
+    expect(valueIn(layers, "theme:type/heading/1/size", "min 834")).toBe(48);
+    expectResolves(layers, plans);
+  });
+
+  test("effect styles from different captures get unique names", () => {
+    const shadowed = (id: string, blur: number): ElementNode => {
+      const base = el(id, [0, 0]);
+      const color = rgba("rgb(0 0 0 / 0.1)");
+      return {
+        ...base,
+        style: {
+          ...base.style,
+          boxShadows: [{ inset: false, x: 0, y: 1, blur, spread: 0, color }],
+        },
+      };
+    };
+    const withShadows = (p: Page, blur: number): DeviceEntry => {
+      const capture = page(p);
+      if (capture.root.kind === "element") {
+        capture.root.children.push(...["s1", "s2", "s3"].map((id) => shadowed(id, blur)));
+      }
+      return { capture, plan: mapCapture(capture, inter, LAYERED) };
+    };
+    const { layers, plans } = mergeDevices([
+      withShadows({ width: 1512, heading: 60, version: device("Laptop", 982) }, 3),
+      withShadows({ width: 390, heading: 30, version: device("Phone portrait", 844) }, 8),
+    ]);
+    expect(layers.effectStyles.map((s) => s.name)).toEqual(["shadow/1", "shadow/2"]);
+    expectResolves(layers, plans);
   });
 
   test("every plan's keys resolve in the merged layers", () => {
     const { layers, plans } = mergeDevices(mainline());
     expect(plans).toHaveLength(4);
+    expectResolves(layers, plans);
+  });
+
+  test("a split near the cap counts its Breakpoint variables", () => {
+    const filled = (filler: number) => {
+      const entries = mainline();
+      const layers = entries[0]?.plan.tokens.layers as PlanLayers;
+      layers.variables = [
+        ...Array.from(
+          { length: filler },
+          (_, n): PlanVariable => ({
+            key: `palette:filler/${n}`,
+            name: `filler/${n}`,
+            collection: "palette",
+            type: "FLOAT",
+            values: [n],
+            description: "Filler",
+            scopes: [],
+          })
+        ),
+        ...layers.variables,
+      ];
+      return mergeDevices(entries);
+    };
+    // Each type split costs 4 raw values, a Breakpoint variable and a Theme token: 6.
+    const before = filled(0).layers.variables.length - 12;
+    // Room for 11 more: the size splits, and the line height no longer fits.
+    const { layers, plans, report } = filled(1000 - 11 - before);
+    expect(layers.variables.length).toBeLessThanOrEqual(1000);
+    expect(varOf(layers, "theme:type/heading/1/size")).toBeDefined();
+    expect(varOf(layers, "theme:type/heading/1/line-height")).toBeUndefined();
+    expect(report.some((line) => line.includes("past the 1,000-variable limit"))).toBe(true);
     expectResolves(layers, plans);
   });
 
