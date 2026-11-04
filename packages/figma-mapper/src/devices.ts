@@ -459,13 +459,7 @@ export function mergeDevices(entries: DeviceEntry[]): DeviceMerge {
       });
       for (const { field, suffix, scope } of TYPE_FIELDS) {
         const values = inMode.map((s) => (s ?? original)[field]);
-        if (new Set(values).size < 2) continue;
-        if (values.some((v) => v === null)) {
-          report.push(
-            `${seed.name} line height stays the same at every breakpoint because it is automatic at some.`
-          );
-          continue;
-        }
+        if (values.some((v) => v === null) || new Set(values).size < 2) continue;
         if (switches(seed.bind?.[field])) continue;
         if (!room(ranges.length + 2)) {
           dropped += ranges.length + 2;
