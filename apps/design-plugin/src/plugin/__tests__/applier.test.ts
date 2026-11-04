@@ -1327,3 +1327,353 @@ describe("binding to the layered collections", () => {
     expect(root.explicitModes).toEqual({});
   });
 });
+
+describe("a device set", () => {
+  type Rgba = { r: number; g: number; b: number; a: number };
+  const WHITE: Rgba = { r: 1, g: 1, b: 1, a: 1 };
+  const NIGHT: Rgba = { r: 0.125, g: 0.125, b: 0.25, a: 1 };
+  const base = { description: "", scopes: ["ALL_SCOPES"] };
+  const paper: PlanVariable = {
+    ...base,
+    key: "palette:white",
+    name: "white",
+    collection: "palette",
+    type: "COLOR",
+    values: [WHITE],
+  };
+  const night: PlanVariable = { ...paper, key: "palette:night", name: "night", values: [NIGHT] };
+  const deviceWidth: PlanVariable = {
+    ...base,
+    key: "device:device/width",
+    name: "device/width",
+    collection: "device",
+    type: "FLOAT",
+    values: [1440, 768, 390],
+  };
+  const minWidth: PlanVariable = {
+    ...base,
+    key: "breakpoint:breakpoint/min-width",
+    name: "breakpoint/min-width",
+    collection: "breakpoint",
+    type: "FLOAT",
+    values: [0, 768, 1024],
+  };
+  const gap: PlanVariable = {
+    ...minWidth,
+    key: "breakpoint:gap",
+    name: "gap",
+    values: [16, 24, 32],
+  };
+  const modeCard: PlanVariable = {
+    ...base,
+    key: "colorMode:card",
+    name: "card",
+    collection: "colorMode",
+    type: "COLOR",
+    values: [{ alias: paper.key }, { alias: night.key }],
+  };
+  const card: PlanVariable = {
+    ...modeCard,
+    key: "theme:color/card",
+    name: "color/card",
+    collection: "theme",
+    values: [{ alias: modeCard.key }],
+  };
+  const themeGap: PlanVariable = {
+    ...gap,
+    key: "theme:spacing/gap",
+    name: "spacing/gap",
+    collection: "theme",
+    values: [{ alias: gap.key }],
+  };
+  const layers: PlanLayers = {
+    hostname: "example.com",
+    modes: ["Light", "Dark"],
+    themeSource: "site",
+    collections: [
+      { kind: "palette", name: "Palette", modes: ["Base"] },
+      { kind: "device", name: "Device", modes: ["Desktop", "Tablet", "Phone"] },
+      { kind: "breakpoint", name: "Breakpoint", modes: ["base", "md", "lg"] },
+      { kind: "colorMode", name: "Color Mode", modes: ["Light", "Dark"] },
+      { kind: "theme", name: "Theme", modes: ["Default"] },
+    ],
+    variables: [paper, night, deviceWidth, minWidth, gap, modeCard, card, themeGap],
+    effectStyles: [],
+    gradientStyles: [],
+    notes: { twins: [], inferred: [], droppedPrimitives: 0 },
+  };
+  // As the mapper gives them, without breakpoints: no Breakpoint collection, and Theme reads raw.
+  const flat: PlanLayers = {
+    ...layers,
+    collections: layers.collections.filter((c) => c.kind !== "breakpoint"),
+    variables: [paper, night, deviceWidth, modeCard, card],
+  };
+  const DEVICES = [
+    { device: "Desktop", breakpoint: "lg", w: 1440 },
+    { device: "Tablet", breakpoint: "md", w: 768 },
+    { device: "Phone", breakpoint: "base", w: 390 },
+  ];
+  const fills = [{ type: "SOLID", color: WHITE, opacity: 1, colorKey: card.key }];
+  const TITLE = "Pricing | Acme";
+
+  type Run = {
+    placement?: "new-page" | "current-page";
+    plan?: PlanLayers;
+    devices?: { device: string; breakpoint: string | null; w: number }[];
+    /** Cancels after this many devices have begun, before that one ends. */
+    cancelAt?: number;
+  };
+  async function importDevices(f: ReturnType<typeof fakeFigma>, run_: Run = {}) {
+    const plan = run_.plan ?? layers;
+    const a = createApplier(f.figma);
+    await a.beginDeviceSet({
+      name: TITLE,
+      layers: plan,
+      options: DEFAULT_IMPORT_OPTIONS,
+      placement: run_.placement ?? "current-page",
+    });
+    for (const [index, d] of (run_.devices ?? DEVICES).entries()) {
+      await a.begin({
+        ...meta,
+        name: TITLE,
+        version: { index, label: d.device },
+        device: { mode: d.device, breakpoint: d.breakpoint },
+      });
+      await a.importTokens(
+        { textStyles: [], colors: [], collection: "example.com", layers: plan },
+        DEFAULT_IMPORT_OPTIONS
+      );
+      await a.applyBatch([
+        frame("a", null, { w: d.w, h: 800, fills, childCount: 1 }),
+        frame("b", "a", { fills, layout: { mode: "NONE" } }),
+      ]);
+      if (run_.cancelAt === index) {
+        await a.cancel();
+        return { a, r: null };
+      }
+      await a.end();
+    }
+    return { a, r: await a.endSet() };
+  }
+  const collections = (f: ReturnType<typeof fakeFigma>): any[] => [
+    ...f.tokens.collections.values(),
+  ];
+  const collectionNamed = (f: ReturnType<typeof fakeFigma>, name: string): any =>
+    collections(f).find((c) => c.name === name);
+  const modeIn = (c: any, name: string) =>
+    c.modes.find((m: { name: string }) => m.name === name)?.modeId;
+  const sectionOf = (f: ReturnType<typeof fakeFigma>): FakeNode =>
+    f.created.find((n) => n.type === "SECTION" && n.name === TITLE) as FakeNode;
+  const themeVariable = (f: ReturnType<typeof fakeFigma>, name: string): any =>
+    [...f.tokens.variables.values()].find(
+      (v) => v.name === name && v.variableCollectionId === collectionNamed(f, "Theme")?.id
+    );
+
+  test("puts one frame per device side by side in one section on the current page", async () => {
+    const f = fakeFigma();
+    const { r } = await importDevices(f);
+    const section = sectionOf(f);
+    expect(section.parent).toBe(f.page);
+    const frames = section.children;
+    expect(frames.map((n: FakeNode) => n.name)).toEqual([
+      `${TITLE} — Desktop`,
+      `${TITLE} — Tablet`,
+      `${TITLE} — Phone`,
+    ]);
+    expect(r?.rootIds).toEqual(frames.map((n: FakeNode) => n.id));
+    for (const [i, n] of frames.entries()) {
+      expect(n.width).toBe(DEVICES[i]?.w as number);
+      expect(n.y).toBe(frames[0].y);
+      if (i > 0) expect(n.x).toBe(frames[i - 1].x + frames[i - 1].width + 200);
+    }
+    const last = frames[2];
+    expect(section.width).toBeGreaterThanOrEqual(last.x + last.width);
+    expect(section.height).toBeGreaterThanOrEqual(last.y + last.height);
+    expect(f.page.selection).toEqual([section]);
+    expect(f.pages).toHaveLength(1);
+  });
+
+  test("each frame takes its Device and Breakpoint modes; the section takes Color Mode", async () => {
+    const f = fakeFigma();
+    await importDevices(f);
+    const device = collectionNamed(f, "Device");
+    const breakpoint = collectionNamed(f, "Breakpoint");
+    const colorMode = collectionNamed(f, "Color Mode");
+    const section = sectionOf(f);
+    for (const [i, n] of section.children.entries()) {
+      const d = DEVICES[i] as (typeof DEVICES)[number];
+      expect(n.explicitModes).toEqual({
+        [device.id]: modeIn(device, d.device),
+        [breakpoint.id]: modeIn(breakpoint, d.breakpoint),
+      });
+      expect(n.children[0].explicitModes).toEqual({});
+    }
+    expect(section.explicitModes).toEqual({ [colorMode.id]: modeIn(colorMode, "Light") });
+  });
+
+  test("a page captured in Dark opens its section on Dark", async () => {
+    const f = fakeFigma();
+    await importDevices(f, { plan: { ...layers, activeMode: "Dark" } });
+    const colorMode = collectionNamed(f, "Color Mode");
+    expect(sectionOf(f).explicitModes).toEqual({ [colorMode.id]: modeIn(colorMode, "Dark") });
+  });
+
+  test("makes each collection once, and every frame binds to the same Theme variables", async () => {
+    const f = fakeFigma();
+    const { r } = await importDevices(f);
+    expect(collections(f).map((c) => c.name)).toEqual([
+      "Palette",
+      "Device",
+      "Breakpoint",
+      "Color Mode",
+      "Theme",
+    ]);
+    expect(f.tokens.variables.size).toBe(layers.variables.length);
+    expect(r?.variablesCreated).toBe(layers.variables.length);
+    expect(r?.variablesReused).toBe(0);
+    const id = themeVariable(f, "color/card").id;
+    for (const n of sectionOf(f).children) {
+      expect(n.fills[0].boundVariables.color.id).toBe(id);
+      expect(n.children[0].fills[0].boundVariables.color.id).toBe(id);
+    }
+  });
+
+  test("the devices share their text styles: the first settles each, once", async () => {
+    const f = fakeFigma();
+    const body = {
+      key: "body-key",
+      name: "body/1",
+      uses: 3,
+      fontName: inter,
+      fontSize: 16,
+      lineHeight: 24,
+      letterSpacing: 0,
+      decoration: "NONE" as const,
+      textCase: "ORIGINAL" as const,
+    };
+    const a = createApplier(f.figma);
+    await a.beginDeviceSet({
+      name: TITLE,
+      layers,
+      options: DEFAULT_IMPORT_OPTIONS,
+      placement: "current-page",
+    });
+    for (const [index, d] of DEVICES.entries()) {
+      await a.begin({
+        ...meta,
+        version: { index, label: d.device },
+        device: { mode: d.device, breakpoint: d.breakpoint },
+      });
+      await a.importTokens(
+        { textStyles: [body], colors: [], collection: "example.com", layers },
+        DEFAULT_IMPORT_OPTIONS
+      );
+      await a.applyBatch([frame("a", null, { fills })]);
+      await a.end();
+    }
+    const r = await a.endSet();
+    expect(f.tokens.textStyles.size).toBe(1);
+    expect(r.stylesCreated).toBe(1);
+    expect(r.stylesReused).toBe(0);
+    expect(r.variablesCreated).toBe(layers.variables.length);
+  });
+
+  test("a set without breakpoints sets no Breakpoint mode", async () => {
+    const f = fakeFigma();
+    const devices = DEVICES.map((d) => ({ ...d, breakpoint: null }));
+    await importDevices(f, { plan: flat, devices });
+    expect(collectionNamed(f, "Breakpoint")).toBeUndefined();
+    const device = collectionNamed(f, "Device");
+    for (const [i, n] of sectionOf(f).children.entries()) {
+      expect(n.explicitModes).toEqual({ [device.id]: modeIn(device, DEVICES[i]?.device) });
+    }
+  });
+
+  test("new-page puts the section on a new page named after the site, and stays put", async () => {
+    const f = fakeFigma();
+    await importDevices(f, { placement: "new-page" });
+    expect(f.pages).toHaveLength(2);
+    const made = f.pages[1] as FakeNode;
+    expect(made.name).toBe("example.com");
+    expect(sectionOf(f).parent).toBe(made);
+    expect(made.children).toEqual([sectionOf(f)]);
+    expect(f.figma.currentPage).toBe(f.page as unknown as PageNode);
+    expect(f.page.children.some((n: FakeNode) => n.type === "FRAME")).toBe(false);
+  });
+
+  test("new-page numbers the page when one is named after the site already", async () => {
+    const f = fakeFigma();
+    const first = await importDevices(f, { placement: "new-page" });
+    expect(first.r?.rootIds).toHaveLength(3);
+    await importDevices(f, { placement: "new-page" });
+    expect(f.pages.map((p: FakeNode) => p.name)).toEqual([
+      "Page 1",
+      "example.com",
+      "example.com (2)",
+    ]);
+  });
+
+  test("cancel mid-set removes the section, its frames and the collections it made", async () => {
+    for (const placement of ["current-page", "new-page"] as const) {
+      const f = fakeFigma();
+      await importDevices(f, { placement, cancelAt: 1 });
+      const section = sectionOf(f);
+      expect(section.removed).toBe(true);
+      expect(
+        f.created.filter((n) => n.type === "FRAME" && !n.removed && !n.parent?.removed)
+      ).toEqual([]);
+      expect(f.page.children).toEqual([]);
+      expect(f.tokens.collections.size).toBe(0);
+      expect(f.tokens.variables.size).toBe(0);
+      expect(f.pages).toHaveLength(1);
+    }
+  });
+
+  test("a frame the file had no Breakpoint mode for stays plain; no Device mode still binds", async () => {
+    // Room for two modes: Phone has no Device mode, and lg (Desktop's range) no Breakpoint mode.
+    const f = fakeFigma({ modeLimit: 2 });
+    await importDevices(f);
+    const device = collectionNamed(f, "Device");
+    const breakpoint = collectionNamed(f, "Breakpoint");
+    const [desktop, tablet, phone] = sectionOf(f).children;
+    expect(desktop.fills[0].boundVariables).toBeUndefined();
+    expect(desktop.explicitModes).toEqual({});
+    expect(tablet.fills[0].boundVariables).toBeDefined();
+    expect(tablet.explicitModes).toEqual({
+      [device.id]: modeIn(device, "Tablet"),
+      [breakpoint.id]: modeIn(breakpoint, "md"),
+    });
+    expect(phone.fills[0].boundVariables).toBeDefined();
+    expect(phone.explicitModes).toEqual({ [breakpoint.id]: modeIn(breakpoint, "base") });
+    expect(f.storage.get("modeLimit")).toBe(2);
+  });
+
+  test("a refused Device mode leaves the frame plain and counts", async () => {
+    // The section's Color Mode is the first explicit mode; Desktop's Device mode the second.
+    const f = fakeFigma({ failExplicitMode: 2 });
+    const { r } = await importDevices(f, {
+      plan: flat,
+      devices: DEVICES.map((d) => ({ ...d, breakpoint: null })),
+    });
+    for (const n of sectionOf(f).children) {
+      expect(n.fills[0].boundVariables).toBeUndefined();
+      expect(n.explicitModes).toEqual({});
+    }
+    expect(r?.tokenFailures).toBe(3);
+  });
+
+  test("a Stage 3 set still lays its frames on the page, with no section", async () => {
+    const f = fakeFigma();
+    const a = createApplier(f.figma);
+    await a.beginSet();
+    for (const [index, label] of ["Light", "Dark"].entries()) {
+      await a.begin({ ...meta, version: { index, label } });
+      await a.applyBatch([frame("a")]);
+      await a.end();
+    }
+    const r = await a.endSet();
+    expect(r.rootIds).toHaveLength(2);
+    expect(f.created.some((n) => n.type === "SECTION")).toBe(false);
+    expect(r.rootIds.map((id) => f.node(id).parent)).toEqual([f.page, f.page]);
+  });
+});

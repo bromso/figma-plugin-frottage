@@ -94,6 +94,43 @@ export function fakeFigma(opts: Options = {}) {
     return out;
   }
   page.findAll = findAll;
+  page.name = "Page 1";
+  /** Every page in the file, the first the one open; `createPage` adds one, unloaded. */
+  const pages: FakeNode[] = [page];
+  function newPage(): FakeNode {
+    const kids: FakeNode[] = [];
+    let loaded = false;
+    const p: FakeNode = {
+      id: `page${pages.length + 1}`,
+      type: "PAGE",
+      name: "",
+      kids,
+      get children() {
+        return [...kids];
+      },
+      selection: [],
+      removed: false,
+      async loadAsync() {
+        calls.push("page.loadAsync");
+        loaded = true;
+      },
+      appendChild(child: FakeNode) {
+        // Measured under `dynamic-page`: a new page must be loaded before it is used.
+        if (!loaded) throw new Error("page not loaded");
+        detach(child);
+        child.parent = p;
+        kids.push(child);
+      },
+      remove() {
+        calls.push("remove:PAGE");
+        p.removed = true;
+        pages.splice(pages.indexOf(p), 1);
+      },
+    };
+    pages.push(p);
+    return p;
+  }
+  const storage = new Map<string, unknown>();
   let selection: FakeNode[] = [];
   Object.defineProperty(page, "selection", {
     get: () => selection,
@@ -378,6 +415,24 @@ export function fakeFigma(opts: Options = {}) {
         (figma as any).zoomed = n;
       },
     },
+    root: {
+      get children() {
+        return [...pages];
+      },
+    },
+    createPage() {
+      calls.push("createPage");
+      return newPage();
+    },
+    clientStorage: {
+      async getAsync(key: string) {
+        return storage.get(key);
+      },
+      async setAsync(key: string, value: unknown) {
+        calls.push(`clientStorage.set:${key}`);
+        storage.set(key, value);
+      },
+    },
     commitUndo() {
       calls.push("commitUndo");
     },
@@ -617,6 +672,8 @@ export function fakeFigma(opts: Options = {}) {
     created,
     svgSources,
     page,
+    pages,
+    storage,
     tokens,
     raw_createText: () => figma.createText() as FakeNode,
   };

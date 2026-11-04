@@ -2,6 +2,7 @@ import type {
   FontRef,
   ImportOptions,
   PlanEffect,
+  PlanLayers,
   PlanLayout,
   PlanOp,
   PlanOverride,
@@ -42,6 +43,19 @@ export type ImportMeta = {
   totalOps: number;
   /** One version of a set, which gets the name and mode that go with its place in it. */
   version?: { index: number; label: string };
+  /** In a device set, the version's Device mode and, for a page with breakpoints, its Breakpoint mode. */
+  device?: { mode: string; breakpoint: string | null };
+};
+
+/** A page captured on several devices, imported as one frame per device in one section. */
+export type DeviceSetMeta = {
+  /** The section's name: the page's title. */
+  name: string;
+  /** The merged layers every device binds to, resolved once for the set. */
+  layers: PlanLayers;
+  options: ImportOptions;
+  /** A new page named after the site, or the page open now. */
+  placement: "new-page" | "current-page";
 };
 export type EndResult = TokenCounts & {
   rootId: string;
@@ -84,9 +98,14 @@ export type SetResult = TokenCounts & {
 /** A set of versions under way. Its finished frames and sections are held until `endSet`. */
 type HeldSet = {
   page: PageNode;
-  /** Where the next frame goes. */
+  /** Where the next frame goes, in the section for a device set. */
   x: number;
+  y: number;
   finished: { root: FrameNode; components: ComponentSet }[];
+  /** A device set's section, which holds its frames. */
+  section?: SectionNode;
+  /** The page a device set made for itself, which goes if the set does. */
+  createdPage?: PageNode;
 };
 
 type Corners = [number, number, number, number];
@@ -98,6 +117,8 @@ const FALLBACK: FontRef = { family: "Inter", style: "Regular" };
 const GAP = 100;
 /** Between the versions of a set, and between its row of frames and its row of sections. */
 const VERSION_GAP = 200;
+/** Around a device set's frames, inside its section. */
+const SECTION_PADDING = 100;
 /** The largest SVG source handed to Figma. Capture applies the same limit; a file can still hold more. */
 const MAX_SVG_BYTES = 256 * 1024;
 /**
@@ -156,6 +177,9 @@ export function createApplier(api: PluginAPI) {
   let root: FrameNode | null = null;
   let rootName = "";
   let rootX = 0;
+  let rootY = 0;
+  /** Where the root goes: the page, or a device set's section. */
+  let container: PageNode | SectionNode | null = null;
   let rootAttempted = false;
   let pending: SceneNode | null = null;
   let nodes = new Map<string, SceneNode>();
@@ -196,6 +220,8 @@ export function createApplier(api: PluginAPI) {
   let versionIndex: number | null = null;
   /** Figma refused this version's mode, so its values wouldn't be what its frames should read. */
   let modeRefused = false;
+  /** This version's Device and Breakpoint modes, in a device set. */
+  let deviceModes: ImportMeta["device"] | null = null;
 
   /** Clears the version in hand and removes what it left. The set around it, if any, stays. */
   function clearVersion() {
@@ -211,7 +237,10 @@ export function createApplier(api: PluginAPI) {
     components = null;
     root = null;
     rootName = "";
+    rootX = 0;
+    rootY = 0;
     page = null;
+    container = null;
     active = false;
     rootAttempted = false;
     pending = null;
@@ -236,6 +265,7 @@ export function createApplier(api: PluginAPI) {
     resizedFallbacks = 0;
     versionIndex = null;
     modeRefused = false;
+    deviceModes = null;
   }
 
   function reset() {
@@ -247,6 +277,14 @@ export function createApplier(api: PluginAPI) {
         // already gone
       }
       section.discard();
+    }
+    // Emptied above; a page made for the set goes with it.
+    for (const node of [held?.section, held?.createdPage]) {
+      try {
+        node?.remove();
+      } catch {
+        // already gone, or open: an empty page is harmless
+      }
     }
     held = null;
     // After the mains: one would keep what it uses in use.
@@ -285,7 +323,79 @@ export function createApplier(api: PluginAPI) {
     await cleaning;
     if (stale) api.commitUndo();
     const target = api.currentPage;
-    held = { page: target, x: clearOf(target), finished: [] };
+    held = { page: target, x: clearOf(target), y: 0, finished: [] };
+  }
+
+  /** A new page named after the site, numbered on if a page has that name already. */
+  async function createPage(name: string): Promise<PageNode> {
+    const taken = new Set(api.root.children.map((p) => p.name));
+    let free = name;
+    for (let n = 2; taken.has(free); n++) free = `${name} (${n})`;
+    const made = api.createPage();
+    try {
+      made.name = free;
+      // Under `dynamic-page` a page is used only once it is loaded.
+      await made.loadAsync();
+    } catch (e) {
+      made.remove();
+      throw e;
+    }
+    return made;
+  }
+
+  /**
+   * Opens a device set: settles its merged layers once, then a section, on the page open now or a
+   * new one, takes a frame per device from `begin` to `end`, and `endSet` keeps them. The section
+   * opens on the Color Mode the page was captured in; each frame sets its own Device and Breakpoint
+   * modes. The user stays on the page they are on, as a single import leaves them.
+   */
+  async function beginDeviceSet(meta: DeviceSetMeta): Promise<void> {
+    const stale = active || held !== null;
+    reset();
+    await cleaning;
+    if (stale) api.commitUndo();
+    const { hostname } = meta.layers;
+    const createdPage =
+      meta.placement === "new-page" ? await createPage(hostname || meta.name) : undefined;
+    const target = createdPage ?? api.currentPage;
+    let section: SectionNode;
+    try {
+      const x = clearOf(target);
+      section = api.createSection();
+      section.name = meta.name;
+      if (section.parent !== target) target.appendChild(section);
+      section.x = x;
+      section.y = 0;
+    } catch (e) {
+      createdPage?.remove();
+      throw e;
+    }
+    const set: HeldSet = {
+      page: target,
+      x: SECTION_PADDING,
+      y: SECTION_PADDING,
+      finished: [],
+      section,
+      ...(createdPage ? { createdPage } : {}),
+    };
+    held = set;
+    const own = createTokenSet(api);
+    tokens = own;
+    const plan: PlanTokens = {
+      textStyles: [],
+      colors: [],
+      collection: hostname,
+      layers: meta.layers,
+    };
+    await own.resolve(plan, meta.options, tokenRuntime());
+    if (held !== set) return; // cancelled meanwhile
+    const mode = own.openingMode();
+    if (!mode) return;
+    try {
+      section.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
+    } catch {
+      own.failed();
+    }
   }
 
   async function begin(meta: ImportMeta): Promise<void> {
@@ -300,6 +410,7 @@ export function createApplier(api: PluginAPI) {
     }
     active = true;
     versionIndex = set ? (meta.version?.index ?? null) : null;
+    deviceModes = set ? (meta.device ?? null) : null;
     rootName = meta.version ? `${meta.name} — ${meta.version.label}` : meta.name;
     page = set?.page ?? api.currentPage;
     components = createComponentSet(
@@ -315,7 +426,9 @@ export function createApplier(api: PluginAPI) {
     );
     await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
     fallbackOk = loadedFonts.has(fontKey(FALLBACK));
+    container = set?.section ?? page;
     rootX = set ? set.x : clearOf(page);
+    rootY = set ? set.y : 0;
   }
 
   /**
@@ -325,14 +438,31 @@ export function createApplier(api: PluginAPI) {
    */
   function setMode(node: FrameNode | ComponentNode): void {
     if (versionIndex === null || modeRefused) return;
-    const mode = tokens?.modeOf(versionIndex);
-    if (!mode) return;
+    const modes = deviceModes ? deviceSetModes(deviceModes) : [tokens?.modeOf(versionIndex)];
+    if (!modes) {
+      modeRefused = true;
+      return;
+    }
     try {
-      node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
+      for (const mode of modes) {
+        if (mode) node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
+      }
     } catch {
       modeRefused = true;
       tokens?.failed();
     }
+  }
+
+  /**
+   * A device frame's Device and Breakpoint modes. Without its Breakpoint mode a frame would read
+   * another range's values, so it stays plain; Device holds only reference values, so a frame the
+   * file had no Device mode for still binds.
+   */
+  function deviceSetModes({ mode, breakpoint }: NonNullable<ImportMeta["device"]>) {
+    const range =
+      breakpoint === null ? null : (tokens?.layerMode("breakpoint", breakpoint) ?? null);
+    if (breakpoint !== null && !range) return null;
+    return [tokens?.layerMode("device", mode) ?? null, range];
   }
 
   /** The tokens this version may bind to: none once its mode was refused. */
@@ -481,7 +611,7 @@ export function createApplier(api: PluginAPI) {
     const node = isMain ? (api.createComponent() as unknown as FrameNode) : api.createFrame();
     pending = node;
     if (parent) join(parent, node, op);
-    else if (page && node.parent !== page) page.appendChild(node);
+    else if (container && node.parent !== container) container.appendChild(node);
     node.name = name;
     return node;
   }
@@ -806,7 +936,7 @@ export function createApplier(api: PluginAPI) {
     if (parent) {
       const placed = place(node, parent, op);
       if (node.layoutMode === "NONE") rotate(node, op, placed);
-    } else if (!op.component) place(node, null, op, rootX, 0);
+    } else if (!op.component) place(node, null, op, rootX, rootY);
     if (op.layout.mode === "NONE" && op.layout.reason) tracker.countFallback(op.layout.reason);
     fillParent(node, parent, op);
     return node;
@@ -1218,7 +1348,7 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
-  function select(target: PageNode, frames: FrameNode[]) {
+  function select(target: PageNode, frames: (FrameNode | SectionNode)[]) {
     try {
       target.selection = frames;
       api.viewport.scrollAndZoomIntoView(frames);
@@ -1231,14 +1361,30 @@ export function createApplier(api: PluginAPI) {
    * One row of sections under the tallest frame, each at its frame's x, or further right when the
    * section before it runs on past there: a section can be wider than its frame.
    */
-  function placeSections(finished: HeldSet["finished"]): number {
+  function placeSections({ finished, section: box }: HeldSet): number {
     try {
-      const bottom = Math.max(...finished.map(({ root: r }) => r.y + r.height));
+      // A device set's frames sit in its section, so its mains go under that.
+      const bottom = box
+        ? box.y + box.height
+        : Math.max(...finished.map(({ root: r }) => r.y + r.height));
+      const offset = box ? box.x : 0;
       let left = Number.NEGATIVE_INFINITY;
       for (const { root: frame, components: section } of finished) {
-        const right = section.moveTo(Math.max(frame.x, left), bottom + VERSION_GAP);
+        const right = section.moveTo(Math.max(offset + frame.x, left), bottom + VERSION_GAP);
         if (right !== null) left = right + VERSION_GAP;
       }
+      return 0;
+    } catch {
+      return 1;
+    }
+  }
+
+  /** Sizes a device set's section to its frames and padding. Gives 1 if Figma refused it. */
+  function fitSection(section: SectionNode, frames: FrameNode[]): number {
+    try {
+      const right = Math.max(...frames.map((f) => f.x + f.width));
+      const bottom = Math.max(...frames.map((f) => f.y + f.height));
+      section.resizeWithoutConstraints(right + SECTION_PADDING, bottom + SECTION_PADDING);
       return 0;
     } catch {
       return 1;
@@ -1249,15 +1395,16 @@ export function createApplier(api: PluginAPI) {
   async function endSet(): Promise<SetResult> {
     if (!held) throw new Error("set not started");
     clearVersion();
-    const { page: target, finished } = held;
+    const { page: target, finished, section } = held;
     if (finished.length === 0) {
       await cancel();
       return NO_SET;
     }
-    const layoutFailures = placeSections(finished);
-    api.commitUndo();
     const frames = finished.map((f) => f.root);
-    select(target, frames);
+    let layoutFailures = section ? fitSection(section, frames) : 0;
+    layoutFailures += placeSections(held);
+    api.commitUndo();
+    select(target, section ? [section] : frames);
     const result = {
       ...(tokens?.counts() ?? NO_TOKENS),
       rootIds: frames.map((f) => f.id),
@@ -1282,6 +1429,7 @@ export function createApplier(api: PluginAPI) {
 
   return {
     beginSet,
+    beginDeviceSet,
     begin,
     importTokens,
     importModes,

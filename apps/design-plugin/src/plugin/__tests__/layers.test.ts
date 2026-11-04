@@ -7,7 +7,7 @@ import {
   type PlanLayers,
   type PlanVariable,
 } from "@repo/figma-mapper";
-import { createLayerSet } from "../layers";
+import { createLayerSet, getModeLimit } from "../layers";
 import { createTokenSet, type TokenRuntime } from "../tokens";
 import { fakeFigma } from "./fake-figma";
 
@@ -583,5 +583,85 @@ describe("the token set with layers", () => {
     expect(again.counts().variablesCreated).toBe(0);
     // Linear in tokens plus variables: a scan per token would be about two million.
     expect(reads).toBeLessThan(20_000);
+  });
+});
+
+describe("device and breakpoint modes", () => {
+  const sized = (
+    collection: "device" | "breakpoint",
+    name: string,
+    values: number[]
+  ): PlanVariable => ({
+    key: `${collection}:${name}`,
+    name,
+    collection,
+    type: "FLOAT",
+    values,
+    description: "",
+    scopes: ["WIDTH_HEIGHT"],
+  });
+  const deviceWidth = sized("device", "device/width", [1440, 768, 390]);
+  const minWidth = sized("breakpoint", "breakpoint/min-width", [0, 768, 1024]);
+  const withDevices = (colorModes = ["Light", "Dark"]) =>
+    layers({
+      modes: colorModes,
+      collections: collectionsFor(colorModes).map((c) =>
+        c.kind === "device"
+          ? { ...c, modes: ["Desktop", "Tablet", "Phone"] }
+          : c.kind === "breakpoint"
+            ? { ...c, modes: ["base", "md", "lg"] }
+            : c
+      ),
+      variables: [...ALL, deviceWidth, minWidth],
+    });
+
+  test("modeOf finds a mode of any kind by its name", async () => {
+    const f = fakeFigma();
+    const set = await settle(f, withDevices());
+    const device = collectionNamed(f, "Device");
+    const breakpoint = collectionNamed(f, "Breakpoint");
+    expect(modesOf(device)).toEqual(["Desktop", "Tablet", "Phone"]);
+    expect(set.modeOf("device", "Tablet")).toEqual({
+      collection: device,
+      modeId: modeId(device, "Tablet"),
+    });
+    expect(set.modeOf("breakpoint", "lg")).toEqual({
+      collection: breakpoint,
+      modeId: modeId(breakpoint, "lg"),
+    });
+    expect(set.modeOf("colorMode", "Dark")?.modeId).toBe(
+      modeId(collectionNamed(f, "Color Mode"), "Dark")
+    );
+    expect(set.modeOf("device", "Watch")).toBeNull();
+  });
+
+  test("a mode the file had no room for is null", async () => {
+    const f = fakeFigma({ modeLimit: 2 });
+    const set = await settle(f, withDevices());
+    expect(set.modeOf("device", "Tablet")).not.toBeNull();
+    expect(set.modeOf("device", "Phone")).toBeNull();
+    expect(set.counts().modesDropped).toEqual(["Phone", "lg"]);
+  });
+
+  test("a refusal of Limited to 3 modes only stores 3, which getModeLimit gives", async () => {
+    const f = fakeFigma({ modeLimit: 3 });
+    expect(await getModeLimit(f.figma)).toBeNull();
+    await settle(f, withDevices(["Light", "Dark", "Sepia", "Night"]));
+    expect(f.storage.get("modeLimit")).toBe(3);
+    expect(await getModeLimit(f.figma)).toBe(3);
+  });
+
+  test("with room for every mode nothing is stored", async () => {
+    const f = fakeFigma();
+    await settle(f, withDevices());
+    expect(f.storage.has("modeLimit")).toBe(false);
+  });
+
+  test("getModeLimit ignores a stored value that is not a positive whole number", async () => {
+    const f = fakeFigma();
+    for (const bad of ["3", -1, 0, 2.5, null, { n: 3 }]) {
+      await f.figma.clientStorage.setAsync("modeLimit", bad);
+      expect(await getModeLimit(f.figma)).toBeNull();
+    }
   });
 });

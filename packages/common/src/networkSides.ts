@@ -1,6 +1,7 @@
 import type {
   FontRef,
   ImportOptions,
+  PlanLayers,
   PlanOp,
   PlanTokens,
   PlanVersionTokens,
@@ -23,11 +24,26 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
   getPrefs(key: string): StoredValue;
   setPrefs(key: string, value: StoredValue): void;
   importBeginSet(): void;
+  /**
+   * Opens a device set: resolves the merged layers once and makes the section its frames go in,
+   * on a new page named after the site or the current page. Each device then runs `importBegin`
+   * (with `version` and `device`) to `importEnd`, and `importEndSet` keeps the set.
+   */
+  beginDeviceSet(meta: {
+    name: string;
+    layers: PlanLayers;
+    options: ImportOptions;
+    placement: "new-page" | "current-page";
+  }): void;
+  /** The mode limit Figma last refused a mode at, for this user, or null. */
+  getModeLimit(): number | null;
   importBegin(meta: {
     name: string;
     fonts: FontRef[];
     totalOps: number;
     version?: { index: number; label: string };
+    /** A device set's frame: its Device mode, and its Breakpoint mode when the page has any. */
+    device?: { mode: string; breakpoint: string | null };
   }): void;
   importTokens(tokens: PlanTokens, options: ImportOptions): void;
   importModes(tokens: PlanVersionTokens, options: ImportOptions): { droppedVersions: number[] };

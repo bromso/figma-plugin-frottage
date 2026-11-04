@@ -1,5 +1,6 @@
 import { PLUGIN, UI } from "@repo/common/networkSides";
 import { createApplier } from "./applier";
+import { getModeLimit } from "./layers";
 
 export const PLUGIN_CHANNEL = PLUGIN.channelBuilder()
   .emitsTo(UI, (message) => {
@@ -40,6 +41,10 @@ PLUGIN_CHANNEL.registerMessageHandler("setPrefs", (key, value) =>
 );
 
 PLUGIN_CHANNEL.registerMessageHandler("importBeginSet", () => applier.beginSet());
+
+PLUGIN_CHANNEL.registerMessageHandler("beginDeviceSet", (meta) => applier.beginDeviceSet(meta));
+
+PLUGIN_CHANNEL.registerMessageHandler("getModeLimit", () => getModeLimit(figma));
 
 PLUGIN_CHANNEL.registerMessageHandler("importBegin", async (meta) => {
   batchTotal = meta.totalOps;

@@ -2,6 +2,7 @@ import type {
   FontRef,
   ImportOptions,
   ModeValue,
+  PlanCollectionKind,
   PlanColor,
   PlanModeColor,
   PlanModeSpacing,
@@ -420,6 +421,8 @@ export async function usedVariables(
 
 export function createTokenSet(api: PluginAPI) {
   const styleIds = new Map<string, string>();
+  /** Text style keys already settled, or tried and failed. */
+  const triedStyles = new Set<string>();
   const colors = new Map<string, ColorBinding>();
   const spacing = new Map<string, Variable>();
   const counts = { ...NO_TOKENS };
@@ -484,11 +487,14 @@ export function createTokenSet(api: PluginAPI) {
     useLocal: boolean,
     runtime: TokenRuntime
   ): Promise<void> {
-    if (tokens.length === 0) return;
+    // A device set's devices share their styles: the first to bring one settles it.
+    const fresh = tokens.filter((t) => !triedStyles.has(t.key));
+    for (const token of fresh) triedStyles.add(token.key);
+    if (fresh.length === 0) return;
     const existing = await api.getLocalTextStylesAsync();
     const taken = new Set(existing.map((s) => s.name));
     const own = byOwnKey(existing);
-    for (const token of tokens) {
+    for (const token of fresh) {
       if (runtime.overBudget()) await runtime.breathe();
       // Linking a style needs its font, so a font that won't load rules out even an exact match.
       const ready = await runtime.ensureFont(token.fontName);
@@ -1324,8 +1330,12 @@ export function createTokenSet(api: PluginAPI) {
         failed(Math.max(plan.colors.length + lengths - colors.size - spacing.size, 1));
       }
       if (closed || !plan.layers) return;
-      layers ??= createLayerSet(api);
-      await layers.resolve(plan.layers, options, runtime);
+      // Once: a device set resolves its merged layers before its first device, whose own
+      // tokens then bring only their text styles.
+      if (!layers) {
+        layers = createLayerSet(api);
+        await layers.resolve(plan.layers, options, runtime);
+      }
       if (!closed) await bindStyles(layers, runtime);
     },
 
@@ -1369,6 +1379,8 @@ export function createTokenSet(api: PluginAPI) {
     gradientStyleId: (key: string | undefined) => (key ? layers?.gradientStyleId(key) : undefined),
     /** A Color Mode mode by its label, or null without layers or room for it. */
     themeMode: (name: string) => layers?.themeMode(name) ?? null,
+    /** A layered collection's mode by its label, or null without layers or room for it. */
+    layerMode: (kind: PlanCollectionKind, name: string) => layers?.modeOf(kind, name) ?? null,
     /** The Color Mode mode a page opens in: the one it was captured in, else Light. */
     openingMode: () => layers?.openingMode() ?? null,
     failed,

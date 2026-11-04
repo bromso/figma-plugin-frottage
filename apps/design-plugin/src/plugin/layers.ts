@@ -45,6 +45,25 @@ export type LayerCounts = {
   legacyCollections: boolean;
 };
 
+/** Where the file's mode limit is kept, per user, once Figma has refused a mode. */
+export const MODE_LIMIT_KEY = "modeLimit";
+
+/** The mode limit Figma last refused a mode at, or null if it hasn't or what's stored isn't one. */
+export async function getModeLimit(api: PluginAPI): Promise<number | null> {
+  try {
+    const held: unknown = await api.clientStorage.getAsync(MODE_LIMIT_KEY);
+    return typeof held === "number" && Number.isInteger(held) && held > 0 ? held : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The N of Figma's `Limited to N modes only`, or null for any other error. */
+function limitIn(e: unknown): number | null {
+  const n = Number(/Limited to (\d+) modes/.exec(String(e))?.[1]);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 /** Creation order: each collection only aliases the ones before it. */
 const CREATION_ORDER: PlanCollectionKind[] = [
   "palette",
@@ -201,6 +220,18 @@ export function createLayerSet(api: PluginAPI) {
   let closed = false;
   /** The mode the page was captured in, which it opens in. */
   let activeMode = "Light";
+  /** The mode limit being stored, which `resolve` waits for. */
+  let limitWrite: Promise<unknown> = Promise.resolve();
+
+  /** Keeps the limit Figma refused a mode at, for the popup to warn by before the next capture. */
+  function rememberLimit(limit: number): void {
+    try {
+      const write = api.clientStorage.setAsync(MODE_LIMIT_KEY, limit).catch(() => undefined);
+      limitWrite = Promise.all([limitWrite, write]);
+    } catch {
+      // only a warning goes without it
+    }
+  }
 
   /** Gives each label a mode, adding those missing until the file's limit. */
   function settleModes(collection: VariableCollection, labels: string[], fresh: boolean) {
@@ -226,6 +257,8 @@ export function createLayerSet(api: PluginAPI) {
         } catch (e) {
           // A plan's limit is a limit, not a failure: `modesDropped` says so.
           if (!String(e).includes("Limited to")) failures++;
+          const limit = limitIn(e);
+          if (limit !== null) rememberLimit(limit);
           full = true;
         }
       }
@@ -617,12 +650,18 @@ export function createLayerSet(api: PluginAPI) {
     });
   }
 
-  /** A Color Mode mode by its label, or null for one the file had no room for. */
-  function themeMode(name: string): { collection: VariableCollection; modeId: string } | null {
-    const home = homes.get("colorMode");
+  /** A mode of a collection by its label, or null for one the file had no room for. */
+  function modeOf(
+    kind: PlanCollectionKind,
+    name: string
+  ): { collection: VariableCollection; modeId: string } | null {
+    const home = homes.get(kind);
     const modeId = home?.modeIds[home.labels.indexOf(name)];
     return home && modeId ? { collection: home.collection, modeId } : null;
   }
+
+  /** A Color Mode mode by its label, or null for one the file had no room for. */
+  const themeMode = (name: string) => modeOf("colorMode", name);
 
   return {
     /** Works out the plan's collections and styles. Never throws: what fails stays plain. */
@@ -634,6 +673,7 @@ export function createLayerSet(api: PluginAPI) {
       } catch {
         failures++;
       }
+      await limitWrite;
     },
 
     variable: (key: string): Variable | undefined => variables.get(key),
@@ -641,6 +681,7 @@ export function createLayerSet(api: PluginAPI) {
     gradientStyleId: (key: string): string | undefined => gradientIds.get(key),
     paintStyleId: (key: string): string | undefined => paintStyleIds.get(key),
 
+    modeOf,
     themeMode,
 
     /** The Color Mode mode a page opens in: the one it was captured in, else Light. */
