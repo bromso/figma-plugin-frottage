@@ -48,7 +48,7 @@ export function readBreakpoints(doc: Document): { widths: number[]; unreadable: 
     doc,
     (_rule, conditions) => {
       const seen = new Set<number>();
-      for (const c of conditions) for (const w of boundariesOf(c.text)) seen.add(w);
+      for (const c of conditions) if (c.media) for (const w of boundariesOf(c.text)) seen.add(w);
       for (const w of seen) uses.set(w, (uses.get(w) ?? 0) + 1);
       return undefined;
     },

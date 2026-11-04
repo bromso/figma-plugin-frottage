@@ -57,6 +57,24 @@ describe("readBreakpoints", () => {
     ]);
   });
 
+  test("ignores @container conditions", () => {
+    expect(widths("@container (min-width: 28rem){a{color:red}}")).toEqual([]);
+  });
+
+  test("counts only the @media width inside an @container", () => {
+    expect(
+      widths("@container (min-width: 28rem){@media (min-width: 700px){a{color:red}}}")
+    ).toEqual([700]);
+  });
+
+  test("reads em, reversed and compound forms", () => {
+    expect(widths("@media (width <= 48em){a{color:red}}")).toEqual([769]);
+    expect(widths("@media (600px <= width){a{color:red}}")).toEqual([600]);
+    expect(widths("@media (min-width: 768px) and (max-width: 1023px){a{color:red}}")).toEqual([
+      768, 1024,
+    ]);
+  });
+
   test("gives nothing for a page without media", () => {
     expect(read("a{color:red}")).toEqual({ widths: [], unreadable: 0 });
   });

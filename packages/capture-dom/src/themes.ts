@@ -12,7 +12,7 @@ const MAX_CONTEXT_LENGTH = 200;
 const DARK_MEDIA = "@media (prefers-color-scheme: dark)";
 
 /** A condition a rule sits in: `applies` is whether it holds in this page now. */
-export type RuleCondition = { text: string; applies: boolean };
+export type RuleCondition = { text: string; applies: boolean; media: boolean };
 
 /**
  * Where a rule sits. `layer` orders cascade layers: one index per level, by first appearance
@@ -51,6 +51,9 @@ export function walkStyleRules(
     }
     return true; // unknown kinds are assumed to hold
   };
+  const MediaRule = (win as { CSSMediaRule?: typeof CSSMediaRule }).CSSMediaRule;
+  const isMedia = (rule: { type?: number }): boolean =>
+    MediaRule ? rule instanceof MediaRule : rule.type === 4;
   // Layer indices by parent path and name, in order of first appearance.
   const layers = new Map<string, Map<string, number>>();
   let anonymous = 0;
@@ -108,7 +111,9 @@ export function walkStyleRules(
       const text = (rule as { conditionText?: string }).conditionText;
       walk(
         inner,
-        text === undefined ? conditions : [...conditions, { text, applies: holds(rule, text) }],
+        text === undefined
+          ? conditions
+          : [...conditions, { text, applies: holds(rule, text), media: isMedia(rule) }],
         inLayer,
         inParents
       );
