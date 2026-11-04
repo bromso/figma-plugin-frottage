@@ -62,16 +62,24 @@ describe("evalLength", () => {
     expect(evalLength("calc(1px * 2px)", {})).toBeNull();
   });
 
-  test("is null, and quick, for a fan-out that grows with every level", () => {
+  test("is null within its substitution budget for a fan-out that grows with every level", () => {
     const props: Record<string, string> = { "--a16": "1px" };
     for (let i = 15; i >= 1; i--) {
       props[`--a${i}`] = `calc(${Array(4)
         .fill(`var(--a${i + 1})`)
         .join(" + ")})`;
     }
-    const start = performance.now();
-    expect(evalLength("var(--a1)", props)).toBeNull();
-    expect(performance.now() - start).toBeLessThan(100);
+    // Counted, not timed: each substitution reads one property, and there is a budget of them.
+    let reads = 0;
+    const counted = new Proxy(props, {
+      get(target, name, receiver) {
+        reads++;
+        return Reflect.get(target, name, receiver);
+      },
+    });
+    expect(evalLength("var(--a1)", counted)).toBeNull();
+    expect(reads).toBeGreaterThan(0);
+    expect(reads).toBeLessThanOrEqual(256);
   });
 
   test("is null for a var loop", () => {
