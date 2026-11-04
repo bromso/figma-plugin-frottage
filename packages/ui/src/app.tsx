@@ -28,9 +28,7 @@ function themeLines({ report, theme }: Pick<VersionResult, "report" | "theme">, 
   const modes = report.themeModes ?? [];
   if (modes.length > 1) lines.push(`Color Mode: ${modes.join(", ")}`);
   else if (theme.source !== "site" && advise) {
-    lines.push(
-      "No theme found in the stylesheet. To add a dark mode, capture the page again in dark and import both as versions."
-    );
+    lines.push("No theme found in the stylesheet, so Color Mode has Light only.");
   }
   if (theme.inferred.length > 0) lines.push(`Inferred from use: ${theme.inferred.join(", ")}`);
   if (theme.twins > 0) {

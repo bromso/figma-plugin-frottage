@@ -439,8 +439,7 @@ describe("App (options and font table)", () => {
 });
 
 describe("App (theme report)", () => {
-  const NO_THEME =
-    "No theme found in the stylesheet. To add a dark mode, capture the page again in dark and import both as versions.";
+  const NO_THEME = "No theme found in the stylesheet, so Color Mode has Light only.";
   const dark = {
     cssCustomProperties: { "--surface": "#ffffff" },
     themes: [{ context: ".dark", mode: "Dark", properties: { "--surface": "#000000" } }],
