@@ -49,9 +49,9 @@ When the popup opens, it looks for the page's other languages. It reads `<link r
 
 Capture counts every capture, and a line under the button reads, for example, `8 captures: 3 devices × 2 languages, plus 2 for breakpoints`. Every ticked language is captured at every ticked device. The extra captures for breakpoints run in the page's own language only.
 
-Languages on the same site load in the run's own small window, and no new permission is needed. A language on another site asks for access to that site when you press Capture. If you refuse, that language is left out: `Svenska needs access to sv.site.test, so it was left out.` A language page that fails to load, or moves to another site, is also left out: `Svenska couldn't be loaded, so it was left out.` The tab returns to the page it started on.
+Languages on the same site load in the run's own small window, and no new permission is needed. A language on another site asks for access to that site when you press Capture. If you refuse, that language is left out: `Svenska needs access to sv.site.test, so it was left out.` A language page that fails to load, moves to another site, lands back on the page the run started on, or says in `<html lang>` that it is another language is also left out: `Svenska couldn't be loaded, so it was left out.` The tab returns to the page it started on by loading that page again, so its scroll position and any unsaved form input are lost.
 
-In the plugin, texts are paired by their place in the page, and links also by their target. When at least 80% of the texts on a device are paired, the paired texts bind to STRING variables in a `Language` collection. It has one mode per language, the page's own first. Switching the Language mode on the page's Section swaps the text. Texts inside repeated parts bind too. A text with mixed styling stays in the page's own language, because Figma restyles a bound text as a whole. Under 80% on a device, that language gets its own frames in a Section named `<page> — <language>` instead.
+In the plugin, texts are paired by their place in the page, and links also by their target. When at least 80% of the texts on a device are paired, the paired texts bind to STRING variables in a `Language` collection. It has one mode per language, the page's own first. Switching the Language mode on the page's Section swaps the text. Texts inside repeated parts bind too. A text with mixed styling, such as a bold word or an inline link, stays in the page's own language, because Figma restyles a bound text as a whole. Under 80% on a device, that language gets its own frames in a Section named `<page> — <language>` instead.
 
 "What's in this file" has a `Languages` group. The page's own language is ticked and can't be unticked, and the collections line shows `Language <n>`. The report lists what didn't pair:
 
@@ -62,7 +62,7 @@ In the plugin, texts are paired by their place in the page, and links also by th
 - `<n> texts stay in English: the Language collection is full.` Language holds at most 2000 variables.
 - `The Svenska page differs too much from English to share one frame on Phone.`
 
-If a file's mode limit leaves no room, the report says `Not created: …` or `Modes added: Language …`. With room for only one Language mode, no Language collection is made.
+When a file's mode limit leaves no room for a language, the report says `Not created: …`. A re-import that adds a language to an existing Language collection reports `Modes added: Language …`. With room for only one Language mode, no Language collection is made.
 
 ## Good to know
 
