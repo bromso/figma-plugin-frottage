@@ -2546,6 +2546,7 @@ for (const variant of ["light", "media-dark", "class-dark"] as Variant[]) {
 
     const card = byClass("card");
     const popover = byClass("popover");
+    expect(byClass("bg-background").fills[0]?.colorKey).toBe("theme:background");
     expect(card.fills[0]?.colorKey).toBe("theme:card");
     expect(popover.fills[0]?.colorKey).toBe("theme:popover");
     expect(card.strokes?.colorKey).toBe("theme:border");
