@@ -402,6 +402,9 @@ describe("createLayerSet", () => {
     expect(modesOf(collectionNamed(f, "Theme"))).toEqual(["Default"]);
     const cardVar = variableIn(f, "Color Mode", "card");
     expect(Object.keys(cardVar.valuesByMode)).toEqual([colorMode.defaultModeId]);
+    expect(Object.values(cardVar.valuesByMode)).toEqual([
+      aliasTo(variableIn(f, "Palette", "white")),
+    ]);
     expect(set.themeMode("Dark")).toBeNull();
     expect(set.openingMode()?.modeId).toBe(colorMode.defaultModeId);
   });
@@ -425,6 +428,26 @@ describe("createLayerSet", () => {
     g.tokens.seedVariable("neutral/200", g.tokens.seedCollection("Brand"), GRAY);
     const off = await settle(g, layers(), options({ useLocalStyles: false }));
     expect(off.variable(gray.key)?.name).toBe("gray/200");
+  });
+
+  test("a user's multi-mode colour is not reused, so a mode switch cannot recolour the page", async () => {
+    const f = fakeFigma();
+    const ds = f.tokens.seedCollection("DS Theme", ["Light", "Dark"]);
+    f.tokens.seedVariable("surface/default", ds, GRAY);
+    const brand = f.tokens.seedCollection("Brand");
+    const single = f.tokens.seedVariable("neutral/200", brand, GRAY);
+    const set = await settle(f);
+    // The single-mode one is still taken; the multi-mode one never is.
+    expect(set.variable(gray.key)?.id).toBe(single.id);
+
+    const g = fakeFigma();
+    const ds2 = g.tokens.seedCollection("DS Theme", ["Light", "Dark"]);
+    const surface = g.tokens.seedVariable("surface/default", ds2, GRAY);
+    const set2 = await settle(g);
+    expect(set2.variable(gray.key)?.id).not.toBe(surface.id);
+    expect(variableIn(g, "Palette", "gray/200")).toBeDefined();
+    const borderVar = variableIn(g, "Color Mode", "border");
+    expect(Object.values(borderVar.valuesByMode)[0]).not.toEqual(aliasTo(surface));
   });
 
   test("a plan without its collections still lands in the six, by kind", async () => {

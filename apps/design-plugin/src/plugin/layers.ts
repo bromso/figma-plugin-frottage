@@ -255,6 +255,7 @@ export function createLayerSet(api: PluginAPI) {
     /** Every collection name in the file, with those made just now. */
     const collectionNames = new Set(collections.map((c) => c.name));
     const defaults = new Map(collections.map((c) => [c.id, c.defaultModeId]));
+    const modeCounts = new Map(collections.map((c) => [c.id, c.modes.length]));
     // Each variable is read once here: a file can hold thousands, each read crosses into Figma,
     // and every token would otherwise look through them all.
     const held = existing.map((v, at) => ({
@@ -284,7 +285,12 @@ export function createLayerSet(api: PluginAPI) {
         push(ownByName, `${h.collectionId}\0${h.name}`, h);
         const base = baseName(h.name);
         if (base !== h.name) push(ownByName, `${h.collectionId}\0${base}`, h);
-      } else if (useLocal && h.type === "COLOR") {
+      } else if (
+        useLocal &&
+        h.type === "COLOR" &&
+        // A variable that switches by mode would carry the user's mode switch into the page.
+        modeCounts.get(h.collectionId) === 1
+      ) {
         const value = h.v.valuesByMode[defaults.get(h.collectionId) ?? ""];
         if (!isColor(value)) continue;
         const key = stepKey(value);
