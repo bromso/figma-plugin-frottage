@@ -10,8 +10,11 @@ import {
   DEVICES,
   friendlyError,
   imageAdvice,
+  initialThemes,
   isRestrictedUrl,
   LABEL_MAX,
+  NO_DARK_HINT,
+  NO_THEME_HINT,
   nodeAdvice,
   normaliseVersion,
   pageOrigin,
@@ -498,12 +501,18 @@ describe("rerunRequest", () => {
     request: { widths: [1512, 390], collapseWrappers: true, versionLabel: "Dark" },
   };
 
-  test("a re-run sends the widths, label and wrappers setting the run was asked", () => {
+  test("a re-run sends the widths and wrappers setting, and ignores a saved label", () => {
     expect(rerunRequest(done)).toEqual({
       widths: [1512, 390],
       collapseWrappers: true,
-      versionLabel: "Dark",
     });
+  });
+
+  test("a re-run repeats the themes the run was asked", () => {
+    const themes = { light: true, dark: false };
+    const out = rerunRequest({ ...done, request: { ...done.request, themes } });
+    expect(out.themes).toEqual(themes);
+    expect("versionLabel" in out).toBe(false);
   });
 
   test("a re-run repeats the devices and breakpoints the run was asked", () => {
@@ -515,14 +524,13 @@ describe("rerunRequest", () => {
       widths: [1512, 390],
       runWidths,
       collapseWrappers: true,
-      versionLabel: "Dark",
     });
   });
 
   test("a re-run can turn wrappers off or on without losing the rest", () => {
     expect(
       rerunRequest({ ...done, request: { ...done.request, collapseWrappers: false } }, true)
-    ).toEqual({ widths: [1512, 390], collapseWrappers: true, versionLabel: "Dark" });
+    ).toEqual({ widths: [1512, 390], collapseWrappers: true });
   });
 });
 
@@ -578,6 +586,46 @@ describe("canCapture", () => {
     expect(canCapture({ ...ready, restricted: null })).toBe(false);
     expect(canCapture({ ...ready, tabId: null })).toBe(false);
     expect(canCapture({ ...ready, sizes: 0 })).toBe(false);
+  });
+});
+
+describe("canCapture with themes", () => {
+  const ready = { restricted: false, tabId: 1, sizes: 3, breakpointsRead: true };
+
+  test("needs Light, Dark or both ticked", () => {
+    expect(canCapture({ ...ready, themes: { light: true, dark: false } })).toBe(true);
+    expect(canCapture({ ...ready, themes: { light: false, dark: true } })).toBe(true);
+    expect(canCapture({ ...ready, themes: { light: false, dark: false } })).toBe(false);
+  });
+});
+
+describe("initialThemes", () => {
+  test("Light is ticked, and Dark when the page has a dark theme", () => {
+    expect(initialThemes({ ok: true, dark: true })).toEqual({
+      themes: { light: true, dark: true },
+      darkEnabled: true,
+    });
+  });
+
+  test("a page with no dark theme leaves Dark unticked and disabled", () => {
+    expect(initialThemes({ ok: true, dark: false })).toEqual({
+      themes: { light: true, dark: false },
+      darkEnabled: false,
+    });
+  });
+
+  test("a failed or missing probe leaves Dark unticked and enabled", () => {
+    const failed = { themes: { light: true, dark: false }, darkEnabled: true };
+    expect(initialThemes(undefined)).toEqual(failed);
+    expect(initialThemes({ ok: false })).toEqual(failed);
+    expect(initialThemes({ ok: true })).toEqual(failed);
+  });
+});
+
+describe("theme hints", () => {
+  test("say it exactly", () => {
+    expect(NO_DARK_HINT).toBe("This page has no dark theme.");
+    expect(NO_THEME_HINT).toBe("Tick Light, Dark or both.");
   });
 });
 

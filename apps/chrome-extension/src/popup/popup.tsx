@@ -1,16 +1,4 @@
-import {
-  Button,
-  Checkbox,
-  Icon,
-  Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Type,
-} from "@repo/ui";
+import { Button, Checkbox, Icon, Input, Label, Type } from "@repo/ui";
 import "@repo/ui/styles.css";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -24,10 +12,11 @@ import {
   DEVICES,
   friendlyError,
   imageAdvice,
+  initialThemes,
   isRestrictedUrl,
-  LABEL_MAX,
+  NO_DARK_HINT,
+  NO_THEME_HINT,
   nodeAdvice,
-  normaliseVersion,
   parseChoices,
   parseWidths,
   popupView,
@@ -73,9 +62,9 @@ function Popup() {
   const [tabRead, setTabRead] = useState(false);
   const [statusRead, setStatusRead] = useState(false);
 
-  // The optional label that says which version of the page this file is.
-  const [versionKind, setVersionKind] = useState("theme");
-  const [versionLabel, setVersionLabel] = useState("");
+  // Which themes to import; Dark is off and locked until the probe says the page has one.
+  const [themes, setThemes] = useState(() => initialThemes(undefined).themes);
+  const [darkEnabled, setDarkEnabled] = useState(true);
 
   // The size for each device, remembered between opens.
   const [choices, setChoices] = useState<WidthChoice[]>(loadChoices);
@@ -109,6 +98,9 @@ function Popup() {
           chrome.runtime.sendMessage({ target: "sw", type: "breakpoints", tabId: tab.id }).then(
             (reply?: Reply) => {
               if (reply?.ok && reply.breakpoints) setBreakpoints(reply.breakpoints);
+              const start = initialThemes(reply?.ok ? reply : undefined);
+              setThemes(start.themes);
+              setDarkEnabled(start.darkEnabled);
               setBreakpointsRead(true);
             },
             () => setBreakpointsRead(true)
@@ -169,21 +161,18 @@ function Popup() {
     widths: number[];
     runWidths?: RunWidth[];
     collapseWrappers: boolean;
-    versionLabel: string;
     themes?: { light: boolean; dark: boolean };
   }) {
-    const version = normaliseVersion(versionKind, versionLabel);
     const {
       widths,
       runWidths,
       collapseWrappers,
-      versionLabel: label,
-      themes,
+      themes: askedThemes,
     } = request ?? {
       widths: wanted.map((w) => w.width),
       runWidths: wanted,
       collapseWrappers: false,
-      versionLabel: version?.label ?? "",
+      themes,
     };
     // A re-run of a status from an older build has plain widths only.
     const asked: RunWidth[] = runWidths ?? widths.map((width) => ({ width }));
@@ -204,8 +193,7 @@ function Popup() {
         tabId,
         ...(runWidths ? { runWidths } : { widths }),
         ...(collapseWrappers ? { collapseWrappers: true } : {}),
-        ...(label ? { versionLabel: label } : {}),
-        ...(themes ? { themes } : {}),
+        ...(askedThemes ? { themes: askedThemes } : {}),
       });
       if (reply && !reply.ok) setStatus({ state: "error", message: reply.error });
     } catch (error) {
@@ -381,35 +369,36 @@ function Popup() {
           </Type>
         )}
         <fieldset className="flex flex-col gap-2 border-0 p-0">
-          <legend className="sr-only">Label this capture (optional)</legend>
-          <div className="flex gap-2">
-            <div className="flex w-[110px] shrink-0 flex-col gap-1">
-              <Label htmlFor="version-kind">Version</Label>
-              <Select value={versionKind} onValueChange={setVersionKind}>
-                <SelectTrigger id="version-kind" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  <SelectItem value="theme">Theme</SelectItem>
-                  <SelectItem value="language">Language</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <Label htmlFor="version-label">Label</Label>
-              <Input
-                id="version-label"
-                value={versionLabel}
-                maxLength={LABEL_MAX}
-                placeholder={versionKind === "language" ? "Svenska" : "Dark"}
-                onChange={(e) => setVersionLabel(e.target.value)}
+          <legend className="sr-only">Themes to import</legend>
+          <div className="flex gap-4">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="theme-light"
+                checked={themes.light}
+                onCheckedChange={(on) => setThemes((t) => ({ ...t, light: on === true }))}
               />
+              <Label htmlFor="theme-light">Light</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="theme-dark"
+                checked={themes.dark}
+                disabled={!darkEnabled}
+                onCheckedChange={(on) => setThemes((t) => ({ ...t, dark: on === true }))}
+              />
+              <Label htmlFor="theme-dark">Dark</Label>
             </div>
           </div>
-          <Type size="xsmall" className="text-muted-foreground">
-            Optional. Switch the site to that theme or language first, then capture. Leave the label
-            empty for a plain capture.
-          </Type>
+          {!darkEnabled && (
+            <Type size="xsmall" className="text-muted-foreground">
+              {NO_DARK_HINT}
+            </Type>
+          )}
+          {!themes.light && !themes.dark && (
+            <Type size="xsmall" className="text-muted-foreground">
+              {NO_THEME_HINT}
+            </Type>
+          )}
         </fieldset>
         {outcome}
         {images?.offerAccess && (
@@ -439,7 +428,9 @@ function Popup() {
         <Button
           className="w-full"
           onClick={() => captureWidths()}
-          disabled={!canCapture({ restricted, tabId, sizes: wanted.length, breakpointsRead })}
+          disabled={
+            !canCapture({ restricted, tabId, sizes: wanted.length, breakpointsRead, themes })
+          }
         >
           {captureLabel(wanted.length)}
         </Button>

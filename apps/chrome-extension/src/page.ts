@@ -325,10 +325,35 @@ export function canCapture(state: {
   tabId: number | null;
   sizes: number;
   breakpointsRead: boolean;
+  /** The Light and Dark boxes; with neither ticked there is nothing to import. */
+  themes?: { light: boolean; dark: boolean };
 }): boolean {
+  const themed = !state.themes || state.themes.light || state.themes.dark;
   return (
-    state.restricted === false && state.tabId !== null && state.sizes > 0 && state.breakpointsRead
+    state.restricted === false &&
+    state.tabId !== null &&
+    state.sizes > 0 &&
+    state.breakpointsRead &&
+    themed
   );
+}
+
+export const NO_DARK_HINT = "This page has no dark theme.";
+export const NO_THEME_HINT = "Tick Light, Dark or both.";
+
+/**
+ * The Light and Dark boxes as the popup first shows them. Light is ticked; Dark is ticked when the
+ * page defines a dark theme, and disabled when it doesn't. A probe that failed or timed out says
+ * nothing, so Dark stays unticked but can be chosen.
+ */
+export function initialThemes(probe: { ok: boolean; dark?: boolean } | undefined): {
+  themes: { light: boolean; dark: boolean };
+  darkEnabled: boolean;
+} {
+  if (probe?.ok && typeof probe.dark === "boolean") {
+    return { themes: { light: true, dark: probe.dark }, darkEnabled: probe.dark };
+  }
+  return { themes: { light: true, dark: false }, darkEnabled: true };
 }
 
 /** The label on the Capture button. */
@@ -394,12 +419,11 @@ export function rerunRequest(
   widths: number[];
   runWidths?: RunWidth[];
   collapseWrappers: boolean;
-  versionLabel: string;
   themes?: { light: boolean; dark: boolean };
 } {
   const { runWidths } = status.request;
+  // A label saved by an older build is left behind: the popup no longer asks for one.
   return {
-    ...status.request,
     widths: [...status.request.widths],
     ...(runWidths ? { runWidths: runWidths.map((w) => ({ ...w })) } : {}),
     collapseWrappers,
