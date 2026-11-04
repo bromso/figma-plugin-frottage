@@ -1605,7 +1605,7 @@ describe("a device set", () => {
       contents: { devices: [true, true, true], extras: [false], placement: "new-page" },
     }));
     const breakpoint = port.deviceSetMeta?.layers.collections.find((c) => c.kind === "breakpoint");
-    expect(breakpoint?.modes).toEqual(["min 1400", "md", "base"]);
+    expect(breakpoint?.modes).toEqual(["base", "md", "min 1400"]);
   });
 
   test("an unticked extra's breakpoint isn't reported as having no capture", async () => {
@@ -1677,7 +1677,7 @@ describe("a device set", () => {
     if (last.step !== "done") throw new Error(last.step);
     const notes = last.sets[0]?.notes ?? [];
     expect(notes).toContain("Device: Laptop, Tablet portrait, Phone portrait");
-    expect(notes).toContain("Breakpoint: min 1400, md, base, lg");
+    expect(notes).toContain("Breakpoint: base, md, lg, min 1400");
     expect(notes).toContain("No capture for the sm breakpoint.");
     expect(last.versions.map((v) => v.label)).toEqual([
       "Laptop",

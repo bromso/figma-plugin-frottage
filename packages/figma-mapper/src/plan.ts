@@ -351,7 +351,17 @@ export type PlanCollectionKind =
   | "theme";
 
 /** One collection: its kind, its name in the file, and its modes. */
-export type PlanCollection = { kind: PlanCollectionKind; name: string; modes: string[] };
+export type PlanCollection = {
+  kind: PlanCollectionKind;
+  name: string;
+  /** In display order: Breakpoint's smallest to largest. */
+  modes: string[];
+  /**
+   * Which modes to keep first under a file's mode limit, when that differs from `modes`: the
+   * frames' Breakpoint modes lead, so every frame keeps its own.
+   */
+  priority?: string[];
+};
 
 /** PR #7's two collections, as the catalogue and binding build them before they are layered. */
 export type StagedCollection = "primitives" | "theme";

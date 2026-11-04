@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseCssColor } from "@repo/capture-schema/css-values";
-import { layerCollections } from "../layering";
+import { layerCollections, orderVariables } from "../layering";
 import type {
   PlanEffectStyle,
   PlanGradientStyle,
@@ -175,6 +175,80 @@ function setup() {
 }
 
 describe("layerCollections", () => {
+  test("each collection lists numbered names smallest first, then the rest by value", () => {
+    const space = (name: string, px: number) =>
+      variable("primitives", `spacing/${name}`, "FLOAT", [px], ["GAP", "WIDTH_HEIGHT"]);
+    const radius = (name: string, px: number) =>
+      variable("primitives", `radius/${name}`, "FLOAT", [px], ["CORNER_RADIUS"]);
+    const layers = staged();
+    // First use, as the owner saw it: 2, 3, 4, 32, 6, 10, ...
+    layers.variables = [
+      ...["2", "3", "4", "32", "6", "10", "0_5", "1_5", "2_5", "1", "5"].map((n) =>
+        space(n, Number(n.replace("_", ".")) * 4)
+      ),
+      space("section", 96),
+      space("gutter", 24),
+      radius("xl", 12),
+      radius("sm", 4),
+      radius("lg", 8),
+      ...layers.variables.filter((v) => v.collection === "theme"),
+    ];
+    const out = layerCollections(layers, { ops: [], textStyles: [] });
+    const names = (kind: string) =>
+      out.variables.filter((v) => v.collection === kind).map((v) => v.name);
+    expect(names("spacing")).toEqual([
+      "spacing/0_5",
+      "spacing/1",
+      "spacing/1_5",
+      "spacing/2",
+      "spacing/2_5",
+      "spacing/3",
+      "spacing/4",
+      "spacing/5",
+      "spacing/6",
+      "spacing/10",
+      "spacing/32",
+      "spacing/gutter",
+      "spacing/section",
+    ]);
+    expect(names("radius")).toEqual(["radius/sm", "radius/lg", "radius/xl"]);
+  });
+
+  test("orderVariables keeps groups in first-use order, per-mode groups by the mode order", () => {
+    const v = (name: string, value: number): PlanVariable => ({
+      key: `typography:${name}`,
+      name,
+      collection: "typography",
+      type: "FLOAT",
+      values: [value],
+      description: "",
+      scopes: ["FONT_SIZE"],
+    });
+    const out = orderVariables(
+      [
+        v("text/lg", 18),
+        v("min 1400/type/heading/1/size", 60),
+        v("md/type/heading/1/size", 48),
+        v("text/sm", 14),
+        v("base/type/heading/1/size", 30),
+        v("lg/type/heading/1/size", 36),
+        v("font-weight/700", 700),
+        v("font-weight/400", 400),
+      ],
+      ["base", "md", "lg", "min 1400"]
+    );
+    expect(out.map((x) => x.name)).toEqual([
+      "text/sm",
+      "text/lg",
+      "base/type/heading/1/size",
+      "md/type/heading/1/size",
+      "lg/type/heading/1/size",
+      "min 1400/type/heading/1/size",
+      "font-weight/400",
+      "font-weight/700",
+    ]);
+  });
+
   test("collections come in creation order with their modes", () => {
     const { layers } = setup();
     expect(layers.collections).toEqual([

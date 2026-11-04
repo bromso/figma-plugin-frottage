@@ -1,7 +1,7 @@
 import type { Capture } from "@repo/capture-schema";
 import { breakpointName } from "@repo/capture-schema/css-values";
 import { isRadiusDiffers, MAX_VARIABLES } from "./catalogue";
-import { COLLECTION_NAMES, COLLECTION_ORDER } from "./layering";
+import { COLLECTION_NAMES, COLLECTION_ORDER, orderVariables } from "./layering";
 import type {
   LayerPlan,
   PlanCollection,
@@ -160,21 +160,22 @@ function rangesOf(entries: DeviceEntry[], order: number[]) {
     if (owner === undefined) missing.push(range.name);
     else ranges.push({ ...range, owner });
   }
-  // Figma adds modes in this order until the file's limit: the frames' ranges first, the widest
-  // device's first, so a limit leaves out the extras' ranges before any frame's.
+  // Ranges show smallest to largest. Under a file's mode limit Figma keeps them in this priority:
+  // the frames' ranges first, the widest device's first, so a limit leaves out the extras' ranges
+  // before any frame's.
   const rank = (r: Range) => {
     const at = all.findIndex((a) => a.name === r.name);
     const framed = order.findIndex((i) => isDevice(entries[i] as DeviceEntry) && placed(i) === at);
     // A range only extras are in: after every frame's, widest first.
     return framed >= 0 ? framed : order.length + all.length - at;
   };
-  ranges.sort((a, b) => rank(a) - rank(b));
+  const priority = [...ranges].sort((a, b) => rank(a) - rank(b)).map((r) => r.name);
   /** The Breakpoint mode an entry is in. */
   const rangeOf = (i: number) => {
     const name = all[placed(i)]?.name;
     return ranges.find((r) => r.name === name);
   };
-  return { ranges, missing, breakpoints: boundaries.length > 0, fromDevices, rangeOf };
+  return { ranges, priority, missing, breakpoints: boundaries.length > 0, fromDevices, rangeOf };
 }
 
 type Rekey = (key: string) => string | undefined;
@@ -243,7 +244,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     entries[i]?.plan.tokens.layers ?? emptyLayers(entries[i]?.plan.tokens.collection ?? "");
   const top = layersAt(primary);
 
-  const { ranges, missing, breakpoints, fromDevices, rangeOf } = rangesOf(entries, order);
+  const { ranges, priority, missing, breakpoints, fromDevices, rangeOf } = rangesOf(entries, order);
   if (fromDevices) {
     report.push("This page records no breakpoints, so each device width was used as one.");
   }
@@ -661,9 +662,10 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     );
   }
 
-  const variables = [...merged.values(), ...deviceVars, ...breakpointVars, ...tokens];
-  const rank = (v: PlanVariable) => COLLECTION_ORDER.indexOf(v.collection);
-  variables.sort((a, b) => rank(a) - rank(b));
+  const variables = orderVariables(
+    [...merged.values(), ...deviceVars, ...breakpointVars, ...tokens],
+    modeNames
+  );
   const modesOf = (kind: PlanCollectionKind): string[] => {
     switch (kind) {
       case "colorMode":
@@ -680,7 +682,12 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
   };
   const collections: PlanCollection[] = COLLECTION_ORDER.filter(
     (kind) => kind === "theme" || variables.some((v) => v.collection === kind)
-  ).map((kind) => ({ kind, name: COLLECTION_NAMES[kind], modes: modesOf(kind) }));
+  ).map((kind) => ({
+    kind,
+    name: COLLECTION_NAMES[kind],
+    modes: modesOf(kind),
+    ...(kind === "breakpoint" ? { priority } : {}),
+  }));
 
   // Effect and gradient styles, and paint-style colours: one per key, the primary's first.
   const effectStyles: PlanLayers["effectStyles"] = [];

@@ -204,6 +204,80 @@ function visitKeys(layers: StagedLayers, plan: LayeringPlan, rekey: Rekey) {
   }
 }
 
+/** A name's last segment as a number, `_` its decimal point (`0_5` is 0.5); else null. */
+function numberIn(name: string): number | null {
+  const last = name.slice(name.lastIndexOf("/") + 1);
+  return /^\d+(_\d+)?$/.test(last) ? Number(last.replace("_", ".")) : null;
+}
+
+/**
+ * Variables in the order Figma shows them, smallest to largest: by collection, then within one by
+ * first path segment in first-use order, a per-mode group (`md/…`, its segment one of `modes`)
+ * by mode order. In a group, names ending in a number come first, ascending; the rest after, a
+ * single-mode one by its value then name, one with several modes as it came. A variable that
+ * aliases another of its own collection still follows it, so the alias can be made.
+ */
+export function orderVariables(variables: PlanVariable[], modes: string[] = []): PlanVariable[] {
+  const byKey = new Map(variables.map((v) => [v.key, v]));
+  const at = new Map(variables.map((v, i) => [v.key, i]));
+  const segment = (v: PlanVariable) => v.name.split("/")[0] as string;
+  const modeOf = (v: PlanVariable) => (v.name.includes("/") ? modes.indexOf(segment(v)) : -1);
+  const firstSeen = new Map<string, number>();
+  /** Per collection, where its per-mode groups go: where the first of them was. */
+  const modeBlock = new Map<string, number>();
+  for (const [i, v] of variables.entries()) {
+    const group = `${v.collection}\0${segment(v)}`;
+    if (!firstSeen.has(group)) firstSeen.set(group, i);
+    if (modeOf(v) >= 0 && !modeBlock.has(v.collection)) modeBlock.set(v.collection, i);
+  }
+  const groupRank = (v: PlanVariable): [number, number] => {
+    const mode = modeOf(v);
+    return mode >= 0
+      ? [modeBlock.get(v.collection) as number, mode + 1]
+      : [firstSeen.get(`${v.collection}\0${segment(v)}`) as number, 0];
+  };
+  /** A single-mode variable's number, through its aliases; else null. */
+  const numberOf = (v: PlanVariable): number | null => {
+    let value = v.values.length === 1 ? v.values[0] : undefined;
+    for (let depth = 0; value !== undefined && isAlias(value) && depth < 16; depth++) {
+      const target = byKey.get(value.alias);
+      value = target?.values.length === 1 ? target.values[0] : undefined;
+    }
+    return typeof value === "number" ? value : null;
+  };
+  const compare = (a: PlanVariable, b: PlanVariable): number => {
+    const byCollection = ORDER.indexOf(a.collection) - ORDER.indexOf(b.collection);
+    if (byCollection !== 0) return byCollection;
+    const [ga, ma] = groupRank(a);
+    const [gb, mb] = groupRank(b);
+    if (ga !== gb || ma !== mb) return ga - gb || ma - mb;
+    const stable = (at.get(a.key) as number) - (at.get(b.key) as number);
+    if (ma > 0) return stable;
+    const na = numberIn(a.name);
+    const nb = numberIn(b.name);
+    if ((na === null) !== (nb === null)) return na === null ? 1 : -1;
+    if (na !== null && nb !== null) return na - nb || stable;
+    if (a.values.length > 1 || b.values.length > 1) return stable;
+    const va = numberOf(a);
+    const vb = numberOf(b);
+    if (va !== null && vb !== null && va !== vb) return va - vb;
+    return a.name < b.name ? -1 : a.name > b.name ? 1 : stable;
+  };
+  const out: PlanVariable[] = [];
+  const done = new Set<string>();
+  const emit = (v: PlanVariable) => {
+    if (done.has(v.key)) return;
+    done.add(v.key);
+    for (const value of v.values) {
+      const target = isAlias(value) ? byKey.get(value.alias) : undefined;
+      if (target?.collection === v.collection) emit(target);
+    }
+    out.push(v);
+  };
+  for (const v of [...variables].sort(compare)) emit(v);
+  return out;
+}
+
 export type LayeringPlan = { ops: PlanOp[]; textStyles: PlanTextStyle[] };
 
 export function layerCollections(layers: StagedLayers, plan: LayeringPlan): PlanLayers {
@@ -341,8 +415,6 @@ export function layerCollections(layers: StagedLayers, plan: LayeringPlan): Plan
     name: COLLECTION_NAMES[kind],
     modes: kind === "colorMode" ? [...layers.modes] : [kind === "theme" ? THEME_MODE : BASE_MODE],
   }));
-  const rank = (v: PlanVariable) => ORDER.indexOf(v.collection);
-
   const twins: [string, string][] = [];
   for (const [a, b] of layers.notes.twins) {
     const x = moved.get(a);
@@ -353,8 +425,7 @@ export function layerCollections(layers: StagedLayers, plan: LayeringPlan): Plan
   return {
     ...layers,
     collections,
-    // A stable sort keeps each collection's variables in the order PR #7 made them.
-    variables: variables.sort((a, b) => rank(a) - rank(b)),
+    variables: orderVariables(variables),
     notes: {
       ...layers.notes,
       twins,

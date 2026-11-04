@@ -641,7 +641,7 @@ describe("App (a device set)", () => {
     await user.click(screen.getByRole("button", { name: "Import" }));
     await screen.findByText("Import complete");
     expect(screen.getByText("Device: Laptop, Tablet portrait, Phone portrait")).toBeInTheDocument();
-    expect(screen.getByText("Breakpoint: min 1400, md, base, lg")).toBeInTheDocument();
+    expect(screen.getByText("Breakpoint: base, md, lg, min 1400")).toBeInTheDocument();
     expect(screen.getByText("No capture for the sm breakpoint.")).toBeInTheDocument();
     // The dark-mode advice is worded for a single page, so a device set leaves it out.
     expect(screen.queryByText(/No theme found/)).toBeNull();

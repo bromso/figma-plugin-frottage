@@ -692,6 +692,108 @@ describe("device and breakpoint modes", () => {
     expect(f.storage.has("modeLimit")).toBe(false);
   });
 
+  // Mainline: smallest to largest, the frames' ranges (min 1400, md, base) leading the priority.
+  const ASCENDING = ["base", "sm", "md", "lg", "xl", "min 1400"];
+  const PRIORITY = ["min 1400", "md", "base", "xl", "lg", "sm"];
+  const mainline = (labels = ASCENDING, priority: string[] | undefined = PRIORITY) =>
+    layers({
+      collections: collectionsFor(["Light", "Dark"]).map((c) =>
+        c.kind === "breakpoint" ? { ...c, modes: labels, ...(priority ? { priority } : {}) } : c
+      ),
+      variables: [
+        ...ALL,
+        sized(
+          "breakpoint",
+          "breakpoint/min-width",
+          labels.map((l) => [0, 640, 768, 1024, 1280, 1400][ASCENDING.indexOf(l)] as number)
+        ),
+      ],
+    });
+
+  test("Breakpoint modes are made smallest to largest", async () => {
+    const f = fakeFigma();
+    const set = await settle(f, mainline());
+    const breakpoint = collectionNamed(f, "Breakpoint");
+    expect(modesOf(breakpoint)).toEqual(ASCENDING);
+    expect(breakpoint.defaultModeId).toBe(modeId(breakpoint, "base"));
+    expect(set.counts().modes.find((m) => m.kind === "breakpoint")?.created).toEqual(ASCENDING);
+  });
+
+  test("at a limit of 4 a new collection keeps the frames' modes, smallest to largest", async () => {
+    const f = fakeFigma({ modeLimit: 4 });
+    const set = await settle(f, mainline());
+    const breakpoint = collectionNamed(f, "Breakpoint");
+    expect(modesOf(breakpoint)).toEqual(["base", "md", "xl", "min 1400"]);
+    expect(breakpoint.defaultModeId).toBe(modeId(breakpoint, "base"));
+    for (const frame of ["base", "md", "min 1400"]) {
+      expect(set.modeOf("breakpoint", frame)?.modeId).toBe(modeId(breakpoint, frame));
+    }
+    expect(set.modeOf("breakpoint", "sm")).toBeNull();
+    expect(set.counts().modesDropped).toEqual(["sm", "lg"]);
+    expect(set.counts().modes.find((m) => m.kind === "breakpoint")?.created).toEqual([
+      "base",
+      "md",
+      "xl",
+      "min 1400",
+    ]);
+    expect(f.storage.get("modeLimit")).toBe(4);
+    // Every variable holds a value in each mode kept.
+    const minWidth = variableIn(f, "Breakpoint", "breakpoint/min-width");
+    expect(
+      breakpoint.modes.map((m: { modeId: string }) => minWidth.valuesByMode[m.modeId])
+    ).toEqual([0, 768, 1280, 1400]);
+  });
+
+  test("a remembered limit chooses the modes up front, with no refusal", async () => {
+    const f = fakeFigma({ modeLimit: 4 });
+    await f.figma.clientStorage.setAsync("modeLimit", 4);
+    const set = await settle(f, mainline());
+    expect(modesOf(collectionNamed(f, "Breakpoint"))).toEqual(["base", "md", "xl", "min 1400"]);
+    expect(f.tokens.writes.filter((w) => w.startsWith("Breakpoint: remove mode"))).toEqual([]);
+    expect(set.counts().modesDropped).toEqual(["sm", "lg"]);
+  });
+
+  test("a remembered limit the file no longer has still makes every mode", async () => {
+    const f = fakeFigma();
+    await f.figma.clientStorage.setAsync("modeLimit", 4);
+    const set = await settle(f, mainline());
+    expect(modesOf(collectionNamed(f, "Breakpoint"))).toEqual(ASCENDING);
+    expect(set.counts().modesDropped).toEqual([]);
+  });
+
+  test("a re-import appends the new modes after the ones already there", async () => {
+    const f = fakeFigma();
+    await settle(f, mainline(["base", "md", "min 1400"], ["min 1400", "md", "base"]));
+    const set = await settle(f, mainline());
+    expect(modesOf(collectionNamed(f, "Breakpoint"))).toEqual([
+      "base",
+      "md",
+      "min 1400",
+      "sm",
+      "lg",
+      "xl",
+    ]);
+    expect(set.counts().modes.find((m) => m.kind === "breakpoint")?.added).toEqual([
+      "sm",
+      "lg",
+      "xl",
+    ]);
+  });
+
+  test("a re-import at a limit appends the next by priority, smallest to largest", async () => {
+    const f = fakeFigma({ modeLimit: 5 });
+    await settle(f, mainline(["base", "md", "min 1400"], ["min 1400", "md", "base"]));
+    const set = await settle(f, mainline());
+    expect(modesOf(collectionNamed(f, "Breakpoint"))).toEqual([
+      "base",
+      "md",
+      "min 1400",
+      "lg",
+      "xl",
+    ]);
+    expect(set.counts().modesDropped).toEqual(["sm"]);
+  });
+
   test("getModeLimit ignores a stored value that is not a positive whole number", async () => {
     const f = fakeFigma();
     for (const bad of ["3", -1, 0, 2.5, null, { n: 3 }]) {

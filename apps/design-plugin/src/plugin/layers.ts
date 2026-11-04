@@ -233,6 +233,8 @@ export function createLayerSet(api: PluginAPI) {
   let closed = false;
   /** The mode the page was captured in, which it opens in. */
   let activeMode = "Light";
+  /** The file's mode limit: remembered from an earlier import, or met in this one. */
+  let knownLimit: number | null = null;
   /** The mode limit being stored, which `resolve` waits for. */
   let limitWrite: Promise<unknown> = Promise.resolve();
 
@@ -246,42 +248,118 @@ export function createLayerSet(api: PluginAPI) {
     }
   }
 
-  /** Gives each label a mode, adding those missing until the file's limit. */
-  function settleModes(collection: VariableCollection, labels: string[], fresh: boolean) {
-    const [first] = labels;
-    if (fresh && first !== undefined) {
-      try {
-        collection.renameMode(collection.defaultModeId, first);
-      } catch {
-        failures++;
-      }
-    }
+  /**
+   * Gives each label a mode, smallest to largest as `labels` lists them. Under the file's mode
+   * limit the ones kept are the first by `priority`. With a limit remembered from before they are
+   * chosen up front; else every missing one is tried, and at a first `Limited to N modes only` the
+   * modes just added, which hold no values yet, are taken back and the first N by priority added.
+   * A collection already there keeps its modes, and new ones go after them.
+   */
+  function settleModes(
+    collection: VariableCollection,
+    labels: string[],
+    fresh: boolean,
+    priority: string[] = labels
+  ) {
+    const ranked = [
+      ...priority.filter((l) => labels.includes(l)),
+      ...labels.filter((l) => !priority.includes(l)),
+    ];
     const named = new Map(collection.modes.map((m) => [m.name, m.modeId]));
-    const modeIds: (string | null)[] = [];
-    const added = new Set<string>();
-    let full = false;
-    for (const [i, label] of labels.entries()) {
-      let modeId = named.get(label) ?? (i === 0 ? collection.defaultModeId : null);
-      if (modeId === null && !full) {
+    const defaultName = collection.modes.find((m) => m.modeId === collection.defaultModeId)?.name;
+    // A collection already there whose default mode carries none of the labels: it is the first's.
+    const [narrowest] = labels;
+    const asDefault =
+      !fresh && narrowest !== undefined && !labels.includes(defaultName ?? "") ? narrowest : null;
+    const kept = new Map<string, string>(
+      fresh ? [] : labels.flatMap((l) => (named.has(l) ? [[l, named.get(l) as string]] : []))
+    );
+    if (asDefault !== null) kept.set(asDefault, collection.defaultModeId);
+    const wanted = ranked.filter((l) => !kept.has(l));
+    /** Room for `limit` modes in all: the wanted labels kept, smallest to largest. */
+    const pick = (limit: number | null) => {
+      const room =
+        limit === null ? wanted.length : Math.max(0, limit - (fresh ? 0 : collection.modes.length));
+      const chosen = new Set(wanted.slice(0, room));
+      return labels.filter((l) => chosen.has(l));
+    };
+    type Attempt = { ids: Map<string, string>; stopped: boolean; limit: number | null };
+    const add = (label: string, ids: Map<string, string>) => {
+      const modeId = collection.addMode(label);
+      ids.set(label, modeId);
+      if (!fresh) createdModes.push({ collection, modeId });
+    };
+    const attempt = (chosen: string[]): Attempt => {
+      const ids = new Map<string, string>();
+      for (const [i, label] of chosen.entries()) {
+        if (fresh && i === 0) {
+          try {
+            collection.renameMode(collection.defaultModeId, label);
+          } catch {
+            failures++;
+          }
+          ids.set(label, collection.defaultModeId);
+          continue;
+        }
         try {
-          modeId = collection.addMode(label);
-          added.add(modeId);
-          if (!fresh) createdModes.push({ collection, modeId });
+          add(label, ids);
         } catch (e) {
           // A plan's limit is a limit, not a failure: `modesDropped` says so.
           if (!String(e).includes("Limited to")) failures++;
-          const limit = limitIn(e);
-          if (limit !== null) rememberLimit(limit);
-          full = true;
+          return { ids, stopped: true, limit: limitIn(e) };
         }
       }
-      if (modeId === null) counts.modesDropped.push(label);
-      modeIds.push(modeId);
+      return { ids, stopped: false, limit: null };
+    };
+    /** Takes back the modes an attempt added; the default mode stays. */
+    const undo = ({ ids }: Attempt) => {
+      for (const modeId of ids.values()) {
+        if (modeId === collection.defaultModeId) continue;
+        try {
+          collection.removeMode(modeId);
+        } catch {
+          failures++;
+        }
+        createdModes = createdModes.filter((m) => m.modeId !== modeId);
+      }
+    };
+
+    let chosen = pick(knownLimit);
+    let tried = attempt(chosen);
+    const next = wanted.find((l) => !chosen.includes(l));
+    if (!tried.stopped && knownLimit !== null && next !== undefined) {
+      // The limit remembered may be another file's, or the plan's since raised: try one more.
+      const probe: Attempt = { ids: new Map(), stopped: false, limit: null };
+      try {
+        add(next, probe.ids);
+      } catch (e) {
+        if (!String(e).includes("Limited to")) failures++;
+      }
+      if (probe.ids.size > 0) {
+        undo(probe);
+        undo(tried);
+        chosen = pick(null);
+        tried = attempt(chosen);
+      }
     }
+    if (tried.stopped && tried.limit !== null) {
+      knownLimit = tried.limit;
+      rememberLimit(tried.limit);
+      undo(tried);
+      tried = attempt(pick(tried.limit));
+    }
+    const modeIds = labels.map((l) => tried.ids.get(l) ?? kept.get(l) ?? null);
+    for (const [i, label] of labels.entries()) {
+      if (modeIds[i] === null) counts.modesDropped.push(label);
+    }
+    const added = new Set(
+      [...tried.ids.values()].filter((modeId) => modeId !== collection.defaultModeId)
+    );
     return { modeIds, added };
   }
 
   async function settle(plan: PlanLayers, useLocal: boolean, runtime: TokenRuntime) {
+    knownLimit = await getModeLimit(api);
     const existing = await api.variables.getLocalVariablesAsync();
     const collections = await api.variables.getLocalVariableCollectionsAsync();
     const effectStyles = plan.effectStyles.length > 0 ? await api.getLocalEffectStylesAsync() : [];
@@ -387,7 +465,7 @@ export function createLayerSet(api: PluginAPI) {
     const homeOf = (kind: PlanCollectionKind): Home => {
       const known = homes.get(kind);
       if (known) return known;
-      const { name, modes } = described(kind);
+      const { name, modes, priority } = described(kind);
       const tag = tagOf(plan.hostname, kind);
       let collection = collections.find((c) => !c.remote && !c.isExtension && tagIn(c) === tag);
       const fresh = !collection;
@@ -403,7 +481,7 @@ export function createLayerSet(api: PluginAPI) {
         collection,
         taken: new Set(names),
         labels,
-        ...settleModes(collection, labels, fresh),
+        ...settleModes(collection, labels, fresh, priority),
       };
       counts.modes.push({
         kind,

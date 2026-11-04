@@ -102,11 +102,15 @@ function mainline(over: Partial<Page> = {}): DeviceEntry[] {
   ];
 }
 
+const BREAKPOINTS = ["base", "sm", "md", "lg", "xl", "min 1400"];
+const order = (mode: string | undefined) => BREAKPOINTS.indexOf(mode ?? "");
 const varOf = (layers: PlanLayers, key: string) => layers.variables.find((v) => v.key === key);
 const aliasOf = (value: PlanVarValue | undefined) =>
   typeof value === "object" && value !== null && "alias" in value ? value.alias : undefined;
 const modesOf = (layers: PlanLayers, name: string) =>
   layers.collections.find((c) => c.name === name)?.modes;
+const priorityOf = (layers: PlanLayers, name: string) =>
+  layers.collections.find((c) => c.name === name)?.priority;
 
 /** Every key a plan binds by: variables, text styles and effect or gradient styles. */
 function keysOf(plan: LayerPlan) {
@@ -197,16 +201,17 @@ describe("mergeDevices", () => {
 
   test("breakpoints with a capture become modes; the ones without are dropped and reported", () => {
     const { layers, report } = mergeDevices(mainline());
-    // The frames' ranges first, widest device's first; the extra's range after.
-    expect(modesOf(layers, "Breakpoint")).toEqual(["min 1400", "md", "base", "lg"]);
+    // Smallest to largest; the frames' ranges lead the priority, widest device's first.
+    expect(modesOf(layers, "Breakpoint")).toEqual(["base", "md", "lg", "min 1400"]);
+    expect(priorityOf(layers, "Breakpoint")).toEqual(["min 1400", "md", "base", "lg"]);
     expect(report).toContain("No capture for the sm breakpoint.");
     expect(report).toContain("No capture for the xl breakpoint.");
-    expect(varOf(layers, "breakpoint:breakpoint/min-width")?.values).toEqual([1400, 768, 0, 1024]);
+    expect(varOf(layers, "breakpoint:breakpoint/min-width")?.values).toEqual([0, 768, 1024, 1400]);
     // A range's end is where the next mode starts, so the ranges with no capture leave no gap.
-    expect(varOf(layers, "breakpoint:breakpoint/max-width")?.values).toEqual([0, 1023, 767, 1399]);
+    expect(varOf(layers, "breakpoint:breakpoint/max-width")?.values).toEqual([767, 1023, 1399, 0]);
   });
 
-  test("Breakpoint modes put the frames' ranges first, so a mode limit drops extras' ranges", () => {
+  test("Breakpoint priority puts the frames' ranges first, so a mode limit drops extras' ranges", () => {
     const { layers } = mergeDevices([
       entry({ width: 390, heading: 30, version: device("Phone portrait", 844) }),
       entry({ width: 1280, heading: 40, version: extra("xl") }),
@@ -214,12 +219,28 @@ describe("mergeDevices", () => {
       entry({ width: 640, heading: 32, version: extra("sm") }),
       entry({ width: 1512, heading: 60, version: device("Laptop", 982) }),
     ]);
-    expect(modesOf(layers, "Breakpoint")?.slice(0, 3)).toEqual(["min 1400", "md", "base"]);
-    expect([...(modesOf(layers, "Breakpoint") ?? [])].slice(3).sort()).toEqual(["sm", "xl"]);
+    expect(modesOf(layers, "Breakpoint")).toEqual(["base", "sm", "md", "xl", "min 1400"]);
+    expect(priorityOf(layers, "Breakpoint")).toEqual(["min 1400", "md", "base", "xl", "sm"]);
     const size = "theme:type/heading/1/size";
     expect(valueIn(layers, size, "min 1400")).toBe(60);
     expect(valueIn(layers, size, "xl")).toBe(40);
     expect(valueIn(layers, size, "sm")).toBe(32);
+  });
+
+  test("Mainline's breakpoints are smallest to largest, each Typography group after the last", () => {
+    const { layers } = mergeDevices([
+      ...mainline(),
+      entry({ width: 640, heading: 32, version: extra("sm") }),
+      entry({ width: 1280, heading: 40, version: extra("xl") }),
+    ]);
+    expect(modesOf(layers, "Breakpoint")).toEqual(["base", "sm", "md", "lg", "xl", "min 1400"]);
+    expect(priorityOf(layers, "Breakpoint")).toEqual(["min 1400", "md", "base", "xl", "lg", "sm"]);
+    const groups = layers.variables
+      .filter((v) => v.collection === "typography" && v.name.includes("/type/"))
+      .map((v) => v.name.split("/")[0]);
+    expect([...new Set(groups)]).toEqual(["base", "sm", "md", "lg", "xl", "min 1400"]);
+    // Each group is whole: no mode's variables come back after the next mode's.
+    expect(groups).toEqual([...groups].sort((a, b) => order(a) - order(b)));
   });
 
   test("a text size that differs by breakpoint aliases per-breakpoint raw values", () => {
@@ -228,10 +249,10 @@ describe("mergeDevices", () => {
     expect(token?.values).toEqual([{ alias: "breakpoint:type/heading/1/size" }]);
     expect(token?.description).toBe("Final theme token; source: Breakpoint");
     expect(varOf(layers, "breakpoint:type/heading/1/size")?.values).toEqual([
-      { alias: "typography:min 1400/type/heading/1/size" },
-      { alias: "typography:md/type/heading/1/size" },
       { alias: "typography:base/type/heading/1/size" },
+      { alias: "typography:md/type/heading/1/size" },
       { alias: "typography:lg/type/heading/1/size" },
+      { alias: "typography:min 1400/type/heading/1/size" },
     ]);
     const raw = (mode: string) => varOf(layers, `typography:${mode}/type/heading/1/size`)?.values;
     expect(raw("min 1400")).toEqual([60]);
@@ -274,11 +295,11 @@ describe("mergeDevices", () => {
       }),
     ];
     const { layers, plans } = mergeDevices(entries);
-    expect(modesOf(layers, "Breakpoint")).toEqual(["min 1400", "base"]);
+    expect(modesOf(layers, "Breakpoint")).toEqual(["base", "min 1400"]);
     expect(varOf(layers, "theme:text/base")?.values).toEqual([{ alias: "breakpoint:text/base" }]);
     expect(varOf(layers, "breakpoint:text/base")?.values).toEqual([
-      { alias: "typography:min 1400/text/base" },
       { alias: "typography:base/text/base" },
+      { alias: "typography:min 1400/text/base" },
     ]);
     expect(varOf(layers, "typography:base/text/base")?.values).toEqual([14]);
     expect(varOf(layers, "typography:min 1400/text/base")?.values).toEqual([16]);
@@ -298,7 +319,7 @@ describe("mergeDevices", () => {
       }),
       entry({ width: 1512, heading: 60, version: device("Laptop", 982) }),
     ]);
-    expect(modesOf(layers, "Breakpoint")).toEqual(["min 1400", "base"]);
+    expect(modesOf(layers, "Breakpoint")).toEqual(["base", "min 1400"]);
     expect(report).toContain(
       "color/card differs by breakpoint in Color Mode; kept the min 1400 value."
     );
@@ -380,8 +401,9 @@ describe("mergeDevices", () => {
     expect(report).toContain(
       "This page records no breakpoints, so each device width was used as one."
     );
-    expect(modesOf(layers, "Breakpoint")).toEqual(["min 1512", "min 834", "base"]);
-    expect(varOf(layers, "breakpoint:breakpoint/min-width")?.values).toEqual([1512, 834, 0]);
+    expect(modesOf(layers, "Breakpoint")).toEqual(["base", "min 834", "min 1512"]);
+    expect(priorityOf(layers, "Breakpoint")).toEqual(["min 1512", "min 834", "base"]);
+    expect(varOf(layers, "breakpoint:breakpoint/min-width")?.values).toEqual([0, 834, 1512]);
     expect(frames.map((f) => f.breakpoint)).toEqual(["min 1512", "min 834", "base"]);
     expect(modesOf(layers, "Device")).toEqual(["Laptop", "Tablet portrait", "Phone portrait"]);
     const size = "theme:type/heading/1/size";

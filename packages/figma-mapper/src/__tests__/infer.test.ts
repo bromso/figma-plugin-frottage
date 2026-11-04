@@ -75,8 +75,8 @@ describe("inferTheme", () => {
     expect(layers?.themeSource).toBe("inferred");
     expect(theme(p).map((v) => v.name)).toEqual([
       "color/background",
-      "color/foreground",
       "color/border",
+      "color/foreground",
       "color/primary",
     ]);
     expect(layers?.notes.inferred).toEqual(["background", "foreground", "border", "primary"]);
