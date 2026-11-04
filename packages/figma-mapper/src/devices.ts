@@ -1,6 +1,6 @@
 import type { Capture } from "@repo/capture-schema";
 import { breakpointName } from "@repo/capture-schema/css-values";
-import { MAX_VARIABLES } from "./catalogue";
+import { isRadiusDiffers, MAX_VARIABLES } from "./catalogue";
 import { COLLECTION_NAMES, COLLECTION_ORDER } from "./layering";
 import type {
   LayerPlan,
@@ -736,10 +736,20 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     },
   };
 
+  // A radius name that differs is said once for the set, widest capture first, not per frame.
+  const differs = new Set(
+    order.flatMap((i) => entries[i]?.plan.report.warnings.filter(isRadiusDiffers) ?? [])
+  );
+  report.push(...differs);
+
   const plans = entries.map(({ plan }, i): LayerPlan => {
     const styleKey: Rekey = (key) => styleMaps[i]?.get(key);
     return {
       ...plan,
+      report: {
+        ...plan.report,
+        warnings: plan.report.warnings.filter((line) => !isRadiusDiffers(line)),
+      },
       ops: rekeyed(plan.ops, themeKey, styleKey) as PlanOp[],
       tokens: { ...plan.tokens, textStyles: styles, layers },
     };

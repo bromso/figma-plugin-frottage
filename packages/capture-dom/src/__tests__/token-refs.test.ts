@@ -401,4 +401,65 @@ describe("radiusClass", () => {
     expect(reader.refsFor($("div"))?.radiusClass).toEqual(["1.5", "1.5", "1.5", "1.5"]);
     expect(reader.refsFor($("p"))?.radiusClass).toBeUndefined();
   });
+
+  test("a class whose value is not the corner's computed px names nothing", () => {
+    const { reader, $ } = setup(
+      ".rounded-md { border-radius: 12px } .rounded-lg { border-radius: var(--radius) } .rounded-xl { border-radius: 1em } .rounded-sm { border-radius: var(--missing) }",
+      `<div class="rounded-md"></div><div class="rounded-lg"></div><div class="rounded-xl"></div><div class="rounded-sm"></div>`,
+      ROOT,
+      {
+        ".rounded-md": corners("6px"),
+        ".rounded-lg": corners("10px"),
+        ".rounded-xl": corners("16px"),
+        ".rounded-sm": corners("4px"),
+      }
+    );
+    for (const sel of [".rounded-md", ".rounded-lg", ".rounded-xl", ".rounded-sm"]) {
+      expect(reader.refsFor($(sel))?.radiusClass).toBeUndefined();
+    }
+  });
+
+  test("a value is evaluated against the root: rem, var(), calc() of a var", () => {
+    const { reader, $ } = setup(
+      ".rounded-md { border-radius: .375rem } .rounded-lg { border-radius: var(--radius) } .rounded-sm { border-radius: calc(var(--radius) - 4px) }",
+      `<div class="rounded-md"></div><div class="rounded-lg"></div><div class="rounded-sm"></div>`,
+      ROOT,
+      {
+        ".rounded-md": corners("6px"),
+        ".rounded-lg": corners("8px"),
+        ".rounded-sm": corners("4px"),
+      }
+    );
+    expect(reader.refsFor($(".rounded-md"))?.radiusClass).toEqual(["md", "md", "md", "md"]);
+    expect(reader.refsFor($(".rounded-lg"))?.radiusClass).toEqual(["lg", "lg", "lg", "lg"]);
+    expect(reader.refsFor($(".rounded-sm"))?.radiusClass).toEqual(["sm", "sm", "sm", "sm"]);
+  });
+
+  test("a 0 px corner names nothing", () => {
+    const { reader, $ } = setup(
+      ".rounded-none { border-radius: 0px }",
+      `<div class="rounded-none"></div>`,
+      ROOT,
+      { ".rounded-none": corners("0px") }
+    );
+    expect(reader.refsFor($(".rounded-none"))?.radiusClass).toBeUndefined();
+  });
+
+  test("a variant prefix gives the name after its last colon", () => {
+    const { reader, $ } = setup(
+      ".md\\:rounded-xl { border-radius: 12px } .lg\\:rounded-t-2xl { border-top-left-radius: 16px; border-top-right-radius: 16px }",
+      `<div class="md:rounded-xl"></div><p class="lg:rounded-t-2xl"></p>`,
+      ROOT,
+      {
+        div: corners("12px"),
+        p: {
+          ...corners("0px"),
+          "border-top-left-radius": "16px",
+          "border-top-right-radius": "16px",
+        },
+      }
+    );
+    expect(reader.refsFor($("div"))?.radiusClass).toEqual(["xl", "xl", "xl", "xl"]);
+    expect(reader.refsFor($("p"))?.radiusClass).toEqual(["2xl", "2xl", null, null]);
+  });
 });

@@ -1,5 +1,11 @@
 import type { CaptureNode } from "@repo/capture-schema";
-import { type Catalogue, COLOR_SCOPES, followAlias, MAX_VARIABLES } from "./catalogue";
+import {
+  type Catalogue,
+  COLOR_SCOPES,
+  followAlias,
+  MAX_VARIABLES,
+  radiusDiffers,
+} from "./catalogue";
 import { inferTheme, nearTwins, primitiveName, sameColour } from "./infer";
 import type {
   PlanLayout,
@@ -223,7 +229,8 @@ export function bindLayers(
   }
 
   // Roles inferred for a page with no theme join the catalogue here, before values are matched,
-  // unless some layer or text style bound to a site variable by its ref.
+  // unless some layer or text style bound to a site variable by its ref. Corners named by a
+  // rounding class bind after this, so they never keep a page's colours from being inferred.
   if (bound.size === 0 && context.root) inferTheme(catalogue, ops, context.root);
 
   // A corner a `rounded-<name>` class set binds to `radius/<name>`, made with the first value it
@@ -232,15 +239,14 @@ export function bindLayers(
   const differing = new Set<string>();
   for (const field of named) {
     if (field.kind !== "radii" || !field.name) continue;
-    const { variable, differs } = catalogue.namedRadius(field.name, field.value);
+    const { variable, differs, name } = catalogue.namedRadius(field.name, field.value);
     if (variable) {
       bind(field, variable);
       continue;
     }
-    if (differs && !differing.has(field.name)) {
-      differing.add(field.name);
-      const label = field.name === "DEFAULT" ? "default" : field.name.replaceAll(".", "_");
-      warnings.push(`radius/${label} has different values on this page.`);
+    if (differs && !differing.has(name)) {
+      differing.add(name);
+      warnings.push(radiusDiffers(name));
     }
     if (!byRef(field)) unbound.push(field);
   }

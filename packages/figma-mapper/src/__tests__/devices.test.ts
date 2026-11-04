@@ -574,3 +574,24 @@ describe("mergeDevices", () => {
     expect(frames.map((f) => f.device)).toEqual(["1512", "834", "390"]);
   });
 });
+
+test("a radius name with different values is reported once for the set, not per device", () => {
+  const rounded = (id: string, px: number): ElementNode => {
+    const base = el(id, [0, 0]);
+    return {
+      ...base,
+      style: { ...base.style, borderRadius: [px, px, px, px] },
+      tokenRefs: { radiusClass: ["md", "md", "md", "md"] },
+    };
+  };
+  const entries = mainline().map(({ capture }) => {
+    const root = capture.root as ElementNode;
+    capture.root = { ...root, children: [...root.children, rounded("m1", 6), rounded("m2", 7)] };
+    return { capture, plan: mapCapture(capture, inter, LAYERED) };
+  });
+  const line = "radius/md has different values on this page.";
+  for (const { plan } of entries) expect(plan.report.warnings).toContain(line);
+  const { report, plans } = mergeDevices(entries);
+  expect(report.filter((l) => l === line)).toHaveLength(1);
+  for (const plan of plans) expect(plan.report.warnings).not.toContain(line);
+});

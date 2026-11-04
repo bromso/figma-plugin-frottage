@@ -23,7 +23,10 @@ export type Catalogue = {
    * `radius/<name>` for a corner the site's `rounded-<name>` class set, made on first use with
    * that corner's px. Null at the cap, or with `differs` when the name already holds another value.
    */
-  namedRadius(name: string, px: number): { variable: StagedVariable | null; differs: boolean };
+  namedRadius(
+    name: string,
+    px: number
+  ): { variable: StagedVariable | null; differs: boolean; name: string };
   /**
    * Variables left out past `MAX_VARIABLES`, theme or primitive, including spacing steps refused
    * later by `resolveRef`. It grows as those are asked for, so read it after binding.
@@ -42,6 +45,13 @@ const MAX_SPACING_STEP = 1000;
 /** A corner this round or rounder, as `rounded-full`'s 3.40282e38px, is stored as this. */
 export const MAX_RADIUS = 9999;
 const RADIUS_SCOPES = ["CORNER_RADIUS"];
+const RADIUS_DIFFERS = " has different values on this page.";
+
+/** The report line for a radius name whose corners hold different values. */
+export const radiusDiffers = (name: string) => `${name}${RADIUS_DIFFERS}`;
+/** Whether a report line is one `radiusDiffers` made. */
+export const isRadiusDiffers = (line: string) =>
+  line.startsWith("radius/") && line.endsWith(RADIUS_DIFFERS);
 /** Prefixes frameworks put on their own properties; the name is what follows. */
 const FRAMEWORK_PREFIX = /^(bs|mantine|chakra|ant)-/i;
 /** A value that is one `var()` and nothing else, with or without a fallback (one level deep). */
@@ -399,10 +409,10 @@ export function buildCatalogue(capture: Capture): Catalogue {
       if (existing) {
         const held = existing.values[0];
         const same = typeof held === "number" && Math.abs(held - value) <= 0.01 + 1e-9;
-        return same ? { variable: existing, differs: false } : { variable: null, differs: true };
+        return { variable: same ? existing : null, differs: !same, name: vname };
       }
       const from = name === "DEFAULT" ? ".rounded" : `.rounded-${name}`;
-      return { variable: made(vname, value, RADIUS_SCOPES, from), differs: false };
+      return { variable: made(vname, value, RADIUS_SCOPES, from), differs: false, name: vname };
     },
   };
   return catalogue;

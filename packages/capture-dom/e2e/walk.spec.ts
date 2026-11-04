@@ -2460,8 +2460,11 @@ test("each corner records the rounding class that set it, and binds to radius/<n
   // `rounded-tl-sm` comes later than `rounded-t-2xl`, so it wins the top-left corner.
   expect(byClass("sheet").tokenRefs?.radiusClass).toEqual(["sm", "2xl", null, null]);
   expect(byClass("pill").tokenRefs?.radiusClass).toEqual(["full", "full", "full", "full"]);
-  // A rule of more than one class names nothing: the bare `flex` row has no corners at all.
+  // An element no rounding class reaches, as the `flex` row around the pill, has no names.
   expect(byClass("flex").tokenRefs?.radiusClass).toBeUndefined();
+  // A variant names the same token at its breakpoint; a class whose value isn't the corner's, none.
+  expect(byClass("chip").tokenRefs?.radiusClass).toEqual(["xl", "xl", "xl", "xl"]);
+  expect(byClass("stale").tokenRefs?.radiusClass).toBeUndefined();
 
   const { plan, byClass: frameOf, resolve } = mapLayered(c);
   const end = (key: string | undefined, name: string, px: number) => {
