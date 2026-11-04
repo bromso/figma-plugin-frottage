@@ -202,14 +202,18 @@ export function buildCatalogue(capture: Capture): Catalogue {
   const base = activeMode === LIGHT ? {} : (capture.tokens.base ?? {});
   /** Light's value of a property, as the root's own rules set it. */
   const lightText = (prop: string) => base[prop] ?? root[prop];
-  const lightProps = activeMode === LIGHT ? root : { ...rootAuthored, ...base };
+  /** The root's authored text outside any active context: what every other mode builds on. */
+  const baseAuthored = { ...rootAuthored, ...base };
+  // Light's own values: the page's computed ones when it was captured in Light.
+  const lightProps = activeMode === LIGHT ? root : baseAuthored;
   const lightAuthored = (prop: string) => base[prop] ?? authored[prop];
-  // Each mode's values over the root's, built once: the active mode's over what the page computed,
-  // any other over Light.
+  // Each mode's values over the root's authored text, built once, never over computed values: a
+  // context's change must reach what root-only aliases build on it. The active mode is over the
+  // page's own text; any other over the text outside the active context.
   const modeProps = new Map(
     [...byMode].map(([mode, context]) => [
       mode,
-      mode === activeMode ? { ...rootAuthored, ...context } : { ...lightProps, ...context },
+      mode === activeMode ? { ...rootAuthored, ...context } : { ...baseAuthored, ...context },
     ])
   );
 

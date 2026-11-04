@@ -251,6 +251,24 @@ describe("buildCatalogue", () => {
     expectColour(border?.values[1], "oklch(1 0 0 / 10%)");
   });
 
+  test("a context's value reaches a theme property through a root-only alias", () => {
+    const capture = cap(el("root", [0, 0]));
+    capture.tokens = {
+      cssCustomProperties: { "--brand": "#000000", "--ring-base": "#000000", "--ring": "#000000" },
+      authored: { "--ring-base": "var(--brand)", "--ring": "var(--ring-base)" },
+      themes: [
+        {
+          context: ".dark",
+          mode: "Dark",
+          properties: { "--brand": "#ffffff", "--ring": "var(--ring-base)" },
+        },
+      ],
+    };
+    const ring = buildCatalogue(capture).byCssVar.get("--ring");
+    expectColour(ring?.values[0], "#000000");
+    expectColour(ring?.values[1], "#ffffff");
+  });
+
   test("an active Light theme, or one not among the modes, opens in Light", () => {
     const capture = shadcn();
     capture.tokens.activeTheme = "Light";
