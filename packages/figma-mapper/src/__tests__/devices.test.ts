@@ -642,3 +642,15 @@ test("a radius name with different values is reported once for the set, not per 
   expect(report.filter((l) => l === line)).toHaveLength(1);
   for (const plan of plans) expect(plan.report.warnings).not.toContain(line);
 });
+
+test("theme notes are reported once for the set, not per device", () => {
+  const line = "This page has no dark theme, so only Light was made.";
+  const entries = mainline({ themeChoice: { light: false, dark: true } }).map(({ capture }) => {
+    capture.tokens.themes = [];
+    return { capture, plan: mapCapture(capture, inter, LAYERED) };
+  });
+  for (const { plan } of entries) expect(plan.report.warnings).toContain(line);
+  const { report, plans } = mergeDevices(entries);
+  expect(report.filter((l) => l === line)).toHaveLength(1);
+  for (const plan of plans) expect(plan.report.warnings).not.toContain(line);
+});

@@ -1,6 +1,6 @@
 import type { Capture } from "@repo/capture-schema";
 import { breakpointName } from "@repo/capture-schema/css-values";
-import { isRadiusDiffers, MAX_VARIABLES } from "./catalogue";
+import { isRadiusDiffers, isThemeNote, MAX_VARIABLES } from "./catalogue";
 import { COLLECTION_NAMES, COLLECTION_ORDER, orderVariables } from "./layering";
 import type {
   LayerPlan,
@@ -756,6 +756,11 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     order.flatMap((i) => entries[i]?.plan.report.warnings.filter(isRadiusDiffers) ?? [])
   );
   report.push(...differs);
+  // Theme notes likewise: the themes are one choice for the set.
+  const themeNotes = new Set(
+    order.flatMap((i) => entries[i]?.plan.report.warnings.filter(isThemeNote) ?? [])
+  );
+  report.push(...themeNotes);
 
   const plans = entries.map(({ plan }, i): LayerPlan => {
     const styleKey: Rekey = (key) => styleMaps[i]?.get(key);
@@ -763,7 +768,9 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
       ...plan,
       report: {
         ...plan.report,
-        warnings: plan.report.warnings.filter((line) => !isRadiusDiffers(line)),
+        warnings: plan.report.warnings.filter(
+          (line) => !isRadiusDiffers(line) && !isThemeNote(line)
+        ),
       },
       ops: rekeyed(plan.ops, themeKey, styleKey) as PlanOp[],
       tokens: { ...plan.tokens, textStyles: styles, layers },

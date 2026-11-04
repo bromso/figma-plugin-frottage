@@ -55,6 +55,11 @@ export const radiusDiffers = (name: string) => `${name}${RADIUS_DIFFERS}`;
 /** Whether a report line is one `radiusDiffers` made. */
 export const isRadiusDiffers = (line: string) =>
   line.startsWith("radius/") && line.endsWith(RADIUS_DIFFERS);
+const NO_DARK_NOTE = "This page has no dark theme, so only Light was made.";
+const NOT_MADE_NOTE = "Not made: ";
+/** Whether a report line is one of the theme notes `buildCatalogue` makes. */
+export const isThemeNote = (line: string) =>
+  line === NO_DARK_NOTE || (line.startsWith(NOT_MADE_NOTE) && line.endsWith("."));
 /** Prefixes frameworks put on their own properties; the name is what follows. */
 const FRAMEWORK_PREFIX = /^(bs|mantine|chakra|ant)-/i;
 /** A value that is one `var()` and nothing else, with or without a fallback (one level deep). */
@@ -372,11 +377,11 @@ export function buildCatalogue(
           : choice.light && choice.dark
     );
     if (choice.dark && !hasDark && keptModes.length === 1 && keptModes[0] === LIGHT)
-      notes.push("This page has no dark theme, so only Light was made.");
+      notes.push(NO_DARK_NOTE);
     const left = allModes.filter(
       (mode) => mode !== LIGHT && mode !== DARK && !keptModes.includes(mode)
     );
-    if (left.length > 0) notes.push(`Not made: ${left.join(", ")}.`);
+    if (left.length > 0) notes.push(`${NOT_MADE_NOTE}${left.join(", ")}.`);
     if (keptModes.length < allModes.length) {
       const at = keptModes.map((mode) => allModes.indexOf(mode));
       for (const v of variables) {
