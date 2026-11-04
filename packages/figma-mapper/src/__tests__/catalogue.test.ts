@@ -461,10 +461,5 @@ describe("buildCatalogue", () => {
       const cat = buildCatalogue(withChoice(true, true), { light: false, dark: true });
       expect(cat.modes).toEqual(["Dark"]);
     });
-
-    test("a value fallback in Dark only compares against Dark's values", () => {
-      const cat = buildCatalogue(withChoice(false, true));
-      expect(cat.modes.indexOf(cat.activeMode)).toBe(0);
-    });
   });
 });

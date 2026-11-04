@@ -371,7 +371,8 @@ export function buildCatalogue(
           ? choice.dark
           : choice.light && choice.dark
     );
-    if (choice.dark && !hasDark) notes.push("This page has no dark theme, so only Light was made.");
+    if (choice.dark && !hasDark && keptModes.length === 1 && keptModes[0] === LIGHT)
+      notes.push("This page has no dark theme, so only Light was made.");
     const left = allModes.filter(
       (mode) => mode !== LIGHT && mode !== DARK && !keptModes.includes(mode)
     );
