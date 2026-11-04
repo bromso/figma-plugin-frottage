@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act } from "react";
 
@@ -13,23 +13,42 @@ let requested: unknown[] = [];
 let grant = true;
 let languages: unknown[] = [en, sv];
 let window: Window;
-const saved = new Map<string, unknown>();
+const saved = new Map<string, { had: boolean; value: unknown }>();
+const g = globalThis as Record<string, unknown>;
+const roots: { unmount(): void }[] = [];
 
 beforeAll(async () => {
   window = new Window({ url: "https://site.test/" });
   window.document.body.innerHTML = '<div id="root"></div>';
-  for (const key of Object.getOwnPropertyNames(window)) {
-    if (key in globalThis) continue;
+  const w = window as unknown as Record<string, unknown>;
+  // Every global that gets touched is snapshotted before any is assigned.
+  const own = Object.getOwnPropertyNames(window).filter((key) => !(key in globalThis));
+  const touched = [
+    ...own,
+    "window",
+    "document",
+    "navigator",
+    "localStorage",
+    "matchMedia",
+    "chrome",
+    "IS_REACT_ACT_ENVIRONMENT",
+  ];
+  for (const key of touched) saved.set(key, { had: key in g, value: g[key] });
+  for (const key of own) {
     try {
-      (globalThis as Record<string, unknown>)[key] = (window as unknown as Record<string, unknown>)[
-        key
-      ];
-      saved.set(key, undefined);
+      g[key] = w[key];
     } catch {}
   }
-  for (const key of ["window", "document", "navigator", "localStorage", "matchMedia", "self"]) {
-    saved.set(key, (globalThis as Record<string, unknown>)[key]);
-  }
+  // The popup mounts itself, so its roots are kept to unmount after each test.
+  const client = { ...(await import("react-dom/client")) };
+  mock.module("react-dom/client", () => ({
+    ...client,
+    createRoot: (...args: Parameters<typeof client.createRoot>) => {
+      const root = client.createRoot(...args);
+      roots.push(root);
+      return root;
+    },
+  }));
   Object.assign(globalThis, {
     window,
     document: window.document,
@@ -65,10 +84,18 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-  for (const [key, value] of saved) {
-    if (value === undefined) delete (globalThis as Record<string, unknown>)[key];
-    else (globalThis as Record<string, unknown>)[key] = value;
+  for (const [key, { had, value }] of saved) {
+    try {
+      if (had) g[key] = value;
+      else delete g[key];
+    } catch {}
   }
+});
+
+afterEach(async () => {
+  await act(async () => {
+    for (const root of roots.splice(0)) root.unmount();
+  });
 });
 
 beforeEach(() => {
@@ -84,9 +111,20 @@ async function open() {
   await act(async () => {
     await import(`../popup/popup?${Math.random()}`);
   });
-  await act(async () => {
-    await new Promise((r) => setTimeout(r, 20));
-  });
+  // The probe has answered once the Capture button is there and, when it finds languages, the group.
+  await waitFor(
+    () => /Capture/.test(text()) && (languages.length < 2 || text().includes("Languages"))
+  );
+}
+
+async function waitFor(ready: () => boolean, timeout = 2000) {
+  const end = Date.now() + timeout;
+  while (!ready()) {
+    if (Date.now() > end) throw new Error("Timed out waiting for the popup");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+    });
+  }
 }
 
 const codes = (start: Sent | undefined) =>
