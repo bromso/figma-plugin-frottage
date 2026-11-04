@@ -82,12 +82,13 @@ export function cleanThemes(themes: unknown): { light: boolean; dark: boolean } 
 /** A language as the format stores it, or undefined when it is not one or is too long. */
 export function cleanLanguage(language: unknown): PageLanguage | undefined {
   if (!language || typeof language !== "object") return undefined;
-  const { code, name, url, current } = language as Record<string, unknown>;
+  const { code, name, url, current, base } = language as Record<string, unknown>;
   const fits = (s: unknown, max: number, min = 1): s is string =>
     typeof s === "string" && s.length >= min && s.length <= max;
   if (!fits(code, 20) || !fits(name, 40) || !fits(url, 2048, 0)) return undefined;
   if (typeof current !== "boolean") return undefined;
-  return { code, name, url, current };
+  if (typeof base === "string" && !fits(base, 2048, 0)) return undefined;
+  return { code, name, url, current, ...(typeof base === "string" ? { base } : {}) };
 }
 
 /**

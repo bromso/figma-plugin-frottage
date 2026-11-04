@@ -868,10 +868,19 @@ describe("ViewportRun with languages", () => {
     expect(t.announced).toEqual([false]);
   });
 
-  test("each capture gets its language record, the current one included", async () => {
+  test("each capture gets its language record and the run's address, the current one included", async () => {
     const t = setup({ origin: byPage });
     await t.run.start(asked, { languages: [EN, SV] });
-    expect(t.records).toEqual([EN, EN, EN, SV, SV]);
+    const base = "https://example.com/en/";
+    const [en, sv] = [EN, SV].map((l) => ({ ...l, base }));
+    expect(t.records).toEqual([en, en, en, sv, sv]);
+  });
+
+  test("the address is where the run began, not the current language's link", async () => {
+    const t = setup({ origin: byPage, url: "https://example.com/en/?ref=nav" });
+    await t.run.start(asked, { languages: [EN, SV] });
+    const bases = t.records.map((r) => (r as { base?: string }).base);
+    expect(new Set(bases)).toEqual(new Set(["https://example.com/en/?ref=nav"]));
   });
 
   test("progress names the device and the language, counting every capture", async () => {

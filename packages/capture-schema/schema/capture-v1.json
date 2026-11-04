@@ -148,6 +148,10 @@
         },
         "current": {
           "type": "boolean"
+        },
+        "base": {
+          "type": "string",
+          "maxLength": 2048
         }
       },
       "required": ["code", "name", "url", "current"],

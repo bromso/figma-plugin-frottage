@@ -48,14 +48,16 @@ function compareVersions(a: LoadedFile, b: LoadedFile): number {
 }
 
 /**
- * Group files by page. Sets keep the order their page first appears in, and a set's versions are
- * in `compareVersions` order. `viewport.w` is the client width, so it orders but never names: a
- * file without a label is labelled by its width.
+ * Group files by page: a language run's by the address it began at, others by their own. Sets
+ * keep the order their page first appears in, and a set's versions are in `compareVersions` order.
+ * `viewport.w` is the client width, so it orders but never names: a file without a label is
+ * labelled by its width.
  */
 export function groupVersions(files: LoadedFile[]): VersionSet[] {
   const sets = new Map<string, VersionSet>();
   for (const file of files) {
-    const key = pageKey(file.capture.source.url);
+    // A language run's captures share the address the run began at; each is on its own page.
+    const key = pageKey(file.capture.language?.base ?? file.capture.source.url);
     let set = sets.get(key);
     if (!set) {
       set = { url: key, versions: [] };

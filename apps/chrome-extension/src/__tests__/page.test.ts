@@ -725,6 +725,11 @@ describe("cleanLanguage", () => {
   test("keeps a language as the format stores it", () => {
     expect(cleanLanguage({ ...SV, extra: 1 })).toEqual(SV);
   });
+  test("keeps the address the run began at, when it is one", () => {
+    const base = "https://example.com/en/";
+    expect(cleanLanguage({ ...SV, base })).toEqual({ ...SV, base });
+    expect(cleanLanguage({ ...SV, base: 1 })).toEqual(SV);
+  });
   test("anything else, or anything too long, is no language", () => {
     expect(cleanLanguage(undefined)).toBeUndefined();
     expect(cleanLanguage(null)).toBeUndefined();
@@ -733,6 +738,7 @@ describe("cleanLanguage", () => {
     expect(cleanLanguage({ ...SV, code: "x".repeat(21) })).toBeUndefined();
     expect(cleanLanguage({ ...SV, name: "x".repeat(41) })).toBeUndefined();
     expect(cleanLanguage({ ...SV, url: "x".repeat(2049) })).toBeUndefined();
+    expect(cleanLanguage({ ...SV, base: "x".repeat(2049) })).toBeUndefined();
   });
 });
 

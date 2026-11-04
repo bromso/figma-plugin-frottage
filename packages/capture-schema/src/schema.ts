@@ -315,6 +315,8 @@ export const captureSchema = z.object({
       name: z.string().min(1).max(40),
       url: z.string().max(2048),
       current: z.boolean(),
+      /** The address the run began at, the page in its own language: ties a run's captures to it. */
+      base: z.string().max(2048).optional(),
     })
     .optional(),
   /** Width boundaries (px) the page's stylesheets switch at, and how many sheets could not be read. */

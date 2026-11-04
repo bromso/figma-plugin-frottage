@@ -348,6 +348,14 @@ describe("language", () => {
     expect(withLanguage({ ...SV, code: "x".repeat(21) }).ok).toBe(false);
     expect(withLanguage({ ...SV, name: "x".repeat(41) }).ok).toBe(false);
   });
+  test("a capture may record the address its run began at, within bounds", () => {
+    const base = "https://example.com/en/";
+    const result = withLanguage({ ...SV, base });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.capture.language?.base).toBe(base);
+    expect(withLanguage({ ...SV, base: `https://example.com/${"a".repeat(3000)}` }).ok).toBe(false);
+    expect(withLanguage({ ...SV, base: 1 }).ok).toBe(false);
+  });
   test("missing fields or wrong types are refused", () => {
     expect(withLanguage({ ...SV, current: "no" }).ok).toBe(false);
     expect(withLanguage({ code: "sv" }).ok).toBe(false);

@@ -363,7 +363,15 @@ export class ViewportRun {
         total,
         label: tagged(nameOf(first.items[0]) ?? String(first.items[0].width), first.language),
       });
-      const stopped = await this.sweeps(passes, total, home, done);
+      // Every capture of a run with languages records where it began, so the import keeps the
+      // languages of one page together.
+      const based =
+        start === null
+          ? passes
+          : passes.map((pass) =>
+              pass.language ? { ...pass, language: { ...pass.language, base: start } } : pass
+            );
+      const stopped = await this.sweeps(based, total, home, done);
       if (stopped) done.stopped = stopped;
     } catch {
       done.stopped = WENT_WRONG;

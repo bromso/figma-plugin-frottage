@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { unpackFrottage, unpackFrottageSet } from "@repo/capture-schema";
 import { groupVersions, type LoadedFile, pageKey } from "../versions";
-import { deviceSetFile, versionFile } from "./helpers";
+import { captureWithTexts, deviceSetFile, versionFile } from "./helpers";
 
 async function load(file: File): Promise<LoadedFile> {
   const { capture, assets } = unpackFrottage(new Uint8Array(await file.arrayBuffer()));
@@ -85,6 +85,37 @@ describe("groupVersions", () => {
     const versions = groupVersions(files)[0]?.versions ?? [];
     expect(names(versions)).toEqual(["c", "plain", "a"]);
     expect(versions.map((v) => v.capture.version?.label)).toEqual(["Wide", "1280", "Tablet"]);
+  });
+
+  test("a language run's captures group by the address the run began at", async () => {
+    const at = (name: string, url: string, base?: string) => {
+      const capture = captureWithTexts(1);
+      capture.source.url = url;
+      capture.version = { label: name, kind: "viewport" };
+      const code = url.includes("/sv/") ? "sv" : "en";
+      capture.language = {
+        code,
+        name: code,
+        url,
+        current: code === "en",
+        ...(base ? { base } : {}),
+      };
+      return { name, capture, assets: new Map() };
+    };
+    const base = "https://example.com/en/";
+    const sets = groupVersions([
+      at("en", "https://example.com/en/", base),
+      at("sv", "https://example.com/sv/", base),
+      at("other", "https://example.com/sv/other"),
+    ]);
+    expect(sets.map((s) => names(s.versions))).toEqual([["en", "sv"], ["other"]]);
+    expect(sets[0]?.url).toBe("https://example.com/en");
+    // Without the address each language is its own page, as before.
+    const older = groupVersions([
+      at("en", "https://example.com/en/"),
+      at("sv", "https://example.com/sv/"),
+    ]);
+    expect(older.map((s) => names(s.versions))).toEqual([["en"], ["sv"]]);
   });
 
   test("pageKey drops query, fragment and trailing slash, and survives a bad URL", () => {
