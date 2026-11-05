@@ -75,6 +75,41 @@ describe("readBreakpoints", () => {
     ]);
   });
 
+  test("counts boundaries a pixel or two apart as one, keeping the most used", () => {
+    expect(
+      widths(
+        "@media (max-width: 999px){a{color:red}} @media (min-width: 1000px){a{color:red}} @media (max-width: 1000px){a{color:red}} @media (min-width: 999px){a{color:red}}"
+      )
+    ).toEqual([1000]);
+    expect(
+      widths(
+        "@media (max-width: 999px){a{color:red}} @media (min-width: 1000px){a{color:red}} @media (min-width: 1000px){b{color:red}} @media (max-width: 1000px){a{color:red}}"
+      )
+    ).toEqual([1000]);
+  });
+
+  test("prefers a Tailwind-named width within a cluster", () => {
+    expect(
+      widths(
+        "@media (max-width: 767px){a{color:red}} @media (min-width: 769px){a{color:red}} @media (min-width: 769px){b{color:red}} @media (min-width: 769px){c{color:red}} @media (min-width: 768px){a{color:red}}"
+      )
+    ).toEqual([768]);
+  });
+
+  test("keeps boundaries more than two pixels apart", () => {
+    expect(
+      widths("@media (min-width: 640px){a{color:red}} @media (min-width: 768px){a{color:red}}")
+    ).toEqual([640, 768]);
+  });
+
+  test("a cluster's summed uses decide the top-8 cut", () => {
+    let css = "";
+    // Eight single-use boundaries far apart, then a cluster of two single uses (sum 2).
+    for (let i = 1; i <= 8; i++) css += `@media (min-width: ${i * 100}px){a{color:red}}`;
+    css += "@media (min-width: 2000px){a{color:red}} @media (min-width: 2001px){a{color:red}}";
+    expect(widths(css)).toEqual([100, 200, 300, 400, 500, 600, 700, 2000]);
+  });
+
   test("gives nothing for a page without media", () => {
     expect(read("a{color:red}")).toEqual({ widths: [], unreadable: 0 });
   });
