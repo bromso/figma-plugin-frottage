@@ -156,6 +156,35 @@ describe("findLanguages, the page's own language and one per language", () => {
   });
 });
 
+describe("findLanguages, readers and html lang", () => {
+  test("the reader that finds the most languages wins", () => {
+    const doc = page(
+      `<link rel="alternate" hreflang="en" href="/en/">`,
+      `<a href="/sv/">sv</a><a href="/en/">en</a><a href="/de/">de</a>`
+    );
+    doc.documentElement.setAttribute("lang", "sv");
+    expect(findLanguages(doc, "https://site.test/sv/").map((l) => l.code)).toEqual([
+      "sv",
+      "en",
+      "de",
+    ]);
+  });
+  test("falls through to a reader that can tell the current language", () => {
+    const doc = page(
+      `<link rel="alternate" hreflang="de" href="/de/"><link rel="alternate" hreflang="fr" href="/fr/">`,
+      `<a href="/sv/">sv</a><a href="/en/">en</a>`
+    );
+    expect(findLanguages(doc, "https://site.test/sv/").map((l) => l.code)).toEqual(["sv", "en"]);
+  });
+  test("an html lang that is not a language code counts as absent", () => {
+    const doc = page(`<link rel="alternate" hreflang="en" href="/en/">`);
+    doc.documentElement.setAttribute("lang", "not a code");
+    expect(findLanguages(doc, "https://site.test/sv/")).toEqual([]);
+    doc.documentElement.setAttribute("lang", "sv_SE");
+    expect(findLanguages(doc, "https://site.test/sv/")[0]).toMatchObject({ code: "sv-se" });
+  });
+});
+
 describe("languageName", () => {
   test("names a language in its own language", () => {
     expect(languageName("sv")).toBe("Svenska");

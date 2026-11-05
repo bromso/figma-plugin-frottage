@@ -103,7 +103,8 @@ function onePerLanguage(found: Found[], current: Found): Found[] {
 function resolve(found: Found[], doc: Document, here: string): PageLanguage[] {
   if (found.length === 0) return [];
   const bare = samePage(here);
-  const htmlLang = doc.documentElement.getAttribute("lang")?.trim().toLowerCase();
+  const rawLang = doc.documentElement.getAttribute("lang")?.trim().toLowerCase().replace(/_/g, "-");
+  const htmlLang = rawLang && /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/.test(rawLang) ? rawLang : undefined;
   let candidates = found;
   let current =
     found.find((l) => samePage(l.url) === bare) ??
@@ -133,13 +134,15 @@ function resolve(found: Found[], doc: Document, here: string): PageLanguage[] {
 
 /**
  * The languages the page is offered in: `<link rel="alternate" hreflang>`, else the same path under
- * another language prefix, else switcher links, plus the page's own from `<html lang>`. One per
+ * another language prefix, else switcher links (whichever finds the most), plus the page's own from `<html lang>`. One per
  * language, at most eight, the current one first, then in page order; none unless there are two.
  */
 export function findLanguages(doc: Document, here: string): PageLanguage[] {
+  let best: PageLanguage[] = [];
+  // The reader that finds the most languages wins; a tie goes to the earlier reader.
   for (const read of [fromHreflang, fromPathPattern, fromSwitcher]) {
     const languages = resolve(read(doc, here), doc, here);
-    if (languages.length >= 2) return languages;
+    if (languages.length > best.length) best = languages;
   }
-  return [];
+  return best.length >= 2 ? best : [];
 }
