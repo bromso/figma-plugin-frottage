@@ -68,7 +68,8 @@ function clusterBoundaries(uses: Map<number, number>): Map<number, number> {
 /**
  * The width boundaries the page's stylesheets switch at, ascending, in px. Only conditions on
  * width count. Past eight boundaries, the eight used by the most rules are kept (ties: the
- * smaller width). Boundaries a pixel or two apart count as one. `unreadable` counts cross-origin sheets that were skipped.
+ * smaller width). Boundaries a pixel or two apart count as one. `unreadable` counts
+ * cross-origin sheets that were skipped.
  */
 export function readBreakpoints(doc: Document): { widths: number[]; unreadable: number } {
   const uses = new Map<number, number>();

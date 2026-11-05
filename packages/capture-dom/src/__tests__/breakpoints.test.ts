@@ -86,6 +86,12 @@ describe("readBreakpoints", () => {
         "@media (max-width: 999px){a{color:red}} @media (min-width: 1000px){a{color:red}} @media (min-width: 1000px){b{color:red}} @media (max-width: 1000px){a{color:red}}"
       )
     ).toEqual([1000]);
+    // The most used can sit at the edge of its cluster.
+    expect(
+      widths(
+        "@media (min-width: 999px){a{color:red}} @media (min-width: 999px){b{color:red}} @media (min-width: 999px){c{color:red}} @media (min-width: 1000px){a{color:red}} @media (min-width: 1001px){a{color:red}}"
+      )
+    ).toEqual([999]);
   });
 
   test("prefers a Tailwind-named width within a cluster", () => {
