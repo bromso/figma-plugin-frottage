@@ -312,4 +312,22 @@ describe("popup breakpoints", () => {
     await press(box("size-on-laptop"));
     expect(rowOf("xl")?.querySelector("button[role=checkbox]")).not.toBeNull();
   });
+
+  test("a device typed into a range covers it, and unticking it brings the checkbox back unticked", async () => {
+    await openWith(TAILWIND);
+    await press(box("breakpoint-on-sm"));
+    const width = window.document.querySelector(
+      'input[aria-label="Watch width in pixels"]'
+    ) as unknown as HTMLInputElement;
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(width), "value")?.set;
+      set?.call(width, "700");
+      width.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    });
+    await press(box("size-on-watch"));
+    expect(rowOf("sm")?.textContent).toContain("Watch");
+    expect(rowOf("sm")?.querySelector("button[role=checkbox]")).toBeNull();
+    await press(box("size-on-watch"));
+    expect(box("breakpoint-on-sm").getAttribute("aria-checked")).toBe("false");
+  });
 });

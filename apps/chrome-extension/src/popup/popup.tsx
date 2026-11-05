@@ -451,33 +451,39 @@ function Popup() {
                         : "flex cursor-pointer items-center gap-2 px-3 py-1.5"
                     }
                   >
-                    <Type as="span" className="min-w-0 flex-1 truncate">
+                    <Type as="span" className="shrink-0">
                       {range.name}
+                    </Type>
+                    <Type
+                      as="span"
+                      className="min-w-0 flex-1 truncate text-right text-muted-foreground"
+                    >
+                      {range.coveredBy && (
+                        <>
+                          <span className="sr-only">covered by </span>
+                          {range.coveredBy}
+                        </>
+                      )}
                     </Type>
                     <Type as="span" className="shrink-0 tabular-nums text-muted-foreground">
                       {range.at}
                     </Type>
-                    {range.coveredBy ? (
-                      <Type
-                        as="span"
-                        className="w-[96px] shrink-0 truncate text-right text-muted-foreground"
-                      >
-                        {range.coveredBy}
-                      </Type>
-                    ) : (
-                      <Checkbox
-                        id={id}
-                        checked={!skipped.includes(range.name)}
-                        onCheckedChange={(on) =>
-                          setSkipped((names) =>
-                            on === true
-                              ? names.filter((n) => n !== range.name)
-                              : [...names, range.name]
-                          )
-                        }
-                        aria-label={`Capture ${range.name}`}
-                      />
-                    )}
+                    <span className="flex size-4 shrink-0 items-center justify-center">
+                      {!range.coveredBy && (
+                        <Checkbox
+                          id={id}
+                          checked={!skipped.includes(range.name)}
+                          onCheckedChange={(on) =>
+                            setSkipped((names) =>
+                              on === true
+                                ? names.filter((n) => n !== range.name)
+                                : [...names, range.name]
+                            )
+                          }
+                          aria-label={`Capture ${range.name}`}
+                        />
+                      )}
+                    </span>
                   </label>
                 );
               })}
