@@ -415,6 +415,36 @@ describe("bindLayers", () => {
     expect(layers.themeSource).toBe("site");
     expect(layers.effectStyles).toEqual([]);
   });
+
+  test("with Dark the only mode, a value fallback compares against Dark's values", () => {
+    const capture = cap(el("root", [0, 0]));
+    capture.tokens = shadcnTokens();
+    capture.themeChoice = { light: false, dark: true };
+    // Dark's background; Light's foreground has the same value, so a Light compare would bind that.
+    const dark = rgbOf("#0a0a0a");
+    const op: PlanOp = {
+      op: "frame",
+      id: "f",
+      parent: null,
+      name: "F",
+      x: 0,
+      y: 0,
+      w: 1,
+      h: 1,
+      fills: [{ type: "SOLID", color: dark, opacity: 1 }],
+      strokes: null,
+      radius: [0, 0, 0, 0],
+      opacity: 1,
+      effects: [],
+      clips: false,
+      layout: { mode: "NONE" },
+      childCount: 0,
+    };
+    const cat = buildCatalogue(capture);
+    expect(cat.modes).toEqual(["Dark"]);
+    bindLayers(cat, [op]);
+    expect((op.fills[0] as { colorKey?: string }).colorKey).toBe("theme:background");
+  });
 });
 
 describe("radii named by the site's classes", () => {

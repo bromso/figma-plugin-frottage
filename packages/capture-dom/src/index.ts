@@ -10,4 +10,5 @@ export {
 } from "./assets";
 export { readBreakpoints } from "./breakpoints";
 export { parseComputedColor, type Rgba } from "./color";
+export { readThemes } from "./themes";
 export { type CaptureEnv, captureDocument } from "./walk";

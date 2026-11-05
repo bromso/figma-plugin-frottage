@@ -45,6 +45,8 @@ export type RunStatus =
         runWidths?: RunWidth[];
         collapseWrappers: boolean;
         versionLabel: string;
+        /** Which themes to import, when the run was asked. */
+        themes?: { light: boolean; dark: boolean };
       };
     };
 

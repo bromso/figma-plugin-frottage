@@ -71,6 +71,14 @@ function cleanDevice(device: unknown): VersionDevice | undefined {
   return { id, name, height };
 }
 
+/** The themes a capture is for, as the format stores them, or undefined when not a pair of booleans. */
+export function cleanThemes(themes: unknown): { light: boolean; dark: boolean } | undefined {
+  if (!themes || typeof themes !== "object") return undefined;
+  const { light, dark } = themes as Record<string, unknown>;
+  if (typeof light !== "boolean" || typeof dark !== "boolean") return undefined;
+  return { light, dark };
+}
+
 /**
  * The version a capture records, in the page: a viewport labelled with the device's name, or the
  * breakpoint's for an extra capture, or else the width the page was laid out at, which only the
@@ -317,10 +325,48 @@ export function canCapture(state: {
   tabId: number | null;
   sizes: number;
   breakpointsRead: boolean;
+  /** The Light and Dark boxes; with neither ticked there is nothing to import. */
+  themes: { light: boolean; dark: boolean };
 }): boolean {
+  const themed = state.themes.light || state.themes.dark;
   return (
-    state.restricted === false && state.tabId !== null && state.sizes > 0 && state.breakpointsRead
+    state.restricted === false &&
+    state.tabId !== null &&
+    state.sizes > 0 &&
+    state.breakpointsRead &&
+    themed
   );
+}
+
+export const NO_DARK_HINT = "This page has no dark theme.";
+export const NO_THEME_HINT = "Tick Light, Dark or both.";
+export const NO_LIGHT_HINT = "Tick Light.";
+
+/**
+ * The hint for when neither box is ticked, which disables Capture; null while one is ticked. With
+ * Dark disabled, only Light can be ticked, so the hint says just that.
+ */
+export function themeHint(
+  themes: { light: boolean; dark: boolean },
+  darkEnabled: boolean
+): string | null {
+  if (themes.light || themes.dark) return null;
+  return darkEnabled ? NO_THEME_HINT : NO_LIGHT_HINT;
+}
+
+/**
+ * The Light and Dark boxes as the popup first shows them. Light is ticked; Dark is ticked when the
+ * page defines a dark theme, and disabled when it doesn't. A probe that failed or timed out says
+ * nothing, so Dark stays unticked but can be chosen.
+ */
+export function initialThemes(probe: { ok: boolean; dark?: boolean } | undefined): {
+  themes: { light: boolean; dark: boolean };
+  darkEnabled: boolean;
+} {
+  if (probe?.ok && typeof probe.dark === "boolean") {
+    return { themes: { light: true, dark: probe.dark }, darkEnabled: probe.dark };
+  }
+  return { themes: { light: true, dark: false }, darkEnabled: true };
 }
 
 /** The label on the Capture button. */
@@ -382,13 +428,19 @@ export function viewportStatusLabel(status: RunStatus & { state: "viewport" }): 
 export function rerunRequest(
   status: RunStatus & { state: "viewport-done" },
   collapseWrappers: boolean = status.request.collapseWrappers
-): { widths: number[]; runWidths?: RunWidth[]; collapseWrappers: boolean; versionLabel: string } {
+): {
+  widths: number[];
+  runWidths?: RunWidth[];
+  collapseWrappers: boolean;
+  themes?: { light: boolean; dark: boolean };
+} {
   const { runWidths } = status.request;
+  // A label saved by an older build is left behind: the popup no longer asks for one.
   return {
-    ...status.request,
     widths: [...status.request.widths],
     ...(runWidths ? { runWidths: runWidths.map((w) => ({ ...w })) } : {}),
     collapseWrappers,
+    ...(status.request.themes ? { themes: { ...status.request.themes } } : {}),
   };
 }
 
@@ -412,5 +464,23 @@ export function viewportAdvice(status: RunStatus & { state: "viewport-done" }): 
     skipped: status.skipped.map((w) => `${w} couldn't be reached, so it was skipped.`),
     nodeWarning: nodeAdvice(status.nodes, status.nodeLimit).warning,
     blockedImages: status.blockedImages,
+  };
+}
+
+/**
+ * The boxes once the probe answers. Untouched boxes take the defaults; boxes the user already
+ * changed are kept, except that Dark is cleared when the page has no dark theme. Whether Dark can
+ * be ticked always follows the probe.
+ */
+export function applyProbe(
+  current: { light: boolean; dark: boolean },
+  touched: boolean,
+  reply: { ok: boolean; dark?: boolean } | undefined
+): { themes: { light: boolean; dark: boolean }; darkEnabled: boolean } {
+  const start = initialThemes(reply);
+  if (!touched) return start;
+  return {
+    themes: { light: current.light, dark: current.dark && start.darkEnabled },
+    darkEnabled: start.darkEnabled,
   };
 }

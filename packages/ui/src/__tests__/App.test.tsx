@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { Capture } from "@repo/capture-schema";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../app";
@@ -438,23 +439,28 @@ describe("App (options and font table)", () => {
 });
 
 describe("App (theme report)", () => {
-  const NO_THEME =
-    "No theme found in the stylesheet. To add a dark mode, capture the page again in dark and import both as versions.";
+  const NO_THEME = "No theme found in the stylesheet, so Color Mode has Light only.";
   const dark = {
     cssCustomProperties: { "--surface": "#ffffff" },
     themes: [{ context: ".dark", mode: "Dark", properties: { "--surface": "#000000" } }],
   };
-  async function imported(file: File, endResult: Partial<FakePort["endResult"]> = {}) {
+  async function imported(
+    file: File,
+    endResult: Partial<FakePort["endResult"]> = {},
+    reviewed = false
+  ) {
     const user = userEvent.setup();
     const port = fakePort();
     port.endResult = { ...port.endResult, ...endResult };
     render(<App port={port} />);
     await user.upload(screen.getByLabelText("Choose .frottage files"), file);
+    // A page that holds a dark theme is reviewed first, so its themes can be chosen.
+    if (reviewed) await user.click(await screen.findByRole("button", { name: "Import" }));
     await screen.findByText("Import complete");
   }
 
   it("lists the modes of a site theme, and not the no-theme line", async () => {
-    await imported(themedFile(dark, ["#ffffff"]));
+    await imported(themedFile(dark, ["#ffffff"]), {}, true);
     expect(screen.getByText("Color Mode: Light, Dark")).toBeInTheDocument();
     expect(screen.queryByText(NO_THEME)).toBeNull();
   });
@@ -499,22 +505,34 @@ describe("App (theme report)", () => {
   it("says earlier collections were left as they are, only when the sandbox found them", async () => {
     const LEGACY =
       "This file has collections from an earlier Frottage version. They were left as they are.";
-    await imported(themedFile(dark, ["#ffffff"]), {
-      layers: { variablesRenamed: 0, modesDropped: [], legacyCollections: true },
-    });
+    await imported(
+      themedFile(dark, ["#ffffff"]),
+      {
+        layers: { variablesRenamed: 0, modesDropped: [], legacyCollections: true },
+      },
+      true
+    );
     expect(screen.getByText(LEGACY)).toBeInTheDocument();
     expect(screen.getByText("Color Mode: Light, Dark")).toBeInTheDocument();
     cleanup();
-    await imported(themedFile(dark, ["#ffffff"]), {
-      layers: { variablesRenamed: 0, modesDropped: [], legacyCollections: false },
-    });
+    await imported(
+      themedFile(dark, ["#ffffff"]),
+      {
+        layers: { variablesRenamed: 0, modesDropped: [], legacyCollections: false },
+      },
+      true
+    );
     expect(screen.queryByText(LEGACY)).toBeNull();
   });
 
   it("reports the modes the file had no room for and the variables added as new ones", async () => {
-    await imported(themedFile(dark, ["#ffffff"]), {
-      layers: { variablesRenamed: 2, modesDropped: ["Dark"] },
-    });
+    await imported(
+      themedFile(dark, ["#ffffff"]),
+      {
+        layers: { variablesRenamed: 2, modesDropped: ["Dark"] },
+      },
+      true
+    );
     expect(
       screen.getByText("This file allows fewer modes. Not created: Dark.")
     ).toBeInTheDocument();
@@ -659,5 +677,113 @@ describe("App (a device set)", () => {
     );
     expect(screen.getByRole("checkbox", { name: "1512" })).toBeChecked();
     expect(screen.queryByRole("checkbox", { name: /1497/ })).toBeNull();
+  });
+});
+
+describe("App (themes in what's in this file)", () => {
+  const darkTokens = (): Capture["tokens"] => ({
+    cssCustomProperties: { "--surface": "#ffffff" },
+    themes: [{ context: ".dark", mode: "Dark", properties: { "--surface": "#000000" } }],
+  });
+  const devices = [
+    { name: "Laptop", width: 1512, height: 982 },
+    { name: "Phone portrait", width: 390, height: 844 },
+  ];
+  async function chosen(file: File) {
+    const user = userEvent.setup();
+    const port = fakePort();
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose .frottage files"), file);
+    await screen.findByText("What's in this file");
+    return { user, port };
+  }
+
+  it("a device file holding Light and Dark shows both ticked, and Dark unticked makes Light only", async () => {
+    const { user, port } = await chosen(
+      deviceSetFile({
+        devices,
+        edit: (c) => {
+          c.tokens = darkTokens();
+          c.themeChoice = { light: true, dark: true };
+        },
+      })
+    );
+    expect(screen.getByRole("group", { name: "Themes" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Light" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Dark" })).toBeChecked();
+    expect(screen.getByText(/Color Mode 2/)).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Dark" }));
+    expect(screen.getByText(/Color Mode 1/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(port.deviceSetMeta?.layers.modes).toEqual(["Light"]);
+  });
+
+  it("ticks from the capture's choice", async () => {
+    await chosen(
+      deviceSetFile({
+        devices,
+        edit: (c) => {
+          c.tokens = darkTokens();
+          c.themeChoice = { light: false, dark: true };
+        },
+      })
+    );
+    expect(screen.getByRole("checkbox", { name: "Light" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Dark" })).toBeChecked();
+  });
+
+  it("a file without Dark shows only Light", async () => {
+    await chosen(deviceSetFile({ devices }));
+    expect(screen.getByRole("checkbox", { name: "Light" })).toBeChecked();
+    expect(screen.queryByRole("checkbox", { name: "Dark" })).toBeNull();
+  });
+
+  it("a single capture that holds Dark shows the group too, and imports the choice", async () => {
+    const { user, port } = await chosen(themedFile(darkTokens(), ["#ffffff"]));
+    expect(screen.getByRole("checkbox", { name: "Light" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Dark" })).toBeChecked();
+    expect(screen.queryByRole("radio", { name: "New page" })).toBeNull();
+    await user.click(screen.getByRole("checkbox", { name: "Light" }));
+    await user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(port.tokensSent?.layers?.modes).toEqual(["Dark"]);
+  });
+
+  it("Import needs a theme", async () => {
+    const { user } = await chosen(themedFile(darkTokens(), ["#ffffff"]));
+    await user.click(screen.getByRole("checkbox", { name: "Light" }));
+    await user.click(screen.getByRole("checkbox", { name: "Dark" }));
+    expect(screen.getByText("Tick Light, Dark or both.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Import" })).toHaveAccessibleDescription(
+      "Tick Light, Dark or both."
+    );
+  });
+
+  it("an older file with Light and another theme keeps both until a tick changes", async () => {
+    const brand = (): Capture["tokens"] => ({
+      cssCustomProperties: { "--surface": "#ffffff" },
+      themes: [{ context: ".brand", mode: "Brand", properties: { "--surface": "#123456" } }],
+    });
+    const file = () =>
+      deviceSetFile({
+        devices,
+        edit: (c) => {
+          c.tokens = brand();
+        },
+      });
+    const first = await chosen(file());
+    expect(screen.queryByRole("checkbox", { name: "Dark" })).toBeNull();
+    await first.user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(first.port.deviceSetMeta?.layers.modes).toEqual(["Light", "Brand"]);
+    cleanup();
+    const second = await chosen(file());
+    await second.user.click(screen.getByRole("checkbox", { name: "Light" }));
+    await second.user.click(screen.getByRole("checkbox", { name: "Light" }));
+    await second.user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(second.port.deviceSetMeta?.layers.modes).toEqual(["Light", "Brand"]);
   });
 });

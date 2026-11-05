@@ -462,7 +462,7 @@ export function extractTokens(
   if (!options.tokens) return { textStyles: [], colors: [], spacing: [], collection };
   const floor = options.tokenFloor ?? MIN_USES;
   if (options.layers) {
-    const catalogue = buildCatalogue(capture);
+    const catalogue = buildCatalogue(capture, options.themes);
     // Bound while the runs still hold their refs.
     const textStyles = textStyleTokens(ops, capture.root, floor);
     const keep = bindTextStyles(textStyles, ops, catalogue);
@@ -478,7 +478,7 @@ export function extractTokens(
     if (report) {
       report.raw = raw;
       report.themeModes = layers.modes;
-      report.warnings.push(...bound.warnings);
+      report.warnings.push(...catalogue.notes, ...bound.warnings);
     }
     return {
       textStyles,

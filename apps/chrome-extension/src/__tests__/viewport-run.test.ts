@@ -590,6 +590,15 @@ describe("ViewportRun", () => {
     });
   });
 
+  test("the final status carries the themes the run was asked for, only when asked", async () => {
+    const t = setup();
+    await t.run.start([834], { themes: { light: false, dark: true } });
+    expect(t.final().request.themes).toEqual({ light: false, dark: true });
+    const plain = setup();
+    await plain.run.start([834]);
+    expect("themes" in plain.final().request).toBe(false);
+  });
+
   test("a tab whose origin can no longer be read counts as navigated", async () => {
     let origin: string | null = ORIGIN;
     const t = setup({

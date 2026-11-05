@@ -306,6 +306,8 @@ export const captureSchema = z.object({
       width: z.number().int().min(1).max(100000).optional(),
     })
     .optional(),
+  /** Which of the page's themes to import: what the user ticked when capturing. Older files lack it. */
+  themeChoice: z.object({ light: z.boolean(), dark: z.boolean() }).optional(),
   /** Width boundaries (px) the page's stylesheets switch at, and how many sheets could not be read. */
   breakpoints: z
     .object({

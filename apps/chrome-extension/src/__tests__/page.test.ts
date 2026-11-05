@@ -1,16 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import {
   allowAccessAndRecapture,
+  applyProbe,
   BREAKPOINT_WAIT_MS,
   canCapture,
   captureFilename,
   captureLabel,
+  cleanThemes,
   DEVICE_HEIGHTS,
   DEVICES,
   friendlyError,
   imageAdvice,
+  initialThemes,
   isRestrictedUrl,
   LABEL_MAX,
+  NO_DARK_HINT,
+  NO_LIGHT_HINT,
+  NO_THEME_HINT,
   nodeAdvice,
   normaliseVersion,
   pageOrigin,
@@ -19,6 +25,7 @@ import {
   parseWidths,
   popupView,
   rerunRequest,
+  themeHint,
   viewportAdvice,
   viewportStatusLabel,
 } from "../page";
@@ -497,12 +504,18 @@ describe("rerunRequest", () => {
     request: { widths: [1512, 390], collapseWrappers: true, versionLabel: "Dark" },
   };
 
-  test("a re-run sends the widths, label and wrappers setting the run was asked", () => {
+  test("a re-run sends the widths and wrappers setting, and ignores a saved label", () => {
     expect(rerunRequest(done)).toEqual({
       widths: [1512, 390],
       collapseWrappers: true,
-      versionLabel: "Dark",
     });
+  });
+
+  test("a re-run repeats the themes the run was asked", () => {
+    const themes = { light: true, dark: false };
+    const out = rerunRequest({ ...done, request: { ...done.request, themes } });
+    expect(out.themes).toEqual(themes);
+    expect("versionLabel" in out).toBe(false);
   });
 
   test("a re-run repeats the devices and breakpoints the run was asked", () => {
@@ -514,14 +527,13 @@ describe("rerunRequest", () => {
       widths: [1512, 390],
       runWidths,
       collapseWrappers: true,
-      versionLabel: "Dark",
     });
   });
 
   test("a re-run can turn wrappers off or on without losing the rest", () => {
     expect(
       rerunRequest({ ...done, request: { ...done.request, collapseWrappers: false } }, true)
-    ).toEqual({ widths: [1512, 390], collapseWrappers: true, versionLabel: "Dark" });
+    ).toEqual({ widths: [1512, 390], collapseWrappers: true });
   });
 });
 
@@ -565,7 +577,13 @@ describe("a label in a filename", () => {
 });
 
 describe("canCapture", () => {
-  const ready = { restricted: false, tabId: 1, sizes: 3, breakpointsRead: true };
+  const ready = {
+    restricted: false,
+    tabId: 1,
+    sizes: 3,
+    breakpointsRead: true,
+    themes: { light: true, dark: false },
+  };
 
   test("waits for the page's breakpoints, for at most 1.5 s", () => {
     expect(canCapture(ready)).toBe(true);
@@ -577,5 +595,112 @@ describe("canCapture", () => {
     expect(canCapture({ ...ready, restricted: null })).toBe(false);
     expect(canCapture({ ...ready, tabId: null })).toBe(false);
     expect(canCapture({ ...ready, sizes: 0 })).toBe(false);
+  });
+});
+
+describe("canCapture with themes", () => {
+  const ready = {
+    restricted: false,
+    tabId: 1,
+    sizes: 3,
+    breakpointsRead: true,
+    themes: { light: true, dark: false },
+  };
+
+  test("needs Light, Dark or both ticked", () => {
+    expect(canCapture({ ...ready, themes: { light: true, dark: false } })).toBe(true);
+    expect(canCapture({ ...ready, themes: { light: false, dark: true } })).toBe(true);
+    expect(canCapture({ ...ready, themes: { light: false, dark: false } })).toBe(false);
+  });
+});
+
+describe("initialThemes", () => {
+  test("Light is ticked, and Dark when the page has a dark theme", () => {
+    expect(initialThemes({ ok: true, dark: true })).toEqual({
+      themes: { light: true, dark: true },
+      darkEnabled: true,
+    });
+  });
+
+  test("a page with no dark theme leaves Dark unticked and disabled", () => {
+    expect(initialThemes({ ok: true, dark: false })).toEqual({
+      themes: { light: true, dark: false },
+      darkEnabled: false,
+    });
+  });
+
+  test("a failed or missing probe leaves Dark unticked and enabled", () => {
+    const failed = { themes: { light: true, dark: false }, darkEnabled: true };
+    expect(initialThemes(undefined)).toEqual(failed);
+    expect(initialThemes({ ok: false })).toEqual(failed);
+    expect(initialThemes({ ok: true })).toEqual(failed);
+  });
+});
+
+describe("applyProbe", () => {
+  const off = { light: false, dark: true };
+
+  test("untouched boxes take the defaults", () => {
+    expect(applyProbe(off, false, { ok: true, dark: false })).toEqual(
+      initialThemes({ ok: true, dark: false })
+    );
+    expect(applyProbe(off, false, { ok: true, dark: true }).themes).toEqual({
+      light: true,
+      dark: true,
+    });
+  });
+
+  test("boxes the user changed are kept", () => {
+    expect(applyProbe({ light: false, dark: true }, true, { ok: true, dark: true })).toEqual({
+      themes: { light: false, dark: true },
+      darkEnabled: true,
+    });
+    expect(applyProbe({ light: false, dark: false }, true, { ok: false })).toEqual({
+      themes: { light: false, dark: false },
+      darkEnabled: true,
+    });
+  });
+
+  test("a touched Dark is cleared on a page with no dark theme", () => {
+    expect(applyProbe({ light: true, dark: true }, true, { ok: true, dark: false })).toEqual({
+      themes: { light: true, dark: false },
+      darkEnabled: false,
+    });
+  });
+});
+
+describe("theme hints", () => {
+  test("say it exactly", () => {
+    expect(NO_DARK_HINT).toBe("This page has no dark theme.");
+    expect(NO_THEME_HINT).toBe("Tick Light, Dark or both.");
+  });
+});
+
+describe("themeHint", () => {
+  test("says nothing while a box is ticked", () => {
+    expect(themeHint({ light: true, dark: false }, true)).toBeNull();
+    expect(themeHint({ light: false, dark: true }, false)).toBeNull();
+  });
+  test("asks for Light alone when Dark can't be ticked", () => {
+    expect(NO_LIGHT_HINT).toBe("Tick Light.");
+    expect(themeHint({ light: false, dark: false }, false)).toBe("Tick Light.");
+  });
+  test("asks for Light, Dark or both when Dark can be ticked", () => {
+    expect(themeHint({ light: false, dark: false }, true)).toBe(NO_THEME_HINT);
+  });
+});
+
+describe("cleanThemes", () => {
+  test("keeps a pair of booleans", () => {
+    expect(cleanThemes({ light: false, dark: true, extra: 1 })).toEqual({
+      light: false,
+      dark: true,
+    });
+  });
+  test("anything else is no choice", () => {
+    expect(cleanThemes(undefined)).toBeUndefined();
+    expect(cleanThemes({ light: "yes", dark: true })).toBeUndefined();
+    expect(cleanThemes({ light: true })).toBeUndefined();
+    expect(cleanThemes(null)).toBeUndefined();
   });
 });

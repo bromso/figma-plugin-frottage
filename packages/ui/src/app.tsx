@@ -19,8 +19,8 @@ const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`;
 
 /**
- * What the theme import did, as lines. Only a page imported with layers has any. `advise` adds how
- * to get a dark mode, which a device set's captures can't follow as worded.
+ * What the theme import did, as lines. Only a page imported with layers has any. `advise` adds the
+ * no-theme line, which a device set's captures can't follow as worded.
  */
 function themeLines({ report, theme }: Pick<VersionResult, "report" | "theme">, advise = true) {
   if (!theme) return [];
@@ -28,9 +28,7 @@ function themeLines({ report, theme }: Pick<VersionResult, "report" | "theme">, 
   const modes = report.themeModes ?? [];
   if (modes.length > 1) lines.push(`Color Mode: ${modes.join(", ")}`);
   else if (theme.source !== "site" && advise) {
-    lines.push(
-      "No theme found in the stylesheet. To add a dark mode, capture the page again in dark and import both as versions."
-    );
+    lines.push("No theme found in the stylesheet, so Color Mode has Light only.");
   }
   if (theme.inferred.length > 0) lines.push(`Inferred from use: ${theme.inferred.join(", ")}`);
   if (theme.twins > 0) {
@@ -290,21 +288,37 @@ function Review({
           devices: contents.devices.map((d) => d.on),
           extras: contents.extras.map((e) => e.on),
           placement: contents.placement,
+          themes: {
+            light: contents.themes.light?.on ?? false,
+            dark: contents.themes.dark?.on ?? false,
+          },
         }
       : null
   );
   // The line and warnings follow the ticks; as shown at first until one changes.
+  const themesChanged =
+    picked !== null &&
+    contents !== undefined &&
+    (picked.themes.light !== (contents.themes.light?.on ?? false) ||
+      picked.themes.dark !== (contents.themes.dark?.on ?? false));
   const summary = useMemo(() => {
     if (!contents || !picked) return null;
     const first = { collections: contents.collections, overLimit: contents.overLimit };
     const unchanged =
       picked.devices.every((on, i) => on === contents.devices[i]?.on) &&
-      picked.extras.every((on, i) => on === contents.extras[i]?.on);
-    return unchanged ? first : (contents.summarize?.(picked.devices, picked.extras) ?? first);
-  }, [contents, picked]);
+      picked.extras.every((on, i) => on === contents.extras[i]?.on) &&
+      !themesChanged;
+    return unchanged
+      ? first
+      : (contents.summarize?.(picked.devices, picked.extras, picked.themes) ?? first);
+  }, [contents, picked, themesChanged]);
   // A device set always shows its contents, so the options wait behind a button unless asked for.
-  const [showOptions, setShowOptions] = useState(!contents || state.optionsOpen === true);
-  const noDevice = picked !== null && !picked.devices.some(Boolean);
+  const [showOptions, setShowOptions] = useState(
+    !contents || contents.devices.length === 0 || state.optionsOpen === true
+  );
+  const noDevice = picked !== null && picked.devices.length > 0 && !picked.devices.some(Boolean);
+  // A file's themes need one ticked; a file with no choice to make has no themes to tick.
+  const noTheme = picked !== null && !picked.themes.light && !picked.themes.dark;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <SectionTitle ref={headingRef} tabIndex={-1} className="outline-none">
@@ -346,14 +360,26 @@ function Review({
           Cancel
         </Button>
         <Button
-          disabled={noDevice}
+          disabled={noDevice || noTheme}
+          aria-describedby={noTheme ? "themes-hint" : undefined}
           onClick={() =>
             onDecide({
               options,
               fonts: new Map(
                 state.missing.map((m) => [m.family, choices.get(m.family) ?? m.choice])
               ),
-              ...(picked ? { contents: picked } : {}),
+              // Themes the user left alone are not a choice: the capture's own choice, or every
+              // stylesheet mode, still applies.
+              ...(picked
+                ? {
+                    contents: {
+                      devices: picked.devices,
+                      extras: picked.extras,
+                      placement: picked.placement,
+                      ...(themesChanged ? { themes: picked.themes } : {}),
+                    },
+                  }
+                : {}),
             })
           }
         >

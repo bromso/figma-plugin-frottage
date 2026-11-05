@@ -1,16 +1,4 @@
-import {
-  Button,
-  Checkbox,
-  Icon,
-  Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Type,
-} from "@repo/ui";
+import { Button, Checkbox, Icon, Input, Label, Type } from "@repo/ui";
 import "@repo/ui/styles.css";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -18,20 +6,22 @@ import type { RunStatus } from "../capture-run";
 import type { PopupMessage, Reply } from "../messages";
 import {
   allowAccessAndRecapture,
+  applyProbe,
   BREAKPOINT_WAIT_MS,
   canCapture,
   captureLabel,
   DEVICES,
   friendlyError,
   imageAdvice,
+  initialThemes,
   isRestrictedUrl,
-  LABEL_MAX,
+  NO_DARK_HINT,
   nodeAdvice,
-  normaliseVersion,
   parseChoices,
   parseWidths,
   popupView,
   rerunRequest,
+  themeHint,
   viewportAdvice,
   viewportStatusLabel,
   type WidthChoice,
@@ -73,9 +63,11 @@ function Popup() {
   const [tabRead, setTabRead] = useState(false);
   const [statusRead, setStatusRead] = useState(false);
 
-  // The optional label that says which version of the page this file is.
-  const [versionKind, setVersionKind] = useState("theme");
-  const [versionLabel, setVersionLabel] = useState("");
+  // Which themes to import; Dark starts unticked but can be ticked until the probe says the page has none.
+  const [themes, setThemes] = useState(() => initialThemes(undefined).themes);
+  const [darkEnabled, setDarkEnabled] = useState(true);
+  // Set once the user ticks a box, so a late probe reply doesn't overwrite the choice.
+  const touched = useRef(false);
 
   // The size for each device, remembered between opens.
   const [choices, setChoices] = useState<WidthChoice[]>(loadChoices);
@@ -109,9 +101,15 @@ function Popup() {
           chrome.runtime.sendMessage({ target: "sw", type: "breakpoints", tabId: tab.id }).then(
             (reply?: Reply) => {
               if (reply?.ok && reply.breakpoints) setBreakpoints(reply.breakpoints);
+              setThemes((cur) => applyProbe(cur, touched.current, reply).themes);
+              setDarkEnabled(initialThemes(reply).darkEnabled);
               setBreakpointsRead(true);
             },
-            () => setBreakpointsRead(true)
+            () => {
+              setThemes((cur) => applyProbe(cur, touched.current, undefined).themes);
+              setDarkEnabled(initialThemes(undefined).darkEnabled);
+              setBreakpointsRead(true);
+            }
           );
         } else setBreakpointsRead(true);
       },
@@ -153,6 +151,7 @@ function Popup() {
   });
   const plan = planWidths(devices, breakpoints);
   const wanted = plan.widths;
+  const noThemeHint = themeHint(themes, darkEnabled);
   const extras = extrasLine(plan.extras);
 
   function editChoice(index: number, change: Partial<WidthChoice>) {
@@ -169,19 +168,18 @@ function Popup() {
     widths: number[];
     runWidths?: RunWidth[];
     collapseWrappers: boolean;
-    versionLabel: string;
+    themes?: { light: boolean; dark: boolean };
   }) {
-    const version = normaliseVersion(versionKind, versionLabel);
     const {
       widths,
       runWidths,
       collapseWrappers,
-      versionLabel: label,
+      themes: askedThemes,
     } = request ?? {
       widths: wanted.map((w) => w.width),
       runWidths: wanted,
       collapseWrappers: false,
-      versionLabel: version?.label ?? "",
+      themes,
     };
     // A re-run of a status from an older build has plain widths only.
     const asked: RunWidth[] = runWidths ?? widths.map((width) => ({ width }));
@@ -202,7 +200,7 @@ function Popup() {
         tabId,
         ...(runWidths ? { runWidths } : { widths }),
         ...(collapseWrappers ? { collapseWrappers: true } : {}),
-        ...(label ? { versionLabel: label } : {}),
+        ...(askedThemes ? { themes: askedThemes } : {}),
       });
       if (reply && !reply.ok) setStatus({ state: "error", message: reply.error });
     } catch (error) {
@@ -378,35 +376,43 @@ function Popup() {
           </Type>
         )}
         <fieldset className="flex flex-col gap-2 border-0 p-0">
-          <legend className="sr-only">Label this capture (optional)</legend>
-          <div className="flex gap-2">
-            <div className="flex w-[110px] shrink-0 flex-col gap-1">
-              <Label htmlFor="version-kind">Version</Label>
-              <Select value={versionKind} onValueChange={setVersionKind}>
-                <SelectTrigger id="version-kind" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  <SelectItem value="theme">Theme</SelectItem>
-                  <SelectItem value="language">Language</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <Label htmlFor="version-label">Label</Label>
-              <Input
-                id="version-label"
-                value={versionLabel}
-                maxLength={LABEL_MAX}
-                placeholder={versionKind === "language" ? "Svenska" : "Dark"}
-                onChange={(e) => setVersionLabel(e.target.value)}
+          <legend className="sr-only">Themes to import</legend>
+          <div className="flex gap-4">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="theme-light"
+                checked={themes.light}
+                onCheckedChange={(on) => {
+                  touched.current = true;
+                  setThemes((t) => ({ ...t, light: on === true }));
+                }}
               />
+              <Label htmlFor="theme-light">Light</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="theme-dark"
+                checked={themes.dark}
+                disabled={!darkEnabled}
+                aria-describedby={darkEnabled ? undefined : "theme-dark-hint"}
+                onCheckedChange={(on) => {
+                  touched.current = true;
+                  setThemes((t) => ({ ...t, dark: on === true }));
+                }}
+              />
+              <Label htmlFor="theme-dark">Dark</Label>
             </div>
           </div>
-          <Type size="xsmall" className="text-muted-foreground">
-            Optional. Switch the site to that theme or language first, then capture. Leave the label
-            empty for a plain capture.
-          </Type>
+          {!darkEnabled && (
+            <Type id="theme-dark-hint" size="xsmall" className="text-muted-foreground">
+              {NO_DARK_HINT}
+            </Type>
+          )}
+          {noThemeHint && (
+            <Type id="theme-none-hint" size="xsmall" className="text-muted-foreground">
+              {noThemeHint}
+            </Type>
+          )}
         </fieldset>
         {outcome}
         {images?.offerAccess && (
@@ -436,7 +442,10 @@ function Popup() {
         <Button
           className="w-full"
           onClick={() => captureWidths()}
-          disabled={!canCapture({ restricted, tabId, sizes: wanted.length, breakpointsRead })}
+          aria-describedby={noThemeHint ? "theme-none-hint" : undefined}
+          disabled={
+            !canCapture({ restricted, tabId, sizes: wanted.length, breakpointsRead, themes })
+          }
         >
           {captureLabel(wanted.length)}
         </Button>

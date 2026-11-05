@@ -315,3 +315,22 @@ describe("breakpoints and device versions", () => {
     if (result.ok) expect(result.capture.breakpoints).toBeUndefined();
   });
 });
+
+describe("themeChoice", () => {
+  const withChoice = (themeChoice: unknown) => parseCapture({ ...minimalCapture(), themeChoice });
+  test("a capture records which themes to import", () => {
+    const result = withChoice({ light: false, dark: true });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.capture.themeChoice).toEqual({ light: false, dark: true });
+  });
+  test("non-booleans or missing fields are refused", () => {
+    expect(withChoice({ light: "yes", dark: true }).ok).toBe(false);
+    expect(withChoice({ light: true }).ok).toBe(false);
+    expect(withChoice(1).ok).toBe(false);
+  });
+  test("an older capture without it parses unchanged", () => {
+    const result = parseCapture(minimalCapture());
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.capture.themeChoice).toBeUndefined();
+  });
+});

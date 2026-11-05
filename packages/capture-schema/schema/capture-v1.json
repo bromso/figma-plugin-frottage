@@ -116,6 +116,19 @@
       "required": ["label", "kind"],
       "additionalProperties": false
     },
+    "themeChoice": {
+      "type": "object",
+      "properties": {
+        "light": {
+          "type": "boolean"
+        },
+        "dark": {
+          "type": "boolean"
+        }
+      },
+      "required": ["light", "dark"],
+      "additionalProperties": false
+    },
     "breakpoints": {
       "type": "object",
       "properties": {

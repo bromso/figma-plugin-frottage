@@ -1,6 +1,6 @@
 import type { Capture } from "@repo/capture-schema";
 import { breakpointName } from "@repo/capture-schema/css-values";
-import { isRadiusDiffers, MAX_VARIABLES } from "./catalogue";
+import { isRadiusDiffers, isThemeNote, MAX_VARIABLES } from "./catalogue";
 import { COLLECTION_NAMES, COLLECTION_ORDER, orderVariables } from "./layering";
 import type {
   LayerPlan,
@@ -243,6 +243,14 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
   const layersAt = (i: number): PlanLayers =>
     entries[i]?.plan.tokens.layers ?? emptyLayers(entries[i]?.plan.tokens.collection ?? "");
   const top = layersAt(primary);
+  // Color Mode holds the themes the first device chose: the primary's modes, narrowed to its.
+  const firstLayers = layersAt(0);
+  const colorModes = top.modes.some((m) => firstLayers.modes.includes(m))
+    ? top.modes.filter((m) => firstLayers.modes.includes(m))
+    : top.modes;
+  const openMode = [firstLayers.activeMode, top.activeMode].find(
+    (m): m is string => m !== undefined && colorModes.includes(m)
+  );
 
   const { ranges, priority, missing, breakpoints, fromDevices, rangeOf } = rangesOf(entries, order);
   if (fromDevices) {
@@ -304,7 +312,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
       // Color Mode's modes follow the primary's, by name.
       const aligned =
         v.collection === "colorMode"
-          ? top.modes.map((mode) => v.values[layers.modes.indexOf(mode)] ?? v.values[0])
+          ? colorModes.map((mode) => v.values[layers.modes.indexOf(mode)] ?? v.values[0])
           : v.values;
       const values = aligned.map((value) => carried(value as PlanVarValue));
       const content = `${v.collection}|${v.name}|${JSON.stringify(values)}`;
@@ -669,7 +677,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
   const modesOf = (kind: PlanCollectionKind): string[] => {
     switch (kind) {
       case "colorMode":
-        return [...top.modes];
+        return [...colorModes];
       case "theme":
         return [THEME_MODE];
       case "device":
@@ -728,8 +736,8 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
 
   const layers: PlanLayers = {
     hostname: top.hostname,
-    modes: [...top.modes],
-    ...(top.activeMode ? { activeMode: top.activeMode } : {}),
+    modes: [...colorModes],
+    ...(openMode ? { activeMode: openMode } : {}),
     themeSource: top.themeSource,
     collections,
     variables,
@@ -748,6 +756,11 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     order.flatMap((i) => entries[i]?.plan.report.warnings.filter(isRadiusDiffers) ?? [])
   );
   report.push(...differs);
+  // Theme notes likewise: the themes are one choice for the set.
+  const themeNotes = new Set(
+    order.flatMap((i) => entries[i]?.plan.report.warnings.filter(isThemeNote) ?? [])
+  );
+  report.push(...themeNotes);
 
   const plans = entries.map(({ plan }, i): LayerPlan => {
     const styleKey: Rekey = (key) => styleMaps[i]?.get(key);
@@ -755,7 +768,9 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
       ...plan,
       report: {
         ...plan.report,
-        warnings: plan.report.warnings.filter((line) => !isRadiusDiffers(line)),
+        warnings: plan.report.warnings.filter(
+          (line) => !isRadiusDiffers(line) && !isThemeNote(line)
+        ),
       },
       ops: rekeyed(plan.ops, themeKey, styleKey) as PlanOp[],
       tokens: { ...plan.tokens, textStyles: styles, layers },

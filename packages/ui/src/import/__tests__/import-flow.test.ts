@@ -1540,6 +1540,31 @@ describe("a device set", () => {
     expect(review?.contents?.overLimit).toEqual([]);
   });
 
+  test("the review lists the themes the file holds, ticked from its choice, and the decision's apply", async () => {
+    const file = deviceSetFile({
+      devices: [
+        { name: "Laptop", width: 1512 },
+        { name: "Phone portrait", width: 390 },
+      ],
+      edit: (c) => {
+        c.tokens = {
+          cssCustomProperties: { "--surface": "#ffffff" },
+          themes: [{ context: ".dark", mode: "Dark", properties: { "--surface": "#000000" } }],
+        };
+        c.themeChoice = { light: true, dark: true };
+      },
+    });
+    const { review, port } = await runDevices([file], fakePort(), (_, d) => ({
+      ...d,
+      ...(d.contents ? { contents: { ...d.contents, themes: { light: true, dark: false } } } : {}),
+    }));
+    expect(review?.contents?.themes).toEqual({ light: { on: true }, dark: { on: true } });
+    expect(review?.contents?.collections).toContain("Color Mode 2");
+    expect(port.deviceSetMeta?.layers.modes).toEqual(["Light"]);
+    const plain = await runDevices([devicesFile()]);
+    expect(plain.review?.contents?.themes).toEqual({ light: { on: true } });
+  });
+
   test("the review shows the widths the captures were laid out at", async () => {
     const file = deviceSetFile({
       devices: [
