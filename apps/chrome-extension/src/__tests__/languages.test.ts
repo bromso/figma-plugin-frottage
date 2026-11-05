@@ -85,7 +85,7 @@ describe("findLanguages, the current language", () => {
     expect(findLanguages(doc, "https://site.test/en/?x=1")).toEqual([]);
   });
   test("the html lang matches exactly before by primary subtag", () => {
-    const doc = page(alternates(["en-gb", "en-us"]));
+    const doc = page(alternates(["en-gb", "en-us", "sv"]));
     doc.documentElement.setAttribute("lang", "en-US");
     expect(findLanguages(doc, "https://site.test/x")[0]).toMatchObject({
       code: "en-us",
@@ -95,6 +95,64 @@ describe("findLanguages, the current language", () => {
   test("no way to tell the current language gives none", () => {
     const doc = page("", `<a hreflang="de" href="/de">DE</a><a hreflang="fr" href="/fr">FR</a>`);
     expect(findLanguages(doc, "https://site.test/")).toEqual([]);
+  });
+});
+
+describe("findLanguages, the page's own language and one per language", () => {
+  const alternates = (codes: string[]) =>
+    codes.map((c) => `<link rel="alternate" hreflang="${c}" href="/${c}/">`).join("");
+  test("adds the page's own language when only the other one is listed", () => {
+    const doc = page(alternates(["en-gb"]));
+    doc.documentElement.setAttribute("lang", "sv");
+    expect(findLanguages(doc, "https://riksbank.test/sv/#top")).toEqual([
+      { code: "sv", name: "Svenska", url: "https://riksbank.test/sv/", current: true },
+      { code: "en-gb", name: "English", url: "https://riksbank.test/en-gb/", current: false },
+    ]);
+  });
+  test("names a language by its primary subtag and keeps the full code", () => {
+    const doc = page(alternates(["en-GB"]));
+    doc.documentElement.setAttribute("lang", "sv-SE");
+    const found = findLanguages(doc, "https://kth.test/sv/");
+    expect(found.map((l) => [l.code, l.name])).toEqual([
+      ["sv-se", "Svenska"],
+      ["en-gb", "English"],
+    ]);
+  });
+  test("keeps one regional variant per language, preferring the current region", () => {
+    const doc = page(alternates(["ar-AE", "ar-BH", "en-AE", "en-SE", "de-DE", "de-AT"]));
+    doc.documentElement.setAttribute("lang", "sv-SE");
+    const found = findLanguages(doc, "https://apple.test/se/");
+    expect(found.map((l) => [l.code, l.name])).toEqual([
+      ["sv-se", "Svenska"],
+      ["ar-ae", "العربية"],
+      ["en-se", "English"],
+      ["de-de", "Deutsch"],
+    ]);
+  });
+  test("prefers a variant with no region, else the first", () => {
+    const doc = page(alternates(["en-us", "en-au", "fr-ca", "fr"]));
+    doc.documentElement.setAttribute("lang", "sv-SE");
+    const found = findLanguages(doc, "https://site.test/se/");
+    expect(found.map((l) => l.code)).toEqual(["sv-se", "en-us", "fr"]);
+  });
+  test("two variants of one language on a page of another give one English", () => {
+    const doc = page(alternates(["en-us", "en-au"]));
+    doc.documentElement.setAttribute("lang", "sv-SE");
+    expect(findLanguages(doc, "https://site.test/se/").map((l) => l.code)).toEqual([
+      "sv-se",
+      "en-us",
+    ]);
+  });
+  test("a page listing itself behaves as before", () => {
+    const doc = page(alternates(["en", "sv"]));
+    doc.documentElement.setAttribute("lang", "sv");
+    expect(findLanguages(doc, "https://site.test/sv/").map((l) => [l.code, l.current])).toEqual([
+      ["sv", true],
+      ["en", false],
+    ]);
+  });
+  test("without an html lang the page's own language is not guessed", () => {
+    expect(findLanguages(page(alternates(["en-gb"])), "https://site.test/sv/")).toEqual([]);
   });
 });
 
