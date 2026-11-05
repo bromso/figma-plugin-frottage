@@ -33,7 +33,7 @@ import {
   viewportStatusLabel,
   type WidthChoice,
 } from "../page";
-import { extrasLine, planWidths, type RunWidth } from "../plan-widths";
+import { planWidths, type RunWidth } from "../plan-widths";
 
 const dark = window.matchMedia("(prefers-color-scheme: dark)");
 const applyTheme = () => document.documentElement.classList.toggle("dark", dark.matches);
@@ -99,6 +99,8 @@ function Popup() {
 
   // The page's breakpoints, read once on open; none when the page can't be read.
   const [breakpoints, setBreakpoints] = useState<number[]>([]);
+  // Breakpoint names the user unticked, by name so they outlast device changes and probe re-runs.
+  const [skipped, setSkipped] = useState<string[]>([]);
   // Capture waits for them, or for BREAKPOINT_WAIT_MS, so the extras they call for are planned.
   const [breakpointsRead, setBreakpointsRead] = useState(false);
 
@@ -178,10 +180,9 @@ function Popup() {
     const [width] = choice.on ? parseWidths([choice.text]) : [];
     return width === undefined ? [] : [{ width, id: device.id, name: device.name }];
   });
-  const plan = planWidths(devices, breakpoints);
+  const plan = planWidths(devices, breakpoints, skipped);
   const wanted = plan.widths;
   const noThemeHint = themeHint(themes, darkEnabled);
-  const extras = extrasLine(plan.extras);
   const chosenLanguages = tickedLanguages(languages, tickedCodes);
   const countLine = captureCountLine(devices.length, chosenLanguages.length, plan.extras.length);
   const captureTotal =
@@ -430,7 +431,59 @@ function Popup() {
             })}
           </div>
         </fieldset>
-        {extras && <Type className="text-muted-foreground">{extras}</Type>}
+        {plan.ranges.length > 0 && (
+          <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+            <legend className="sr-only">Breakpoints to capture</legend>
+            <Type size="xsmall" weight="bold">
+              Breakpoints
+            </Type>
+            <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-figma-bg-secondary">
+              {plan.ranges.map((range) => {
+                const id = `breakpoint-on-${range.name.replace(/\s+/g, "-")}`;
+                return (
+                  <label
+                    key={range.name}
+                    htmlFor={range.coveredBy ? undefined : id}
+                    data-breakpoint={range.name}
+                    className={
+                      range.coveredBy
+                        ? "flex items-center gap-2 px-3 py-1.5"
+                        : "flex cursor-pointer items-center gap-2 px-3 py-1.5"
+                    }
+                  >
+                    <Type as="span" className="min-w-0 flex-1 truncate">
+                      {range.name}
+                    </Type>
+                    <Type as="span" className="shrink-0 tabular-nums text-muted-foreground">
+                      {range.at}
+                    </Type>
+                    {range.coveredBy ? (
+                      <Type
+                        as="span"
+                        className="w-[96px] shrink-0 truncate text-right text-muted-foreground"
+                      >
+                        {range.coveredBy}
+                      </Type>
+                    ) : (
+                      <Checkbox
+                        id={id}
+                        checked={!skipped.includes(range.name)}
+                        onCheckedChange={(on) =>
+                          setSkipped((names) =>
+                            on === true
+                              ? names.filter((n) => n !== range.name)
+                              : [...names, range.name]
+                          )
+                        }
+                        aria-label={`Capture ${range.name}`}
+                      />
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+        )}
         <Type size="xsmall" className="text-muted-foreground">
           Widths from 120 to 3840. Your tab moves to a small window for each size, then comes back.
           Leave the window alone while it runs.

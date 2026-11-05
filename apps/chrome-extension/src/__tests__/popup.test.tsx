@@ -12,6 +12,7 @@ let sent: Sent[] = [];
 let requested: unknown[] = [];
 let grant = true;
 let languages: unknown[] = [en, sv];
+let breakpoints: number[] = [];
 let window: Window;
 const saved = new Map<string, { had: boolean; value: unknown }>();
 const g = globalThis as Record<string, unknown>;
@@ -67,7 +68,7 @@ beforeAll(async () => {
         sendMessage: async (message: Sent) => {
           sent.push(message);
           if (message.type === "breakpoints") {
-            return { ok: true, breakpoints: [], dark: false, languages };
+            return { ok: true, breakpoints, dark: false, languages };
           }
           return { ok: true };
         },
@@ -103,6 +104,7 @@ beforeEach(() => {
   requested = [];
   grant = true;
   languages = [en, sv];
+  breakpoints = [];
 });
 
 async function open() {
@@ -224,5 +226,90 @@ describe("popup languages", () => {
     await capture();
     const start = sent.find((m) => m.type === "viewport-start");
     expect(start && "languages" in start).toBe(false);
+  });
+});
+
+describe("popup breakpoints", () => {
+  const TAILWIND = [640, 768, 1024, 1280, 1536];
+  const startOf = () => sent.find((m) => m.type === "viewport-start");
+  const widthsOf = () => ((startOf()?.runWidths ?? []) as { width: number }[]).map((w) => w.width);
+  const rowOf = (name: string) =>
+    [...window.document.querySelectorAll("[data-breakpoint]")].find(
+      (el) => el.getAttribute("data-breakpoint") === name
+    ) as HTMLElement | undefined;
+  const sizesButton = () =>
+    [...window.document.querySelectorAll("button")].find((b) =>
+      /^Capture/.test(b.textContent ?? "")
+    )?.textContent;
+
+  async function openWith(found: number[]) {
+    breakpoints = found;
+    languages = [en];
+    await open();
+    await waitFor(() => found.length === 0 || text().includes("Breakpoints"));
+  }
+
+  test("lists a row per range under a Breakpoints label, covered ones naming the device", async () => {
+    await openWith(TAILWIND);
+    expect(text()).toContain("Breakpoints");
+    const row = (name: string) => rowOf(name)?.textContent ?? "";
+    expect(row("base")).toContain("390");
+    expect(row("base")).toContain("Phone portrait");
+    expect(row("sm")).toContain("640");
+    expect(rowOf("sm")?.querySelector("button[role=checkbox]")).not.toBeNull();
+    expect(row("md")).toContain("Tablet portrait");
+    expect(rowOf("md")?.querySelector("button[role=checkbox]")).toBeNull();
+    expect(row("xl")).toContain("Laptop");
+    expect(row("2xl")).toContain("1536");
+    expect(rowOf("2xl")?.querySelector("button[role=checkbox]")).not.toBeNull();
+  });
+
+  test("shows no group without breakpoints, and never the old extras line", async () => {
+    await openWith([]);
+    expect(text()).not.toContain("Breakpoints");
+    expect(text()).not.toContain("Also captures");
+  });
+
+  test("the old extras line is gone with breakpoints too", async () => {
+    await openWith(TAILWIND);
+    expect(text()).not.toContain("Also captures");
+  });
+
+  test("unticking a breakpoint drops it from the count and the request", async () => {
+    await openWith(TAILWIND);
+    const before = Number(/Capture (\d+) sizes/.exec(sizesButton() ?? "")?.[1]);
+    await press(box("breakpoint-on-sm"));
+    expect(Number(/Capture (\d+) sizes/.exec(sizesButton() ?? "")?.[1])).toBe(before - 1);
+    await capture();
+    expect(widthsOf()).not.toContain(640);
+    expect(widthsOf()).toContain(1024);
+  });
+
+  test("an unticked name survives a device change", async () => {
+    await openWith(TAILWIND);
+    await press(box("breakpoint-on-lg"));
+    // Laptop 1512 covers xl; ticking Desktop 1440 (also xl) and unticking Tablet portrait uncovers md.
+    await press(box("size-on-desktop"));
+    await press(box("size-on-tablet-portrait"));
+    expect(box("breakpoint-on-lg").getAttribute("aria-checked")).toBe("false");
+    expect(box("breakpoint-on-md").getAttribute("aria-checked")).toBe("true");
+    await capture();
+    expect(widthsOf()).not.toContain(1024);
+    expect(widthsOf()).toContain(768);
+  });
+
+  test("unticked breakpoints are sent nowhere but as the widths left out", async () => {
+    await openWith(TAILWIND);
+    await press(box("breakpoint-on-sm"));
+    await capture();
+    expect(JSON.stringify(startOf())).not.toContain("skip");
+    expect(startOf()?.runWidths).toBeDefined();
+  });
+
+  test("unticking a device uncovers its range, which then gets a checkbox", async () => {
+    await openWith(TAILWIND);
+    expect(rowOf("xl")?.querySelector("button[role=checkbox]")).toBeNull();
+    await press(box("size-on-laptop"));
+    expect(rowOf("xl")?.querySelector("button[role=checkbox]")).not.toBeNull();
   });
 });
