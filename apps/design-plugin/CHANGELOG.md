@@ -1,5 +1,13 @@
 # @repo/design-plugin
 
+## 0.4.0
+
+### Patch Changes
+
+- Updated dependencies [[`7e6df47`](https://github.com/bromso/figma-plugin-frottage/commit/7e6df47c13adef56846d92167ff94c59ef95d0f9)]:
+  - @repo/ui@2.3.0
+  - @repo/common@2.3.0
+
 ## 0.3.0
 
 ### Minor Changes

@@ -1,5 +1,18 @@
 # @repo/ui
 
+## 2.3.0
+
+### Minor Changes
+
+- [#10](https://github.com/bromso/figma-plugin-frottage/pull/10) [`7e6df47`](https://github.com/bromso/figma-plugin-frottage/commit/7e6df47c13adef56846d92167ff94c59ef95d0f9) Thanks [@bromso](https://github.com/bromso)! - Choose Light, Dark or both in the popup and in the plugin; Color Mode gets exactly those modes, with Dark read from the page's stylesheet.
+
+### Patch Changes
+
+- Updated dependencies [[`7e6df47`](https://github.com/bromso/figma-plugin-frottage/commit/7e6df47c13adef56846d92167ff94c59ef95d0f9)]:
+  - @repo/capture-schema@0.4.0
+  - @repo/figma-mapper@0.4.0
+  - @repo/common@2.3.0
+
 ## 2.2.0
 
 ### Minor Changes
