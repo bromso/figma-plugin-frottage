@@ -25,12 +25,12 @@
 - Language names: the primary subtag's own name, first letter upper-cased (`sv-SE` → `Svenska`, `en-GB` → `English`), via `languageName(primary)`. Codes stay full (`sv-se`).
 - Popup copy, exactly: a `Breakpoints` group under the device list, one row per breakpoint range: the range name (`sm`, `min 576`, `base`), the width it is captured at, and either a checkbox (ticked by default) or, when a ticked device's width falls in the range, the text `Laptop` (that device's name, the widest such device) in place of the checkbox. The line `Also captures … for the … breakpoints` is removed. The group is hidden when the page records no breakpoints.
 - Plugin copy, exactly: "What's in this file" groups `Devices` (rows `Laptop 1512`), then `Breakpoints` (rows `sm 640`; a name that already holds its width reads alone: `min 576`) with the existing note `Breakpoint captures make no frames. They give the Breakpoint values.` under it, then `Themes`, then `Languages`.
-- Report copy, exactly, per device whose pairing is under 80%: `Only 35% of the English page matches Svenska on Laptop.` (whole percent, rounded down). The existing summed lines stay: `83 texts exist only in English and weren't added.`, `29 texts have no English version and stay in Svenska.`, mixed and repeated-part lines.
+- Report copy, exactly, per device whose pairing is under 80%: `Only 35% of the Svenska page matches English on Laptop.` (whole percent, rounded down). The existing summed lines stay: `83 texts exist only in English and weren't added.`, `29 texts have no English version and stay in Svenska.`, mixed and repeated-part lines.
 - Removed copy: `The Svenska page differs too much from English to share one frame on Phone.`
 
 ## Review Focus
 
-1. **A page that pairs 0% in another language** (two unrelated pages): Language is still made only if at least one text binds; with none, no collection and the report says why (`Only 0% of the English page matches Svenska on Laptop.` plus the summed lines). Test in Task 4.
+1. **A page that pairs 0% in another language** (two unrelated pages): Language is still made only if at least one text binds; with none, no collection and the report says why (`Only 0% of the Svenska page matches English on Laptop.` plus the summed lines). Test in Task 4.
 2. **A boundary cluster spanning a Tailwind name** (`767`, `768`, `769`): the kept boundary is `768` (`md`), and every rule's range still maps to one Breakpoint mode. Test in Task 2.
 3. **Unticking a breakpoint row, then ticking a device that covers it**: the row turns into the device's name; unticking the device brings the row back with the user's earlier choice (unticked). Test in Task 3.
 4. **Two variants of one language with no current-region match** (`en-US`, `en-AU` on a `sv-SE` page): exactly one English entry, the first in page order. Test in Task 1.
@@ -76,7 +76,7 @@ Rule: after counting uses, boundaries whose neighbours are within 2 px form a cl
 
 **Files:** `packages/figma-mapper/src/devices.ts` (remove the `rate < 0.8` branch and `languageFrames`; every pairing binds its paired, non-mixed texts; a device under 0.8 adds the `Only n% …` line), `apps/design-plugin/src/plugin/applier.ts` (remove the language-Section path: `sectionFor` and what only it uses), `packages/ui/src/import/import-flow.ts` and `packages/common/src/networkSides.ts` (remove the `languageFrames` plumbing and `device.language`); tests in `devices.test.ts`, the sandbox tests, `import-flow.test.ts`, and the e2e language test.
 
-- [ ] **Step 1: Failing tests** — a Phone pairing at 0.6 binds its paired texts into Language and adds `Only 60% of the Svenska page matches English on Phone.`; no `languageFrames` field on the merge; Review Focus 1 and 5; the KTH-like case (35%) makes Language `Svenska/English` with the paired header texts bound; the old `differs too much` copy appears nowhere.
+- [ ] **Step 1: Failing tests** — a Phone pairing at 0.6 binds its paired texts into Language and adds `Only 60% of the English page matches Svenska on Phone.`; no `languageFrames` field on the merge; Review Focus 1 and 5; the KTH-like case (35%) makes Language `Svenska/English` with the paired header texts bound; the old `differs too much` copy appears nowhere.
 - [ ] **Step 2–4:** run (FAIL), implement, run `bun run test && bun run --filter @repo/capture-dom test:e2e && bunx turbo run types --force` (PASS).
 - [ ] **Step 5: Commit** `feat: always make languages modes of the language collection`
 

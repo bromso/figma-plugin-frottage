@@ -62,7 +62,7 @@ const BASE_RANGE = "base";
 /** Device width, device height, breakpoint min and max width. */
 const FIXED_VARIABLES = 4;
 const LENGTH_SCOPES = ["WIDTH_HEIGHT"];
-/** The share of a page's texts another language pairs under which the report says so. */
+/** Under this share of the page's own texts paired, the report names the device. */
 const SHARE_RATE = 0.8;
 /** Language variables have a budget of their own, apart from `MAX_VARIABLES`. */
 export const MAX_LANGUAGE_VARIABLES = 2000;
@@ -928,7 +928,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
       if (pairing.rate < SHARE_RATE) {
         // Whole percent, rounded down; the nudge keeps a float like 0.29 * 100 from 28.
         const percent = Math.floor(pairing.rate * 100 + 1e-9);
-        report.push(`Only ${percent}% of the ${names[l]} page matches ${base} on ${frame.device}.`);
+        report.push(`Only ${percent}% of the ${base} page matches ${names[l]} on ${frame.device}.`);
       }
       const count = counts[l] as (typeof counts)[number];
       count.onlyOther += pairing.onlyOther;

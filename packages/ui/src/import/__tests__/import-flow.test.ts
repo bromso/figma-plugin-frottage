@@ -1737,7 +1737,7 @@ describe("a device set", () => {
     expect(last.versions.map((v) => v.label)).toEqual(["Laptop", "Phone"]);
     const notes = last.sets[0]?.notes ?? [];
     expect(notes).toContain("Language: English, Svenska");
-    expect(notes).toContain("Only 0% of the Svenska page matches English on Phone.");
+    expect(notes).toContain("Only 0% of the English page matches Svenska on Phone.");
     expect(notes.some((n) => n.includes("differs too much"))).toBe(false);
   });
 
