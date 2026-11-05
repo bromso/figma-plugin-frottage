@@ -1,3 +1,4 @@
+import type { PageLanguage } from "@repo/capture-schema";
 import { Button, Checkbox, Icon, Input, Label, Type } from "@repo/ui";
 import "@repo/ui/styles.css";
 import { useEffect, useRef, useState } from "react";
@@ -6,22 +7,28 @@ import type { RunStatus } from "../capture-run";
 import type { PopupMessage, Reply } from "../messages";
 import {
   allowAccessAndRecapture,
+  applyLanguages,
   applyProbe,
   BREAKPOINT_WAIT_MS,
   canCapture,
+  captureCountLine,
   captureLabel,
   DEVICES,
   friendlyError,
   imageAdvice,
   initialThemes,
   isRestrictedUrl,
+  leftOutLine,
   NO_DARK_HINT,
   nodeAdvice,
+  otherOrigins,
   parseChoices,
   parseWidths,
   popupView,
   rerunRequest,
+  runTotal,
   themeHint,
+  tickedLanguages,
   viewportAdvice,
   viewportStatusLabel,
   type WidthChoice,
@@ -43,6 +50,14 @@ function loadChoices(): WidthChoice[] {
   } catch {
     return parseChoices(null);
   }
+}
+
+/** The origins among `origins` the extension can already reach. */
+async function heldOrigins(origins: string[]): Promise<string[]> {
+  const held = await Promise.all(
+    origins.map((origin) => chrome.permissions.contains({ origins: [origin] }).catch(() => false))
+  );
+  return origins.filter((_, i) => held[i]);
 }
 
 async function currentStatus(): Promise<RunStatus | null> {
@@ -69,6 +84,16 @@ function Popup() {
   // Set once the user ticks a box, so a late probe reply doesn't overwrite the choice.
   const touched = useRef(false);
 
+  // The page's languages, when it has more than one; the current one is always ticked.
+  const [languages, setLanguages] = useState<PageLanguage[]>([]);
+  const [tickedCodes, setTickedCodes] = useState<string[]>([]);
+  const touchedLanguages = useRef(false);
+  const tickedRef = useRef<string[]>([]);
+  tickedRef.current = tickedCodes;
+  const [tabUrl, setTabUrl] = useState("");
+  // Languages the last run left out because their site refused access.
+  const [leftOut, setLeftOut] = useState<PageLanguage[]>([]);
+
   // The size for each device, remembered between opens.
   const [choices, setChoices] = useState<WidthChoice[]>(loadChoices);
 
@@ -93,6 +118,7 @@ function Popup() {
     chrome.tabs.query({ active: true, currentWindow: true }).then(
       ([tab]) => {
         setTabId(tab?.id ?? null);
+        setTabUrl(tab?.url ?? "");
         const offLimits = isRestrictedUrl(tab?.url);
         setRestricted(offLimits);
         setTabRead(true);
@@ -103,6 +129,9 @@ function Popup() {
               if (reply?.ok && reply.breakpoints) setBreakpoints(reply.breakpoints);
               setThemes((cur) => applyProbe(cur, touched.current, reply).themes);
               setDarkEnabled(initialThemes(reply).darkEnabled);
+              const found = applyLanguages(tickedRef.current, touchedLanguages.current, reply);
+              setLanguages(found.languages);
+              setTickedCodes(found.ticked);
               setBreakpointsRead(true);
             },
             () => {
@@ -153,6 +182,12 @@ function Popup() {
   const wanted = plan.widths;
   const noThemeHint = themeHint(themes, darkEnabled);
   const extras = extrasLine(plan.extras);
+  const chosenLanguages = tickedLanguages(languages, tickedCodes);
+  const countLine = captureCountLine(devices.length, chosenLanguages.length, plan.extras.length);
+  const captureTotal =
+    chosenLanguages.length > 1
+      ? devices.length * chosenLanguages.length + plan.extras.length
+      : wanted.length;
 
   function editChoice(index: number, change: Partial<WidthChoice>) {
     const next = choices.map((c, i) => (i === index ? { ...c, ...change } : c));
@@ -169,28 +204,51 @@ function Popup() {
     runWidths?: RunWidth[];
     collapseWrappers: boolean;
     themes?: { light: boolean; dark: boolean };
+    languages?: PageLanguage[];
   }) {
     const {
       widths,
       runWidths,
       collapseWrappers,
       themes: askedThemes,
+      languages: askedLanguages,
     } = request ?? {
       widths: wanted.map((w) => w.width),
       runWidths: wanted,
       collapseWrappers: false,
       themes,
+      languages: chosenLanguages.length > 1 ? chosenLanguages : undefined,
     };
     // A re-run of a status from an older build has plain widths only.
     const asked: RunWidth[] = runWidths ?? widths.map((width) => ({ width }));
     if (tabId === null || asked.length === 0) return;
+    // Asked first, so Chrome sees the click's user gesture; a refused site's languages are left out.
+    let languagesToRun = askedLanguages;
+    let dropped: PageLanguage[] = [];
+    setLeftOut([]);
+    if (!request && languagesToRun) {
+      const origins = otherOrigins(languagesToRun, tabUrl);
+      if (origins.length > 0) {
+        const granted = await chrome.permissions.request({ origins }).catch(() => false);
+        if (!granted) {
+          const held = await heldOrigins(origins);
+          dropped = languagesToRun.filter((l) => {
+            const [origin] = otherOrigins([l], tabUrl);
+            return origin !== undefined && !held.includes(origin);
+          });
+          languagesToRun = languagesToRun.filter((l) => !dropped.includes(l));
+          setLeftOut(dropped);
+        }
+      }
+      if (languagesToRun.length < 2) languagesToRun = undefined;
+    }
     const widest = asked.reduce((a, b) => (b.width > a.width ? b : a));
     setStopping(false);
     setDeclined(false);
     setStatus({
       state: "viewport",
       index: 1,
-      total: asked.length,
+      total: runTotal(asked, languagesToRun),
       label: widest.device?.name ?? widest.breakpoint ?? String(widest.width),
     });
     try {
@@ -201,6 +259,8 @@ function Popup() {
         ...(runWidths ? { runWidths } : { widths }),
         ...(collapseWrappers ? { collapseWrappers: true } : {}),
         ...(askedThemes ? { themes: askedThemes } : {}),
+        ...(languagesToRun ? { languages: languagesToRun } : {}),
+        ...(dropped.length > 0 ? { leftOut: dropped.map(leftOutLine) } : {}),
       });
       if (reply && !reply.ok) setStatus({ state: "error", message: reply.error });
     } catch (error) {
@@ -287,6 +347,11 @@ function Popup() {
       <main className="flex w-[320px] flex-col gap-3 bg-background p-4 text-foreground">
         {heading}
         <Type role="status">{viewportStatusLabel(status)}</Type>
+        {leftOut.map((l) => (
+          <Type key={l.code} size="xsmall" className="text-muted-foreground">
+            {leftOutLine(l)}
+          </Type>
+        ))}
         <Type size="xsmall" className="text-muted-foreground">
           Leave the small window open.
         </Type>
@@ -414,6 +479,34 @@ function Popup() {
             </Type>
           )}
         </fieldset>
+        {languages.length > 1 && (
+          <fieldset className="flex flex-col gap-2 border-0 p-0">
+            <legend className="sr-only">Languages to capture</legend>
+            <Type size="xsmall" weight="bold">
+              Languages
+            </Type>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {languages.map((language) => (
+                <div key={language.code} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`language-${language.code}`}
+                    checked={language.current || tickedCodes.includes(language.code)}
+                    disabled={language.current}
+                    onCheckedChange={(on) => {
+                      touchedLanguages.current = true;
+                      setTickedCodes((codes) =>
+                        on === true
+                          ? [...codes, language.code]
+                          : codes.filter((c) => c !== language.code)
+                      );
+                    }}
+                  />
+                  <Label htmlFor={`language-${language.code}`}>{language.name}</Label>
+                </div>
+              ))}
+            </div>
+          </fieldset>
+        )}
         {outcome}
         {images?.offerAccess && (
           <div className="flex flex-col gap-2">
@@ -447,8 +540,13 @@ function Popup() {
             !canCapture({ restricted, tabId, sizes: wanted.length, breakpointsRead, themes })
           }
         >
-          {captureLabel(wanted.length)}
+          {captureLabel(captureTotal)}
         </Button>
+        {countLine && (
+          <Type size="xsmall" className="mt-2 text-muted-foreground">
+            {countLine}
+          </Type>
+        )}
       </div>
     </main>
   );

@@ -181,8 +181,11 @@ function findComponents(nodes: Tree[], tags: Map<string, string>): Component[] {
 
 const childAt = (children: Tree[], i: number) => children[i] as Tree;
 
-/** How `occurrence` differs from its component's first occurrence, parents before children. */
-function overridesOf(occurrence: Tree): PlanOverride[] {
+/**
+ * How `occurrence` differs from its component's first occurrence, parents before children. With
+ * `sources`, every text is an override that names its captured text, so it can bind on its own.
+ */
+function overridesOf(occurrence: Tree, sources: boolean): PlanOverride[] {
   const first = occurrence.component?.occurrences[0] as Tree;
   if (occurrence === first) return [];
   const overrides: PlanOverride[] = [];
@@ -199,7 +202,8 @@ function overridesOf(occurrence: Tree): PlanOverride[] {
     if (base.op.op === "text" && node.op.op === "text") {
       const { text, runs } = node.op;
       const same = text === base.op.text && JSON.stringify(runs) === JSON.stringify(base.op.runs);
-      if (swapped || !same) overrides.push({ path, kind: "text", text, runs });
+      if (sources) overrides.push({ path, kind: "text", text, runs, source: node.op.id });
+      else if (swapped || !same) overrides.push({ path, kind: "text", text, runs });
     } else if (base.op.op === "image" && node.op.op === "image") {
       const { hash } = node.op;
       if (swapped || hash !== base.op.hash) overrides.push({ path, kind: "image", hash });
@@ -219,7 +223,7 @@ function overridesOf(occurrence: Tree): PlanOverride[] {
 const isFixed = (layout: PlanLayout, axis: "sizingH" | "sizingV"): boolean =>
   isAuto(layout) ? layout[axis] === "FIXED" : true;
 
-function instanceOp(node: Tree, id: string, parent: string): PlanOp {
+function instanceOp(node: Tree, id: string, parent: string, sources: boolean): PlanOp {
   const component = node.component as Component;
   const first = (component.occurrences[0] as Tree).op;
   const { name, x, y, w, h, childLayout } = node.op;
@@ -237,13 +241,13 @@ function instanceOp(node: Tree, id: string, parent: string): PlanOp {
     resize:
       (isFixed(layout, "sizingH") && w !== first.w) ||
       (isFixed(layout, "sizingV") && h !== first.h),
-    overrides: overridesOf(node),
+    overrides: overridesOf(node, sources),
     ...(childLayout ? { childLayout } : {}),
   };
 }
 
 /** The ops of a subtree, in order, with a repeated element below `top` as one instance op. */
-function flatten(top: Tree, rename: (id: string) => string): PlanOp[] {
+function flatten(top: Tree, rename: (id: string) => string, sources: boolean): PlanOp[] {
   const out: PlanOp[] = [];
   const stack = [top];
   for (let node = stack.pop(); node; node = stack.pop()) {
@@ -251,7 +255,7 @@ function flatten(top: Tree, rename: (id: string) => string): PlanOp[] {
     const id = rename(op.id);
     const parent = op.parent === null ? null : rename(op.parent);
     if (node !== top && node.component) {
-      out.push(instanceOp(node, id, parent as string));
+      out.push(instanceOp(node, id, parent as string, sources));
       continue;
     }
     out.push({ ...op, id, parent } as PlanOp);
@@ -325,11 +329,12 @@ type HoverNotes = { capped: number; swapped: number };
 function definition(
   component: Component,
   hovers: Map<string, HoverPatch>,
-  notes: HoverNotes
+  notes: HoverNotes,
+  sources: boolean
 ): PlanOp[] {
   const { key, name } = component;
   const first = component.occurrences[0] as Tree;
-  const [root, ...rest] = flatten(first, (id) => `${key}/${id}`);
+  const [root, ...rest] = flatten(first, (id) => `${key}/${id}`, sources);
   const { childLayout: _placedByInstances, ...own } = root as Extract<PlanOp, { op: "frame" }>;
   let hover: PlanHoverPatch[] = [];
   if (hovers.size > 0) {
@@ -381,7 +386,9 @@ function canvasInstances(found: Component[], definitions: PlanOp[][], page: Plan
 export function extractComponents(
   ops: PlanOp[],
   tags: Map<string, string>,
-  hovers: Map<string, HoverPatch> = new Map()
+  hovers: Map<string, HoverPatch> = new Map(),
+  /** Name each instance text's captured id, for a capture with a language. */
+  sources = false
 ): {
   ops: PlanOp[];
   components: number;
@@ -394,8 +401,8 @@ export function extractComponents(
   if (found.length === 0) return { ops, components: 0, instances: 0 };
   const roots = nodes.filter((n) => n.parent === null);
   const notes: HoverNotes = { capped: 0, swapped: 0 };
-  const definitions = found.map((c) => definition(c, hovers, notes));
-  const page = roots.flatMap((r) => flatten(r, (id) => id));
+  const definitions = found.map((c) => definition(c, hovers, notes, sources));
+  const page = roots.flatMap((r) => flatten(r, (id) => id, sources));
   return {
     ops: [...definitions.flat(), ...page],
     components: found.length,

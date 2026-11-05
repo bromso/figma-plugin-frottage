@@ -6,8 +6,10 @@ import type { ReleaseOutcome } from "../tab-hold";
 import {
   CaptureGate,
   type CaptureResult,
+  loadTab,
   resizeWindow,
   startRefusal,
+  type TabsApi,
   ViewportRun,
   type WindowsApi,
 } from "../viewport-run";
@@ -44,7 +46,16 @@ type Over = {
   maxWidth?: number;
   width?: number;
   settle?: () => Promise<void>;
-  origin?: () => string | null;
+  /** The tab's page; given the tab's address. */
+  origin?: (url: string) => string | null;
+  /** The address the tab starts at. */
+  url?: string;
+  /** The tab's address as read; by default where the tab is. */
+  address?: () => string | null;
+  /** Where loading `url` ends up; it throws to fail the load. */
+  navigate?: (url: string) => string;
+  /** The loaded page's `<html lang>`, given the tab's address; it throws to fail the read. */
+  pageLanguage?: (url: string) => string | null;
   capture?: (label: string, run: ViewportRun, count: number) => Promise<CaptureResult> | null;
   /** Width lost to something beside the page, such as a classic scrollbar. */
   scrollbar?: number;
@@ -64,11 +75,22 @@ function setup(over: Over = {}) {
   const statuses: RunStatus[] = [];
   const captures: string[] = [];
   const items: RunWidth[] = [];
+  /** The language each capture was for, by code. */
+  const languages: (string | undefined)[] = [];
+  const records: unknown[] = [];
+  const tab = { url: over.url ?? "https://example.com/en/" };
   const events: string[] = [];
   const announced: boolean[] = [];
   for (const width of over.refuse ?? []) fake.refuse.add(width);
   const run: ViewportRun = new ViewportRun({
-    origin: async () => (over.origin ? over.origin() : ORIGIN),
+    origin: async () => (over.origin ? over.origin(tab.url) : ORIGIN),
+    address: async () => (over.address ? over.address() : tab.url),
+    navigate: async (url) => {
+      events.push(`navigate ${url}`);
+      tab.url = url;
+      if (over.navigate) tab.url = over.navigate(url);
+    },
+    pageLanguage: async () => (over.pageLanguage ? over.pageLanguage(tab.url) : null),
     hold: async () => {
       events.push("hold");
       await over.hold?.();
@@ -91,8 +113,10 @@ function setup(over: Over = {}) {
       events.push("announce");
       announced.push(failed);
     },
-    capture: async (item) => {
+    capture: async (item, language) => {
       items.push(item);
+      languages.push(language?.code);
+      records.push(language);
       // Like the page: a device or breakpoint names the capture, otherwise its width does.
       const label = item.device?.name ?? item.breakpoint ?? String(fake.win.width);
       captures.push(String(fake.win.width));
@@ -125,7 +149,19 @@ function setup(over: Over = {}) {
     if (status?.state !== "viewport-done") throw new Error("the run did not finish");
     return status;
   };
-  return { run, fake, statuses, captures, items, events, announced, final };
+  return {
+    run,
+    fake,
+    tab,
+    statuses,
+    captures,
+    items,
+    languages,
+    records,
+    events,
+    announced,
+    final,
+  };
 }
 
 const put = (label: string) => ({ label, width: Number(label) });
@@ -796,6 +832,268 @@ describe("ViewportRun with devices and breakpoints", () => {
   });
 });
 
+describe("ViewportRun with languages", () => {
+  const LAPTOP = { id: "laptop" as const, name: "Laptop", height: 982 };
+  const PHONE = { id: "phone-portrait" as const, name: "Phone", height: 844 };
+  const asked: RunWidth[] = [
+    { width: 390, device: PHONE },
+    { width: 1512, device: LAPTOP },
+    { width: 1024, breakpoint: "lg" },
+  ];
+  const EN = { code: "en", name: "English", url: "https://example.com/en/", current: true };
+  const SV = { code: "sv", name: "Svenska", url: "https://example.com/sv/", current: false };
+  const DE = { code: "de", name: "Deutsch", url: "https://de.example.org/", current: false };
+  const FR = { code: "fr", name: "Français", url: "https://example.com/fr/", current: false };
+  const byPage = (url: string) => pageOrigin(url);
+  /** What happened to the tab, in order. */
+  const tabEvents = (events: string[]) =>
+    events.filter((e) => e.startsWith("navigate") || e === "release" || e === "hold");
+
+  test("the current language runs first with its extras, then each other language at the devices", async () => {
+    const t = setup({ origin: byPage });
+    await t.run.start(asked, { languages: [EN, SV] });
+    expect(t.items).toEqual([
+      { width: 1512, device: LAPTOP },
+      { width: 1024, breakpoint: "lg" },
+      { width: 390, device: PHONE },
+      { width: 1512, device: LAPTOP },
+      { width: 390, device: PHONE },
+    ]);
+    expect(t.languages).toEqual(["en", "en", "en", "sv", "sv"]);
+    expect(t.final().saved.map((s) => s.label)).toEqual([
+      "Laptop · English",
+      "lg · English",
+      "Phone · English",
+      "Laptop · Svenska",
+      "Phone · Svenska",
+    ]);
+    expect(t.final().stopped).toBeUndefined();
+    expect(t.announced).toEqual([false]);
+  });
+
+  test("each capture gets its language record and the run's address, the current one included", async () => {
+    const t = setup({ origin: byPage });
+    await t.run.start(asked, { languages: [EN, SV] });
+    const base = "https://example.com/en/";
+    const [en, sv] = [EN, SV].map((l) => ({ ...l, base }));
+    expect(t.records).toEqual([en, en, en, sv, sv]);
+  });
+
+  test("the address is where the run began, not the current language's link", async () => {
+    const t = setup({ origin: byPage, url: "https://example.com/en/?ref=nav" });
+    await t.run.start(asked, { languages: [EN, SV] });
+    const bases = t.records.map((r) => (r as { base?: string }).base);
+    expect(new Set(bases)).toEqual(new Set(["https://example.com/en/?ref=nav"]));
+  });
+
+  test("progress names the device and the language, counting every capture", async () => {
+    const t = setup({ origin: byPage });
+    await t.run.start(asked, { languages: [EN, SV] });
+    const labels = t.statuses
+      .filter((s) => s.state === "viewport")
+      .map((s) => (s.state === "viewport" ? `${s.label} ${s.index}/${s.total}` : ""));
+    expect(labels).toEqual([
+      "Laptop · English 1/5",
+      "Laptop · English 1/5",
+      "lg · English 2/5",
+      "Phone · English 3/5",
+      "Laptop · Svenska 4/5",
+      "Phone · Svenska 5/5",
+    ]);
+  });
+
+  test("the tab loads each language, then goes back to where it began before it is released", async () => {
+    const t = setup({ origin: byPage });
+    await t.run.start(asked, { languages: [EN, SV] });
+    expect(tabEvents(t.events)).toEqual([
+      "hold",
+      "navigate https://example.com/sv/",
+      "navigate https://example.com/en/",
+      "release",
+    ]);
+    expect(t.tab.url).toBe("https://example.com/en/");
+  });
+
+  test("languages on the page's own site run before languages on another", async () => {
+    const t = setup({ origin: byPage });
+    await t.run.start([{ width: 1512, device: LAPTOP }], { languages: [EN, DE, SV] });
+    expect(t.languages).toEqual(["en", "sv", "de"]);
+  });
+
+  test("a language that lands on another site is left out, and the rest still run", async () => {
+    const t = setup({
+      origin: byPage,
+      navigate: (url) => (url === SV.url ? "https://consent.example.net/" : url),
+    });
+    await t.run.start(asked, { languages: [EN, SV, FR] });
+    expect(t.languages).toEqual(["en", "en", "en", "fr", "fr"]);
+    expect(t.final().leftOut).toEqual(["Svenska couldn't be loaded, so it was left out."]);
+    expect(t.final().filename).toBe("example.com.frottage");
+    expect(t.final().stopped).toBeUndefined();
+    expect(t.announced).toEqual([true]);
+    expect(t.tab.url).toBe(EN.url);
+  });
+
+  test("a redirect within the language's own site is fine, and is that pass's address", async () => {
+    const t = setup({
+      origin: byPage,
+      navigate: (url) => (url === SV.url ? "https://example.com/sv-se/" : url),
+    });
+    await t.run.start(asked, { languages: [EN, SV] });
+    expect(t.languages).toEqual(["en", "en", "en", "sv", "sv"]);
+    expect(t.final().leftOut).toBeUndefined();
+  });
+
+  test("a language that lands back on the run's own page is left out", async () => {
+    for (const landing of ["https://example.com/en", "https://example.com/en/#top"]) {
+      const t = setup({ origin: byPage, navigate: (url) => (url === SV.url ? landing : url) });
+      await t.run.start(asked, { languages: [EN, SV, FR] });
+      expect(t.languages).toEqual(["en", "en", "en", "fr", "fr"]);
+      expect(t.final().leftOut).toEqual(["Svenska couldn't be loaded, so it was left out."]);
+      expect(t.tab.url).toBe(EN.url);
+    }
+  });
+
+  test("a language that lands on the current language's link is left out", async () => {
+    const t = setup({
+      origin: byPage,
+      url: "https://example.com/en/?ref=nav",
+      navigate: (url) => (url === SV.url ? EN.url : url),
+    });
+    await t.run.start(asked, { languages: [EN, SV] });
+    expect(t.languages).toEqual(["en", "en", "en"]);
+    expect(t.final().leftOut).toEqual(["Svenska couldn't be loaded, so it was left out."]);
+  });
+
+  test("a language page whose html lang is another language is left out", async () => {
+    const t = setup({
+      origin: byPage,
+      pageLanguage: (url) =>
+        url.startsWith(SV.url) ? "en-US" : url.startsWith(FR.url) ? "fr-FR" : "en",
+    });
+    await t.run.start(asked, { languages: [EN, SV, FR] });
+    expect(t.languages).toEqual(["en", "en", "en", "fr", "fr"]);
+    expect(t.final().leftOut).toEqual(["Svenska couldn't be loaded, so it was left out."]);
+  });
+
+  test("a language page whose html lang is missing or can't be read still runs", async () => {
+    for (const pageLanguage of [
+      () => null,
+      () => "",
+      () => {
+        throw new Error("Cannot access contents of the page");
+      },
+    ]) {
+      const t = setup({ origin: byPage, pageLanguage });
+      await t.run.start(asked, { languages: [EN, SV] });
+      expect(t.languages).toEqual(["en", "en", "en", "sv", "sv"]);
+      expect(t.final().leftOut).toBeUndefined();
+    }
+  });
+
+  test("Cancel during a language sends the tab back before it is released", async () => {
+    const t = setup({
+      origin: byPage,
+      capture: (_label, run, count) => {
+        if (count === 4) run.cancel();
+        return null;
+      },
+    });
+    await t.run.start(asked, { languages: [EN, SV] });
+    expect(t.languages).toEqual(["en", "en", "en", "sv"]);
+    expect(t.final().cancelled).toBe(true);
+    expect(tabEvents(t.events).slice(-2)).toEqual(["navigate https://example.com/en/", "release"]);
+    expect(t.tab.url).toBe(EN.url);
+  });
+
+  test("a load that fails leaves that language out and still sends the tab back", async () => {
+    const t = setup({
+      origin: byPage,
+      navigate: (url) => {
+        if (url === SV.url) throw new Error("The page did not finish loading");
+        return url;
+      },
+    });
+    await t.run.start(asked, { languages: [EN, SV] });
+    expect(t.languages).toEqual(["en", "en", "en"]);
+    expect(t.final().leftOut).toEqual(["Svenska couldn't be loaded, so it was left out."]);
+    expect(tabEvents(t.events).slice(-2)).toEqual(["navigate https://example.com/en/", "release"]);
+    expect(t.tab.url).toBe(EN.url);
+    expect(t.final().saved).toHaveLength(3);
+  });
+
+  test("a run stopped during a language still sends the tab back", async () => {
+    const t = setup({
+      origin: byPage,
+      capture: (_label, _run, count) =>
+        count === 4 ? Promise.resolve({ ok: false, message: "The page broke" }) : null,
+    });
+    await t.run.start(asked, { languages: [EN, SV] });
+    expect(t.final().stopped).toBeDefined();
+    expect(tabEvents(t.events).slice(-2)).toEqual(["navigate https://example.com/en/", "release"]);
+  });
+
+  test("a page that leaves the language's address during its pass stops the run", async () => {
+    let svCaptures = 0;
+    const t = setup({
+      origin: byPage,
+      capture: (_label, _run, count) => {
+        if (count >= 4) svCaptures++;
+        if (svCaptures === 1) t.tab.url = "https://example.com/sv/other";
+        return null;
+      },
+    });
+    await t.run.start(asked, { languages: [EN, SV] });
+    expect(t.final().stopped).toBe("The page changed address, so the run stopped.");
+    expect(t.tab.url).toBe(EN.url);
+  });
+
+  test("lines the popup sent for languages it left out stay in the final status", async () => {
+    const line = "Deutsch needs access to de.example.org, so it was left out.";
+    const t = setup({
+      origin: byPage,
+      navigate: (url) => {
+        if (url === FR.url) throw new Error("The page did not finish loading");
+        return url;
+      },
+    });
+    await t.run.start(asked, { languages: [EN, SV, FR], leftOut: [line] });
+    expect(t.final().leftOut).toEqual([line, "Français couldn't be loaded, so it was left out."]);
+    expect(t.final().request.leftOut).toEqual([line]);
+  });
+
+  test("a popup's left-out line alone makes the run announce a failure", async () => {
+    const line = "Deutsch needs access to de.example.org, so it was left out.";
+    const t = setup({ origin: byPage });
+    await t.run.start(asked, { languages: [EN, SV], leftOut: [line] });
+    expect(t.final().saved).toHaveLength(5);
+    expect(t.final().leftOut).toEqual([line]);
+    expect(t.announced).toEqual([true]);
+  });
+
+  test("the final status carries the languages, for a re-run", async () => {
+    const t = setup({ origin: byPage });
+    await t.run.start(asked, { languages: [EN, SV] });
+    expect(t.final().request.languages).toEqual([EN, SV]);
+  });
+
+  test("a starting address that can't be read stops the run, and says so", async () => {
+    const t = setup({ origin: byPage, address: () => null });
+    await t.run.start(asked, { languages: [EN, SV] });
+    expect(t.final().stopped).toBe("The page's address couldn't be read, so the run stopped.");
+    expect(t.events).not.toContain("hold");
+  });
+
+  test("a run without languages never loads another address", async () => {
+    const t = setup();
+    await t.run.start(asked);
+    expect(t.events.some((e) => e.startsWith("navigate"))).toBe(false);
+    expect(t.languages).toEqual([undefined, undefined, undefined]);
+    expect("languages" in t.final().request).toBe(false);
+    expect(t.final().saved.map((s) => s.label)).toEqual(["Laptop", "lg", "Phone"]);
+  });
+});
+
 describe("resizeWindow", () => {
   test("returns the width Chrome gave, not the one asked for", async () => {
     const fake = fakeWindows({ width: 1728 });
@@ -861,5 +1159,64 @@ describe("CaptureGate", () => {
 
   test("with no capture held, a status belongs to the popup", () => {
     expect(new CaptureGate().offer(saved)).toBe(false);
+  });
+});
+
+describe("loadTab", () => {
+  type Listener = (tabId: number, change: { status?: string }) => void;
+  function fakeTabs(onUpdate: (fire: Listener) => void = () => {}) {
+    const listeners = new Set<Listener>();
+    const fire: Listener = (tabId, change) => {
+      for (const l of [...listeners]) l(tabId, change);
+    };
+    const asked: string[] = [];
+    const api: TabsApi = {
+      update: async (_tabId, info) => {
+        asked.push(info.url);
+        onUpdate(fire);
+      },
+      onUpdated: {
+        addListener: (l) => listeners.add(l),
+        removeListener: (l) => listeners.delete(l),
+      },
+    };
+    return { api, asked, listeners };
+  }
+
+  test("resolves once the tab's page has loaded", async () => {
+    const tabs = fakeTabs((fire) => {
+      fire(9, { status: "complete" });
+      fire(7, { status: "loading" });
+      setTimeout(() => fire(7, { status: "complete" }), 1);
+    });
+    await loadTab(tabs.api, 7, "https://example.com/sv/", 1000);
+    expect(tabs.asked).toEqual(["https://example.com/sv/"]);
+    expect(tabs.listeners.size).toBe(0);
+  });
+
+  test("a complete with no load begun first is the old page's, and is not taken", async () => {
+    const tabs = fakeTabs((fire) => fire(7, { status: "complete" }));
+    await expect(loadTab(tabs.api, 7, "https://example.com/sv/", 5)).rejects.toThrow(
+      "The page didn't finish loading"
+    );
+  });
+
+  test("gives up on a page that doesn't finish loading", async () => {
+    const tabs = fakeTabs();
+    await expect(loadTab(tabs.api, 7, "https://example.com/sv/", 5)).rejects.toThrow(
+      "The page didn't finish loading"
+    );
+    expect(tabs.listeners.size).toBe(0);
+  });
+
+  test("a refused update fails at once", async () => {
+    const tabs = fakeTabs();
+    tabs.api.update = async () => {
+      throw new Error("No tab with id: 7.");
+    };
+    await expect(loadTab(tabs.api, 7, "https://example.com/sv/", 1000)).rejects.toThrow(
+      "No tab with id: 7."
+    );
+    expect(tabs.listeners.size).toBe(0);
   });
 });

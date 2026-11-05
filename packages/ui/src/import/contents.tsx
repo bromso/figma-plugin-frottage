@@ -2,27 +2,35 @@ import { useId } from "react";
 import { Checkbox, Label, RadioGroup, RadioGroupItem } from "../index";
 import type { ContentsSummary, Placement, ReviewContents, ThemeChoice } from "./import-flow";
 
-/** The user's ticks, one per device and one per extra, and where the frames go. */
+/** The user's ticks, one per device, one per extra and one per language, and where the frames go. */
 export type ContentsChoice = {
   devices: boolean[];
   extras: boolean[];
   placement: Placement;
   themes: ThemeChoice;
+  languages: boolean[];
 };
 
 function TickRow({
   label,
   checked,
+  disabled,
   onChange,
 }: {
   label: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (value: boolean) => void;
 }) {
   const id = useId();
   return (
     <div className="flex h-6 items-center gap-2">
-      <Checkbox id={id} checked={checked} onCheckedChange={(v) => onChange(v === true)} />
+      <Checkbox
+        id={id}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={(v) => onChange(v === true)}
+      />
       <Label htmlFor={id}>{label}</Label>
     </div>
   );
@@ -106,6 +114,21 @@ export function ContentsSection({
               Tick Light, Dark or both.
             </p>
           )}
+        </fieldset>
+      )}
+      {contents.languages.length > 1 && (
+        <fieldset aria-label="Languages" className="m-0 flex min-w-0 flex-col gap-1 border-0 p-0">
+          <p className="flex h-6 items-center text-figma-text-secondary">Languages</p>
+          {contents.languages.map((language, i) => (
+            <TickRow
+              key={language.code}
+              label={language.name}
+              // The page's own language makes the frames, so it is always imported.
+              checked={language.current || (choice.languages[i] ?? true)}
+              disabled={language.current}
+              onChange={(on) => onChange({ ...choice, languages: tick(choice.languages, i, on) })}
+            />
+          ))}
         </fieldset>
       )}
       {summary.collections && <p>{summary.collections}</p>}

@@ -1827,6 +1827,362 @@ describe("a device set", () => {
     expect(r?.plainVersions).toEqual([0, 1, 2]);
   });
 
+  describe("languages", () => {
+    const WORDS: Record<string, string> = {
+      English: "Learn more",
+      Svenska: "Läs mer",
+      Deutsch: "Mehr erfahren",
+    };
+    const BUY: Record<string, string> = { English: "Buy", Svenska: "Köp", Deutsch: "Kaufen" };
+    const PAGE = "Home";
+    const textVar = (name: string, words: Record<string, string>, languages: string[]) => ({
+      ...base,
+      key: `language:${name}`,
+      name,
+      collection: "language" as const,
+      type: "STRING" as const,
+      values: languages.map((l) => words[l] as string),
+      scopes: ["TEXT_CONTENT"],
+    });
+    /** `flat`'s layers with a Language collection of `languages`, before Theme. */
+    const withLanguages = (languages = ["English", "Svenska"]): PlanLayers => ({
+      ...flat,
+      collections: [
+        ...flat.collections.filter((c) => c.kind !== "theme"),
+        { kind: "language", name: "Language", modes: languages },
+        ...flat.collections.filter((c) => c.kind === "theme"),
+      ],
+      variables: [
+        ...flat.variables,
+        textVar("Main/Learn more", WORDS, languages),
+        textVar("Main/Buy", BUY, languages),
+      ],
+    });
+    const learnKey = "language:Main/Learn more";
+    const buyKey = "language:Main/Buy";
+    /** A page's frame: a label bound to Language, and a button whose label overrides its main's. */
+    const pageOps = (language?: string): PlanOp[] => {
+      const own = language !== undefined;
+      const words = (w: Record<string, string>) => w[language ?? "English"] as string;
+      const label = (chars: string, key?: string) =>
+        textOp("t", "a", [run(0, chars.length, inter)], false, {
+          text: chars,
+          ...(key && !own ? { textKey: key } : {}),
+        });
+      return [
+        frame("btn/n", null, { name: "btn", x: 0, y: 0, component: { key: "btn", name: "btn" } }),
+        textOp("btn/t", "btn/n", [run(0, 4, inter)], false, {
+          text: "Shop",
+          ...(own ? {} : { textKey: "language:Main/Shop" }),
+        }),
+        frame("a", null, { w: 400, h: 800, fills, childCount: 2 }),
+        label(words(WORDS), learnKey),
+        {
+          op: "instance",
+          id: "i",
+          parent: "a",
+          name: "btn",
+          x: 7,
+          y: 8,
+          w: 100,
+          h: 50,
+          key: "btn",
+          resize: false,
+          overrides: [
+            {
+              path: [0],
+              kind: "text",
+              text: words(BUY),
+              runs: [run(0, words(BUY).length, inter)],
+              ...(own ? {} : { textKey: buyKey }),
+            },
+          ],
+        },
+      ];
+    };
+    type Frame = { device: string; language?: string };
+    const MAIN: Frame[] = [{ device: "Desktop" }, { device: "Phone" }];
+    async function importLanguages(
+      f: ReturnType<typeof fakeFigma>,
+      plan = withLanguages(),
+      frames: Frame[] = MAIN
+    ) {
+      const a = createApplier(f.figma);
+      await a.beginDeviceSet({
+        name: PAGE,
+        layers: plan,
+        options: DEFAULT_IMPORT_OPTIONS,
+        placement: "current-page",
+      });
+      for (const [index, d] of frames.entries()) {
+        await a.begin({
+          ...meta,
+          name: PAGE,
+          version: { index, label: d.device },
+          device: {
+            mode: d.device,
+            breakpoint: null,
+            ...(d.language ? { language: d.language } : {}),
+          },
+        });
+        await a.importTokens(
+          { textStyles: [], colors: [], collection: "example.com", layers: plan },
+          DEFAULT_IMPORT_OPTIONS
+        );
+        await a.applyBatch(pageOps(d.language));
+        await a.end();
+      }
+      return a.endSet();
+    }
+    const sectionNamed = (f: ReturnType<typeof fakeFigma>, name: string): FakeNode =>
+      f.created.find((n) => n.type === "SECTION" && n.name === name && !n.removed) as FakeNode;
+    const languageVariable = (f: ReturnType<typeof fakeFigma>, name: string) =>
+      [...f.tokens.variables.values()].find(
+        (v) => v.name === name && v.variableCollectionId === collectionNamed(f, "Language")?.id
+      ) as FakeNode;
+    const labelOf = (frameNode: FakeNode): FakeNode =>
+      frameNode.children.find((n: FakeNode) => n.type === "TEXT") as FakeNode;
+    const buttonTextOf = (frameNode: FakeNode): FakeNode =>
+      (frameNode.children.find((n: FakeNode) => n.type === "INSTANCE") as FakeNode).children[0];
+
+    test("makes the Language collection, a string variable per text holding each language", async () => {
+      const f = fakeFigma();
+      await importLanguages(f);
+      const language = collectionNamed(f, "Language");
+      expect(language.modes.map((m: { name: string }) => m.name)).toEqual(["English", "Svenska"]);
+      const learn = languageVariable(f, "Main/Learn more");
+      expect(learn.resolvedType).toBe("STRING");
+      expect(learn.scopes).toEqual(["TEXT_CONTENT"]);
+      expect(f.tokens.valueIn(learn, modeIn(language, "English"))).toBe("Learn more");
+      expect(f.tokens.valueIn(learn, modeIn(language, "Svenska"))).toBe("Läs mer");
+    });
+
+    test("a text binds its characters to its Language variable, in every frame", async () => {
+      const f = fakeFigma();
+      await importLanguages(f);
+      const learn = languageVariable(f, "Main/Learn more");
+      const frames = sectionNamed(f, PAGE).children;
+      expect(frames).toHaveLength(2);
+      for (const n of frames) {
+        expect(labelOf(n).characters).toBe("Learn more");
+        expect(labelOf(n).boundVariables?.characters?.id).toBe(learn.id);
+      }
+    });
+
+    test("an instance's text override binds to its own variable", async () => {
+      const f = fakeFigma();
+      await importLanguages(f);
+      const buy = languageVariable(f, "Main/Buy");
+      for (const n of sectionNamed(f, PAGE).children) {
+        expect(buttonTextOf(n).characters).toBe("Buy");
+        expect(buttonTextOf(n).boundVariables?.characters?.id).toBe(buy.id);
+      }
+    });
+
+    test("an instance text the mapper left plain drops its main's Language binding", async () => {
+      const f = fakeFigma();
+      const SHOP = { English: "Shop", Svenska: "Handla" };
+      const plan = withLanguages();
+      plan.variables.push(textVar("Main/Shop", SHOP, ["English", "Svenska"]));
+      // The main's text is bound; the override, a text of mixed styles, has no textKey.
+      const ops = (): PlanOp[] =>
+        pageOps().map((op) =>
+          op.op === "instance"
+            ? {
+                ...op,
+                overrides: op.overrides.map((o) =>
+                  o.kind === "text" ? { ...o, text: "Buy it", textKey: undefined } : o
+                ),
+              }
+            : op
+        );
+      const a = createApplier(f.figma);
+      await a.beginDeviceSet({
+        name: PAGE,
+        layers: plan,
+        options: DEFAULT_IMPORT_OPTIONS,
+        placement: "current-page",
+      });
+      for (const [index, d] of MAIN.entries()) {
+        await a.begin({
+          ...meta,
+          name: PAGE,
+          version: { index, label: d.device },
+          device: { mode: d.device, breakpoint: null },
+        });
+        await a.importTokens(
+          { textStyles: [], colors: [], collection: "example.com", layers: plan },
+          DEFAULT_IMPORT_OPTIONS
+        );
+        await a.applyBatch(ops());
+        await a.end();
+      }
+      await a.endSet();
+      const shop = languageVariable(f, "Main/Shop");
+      const main = f.created.find((n) => n.type === "COMPONENT" && !n.removed) as FakeNode;
+      expect(main.children[0].boundVariables?.characters?.id).toBe(shop.id);
+      for (const n of sectionNamed(f, PAGE).children) {
+        expect(buttonTextOf(n).characters).toBe("Buy it");
+        expect(buttonTextOf(n).boundVariables?.characters).toBeUndefined();
+      }
+    });
+
+    test("the section opens on the page's own language beside Color Mode", async () => {
+      const f = fakeFigma();
+      await importLanguages(f);
+      const colorMode = collectionNamed(f, "Color Mode");
+      const language = collectionNamed(f, "Language");
+      expect(sectionNamed(f, PAGE).explicitModes).toEqual({
+        [colorMode.id]: modeIn(colorMode, "Light"),
+        [language.id]: modeIn(language, "English"),
+      });
+    });
+
+    test("a language's own frame goes in its own section, right of the main one, on that language", async () => {
+      const f = fakeFigma();
+      const r = await importLanguages(f, withLanguages(), [
+        ...MAIN,
+        { device: "Phone", language: "Svenska" },
+      ]);
+      const main = sectionNamed(f, PAGE);
+      const own = sectionNamed(f, `${PAGE} — Svenska`);
+      expect(main.children).toHaveLength(2);
+      expect(own.parent).toBe(f.page);
+      expect(own.x).toBeGreaterThanOrEqual(main.x + main.width);
+      expect(own.y).toBe(main.y);
+      const colorMode = collectionNamed(f, "Color Mode");
+      const language = collectionNamed(f, "Language");
+      expect(own.explicitModes).toEqual({
+        [colorMode.id]: modeIn(colorMode, "Light"),
+        [language.id]: modeIn(language, "Svenska"),
+      });
+      const [phone] = own.children;
+      expect(own.children).toHaveLength(1);
+      expect(phone.name).toBe(`${PAGE} — Phone`);
+      const device = collectionNamed(f, "Device");
+      expect(phone.explicitModes).toEqual({
+        [device.id]: modeIn(device, "Phone"),
+        [language.id]: modeIn(language, "Svenska"),
+      });
+      // Its own texts, plain; its tokens bound as any frame's.
+      expect(labelOf(phone).characters).toBe("Läs mer");
+      expect(labelOf(phone).boundVariables?.characters).toBeUndefined();
+      expect(phone.fills[0].boundVariables.color.id).toBe(themeVariable(f, "color/card").id);
+      // Fitted around its frame.
+      expect(own.width).toBeGreaterThanOrEqual(phone.x + phone.width);
+      expect(r.rootIds).toEqual([...main.children, phone].map((n: FakeNode) => n.id));
+      expect(f.page.selection).toEqual([main, own]);
+      // The mains go under the sections, clear of both.
+      const mains = f.created.filter(
+        (n) => n.type === "SECTION" && n.name.endsWith(" components") && !n.removed
+      );
+      expect(mains).toHaveLength(3);
+      for (const m of mains) {
+        expect(m.y).toBeGreaterThanOrEqual(Math.max(main.y + main.height, own.y + own.height));
+      }
+      const last = mains.at(-1) as FakeNode;
+      expect(last.x).toBeGreaterThanOrEqual(own.x);
+    });
+
+    test("a main opens on its frame's language, though the collection's default is another", async () => {
+      const f = fakeFigma();
+      // An earlier import from the Svenska page made Svenska the default mode.
+      await importLanguages(f, withLanguages(["Svenska", "English"]));
+      const language = collectionNamed(f, "Language");
+      expect(language.defaultModeId).toBe(modeIn(language, "Svenska"));
+      const made = f.created.length;
+      await importLanguages(f);
+      const mains = f.created.slice(made).filter((n) => n.type === "COMPONENT");
+      expect(mains).toHaveLength(2);
+      for (const main of mains) {
+        expect(main.explicitModes[language.id]).toBe(modeIn(language, "English"));
+      }
+    });
+
+    test("a cancel once a language's section has begun removes that section too", async () => {
+      const f = fakeFigma();
+      const plan = withLanguages();
+      const a = createApplier(f.figma);
+      await a.beginDeviceSet({
+        name: PAGE,
+        layers: plan,
+        options: DEFAULT_IMPORT_OPTIONS,
+        placement: "current-page",
+      });
+      const frames: Frame[] = [...MAIN, { device: "Phone", language: "Svenska" }];
+      for (const [index, d] of frames.entries()) {
+        await a.begin({
+          ...meta,
+          name: PAGE,
+          version: { index, label: d.device },
+          device: {
+            mode: d.device,
+            breakpoint: null,
+            ...(d.language ? { language: d.language } : {}),
+          },
+        });
+        await a.applyBatch(pageOps(d.language));
+        if (d.language) break;
+        await a.end();
+      }
+      const own = sectionNamed(f, `${PAGE} — Svenska`);
+      expect(own).toBeDefined();
+      await a.cancel();
+      expect(own.removed).toBe(true);
+      expect(f.created.filter((n) => n.type === "SECTION" && !n.removed)).toEqual([]);
+      expect(f.page.children).toEqual([]);
+      expect(f.tokens.collections.size).toBe(0);
+    });
+
+    test("with room for one Language mode no text binds, and the language goes unmade", async () => {
+      const f = fakeFigma({ modeLimit: 1 });
+      const r = await importLanguages(f);
+      expect(collectionNamed(f, "Language")).toBeUndefined();
+      for (const n of sectionNamed(f, PAGE).children) {
+        expect(labelOf(n).characters).toBe("Learn more");
+        expect(labelOf(n).boundVariables?.characters).toBeUndefined();
+        expect(buttonTextOf(n).boundVariables?.characters).toBeUndefined();
+      }
+      expect(r.layers?.modesDropped).toContain("Svenska");
+      expect(r.layers?.modes.some((m) => m.kind === "language")).toBe(false);
+      expect(r.tokenFailures).toBe(0);
+    });
+
+    test("a re-import with a new language adds its mode and keeps the rest", async () => {
+      const f = fakeFigma();
+      await importLanguages(f);
+      const before = languageVariable(f, "Main/Learn more");
+      const r = await importLanguages(f, withLanguages(["English", "Svenska", "Deutsch"]));
+      const language = collectionNamed(f, "Language");
+      expect(language.modes.map((m: { name: string }) => m.name)).toEqual([
+        "English",
+        "Svenska",
+        "Deutsch",
+      ]);
+      const learn = languageVariable(f, "Main/Learn more");
+      expect(learn.id).toBe(before.id);
+      expect(f.tokens.valueIn(learn, modeIn(language, "Deutsch"))).toBe("Mehr erfahren");
+      expect(f.tokens.valueIn(learn, modeIn(language, "Svenska"))).toBe("Läs mer");
+      expect(r.layers?.modes.find((m) => m.kind === "language")).toEqual({
+        kind: "language",
+        collection: "Language",
+        created: ["English", "Svenska", "Deutsch"],
+        added: ["Deutsch"],
+      });
+    });
+
+    test("a text that refuses its variable stays plain, and counts", async () => {
+      const f = fakeFigma({ failTextBinding: true });
+      const r = await importLanguages(f);
+      for (const n of sectionNamed(f, PAGE).children) {
+        expect(labelOf(n).characters).toBe("Learn more");
+        expect(labelOf(n).boundVariables?.characters).toBeUndefined();
+      }
+      // Each frame's label and button text; the main's text has no variable in this plan.
+      expect(r.tokenFailures).toBe(4);
+    });
+  });
+
   test("a Stage 3 set still lays its frames on the page, with no section", async () => {
     const f = fakeFigma();
     const a = createApplier(f.figma);

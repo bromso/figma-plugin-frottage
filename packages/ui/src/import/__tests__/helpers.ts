@@ -118,8 +118,9 @@ export function frottageFile(texts: number, version = 1, name = "page.frottage")
 }
 
 /** A File of `count` copies of one custom element, each holding a text layer. */
-export function repeatedFile(count: number): File {
+export function repeatedFile(count: number, language?: Capture["language"]): File {
   const capture = captureWithTexts(0);
+  if (language) capture.language = language;
   const cards = Array.from({ length: count }, (_, i) => {
     const card = element(`c${i}`, [text(`t${i}`)]);
     return { ...card, semantic: { tag: "x-card" } } as CaptureNode;
@@ -477,4 +478,38 @@ export function deviceSetFile(opts: {
   // Extras first, so the import has to put them after the devices.
   const bytes = packFrottageSet([...extras, ...devices], new Map());
   return new File([bytes as BlobPart], opts.name ?? "devices.frottage");
+}
+
+/**
+ * A File of one page captured in English and Svenska on a Laptop and a Phone. The Svenska Phone
+ * page holds `phoneTexts` texts against English's 3, so with fewer it pairs too poorly to share
+ * English's frame. Without `phone`, the Laptop alone.
+ */
+export function languageSetFile(phoneTexts = 0, phone = true): File {
+  const make = (device: string, width: number, code: string, texts: number) => {
+    const capture = captureWithTexts(texts);
+    // One page's address for all, so the import groups them as one page.
+    capture.source.url = "https://example.com/";
+    capture.source.viewport = { w: width, h: 800 };
+    const id = device.toLowerCase();
+    capture.version = {
+      label: device,
+      kind: "viewport",
+      device: { id, name: device, height: 800 },
+    };
+    const name = code === "en" ? "English" : "Svenska";
+    const url = `https://example.com/${code}/`;
+    capture.language = { code, name, url, current: code === "en" };
+    return capture;
+  };
+  const bytes = packFrottageSet(
+    [
+      make("Laptop", 1512, "en", 3),
+      ...(phone ? [make("Phone", 390, "en", 3)] : []),
+      make("Laptop", 1512, "sv", 3),
+      ...(phone ? [make("Phone", 390, "sv", phoneTexts)] : []),
+    ],
+    new Map()
+  );
+  return new File([bytes as BlobPart], "languages.frottage");
 }

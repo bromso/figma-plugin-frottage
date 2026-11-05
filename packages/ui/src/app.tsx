@@ -292,6 +292,7 @@ function Review({
             light: contents.themes.light?.on ?? false,
             dark: contents.themes.dark?.on ?? false,
           },
+          languages: contents.languages.map((l) => l.on),
         }
       : null
   );
@@ -301,17 +302,35 @@ function Review({
     contents !== undefined &&
     (picked.themes.light !== (contents.themes.light?.on ?? false) ||
       picked.themes.dark !== (contents.themes.dark?.on ?? false));
+  const languagesChanged =
+    picked !== null &&
+    contents !== undefined &&
+    picked.languages.some((on, i) => on !== contents.languages[i]?.on);
+  // The codes of the languages ticked; the current one always.
+  const languages = useMemo(
+    () =>
+      contents?.languages
+        .filter((l, i) => l.current || picked?.languages[i] !== false)
+        .map((l) => l.code) ?? [],
+    [contents, picked]
+  );
   const summary = useMemo(() => {
     if (!contents || !picked) return null;
     const first = { collections: contents.collections, overLimit: contents.overLimit };
     const unchanged =
       picked.devices.every((on, i) => on === contents.devices[i]?.on) &&
       picked.extras.every((on, i) => on === contents.extras[i]?.on) &&
-      !themesChanged;
+      !themesChanged &&
+      !languagesChanged;
     return unchanged
       ? first
-      : (contents.summarize?.(picked.devices, picked.extras, picked.themes) ?? first);
-  }, [contents, picked, themesChanged]);
+      : (contents.summarize?.(
+          picked.devices,
+          picked.extras,
+          picked.themes,
+          languagesChanged ? languages : undefined
+        ) ?? first);
+  }, [contents, picked, themesChanged, languagesChanged, languages]);
   // A device set always shows its contents, so the options wait behind a button unless asked for.
   const [showOptions, setShowOptions] = useState(
     !contents || contents.devices.length === 0 || state.optionsOpen === true
@@ -377,6 +396,7 @@ function Review({
                       extras: picked.extras,
                       placement: picked.placement,
                       ...(themesChanged ? { themes: picked.themes } : {}),
+                      ...(languagesChanged ? { languages } : {}),
                     },
                   }
                 : {}),

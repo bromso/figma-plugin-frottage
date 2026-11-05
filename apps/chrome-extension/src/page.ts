@@ -1,4 +1,4 @@
-import type { Capture } from "@repo/capture-schema";
+import type { Capture, PageLanguage } from "@repo/capture-schema";
 import type { StaticIconName } from "@repo/ui";
 import type { RunStatus } from "./capture-run";
 import type { RunWidth } from "./plan-widths";
@@ -77,6 +77,18 @@ export function cleanThemes(themes: unknown): { light: boolean; dark: boolean } 
   const { light, dark } = themes as Record<string, unknown>;
   if (typeof light !== "boolean" || typeof dark !== "boolean") return undefined;
   return { light, dark };
+}
+
+/** A language as the format stores it, or undefined when it is not one or is too long. */
+export function cleanLanguage(language: unknown): PageLanguage | undefined {
+  if (!language || typeof language !== "object") return undefined;
+  const { code, name, url, current, base } = language as Record<string, unknown>;
+  const fits = (s: unknown, max: number, min = 1): s is string =>
+    typeof s === "string" && s.length >= min && s.length <= max;
+  if (!fits(code, 20) || !fits(name, 40) || !fits(url, 2048, 0)) return undefined;
+  if (typeof current !== "boolean") return undefined;
+  if (typeof base === "string" && !fits(base, 2048, 0)) return undefined;
+  return { code, name, url, current, ...(typeof base === "string" ? { base } : {}) };
 }
 
 /**
@@ -433,6 +445,7 @@ export function rerunRequest(
   runWidths?: RunWidth[];
   collapseWrappers: boolean;
   themes?: { light: boolean; dark: boolean };
+  languages?: PageLanguage[];
 } {
   const { runWidths } = status.request;
   // A label saved by an older build is left behind: the popup no longer asks for one.
@@ -441,6 +454,9 @@ export function rerunRequest(
     ...(runWidths ? { runWidths: runWidths.map((w) => ({ ...w })) } : {}),
     collapseWrappers,
     ...(status.request.themes ? { themes: { ...status.request.themes } } : {}),
+    ...(status.request.languages
+      ? { languages: status.request.languages.map((l) => ({ ...l })) }
+      : {}),
   };
 }
 
@@ -461,7 +477,10 @@ export function viewportAdvice(status: RunStatus & { state: "viewport-done" }): 
       : "No file was saved.",
     mismatches: status.mismatched.map((m) => `${m.requested} was captured at ${m.width}.`),
     stopped: status.stopped ?? (status.cancelled ? "You stopped the run." : null),
-    skipped: status.skipped.map((w) => `${w} couldn't be reached, so it was skipped.`),
+    skipped: [
+      ...status.skipped.map((w) => `${w} couldn't be reached, so it was skipped.`),
+      ...(status.leftOut ?? []),
+    ],
     nodeWarning: nodeAdvice(status.nodes, status.nodeLimit).warning,
     blockedImages: status.blockedImages,
   };
@@ -483,4 +502,85 @@ export function applyProbe(
     themes: { light: current.light, dark: current.dark && start.darkEnabled },
     darkEnabled: start.darkEnabled,
   };
+}
+
+/**
+ * The Languages boxes as the popup first shows them: every language the probe found, with only the
+ * current one ticked. Fewer than two, or a probe that failed, shows no group.
+ */
+export function initialLanguages(probe: { ok: boolean; languages?: PageLanguage[] } | undefined): {
+  languages: PageLanguage[];
+  ticked: string[];
+} {
+  const languages =
+    probe?.ok && probe.languages && probe.languages.length > 1 ? probe.languages : [];
+  return { languages, ticked: languages.filter((l) => l.current).map((l) => l.code) };
+}
+
+/** The boxes once the probe answers; ones the user already changed are kept, if still listed. */
+export function applyLanguages(
+  current: string[],
+  touched: boolean,
+  reply: { ok: boolean; languages?: PageLanguage[] } | undefined
+): { languages: PageLanguage[]; ticked: string[] } {
+  const start = initialLanguages(reply);
+  if (!touched) return start;
+  const listed = new Set(start.languages.map((l) => l.code));
+  const kept = new Set(current.filter((code) => listed.has(code)));
+  for (const code of start.ticked) kept.add(code);
+  return {
+    languages: start.languages,
+    ticked: start.languages.map((l) => l.code).filter((c) => kept.has(c)),
+  };
+}
+
+/** The ticked languages, current first and the page's order after it; the current is always in. */
+export function tickedLanguages(languages: PageLanguage[], ticked: string[]): PageLanguage[] {
+  const on = languages.filter((l) => l.current || ticked.includes(l.code));
+  return [...on.filter((l) => l.current), ...on.filter((l) => !l.current)];
+}
+
+/** The popup's line about the captures a run makes, or null unless more than one language is ticked. */
+export function captureCountLine(
+  devices: number,
+  languages: number,
+  extras: number
+): string | null {
+  if (languages <= 1) return null;
+  const total = devices * languages + extras;
+  const plus = extras > 0 ? `, plus ${extras} for breakpoints` : "";
+  return `${total} captures: ${devices} ${devices === 1 ? "device" : "devices"} × ${languages} languages${plus}`;
+}
+
+/**
+ * How many captures a run makes: every width in the current language, and each other language at
+ * the device widths, as the run plans its passes.
+ */
+export function runTotal(asked: RunWidth[], languages?: PageLanguage[]): number {
+  const others = languages && languages.length > 1 ? languages.length - 1 : 0;
+  return asked.length + others * asked.filter((w) => !w.breakpoint).length;
+}
+
+function originOf(url: string): string | null {
+  try {
+    const { origin } = new URL(url);
+    return origin === "null" ? null : origin;
+  } catch {
+    return null;
+  }
+}
+
+/** The permission patterns for the languages that live on another origin than `here`, once each. */
+export function otherOrigins(languages: PageLanguage[], here: string): string[] {
+  const own = originOf(here);
+  const origins = languages.flatMap((l) => {
+    const origin = originOf(l.url);
+    return origin && origin !== own ? [`${origin}/*`] : [];
+  });
+  return [...new Set(origins)];
+}
+
+/** What the popup says about a language it couldn't get access to. */
+export function leftOutLine(language: PageLanguage): string {
+  return `${language.name} needs access to ${new URL(language.url).host}, so it was left out.`;
 }

@@ -10,6 +10,7 @@ import {
   fakePort,
   fontFile,
   frottageFile,
+  languageSetFile,
   repeatedFile,
   setFile,
   themedFile,
@@ -785,5 +786,51 @@ describe("App (themes in what's in this file)", () => {
     await second.user.click(screen.getByRole("button", { name: "Import" }));
     await screen.findByText("Import complete");
     expect(second.port.deviceSetMeta?.layers.modes).toEqual(["Light", "Brand"]);
+  });
+});
+
+describe("App (languages in what's in this file)", () => {
+  async function chosen(file: File) {
+    const user = userEvent.setup();
+    const port = fakePort();
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose .frottage files"), file);
+    await screen.findByText("What's in this file");
+    return { user, port };
+  }
+
+  it("a file in English and Svenska ticks both; English can't be unticked", async () => {
+    const { user, port } = await chosen(languageSetFile(3));
+    expect(screen.getByRole("group", { name: "Languages" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "English" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "English" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Svenska" })).toBeChecked();
+    expect(screen.getByText(/Language 2/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(
+      port.deviceSetMeta?.layers.collections.find((c) => c.kind === "language")?.modes
+    ).toEqual(["English", "Svenska"]);
+  });
+
+  it("Svenska unticked leaves the line and the import without a Language collection", async () => {
+    const { user, port } = await chosen(languageSetFile(3));
+    await user.click(screen.getByRole("checkbox", { name: "Svenska" }));
+    expect(screen.getByText(/^Device 2 modes/)).not.toHaveTextContent("Language");
+    await user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(port.deviceSetMeta?.layers.collections.some((c) => c.kind === "language")).toBe(false);
+  });
+
+  it("a file in one language shows no Languages group", async () => {
+    await chosen(
+      deviceSetFile({
+        devices: [
+          { name: "Laptop", width: 1512 },
+          { name: "Phone", width: 390 },
+        ],
+      })
+    );
+    expect(screen.queryByRole("group", { name: "Languages" })).toBeNull();
   });
 });

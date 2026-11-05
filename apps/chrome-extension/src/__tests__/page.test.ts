@@ -1,24 +1,30 @@
 import { describe, expect, test } from "bun:test";
 import {
   allowAccessAndRecapture,
+  applyLanguages,
   applyProbe,
   BREAKPOINT_WAIT_MS,
   canCapture,
+  captureCountLine,
   captureFilename,
   captureLabel,
+  cleanLanguage,
   cleanThemes,
   DEVICE_HEIGHTS,
   DEVICES,
   friendlyError,
   imageAdvice,
+  initialLanguages,
   initialThemes,
   isRestrictedUrl,
   LABEL_MAX,
+  leftOutLine,
   NO_DARK_HINT,
   NO_LIGHT_HINT,
   NO_THEME_HINT,
   nodeAdvice,
   normaliseVersion,
+  otherOrigins,
   pageOrigin,
   pageVersion,
   parseChoices,
@@ -26,6 +32,7 @@ import {
   popupView,
   rerunRequest,
   themeHint,
+  tickedLanguages,
   viewportAdvice,
   viewportStatusLabel,
 } from "../page";
@@ -459,6 +466,14 @@ describe("viewportAdvice", () => {
     ]);
   });
 
+  test("a language left out is named after the skipped widths", () => {
+    const line = "Svenska couldn't be loaded, so it was left out.";
+    expect(viewportAdvice({ ...base, skipped: [3840], leftOut: [line] }).skipped).toEqual([
+      "3840 couldn't be reached, so it was skipped.",
+      line,
+    ]);
+  });
+
   test("carries the size and image flags", () => {
     const a = viewportAdvice({ ...base, nodeLimit: true, blockedImages: 3 });
     expect(a.nodeWarning).toContain("20,000");
@@ -702,5 +717,112 @@ describe("cleanThemes", () => {
     expect(cleanThemes({ light: "yes", dark: true })).toBeUndefined();
     expect(cleanThemes({ light: true })).toBeUndefined();
     expect(cleanThemes(null)).toBeUndefined();
+  });
+});
+
+describe("cleanLanguage", () => {
+  const SV = { code: "sv", name: "Svenska", url: "https://example.com/sv/", current: false };
+  test("keeps a language as the format stores it", () => {
+    expect(cleanLanguage({ ...SV, extra: 1 })).toEqual(SV);
+  });
+  test("keeps the address the run began at, when it is one", () => {
+    const base = "https://example.com/en/";
+    expect(cleanLanguage({ ...SV, base })).toEqual({ ...SV, base });
+    expect(cleanLanguage({ ...SV, base: 1 })).toEqual(SV);
+  });
+  test("anything else, or anything too long, is no language", () => {
+    expect(cleanLanguage(undefined)).toBeUndefined();
+    expect(cleanLanguage(null)).toBeUndefined();
+    expect(cleanLanguage({ ...SV, current: "no" })).toBeUndefined();
+    expect(cleanLanguage({ ...SV, code: "" })).toBeUndefined();
+    expect(cleanLanguage({ ...SV, code: "x".repeat(21) })).toBeUndefined();
+    expect(cleanLanguage({ ...SV, name: "x".repeat(41) })).toBeUndefined();
+    expect(cleanLanguage({ ...SV, url: "x".repeat(2049) })).toBeUndefined();
+    expect(cleanLanguage({ ...SV, base: "x".repeat(2049) })).toBeUndefined();
+  });
+});
+
+describe("languages", () => {
+  const en = { code: "en", name: "English", url: "https://site.test/", current: true };
+  const sv = { code: "sv", name: "Svenska", url: "https://sv.site.test/", current: false };
+  const de = { code: "de", name: "Deutsch", url: "https://site.test/de/", current: false };
+
+  test("initialLanguages lists the probe's languages with the current one ticked", () => {
+    expect(initialLanguages({ ok: true, languages: [en, sv] })).toEqual({
+      languages: [en, sv],
+      ticked: ["en"],
+    });
+  });
+
+  test("initialLanguages shows nothing for fewer than two, or a failed probe", () => {
+    const none = { languages: [], ticked: [] };
+    expect(initialLanguages({ ok: true, languages: [en] })).toEqual(none);
+    expect(initialLanguages({ ok: true })).toEqual(none);
+    expect(initialLanguages({ ok: false })).toEqual(none);
+    expect(initialLanguages(undefined)).toEqual(none);
+  });
+
+  test("applyLanguages keeps boxes the user changed", () => {
+    const reply = { ok: true, languages: [en, sv, de] };
+    expect(applyLanguages(["en", "sv"], false, reply).ticked).toEqual(["en"]);
+    expect(applyLanguages(["en", "sv"], true, reply).ticked).toEqual(["en", "sv"]);
+    expect(applyLanguages(["en", "xx"], true, reply).ticked).toEqual(["en"]);
+  });
+
+  test("tickedLanguages puts the current language first and keeps the page's order after it", () => {
+    const fr = { code: "fr", name: "Francais", url: "https://site.test/fr/", current: false };
+    expect(tickedLanguages([sv, en, de, fr], ["fr", "sv"]).map((l) => l.code)).toEqual([
+      "en",
+      "sv",
+      "fr",
+    ]);
+    expect(tickedLanguages([en, sv], []).map((l) => l.code)).toEqual(["en"]);
+  });
+
+  test("captureCountLine counts every capture and says how", () => {
+    expect(captureCountLine(3, 2, 2)).toBe(
+      "8 captures: 3 devices × 2 languages, plus 2 for breakpoints"
+    );
+    expect(captureCountLine(1, 2, 0)).toBe("2 captures: 1 device × 2 languages");
+    expect(captureCountLine(2, 3, 1)).toBe(
+      "7 captures: 2 devices × 3 languages, plus 1 for breakpoints"
+    );
+  });
+
+  test("captureCountLine says nothing for one language", () => {
+    expect(captureCountLine(3, 1, 2)).toBeNull();
+    expect(captureCountLine(3, 0, 0)).toBeNull();
+  });
+
+  test("otherOrigins names each other origin once, and none for the page's own", () => {
+    const sv2 = { ...sv, code: "sv-fi", url: "https://sv.site.test/fi/" };
+    expect(otherOrigins([en, de], "https://site.test/")).toEqual([]);
+    expect(otherOrigins([en, sv, sv2, de], "https://site.test/")).toEqual([
+      "https://sv.site.test/*",
+    ]);
+  });
+
+  test("otherOrigins ignores a language whose address can't be read", () => {
+    expect(otherOrigins([{ ...sv, url: "nope" }], "https://site.test/")).toEqual([]);
+  });
+
+  test("leftOutLine says it exactly", () => {
+    expect(leftOutLine(sv)).toBe("Svenska needs access to sv.site.test, so it was left out.");
+  });
+
+  test("rerunRequest repeats the languages the run was asked, and none from an older build", () => {
+    const done = {
+      state: "viewport-done" as const,
+      saved: [],
+      mismatched: [],
+      skipped: [] as number[],
+      nodes: 0,
+      nodeLimit: false,
+      blockedImages: 0,
+      request: { widths: [1512], collapseWrappers: false, versionLabel: "" },
+    };
+    expect("languages" in rerunRequest(done)).toBe(false);
+    const out = rerunRequest({ ...done, request: { ...done.request, languages: [en, sv] } });
+    expect(out.languages).toEqual([en, sv]);
   });
 });

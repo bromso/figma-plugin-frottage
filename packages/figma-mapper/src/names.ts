@@ -299,6 +299,14 @@ function customName(tag: string): { name: string; meaningless: boolean } | null 
 const join = (prefix: string, text: string | undefined): string =>
   text ? clip(`${prefix} - ${text}`) : prefix;
 
+const SECTION_WORDS = new Set([...Object.values(LANDMARKS), "Section", "Article"]);
+
+/** Whether a layer name reads as a landmark or section: `Main`, `Header - Site`, `Section - Pricing`. */
+export function isSectionName(name: string): boolean {
+  const word = name.split(" - ")[0] as string;
+  return SECTION_WORDS.has(word);
+}
+
 function tagWord(tag: string): string {
   const known = TAGS[tag];
   if (known) return known;

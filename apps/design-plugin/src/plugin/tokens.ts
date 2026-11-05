@@ -1375,6 +1375,8 @@ export function createTokenSet(api: PluginAPI) {
     spacing: (key: string | null | undefined) =>
       key ? (layers?.variable(key) ?? spacing.get(key)) : undefined,
     radius: (key: string | null | undefined) => (key ? layers?.variable(key) : undefined),
+    /** A text's Language variable, made only when Language has the page's language and another. */
+    text: (key: string | undefined) => (key ? layers?.variable(key) : undefined),
     effectStyleId: (key: string | undefined) => (key ? layers?.effectStyleId(key) : undefined),
     gradientStyleId: (key: string | undefined) => (key ? layers?.gradientStyleId(key) : undefined),
     /** A Color Mode mode by its label, or null without layers or room for it. */
