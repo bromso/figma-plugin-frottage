@@ -40,12 +40,16 @@ export function planWidths(
   const bounds = [...new Set(breakpoints)]
     .filter((b) => Number.isInteger(b) && b >= 1 && b <= BREAKPOINT_MAX)
     .sort((a, b) => a - b);
-  const ranges = bounds.map((min, i) => ({
-    min,
-    max: bounds[i + 1] ?? Number.POSITIVE_INFINITY,
-    name: breakpointName(min),
-    at: min,
-  }));
+  const ranges = bounds.map((min, i) => {
+    const max = bounds[i + 1] ?? Number.POSITIVE_INFINITY;
+    // A range starting under the narrowest window is captured at that window, if it reaches it.
+    return {
+      min,
+      max,
+      name: breakpointName(min),
+      at: min < WIDTH_MIN && WIDTH_MIN < max ? WIDTH_MIN : min,
+    };
+  });
   if (bounds.length > 0) {
     ranges.unshift({
       min: 0,

@@ -24,6 +24,15 @@ describe("planWidths", () => {
     expect(plan.widths).toHaveLength(6);
   });
 
+  test("a range starting under the narrowest window is captured at that window's width", () => {
+    // su.se records a boundary at 1: its range holds Phone portrait and must still be listed.
+    expect(planWidths([PHONE], [1, 1000]).ranges).toEqual([
+      { name: "min 1", at: 120, coveredBy: "Phone portrait" },
+      { name: "min 1000", at: 1000 },
+    ]);
+    expect(planWidths([LAPTOP], [1, 1000]).extras).toEqual([{ width: 120, breakpoint: "min 1" }]);
+  });
+
   test("a device row typed with another width keeps its name", () => {
     const plan = planWidths([{ ...LAPTOP, width: 1600 }], []);
     expect(plan.widths).toEqual([
@@ -86,7 +95,10 @@ describe("planWidths ranges", () => {
   });
 
   test("a range no window can reach is not listed", () => {
-    expect(planWidths([LAPTOP], [100]).ranges).toEqual([]);
+    // Below 100 no window reaches; from 100 up the narrowest window does, and Laptop is in it.
+    expect(planWidths([LAPTOP], [100]).ranges).toEqual([
+      { name: "min 100", at: 120, coveredBy: "Laptop" },
+    ]);
     expect(planWidths([LAPTOP], [5000]).ranges.map((r) => r.name)).toEqual(["base"]);
   });
 
