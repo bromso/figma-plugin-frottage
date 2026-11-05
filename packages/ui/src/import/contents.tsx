@@ -52,7 +52,7 @@ const deviceLabel = ({ name, width }: { name: string; width: number }) =>
 
 /** A breakpoint's name and width; a name that already holds its width (`min 576`) stands alone. */
 const breakpointLabel = ({ breakpoint, width }: { breakpoint: string; width: number }) =>
-  breakpoint.includes(String(width)) ? breakpoint : `${breakpoint} ${width}`;
+  breakpoint === `min ${width}` ? breakpoint : `${breakpoint} ${width}`;
 
 /** "What's in this file": a device set's captures to tick, what they make, and where it goes. */
 export function ContentsSection({
