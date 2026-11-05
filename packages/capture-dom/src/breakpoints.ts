@@ -1,7 +1,9 @@
+import { breakpointName } from "@repo/capture-schema/css-values";
 import { walkStyleRules } from "./themes";
 
 const MAX_BREAKPOINTS = 8;
 const MAX_WIDTH = 10000;
+const CLUSTER_GAP = 2;
 
 const LENGTH = "(\\d*\\.?\\d+)(px|em|rem)?";
 const MIN = new RegExp(`(?<![-\\w])min-width\\s*:\\s*${LENGTH}`, "gi");
@@ -37,9 +39,37 @@ function boundariesOf(text: string): number[] {
 }
 
 /**
+ * Boundaries within two px of a neighbour (chained) are one: a Tailwind-named width wins, else
+ * the most used, ties the smaller. The cluster's uses are summed.
+ */
+function clusterBoundaries(uses: Map<number, number>): Map<number, number> {
+  const sorted = [...uses.keys()].sort((a, b) => a - b);
+  const out = new Map<number, number>();
+  let group: number[] = [];
+  const flush = () => {
+    if (group.length === 0) return;
+    const named = group.filter((w) => !breakpointName(w).startsWith("min "));
+    const pool = named.length > 0 ? named : group;
+    const keep = pool.reduce((best, w) => ((uses.get(w) ?? 0) > (uses.get(best) ?? 0) ? w : best));
+    out.set(
+      keep,
+      group.reduce((sum, w) => sum + (uses.get(w) ?? 0), 0)
+    );
+    group = [];
+  };
+  for (const w of sorted) {
+    if (group.length > 0 && w - group[group.length - 1] > CLUSTER_GAP) flush();
+    group.push(w);
+  }
+  flush();
+  return out;
+}
+
+/**
  * The width boundaries the page's stylesheets switch at, ascending, in px. Only conditions on
  * width count. Past eight boundaries, the eight used by the most rules are kept (ties: the
- * smaller width). `unreadable` counts cross-origin sheets that were skipped.
+ * smaller width). Boundaries a pixel or two apart count as one. `unreadable` counts
+ * cross-origin sheets that were skipped.
  */
 export function readBreakpoints(doc: Document): { widths: number[]; unreadable: number } {
   const uses = new Map<number, number>();
@@ -56,7 +86,7 @@ export function readBreakpoints(doc: Document): { widths: number[]; unreadable: 
       unreadable++;
     }
   );
-  const widths = [...uses.entries()]
+  const widths = [...clusterBoundaries(uses).entries()]
     .sort((a, b) => b[1] - a[1] || a[0] - b[0])
     .slice(0, MAX_BREAKPOINTS)
     .map(([w]) => w)

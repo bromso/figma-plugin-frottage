@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { extrasLine, planWidths } from "../plan-widths";
+import { planWidths } from "../plan-widths";
 
 const LAPTOP = { width: 1512, id: "laptop" as const, name: "Laptop" };
 const TABLET = { width: 834, id: "tablet-portrait" as const, name: "Tablet portrait" };
 const PHONE = { width: 390, id: "phone-portrait" as const, name: "Phone portrait" };
 const MAINLINE = [640, 768, 1024, 1280, 1400];
+const TAILWIND = [640, 768, 1024, 1280, 1536];
 
 describe("planWidths", () => {
   test("one width per device, plus one per breakpoint range no device covers", () => {
@@ -21,6 +22,15 @@ describe("planWidths", () => {
     ]);
     expect(plan.widths.slice(3)).toEqual(plan.extras);
     expect(plan.widths).toHaveLength(6);
+  });
+
+  test("a range starting under the narrowest window is captured at that window's width", () => {
+    // su.se records a boundary at 1: its range holds Phone portrait and must still be listed.
+    expect(planWidths([PHONE], [1, 1000]).ranges).toEqual([
+      { name: "min 1", at: 120, coveredBy: "Phone portrait" },
+      { name: "min 1000", at: 1000 },
+    ]);
+    expect(planWidths([LAPTOP], [1, 1000]).extras).toEqual([{ width: 120, breakpoint: "min 1" }]);
   });
 
   test("a device row typed with another width keeps its name", () => {
@@ -55,37 +65,56 @@ describe("planWidths", () => {
   });
 
   test("no devices gives no captures", () => {
-    expect(planWidths([], MAINLINE)).toEqual({ widths: [], extras: [] });
+    expect(planWidths([], MAINLINE)).toMatchObject({ widths: [], extras: [] });
+  });
+
+  test("with no device ticked every range is still listed, none covered", () => {
+    expect(planWidths([], [640]).ranges).toEqual([
+      { name: "base", at: 390 },
+      { name: "sm", at: 640 },
+    ]);
   });
 });
 
-describe("extrasLine", () => {
-  test("one extra", () => {
-    expect(extrasLine([{ width: 1024, breakpoint: "lg" }])).toBe(
-      "Also captures 1024 for the lg breakpoint"
-    );
+describe("planWidths ranges", () => {
+  test("lists every range with where it is captured and the widest ticked device inside it", () => {
+    const plan = planWidths([LAPTOP, TABLET, PHONE], TAILWIND);
+    expect(plan.ranges).toEqual([
+      { name: "base", at: 390, coveredBy: "Phone portrait" },
+      { name: "sm", at: 640 },
+      { name: "md", at: 768, coveredBy: "Tablet portrait" },
+      { name: "lg", at: 1024 },
+      { name: "xl", at: 1280, coveredBy: "Laptop" },
+      { name: "2xl", at: 1536 },
+    ]);
   });
 
-  test("two extras", () => {
-    expect(
-      extrasLine([
-        { width: 640, breakpoint: "sm" },
-        { width: 1024, breakpoint: "lg" },
-      ])
-    ).toBe("Also captures 640 and 1024 for the sm and lg breakpoints");
+  test("names the widest device when several fall in one range", () => {
+    const plan = planWidths([PHONE, { ...TABLET, width: 500 }], [640]);
+    expect(plan.ranges[0]).toEqual({ name: "base", at: 390, coveredBy: "Tablet portrait" });
   });
 
-  test("several extras join with commas and a final and", () => {
-    expect(
-      extrasLine([
-        { width: 640, breakpoint: "sm" },
-        { width: 1024, breakpoint: "lg" },
-        { width: 1280, breakpoint: "xl" },
-      ])
-    ).toBe("Also captures 640, 1024 and 1280 for the sm, lg and xl breakpoints");
+  test("a range no window can reach is not listed", () => {
+    // Below 100 no window reaches; from 100 up the narrowest window does, and Laptop is in it.
+    expect(planWidths([LAPTOP], [100]).ranges).toEqual([
+      { name: "min 100", at: 120, coveredBy: "Laptop" },
+    ]);
+    expect(planWidths([LAPTOP], [5000]).ranges.map((r) => r.name)).toEqual(["base"]);
   });
 
-  test("none says nothing", () => {
-    expect(extrasLine([])).toBeNull();
+  test("no breakpoints lists no ranges", () => {
+    expect(planWidths([LAPTOP], []).ranges).toEqual([]);
+  });
+
+  test("a skipped range is left out of the extras and the widths, but still listed", () => {
+    const plan = planWidths([LAPTOP, TABLET, PHONE], TAILWIND, ["sm"]);
+    expect(plan.extras.map((e) => e.breakpoint)).toEqual(["lg", "2xl"]);
+    expect(plan.widths.map((w) => w.width)).toEqual([1512, 834, 390, 1024, 1536]);
+    expect(plan.ranges.map((r) => r.name)).toContain("sm");
+  });
+
+  test("skipping a covered range changes nothing", () => {
+    const plan = planWidths([LAPTOP, TABLET, PHONE], TAILWIND, ["md"]);
+    expect(plan.widths).toHaveLength(6);
   });
 });

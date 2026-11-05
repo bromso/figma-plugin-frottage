@@ -663,7 +663,7 @@ test("theme notes are reported once for the set, not per device", () => {
 });
 
 test("a set with no language merges as before", () => {
-  const { layers, plans, frames, report, languageFrames } = mergeDevices(mainline());
+  const { layers, plans, frames, report } = mergeDevices(mainline());
   // Recorded before languages were added: a set without them must merge exactly so.
   expect({
     collections: layers.collections,
@@ -677,7 +677,6 @@ test("a set with no language merges as before", () => {
       )
     ),
   }).toMatchSnapshot();
-  expect(languageFrames).toEqual([]);
 });
 
 describe("languages", () => {
@@ -743,12 +742,11 @@ describe("languages", () => {
       langEntry("sv", "Laptop", SV),
       langEntry("sv", "Phone", SV),
     ];
-    const { layers, plans, frames, languageFrames } = mergeDevices(entries);
+    const { layers, plans, frames } = mergeDevices(entries);
     expect(modesOf(layers, "Language")).toEqual(["English", "Svenska"]);
     const kinds = layers.collections.map((c) => c.kind);
     expect(kinds.indexOf("language")).toBe(kinds.indexOf("theme") - 1);
     expect(frames.map((f) => f.index)).toEqual([0, 1]);
-    expect(languageFrames).toEqual([]);
 
     const vars = languageVars(layers);
     expect(vars.map((v) => v.values)).toEqual([
@@ -779,25 +777,131 @@ describe("languages", () => {
     expectResolves(layers, plans);
   });
 
-  test("a device whose language page pairs under 80% gets that language's frames", () => {
-    const few = { header: SV.header, main: SV.main.slice(0, 2) };
+  test("a device whose language page pairs under 80% still binds its paired texts", () => {
+    const longer = { header: EN.header, main: [...EN.main, "Learn more", "Learn more"] };
+    const few = { header: SV.header, main: SV.main.slice(0, 4) };
     const entries = [
       langEntry("en", "Laptop", EN),
-      langEntry("en", "Phone", EN),
+      langEntry("en", "Phone", longer),
       langEntry("sv", "Laptop", SV),
       langEntry("sv", "Phone", few),
     ];
-    const { plans, frames, languageFrames, report } = mergeDevices(entries);
-    expect(languageFrames).toEqual([
-      { index: 3, device: "Phone", breakpoint: frames[1]?.breakpoint ?? null, language: "Svenska" },
-    ]);
-    expect(report).toContain(
-      "The Svenska page differs too much from English to share one frame on Phone."
-    );
+    const merge = mergeDevices(entries);
+    const { layers, plans, report } = merge;
+    expect("languageFrames" in merge).toBe(false);
+    expect(modesOf(layers, "Language")).toEqual(["English", "Svenska"]);
     expect(textOps(plans[0] as LayerPlan).every((op) => op.textKey !== undefined)).toBe(true);
-    expect(textOps(plans[1] as LayerPlan).some((op) => op.textKey !== undefined)).toBe(false);
-    // The missing texts of an unshared page are not counted.
-    expect(report.some((line) => line.includes("no Svenska version"))).toBe(false);
+    // Six of the Phone's ten texts pair; the other four stay in English.
+    expect(textOps(plans[1] as LayerPlan).map((op) => op.textKey !== undefined)).toEqual([
+      ...Array(6).fill(true),
+      ...Array(4).fill(false),
+    ]);
+    expect(report).toContain("Only 60% of the English page matches Svenska on Phone.");
+    expect(report).toContain("4 texts have no Svenska version and stay in English.");
+    expect(report.some((line) => line.startsWith("Only") && line.endsWith("on Laptop."))).toBe(
+      false
+    );
+    expect(report.some((line) => line.includes("differs too much"))).toBe(false);
+  });
+
+  /** An entry whose elements `tags` are sections instead: their texts pair by place with none. */
+  const elsewhere = (entry: DeviceEntry, ...tags: string[]): DeviceEntry => {
+    const root = entry.capture.root as ElementNode;
+    entry.capture.root = {
+      ...root,
+      children: root.children.map((c) =>
+        c.kind === "element" && tags.includes(c.semantic.tag)
+          ? { ...c, semantic: { ...c.semantic, tag: "section" } }
+          : c
+      ),
+    };
+    return entry;
+  };
+
+  test("a page that pairs no text makes no Language collection, and says why", () => {
+    const unrelated = { header: ["Nyheter", "Kalender"], main: ["Om oss", "Kontakt"] };
+    const { layers, plans, report } = mergeDevices([
+      langEntry("en", "Laptop", EN),
+      elsewhere(langEntry("sv", "Laptop", unrelated), "header", "main"),
+    ]);
+    expect(layers.collections.map((c) => c.kind)).not.toContain("language");
+    expect(languageVars(layers)).toEqual([]);
+    expect(textOps(plans[0] as LayerPlan).some((op) => op.textKey !== undefined)).toBe(false);
+    expect(report).toContain("Only 0% of the English page matches Svenska on Laptop.");
+    expect(report).toContain("8 texts have no Svenska version and stay in English.");
+    expect(report).toContain("4 texts exist only in Svenska and weren't added.");
+  });
+
+  test("a page whose other language shares only its header binds the header", () => {
+    // Like kth.se: the Svenska start page and the English one share the header, little else.
+    const own = { ...LANGUAGES.sv, current: true } as PageLanguage;
+    const other = { ...LANGUAGES.en, current: false } as PageLanguage;
+    const header = ["KTH", "Utbildning", "Forskning", "Samverkan", "Om KTH", "Sök", "Meny"];
+    const sv = { header, main: Array.from({ length: 13 }, (_, i) => `Nyhet ${i + 1}`) };
+    const en = {
+      header: ["KTH", "Education", "Research", "Collaboration", "About KTH", "Search", "Menu"],
+      main: ["Welcome to KTH", "Study with us", "Find a programme"],
+    };
+    const entry = (code: "sv" | "en", name: keyof typeof DEVICES) => {
+      const made = langEntry(code, name, code === "sv" ? sv : en);
+      made.capture.language = code === "sv" ? own : other;
+      return code === "en" ? elsewhere(made, "main") : made;
+    };
+    const { layers, plans, report } = mergeDevices([
+      entry("sv", "Laptop"),
+      entry("sv", "Phone"),
+      entry("en", "Laptop"),
+      entry("en", "Phone"),
+    ]);
+    expect(modesOf(layers, "Language")).toEqual(["Svenska", "English"]);
+    for (const plan of plans.slice(0, 2)) {
+      const bound = textOps(plan as LayerPlan).map((op) => op.textKey !== undefined);
+      expect(bound).toEqual([...Array(7).fill(true), ...Array(13).fill(false)]);
+    }
+    expect(languageVars(layers).map((v) => v.values[1])).toEqual(en.header);
+    expect(report).toContain("Only 35% of the Svenska page matches English on Laptop.");
+    expect(report).toContain("Only 35% of the Svenska page matches English on Phone.");
+    expect(report).toContain("26 texts have no English version and stay in Svenska.");
+    expect(report).toContain("6 texts exist only in English and weren't added.");
+  });
+
+  test("with three languages, one that pairs nothing on a device keeps English there", () => {
+    const de = { code: "de", name: "Deutsch", url: "https://lang.example.com/de", current: false };
+    const DE = {
+      header: ["Frottage", "Importiere jede Seite"],
+      main: ["Mehr", "Mehr", "Mehr", "Weiter", "Weiter", "Weiter"],
+    };
+    const german = (name: keyof typeof DEVICES, copy: Copy) => {
+      const made = langEntry("sv", name, copy);
+      made.capture.language = de;
+      return made;
+    };
+    const phoneEn = { header: ["Frottage", "Open menu"], main: EN.main };
+    const phoneSv = { header: ["Frottage", "Öppna meny"], main: SV.main };
+    const unrelated = { header: ["Neuigkeiten", "Kalender"], main: ["Über uns", "Kontakt"] };
+    const { layers, plans, report } = mergeDevices([
+      langEntry("en", "Laptop", EN),
+      langEntry("en", "Phone", phoneEn),
+      langEntry("sv", "Laptop", SV),
+      langEntry("sv", "Phone", phoneSv),
+      german("Laptop", DE),
+      elsewhere(
+        german("Phone", { ...unrelated, main: [...unrelated.main, ...DE.main] }),
+        "header",
+        "main"
+      ),
+    ]);
+    expect(modesOf(layers, "Language")).toEqual(["English", "Svenska", "Deutsch"]);
+    const laptopKeys = new Set(textOps(plans[0] as LayerPlan).map((op) => op.textKey));
+    expect(textOps(plans[1] as LayerPlan).every((op) => op.textKey !== undefined)).toBe(true);
+    const phoneOnly = languageVars(layers).filter((v) => !laptopKeys.has(v.key));
+    expect(phoneOnly.length).toBeGreaterThan(0);
+    for (const v of phoneOnly) expect(v.values[2]).toBe(v.values[0]);
+    expect(phoneOnly.map((v) => v.values[1])).toContain("Öppna meny");
+    expect(report).toContain("Only 0% of the English page matches Deutsch on Phone.");
+    expect(report).toContain("8 texts have no Deutsch version and stay in English.");
+    expect(report).toContain("10 texts exist only in Deutsch and weren't added.");
+    expect(report.some((line) => line.includes("Svenska"))).toBe(false);
   });
 
   test("unpaired and mixed texts stay plain and are reported", () => {

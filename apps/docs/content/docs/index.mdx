@@ -33,9 +33,9 @@ The report lists the Color Mode modes found. If there are none, it says "No them
 
 ## Devices and breakpoints
 
-When the popup opens, it reads the page's CSS breakpoints; Capture waits for them, for up to 1.5 seconds. If a breakpoint range is covered by no ticked device, the popup says `Also captures … for the … breakpoint(s)`. Capture records each device by name, such as Laptop or Tablet portrait, with a nominal height, and adds one extra capture for each uncovered breakpoint.
+When the popup opens, it reads the page's CSS breakpoints; Capture waits for them, for up to 1.5 seconds. Breakpoints within 2 px of each other count as one. Under the devices, a `Breakpoints` list shows one row per breakpoint range: its name (`sm`, `min 576`, `base`), the width it is captured at, and a checkbox, ticked by default. If a ticked device covers the range, the row shows that device's name, such as Laptop, instead of a checkbox. The list is hidden when the page records no breakpoints. Capture records each device by name, such as Laptop or Tablet portrait, with a nominal height, and adds one extra capture for each ticked breakpoint no device covers.
 
-The plugin shows "What's in this file" before it imports. It lists the devices and breakpoint captures with a checkbox each, a Themes group with a checkbox for Light and Dark, the collections it will make, and a choice of New page or Current page. Once a mode limit is known, it warns when the import would exceed it.
+The plugin shows "What's in this file" before it imports. It lists a Devices group (rows such as `Laptop 1512`) and a Breakpoints group (rows such as `sm 640`, or `min 576` when the name already holds the width), each with a checkbox per row, then a Themes group with a checkbox for Light and Dark, the collections it will make, and a choice of New page or Current page. Once a mode limit is known, it warns when the import would exceed it.
 
 The import adds two collections beside the layered ones. `Device` has one mode per device, with `device/width` and `device/height`. `Breakpoint` has one mode per CSS range: `base`, `sm`, `md`, `lg`, `xl`, `2xl`, or `min <width>` for other widths. It holds `breakpoint/min-width` and `breakpoint/max-width`. The modes show smallest to largest. When a file's mode limit leaves some out, the ones the frames are in are kept first, the widest device's first, so the extra captures' ranges go before any frame's. Each capture is placed by the width the page was laid out at, so a scrollbar doesn't move it into the range below. A value that changes by width, such as a heading size, goes Theme, then Breakpoint, then a raw value for each breakpoint.
 
@@ -45,13 +45,13 @@ Older files that hold several widths import the same way, with modes named by wi
 
 ## Languages
 
-When the popup opens, it looks for the page's other languages. It reads `<link rel="alternate" hreflang>` first, then URL patterns such as `/en/…` and `/sv/…`, then switcher links that carry `hreflang` or `lang`. A `Languages` group appears only when it finds two or more and can tell which one the page is in. That language is ticked and can't be unticked, and the popup shows up to 8. Each language is named in its own language, such as English or Svenska.
+When the popup opens, it looks for the page's other languages. It reads `<link rel="alternate" hreflang>` first, then URL patterns such as `/en/…` and `/sv/…`, then switcher links that carry `hreflang` or `lang`. The reader that finds the most languages wins. When the page lists only its other languages, as many sites do, the page's own language is added from `<html lang>`; an invalid `lang` is ignored. The popup keeps one entry per language: the page's own, else the one in the same region as the page, else one with no region, else the first. A `Languages` group appears only when it finds two or more and can tell which one the page is in. That language is ticked and can't be unticked, and the popup shows up to 8. Each language is named by its main subtag in its own language, such as English or Svenska.
 
 Capture counts every capture, and a line under the button reads, for example, `8 captures: 3 devices × 2 languages, plus 2 for breakpoints`. Every ticked language is captured at every ticked device. The extra captures for breakpoints run in the page's own language only.
 
 Languages on the same site load in the run's own small window, and no new permission is needed. A language on another site asks for access to that site when you press Capture. If you refuse, that language is left out: `Svenska needs access to sv.site.test, so it was left out.` A language page that fails to load, moves to another site, lands back on the page the run started on, or says in `<html lang>` that it is another language is also left out: `Svenska couldn't be loaded, so it was left out.` The tab returns to the page it started on by loading that page again, so its scroll position and any unsaved form input are lost.
 
-In the plugin, texts are paired by their place in the page, and links also by their target. When at least 80% of the texts on a device are paired, the paired texts bind to STRING variables in a `Language` collection. It has one mode per language, the page's own first. Switching the Language mode on the page's Section swaps the text. Texts inside repeated parts bind too. A text with mixed styling, such as a bold word or an inline link, stays in the page's own language, because Figma restyles a bound text as a whole. Under 80% on a device, that language gets its own frames in a Section named `<page> — <language>` instead.
+In the plugin, texts are paired by their place in the page, and links also by their target. Paired texts bind to STRING variables in a `Language` collection. It has one mode per language, the page's own first. Switching the Language mode on the page's Section swaps the text. Texts inside repeated parts bind too. A text with mixed styling, such as a bold word or an inline link, stays in the page's own language, because Figma restyles a bound text as a whole. Languages always become modes; they never get frames of their own. Texts that don't pair stay in the page's own language.
 
 "What's in this file" has a `Languages` group. The page's own language is ticked and can't be unticked, and the collections line shows `Language <n>`. The report lists what didn't pair:
 
@@ -60,7 +60,7 @@ In the plugin, texts are paired by their place in the page, and links also by th
 - `2 texts with mixed styles stay in English.`
 - `<n> texts in repeated parts stay in English.`
 - `<n> texts stay in English: the Language collection is full.` Language holds at most 2000 variables.
-- `The Svenska page differs too much from English to share one frame on Phone.`
+- `Only 35% of the Svenska page matches English on Laptop.` One line for each device where under 80% of the page's own texts paired.
 
 When a file's mode limit leaves no room for a language, the report says `Not created: …`. A re-import that adds a language to an existing Language collection reports `Modes added: Language …`. With room for only one Language mode, no Language collection is made.
 

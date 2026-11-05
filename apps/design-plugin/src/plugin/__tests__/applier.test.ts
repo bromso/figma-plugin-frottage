@@ -1861,22 +1861,17 @@ describe("a device set", () => {
     const learnKey = "language:Main/Learn more";
     const buyKey = "language:Main/Buy";
     /** A page's frame: a label bound to Language, and a button whose label overrides its main's. */
-    const pageOps = (language?: string): PlanOp[] => {
-      const own = language !== undefined;
-      const words = (w: Record<string, string>) => w[language ?? "English"] as string;
-      const label = (chars: string, key?: string) =>
-        textOp("t", "a", [run(0, chars.length, inter)], false, {
-          text: chars,
-          ...(key && !own ? { textKey: key } : {}),
-        });
+    const pageOps = (): PlanOp[] => {
+      const label = (chars: string, key: string) =>
+        textOp("t", "a", [run(0, chars.length, inter)], false, { text: chars, textKey: key });
       return [
         frame("btn/n", null, { name: "btn", x: 0, y: 0, component: { key: "btn", name: "btn" } }),
         textOp("btn/t", "btn/n", [run(0, 4, inter)], false, {
           text: "Shop",
-          ...(own ? {} : { textKey: "language:Main/Shop" }),
+          textKey: "language:Main/Shop",
         }),
         frame("a", null, { w: 400, h: 800, fills, childCount: 2 }),
-        label(words(WORDS), learnKey),
+        label(WORDS.English, learnKey),
         {
           op: "instance",
           id: "i",
@@ -1892,21 +1887,16 @@ describe("a device set", () => {
             {
               path: [0],
               kind: "text",
-              text: words(BUY),
-              runs: [run(0, words(BUY).length, inter)],
-              ...(own ? {} : { textKey: buyKey }),
+              text: BUY.English,
+              runs: [run(0, BUY.English.length, inter)],
+              textKey: buyKey,
             },
           ],
         },
       ];
     };
-    type Frame = { device: string; language?: string };
-    const MAIN: Frame[] = [{ device: "Desktop" }, { device: "Phone" }];
-    async function importLanguages(
-      f: ReturnType<typeof fakeFigma>,
-      plan = withLanguages(),
-      frames: Frame[] = MAIN
-    ) {
+    const MAIN = [{ device: "Desktop" }, { device: "Phone" }];
+    async function importLanguages(f: ReturnType<typeof fakeFigma>, plan = withLanguages()) {
       const a = createApplier(f.figma);
       await a.beginDeviceSet({
         name: PAGE,
@@ -1914,22 +1904,18 @@ describe("a device set", () => {
         options: DEFAULT_IMPORT_OPTIONS,
         placement: "current-page",
       });
-      for (const [index, d] of frames.entries()) {
+      for (const [index, d] of MAIN.entries()) {
         await a.begin({
           ...meta,
           name: PAGE,
           version: { index, label: d.device },
-          device: {
-            mode: d.device,
-            breakpoint: null,
-            ...(d.language ? { language: d.language } : {}),
-          },
+          device: { mode: d.device, breakpoint: null },
         });
         await a.importTokens(
           { textStyles: [], colors: [], collection: "example.com", layers: plan },
           DEFAULT_IMPORT_OPTIONS
         );
-        await a.applyBatch(pageOps(d.language));
+        await a.applyBatch(pageOps());
         await a.end();
       }
       return a.endSet();
@@ -2038,52 +2024,6 @@ describe("a device set", () => {
       });
     });
 
-    test("a language's own frame goes in its own section, right of the main one, on that language", async () => {
-      const f = fakeFigma();
-      const r = await importLanguages(f, withLanguages(), [
-        ...MAIN,
-        { device: "Phone", language: "Svenska" },
-      ]);
-      const main = sectionNamed(f, PAGE);
-      const own = sectionNamed(f, `${PAGE} — Svenska`);
-      expect(main.children).toHaveLength(2);
-      expect(own.parent).toBe(f.page);
-      expect(own.x).toBeGreaterThanOrEqual(main.x + main.width);
-      expect(own.y).toBe(main.y);
-      const colorMode = collectionNamed(f, "Color Mode");
-      const language = collectionNamed(f, "Language");
-      expect(own.explicitModes).toEqual({
-        [colorMode.id]: modeIn(colorMode, "Light"),
-        [language.id]: modeIn(language, "Svenska"),
-      });
-      const [phone] = own.children;
-      expect(own.children).toHaveLength(1);
-      expect(phone.name).toBe(`${PAGE} — Phone`);
-      const device = collectionNamed(f, "Device");
-      expect(phone.explicitModes).toEqual({
-        [device.id]: modeIn(device, "Phone"),
-        [language.id]: modeIn(language, "Svenska"),
-      });
-      // Its own texts, plain; its tokens bound as any frame's.
-      expect(labelOf(phone).characters).toBe("Läs mer");
-      expect(labelOf(phone).boundVariables?.characters).toBeUndefined();
-      expect(phone.fills[0].boundVariables.color.id).toBe(themeVariable(f, "color/card").id);
-      // Fitted around its frame.
-      expect(own.width).toBeGreaterThanOrEqual(phone.x + phone.width);
-      expect(r.rootIds).toEqual([...main.children, phone].map((n: FakeNode) => n.id));
-      expect(f.page.selection).toEqual([main, own]);
-      // The mains go under the sections, clear of both.
-      const mains = f.created.filter(
-        (n) => n.type === "SECTION" && n.name.endsWith(" components") && !n.removed
-      );
-      expect(mains).toHaveLength(3);
-      for (const m of mains) {
-        expect(m.y).toBeGreaterThanOrEqual(Math.max(main.y + main.height, own.y + own.height));
-      }
-      const last = mains.at(-1) as FakeNode;
-      expect(last.x).toBeGreaterThanOrEqual(own.x);
-    });
-
     test("a main opens on its frame's language, though the collection's default is another", async () => {
       const f = fakeFigma();
       // An earlier import from the Svenska page made Svenska the default mode.
@@ -2097,41 +2037,6 @@ describe("a device set", () => {
       for (const main of mains) {
         expect(main.explicitModes[language.id]).toBe(modeIn(language, "English"));
       }
-    });
-
-    test("a cancel once a language's section has begun removes that section too", async () => {
-      const f = fakeFigma();
-      const plan = withLanguages();
-      const a = createApplier(f.figma);
-      await a.beginDeviceSet({
-        name: PAGE,
-        layers: plan,
-        options: DEFAULT_IMPORT_OPTIONS,
-        placement: "current-page",
-      });
-      const frames: Frame[] = [...MAIN, { device: "Phone", language: "Svenska" }];
-      for (const [index, d] of frames.entries()) {
-        await a.begin({
-          ...meta,
-          name: PAGE,
-          version: { index, label: d.device },
-          device: {
-            mode: d.device,
-            breakpoint: null,
-            ...(d.language ? { language: d.language } : {}),
-          },
-        });
-        await a.applyBatch(pageOps(d.language));
-        if (d.language) break;
-        await a.end();
-      }
-      const own = sectionNamed(f, `${PAGE} — Svenska`);
-      expect(own).toBeDefined();
-      await a.cancel();
-      expect(own.removed).toBe(true);
-      expect(f.created.filter((n) => n.type === "SECTION" && !n.removed)).toEqual([]);
-      expect(f.page.children).toEqual([]);
-      expect(f.tokens.collections.size).toBe(0);
     });
 
     test("with room for one Language mode no text binds, and the language goes unmade", async () => {

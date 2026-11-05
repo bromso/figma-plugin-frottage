@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Capture } from "@repo/capture-schema";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../app";
 import {
@@ -605,7 +605,7 @@ describe("App (a device set)", () => {
     for (const name of ["Laptop 1512", "Tablet portrait 834", "Phone portrait 390"]) {
       expect(screen.getByRole("checkbox", { name })).toBeChecked();
     }
-    expect(screen.getByRole("checkbox", { name: "lg breakpoint 1024" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "lg 1024" })).toBeChecked();
     expect(
       screen.getByText("Breakpoint captures make no frames. They give the Breakpoint values.")
     ).toBeInTheDocument();
@@ -613,6 +613,59 @@ describe("App (a device set)", () => {
     expect(screen.getByRole("radio", { name: "New page" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Current page" })).not.toBeChecked();
     expect(port.log).not.toContain("beginDeviceSet");
+  });
+
+  it("groups devices, then breakpoints with the note, before Themes", async () => {
+    await chosen(
+      undefined,
+      deviceSetFile({
+        devices: [{ name: "Laptop", width: 1512, height: 982 }],
+        extras: [
+          { breakpoint: "sm", width: 640 },
+          { breakpoint: "min 576", width: 576 },
+        ],
+        breakpoints: [576, 640],
+        edit: (c) => {
+          c.tokens = {
+            cssCustomProperties: { "--surface": "#ffffff" },
+            themes: [{ context: ".dark", mode: "Dark", properties: { "--surface": "#000000" } }],
+          };
+          c.themeChoice = { light: true, dark: true };
+        },
+      })
+    );
+    const devicesGroup = screen.getByRole("group", { name: "Devices" });
+    const breakpointsGroup = screen.getByRole("group", { name: "Breakpoints" });
+    const themesGroup = screen.getByRole("group", { name: "Themes" });
+    expect(devicesGroup.compareDocumentPosition(breakpointsGroup)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(breakpointsGroup.compareDocumentPosition(themesGroup)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(within(devicesGroup).getByRole("checkbox", { name: "Laptop 1512" })).toBeChecked();
+    expect(within(breakpointsGroup).getByRole("checkbox", { name: "sm 640" })).toBeChecked();
+    expect(within(breakpointsGroup).getByRole("checkbox", { name: "min 576" })).toBeChecked();
+    expect(
+      within(breakpointsGroup).getByText(
+        "Breakpoint captures make no frames. They give the Breakpoint values."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("a file with no breakpoint captures shows no Breakpoints group", async () => {
+    await chosen(
+      undefined,
+      deviceSetFile({
+        devices: [
+          { name: "Laptop", width: 1512, height: 982 },
+          { name: "Phone portrait", width: 390, height: 844 },
+        ],
+      })
+    );
+    expect(screen.getByRole("group", { name: "Devices" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Breakpoints" })).toBeNull();
+    expect(screen.queryByText(/Breakpoint captures make no frames/)).toBeNull();
   });
 
   it("an unticked device leaves the line and the import", async () => {
