@@ -2766,9 +2766,10 @@ for (const components of [false, true]) {
         entries.push({ capture: c, plan });
       }
     }
-    const { layers, plans, frames, languageFrames, report } = mergeDevices(entries);
+    const { layers, plans, frames, report } = mergeDevices(entries);
     expect(frames.map((f) => f.device)).toEqual(["Laptop", "Phone"]);
-    expect(languageFrames).toEqual([]);
+    // Both pages pair well: no device is reported as matching poorly.
+    expect(report.some((line) => line.startsWith("Only"))).toBe(false);
     expect(layers.collections.find((c) => c.kind === "language")?.modes).toEqual([
       "English",
       "Svenska",

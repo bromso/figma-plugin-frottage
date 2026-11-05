@@ -482,8 +482,8 @@ export function deviceSetFile(opts: {
 
 /**
  * A File of one page captured in English and Svenska on a Laptop and a Phone. The Svenska Phone
- * page holds `phoneTexts` texts against English's 3, so with fewer it pairs too poorly to share
- * English's frame. Without `phone`, the Laptop alone.
+ * page holds `phoneTexts` texts against English's 3, so with fewer it pairs under 80%. Without
+ * `phone`, the Laptop alone.
  */
 export function languageSetFile(phoneTexts = 0, phone = true): File {
   const make = (device: string, width: number, code: string, texts: number) => {

@@ -29,9 +29,9 @@ import { joinStyles, type StyleJoins, textsOf } from "./versions";
  * that differs by breakpoint through `type/<style>/size`, `…/line-height` and `…/tracking`.
  *
  * A set captured in several languages merges its current language's entries so. Each other
- * language's capture at a device pairs its texts with that device's; at 80% or more, a paired text
- * binds its characters to a Language variable holding its text per language, shared by every
- * device with the same texts. Under 80%, that capture becomes a frame of its own.
+ * language's capture at a device pairs its texts with that device's; a paired text binds its
+ * characters to a Language variable holding its text per language, shared by every device with the
+ * same texts. A device that pairs under 80% of its texts is reported.
  */
 
 export type DeviceEntry = { capture: Capture; plan: LayerPlan };
@@ -45,13 +45,11 @@ export type DeviceMerge = {
   plans: LayerPlan[];
   /** Device entries only; extras make no frame. */
   frames: DeviceFrame[];
-  /** Other-language captures too unlike their device's to share its frame. */
-  languageFrames: (DeviceFrame & { language: string })[];
   report: string[];
 };
 
 /** A merge of one language's entries; `adopt` moves another plan's keys as entry `like`'s. */
-type SetMerge = Omit<DeviceMerge, "languageFrames"> & {
+type SetMerge = DeviceMerge & {
   adopt: (plan: LayerPlan, like: number) => LayerPlan;
 };
 
@@ -64,7 +62,7 @@ const BASE_RANGE = "base";
 /** Device width, device height, breakpoint min and max width. */
 const FIXED_VARIABLES = 4;
 const LENGTH_SCOPES = ["WIDTH_HEIGHT"];
-/** The share of a page's texts another language must pair for the two to share a frame. */
+/** The share of a page's texts another language pairs under which the report says so. */
 const SHARE_RATE = 0.8;
 /** Language variables have a budget of their own, apart from `MAX_VARIABLES`. */
 export const MAX_LANGUAGE_VARIABLES = 2000;
@@ -874,7 +872,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     if (tagged.length > 0) {
       merge.report.push("No capture in the page's own language, so languages were left out.");
     }
-    return { ...merge, languageFrames: [] };
+    return merge;
   }
   const codeOf = (e: DeviceEntry) => e.capture.language?.code ?? current.code;
   // The current language's entries make the frames and every value but the texts'.
@@ -907,7 +905,6 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
   // ---------- Pair each device's texts with each other language's, and bind them.
 
   const report = [...set.report];
-  const languageFrames: DeviceMerge["languageFrames"] = [];
   const counts = codes.map(() => ({ onlyOther: 0, onlyBase: 0 }));
   let mixed = 0;
   let full = 0;
@@ -929,11 +926,9 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
       if (other < 0) continue;
       const pairing = pairTexts(capture, (entries[other] as DeviceEntry).capture, hrefMap);
       if (pairing.rate < SHARE_RATE) {
-        languageFrames.push({ ...frame, index: other, language: names[l] as string });
-        report.push(
-          `The ${names[l]} page differs too much from ${base} to share one frame on ${frame.device}.`
-        );
-        continue;
+        // Whole percent, rounded down; the nudge keeps a float like 0.29 * 100 from 28.
+        const percent = Math.floor(pairing.rate * 100 + 1e-9);
+        report.push(`Only ${percent}% of the ${names[l]} page matches ${base} on ${frame.device}.`);
       }
       const count = counts[l] as (typeof counts)[number];
       count.onlyOther += pairing.onlyOther;
@@ -1079,5 +1074,5 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     );
   }
 
-  return { layers, plans, frames, languageFrames, report };
+  return { layers, plans, frames, report };
 }

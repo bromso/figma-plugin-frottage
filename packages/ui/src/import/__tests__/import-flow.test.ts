@@ -1723,7 +1723,8 @@ describe("a device set", () => {
     ]);
   });
 
-  test("a language too unlike the page's own gets its own frame, in that language's section", async () => {
+  test("a language too unlike the page's own still makes Language modes, and no frames of its own", async () => {
+    // As PR #11's build captured it: the Svenska Phone page pairs none of English's texts.
     const { port, last } = await runDevices([languageSetFile()]);
     expect(
       port.deviceSetMeta?.layers.collections.find((c) => c.kind === "language")?.modes
@@ -1731,15 +1732,13 @@ describe("a device set", () => {
     expect(port.begins.map((b) => [b.version?.label, b.device])).toEqual([
       ["Laptop", { mode: "Laptop", breakpoint: "min 1512" }],
       ["Phone", { mode: "Phone", breakpoint: "base" }],
-      ["Phone", { mode: "Phone", breakpoint: "base", language: "Svenska" }],
     ]);
-    expect(port.begins.map((b) => b.version?.index)).toEqual([0, 1, 2]);
     if (last.step !== "done") throw new Error(last.step);
+    expect(last.versions.map((v) => v.label)).toEqual(["Laptop", "Phone"]);
     const notes = last.sets[0]?.notes ?? [];
     expect(notes).toContain("Language: English, Svenska");
-    expect(notes).toContain(
-      "The Svenska page differs too much from English to share one frame on Phone."
-    );
+    expect(notes).toContain("Only 0% of the Svenska page matches English on Phone.");
+    expect(notes.some((n) => n.includes("differs too much"))).toBe(false);
   });
 
   test("a file in two languages lists them, the current first, and each device once", async () => {
@@ -1960,18 +1959,15 @@ describe("a device set", () => {
     expect(some.at(-1)?.index).toBe(2);
   });
 
-  test("progress counts a language's frames, not its paired captures", async () => {
+  test("progress counts the devices' frames, not a language's captures", async () => {
     const files = (states: ImportState[]) =>
       states.flatMap((s) => (s.step === "working" && s.total > 0 ? [s.file] : []));
-    // Every Svenska capture pairs: two frames.
-    const paired = files((await runDevices([languageSetFile(3)])).states);
-    expect(paired.every((f) => f.total === 2)).toBe(true);
-    expect(paired.at(-1)?.index).toBe(2);
-    // Phone's Svenska page gets its own frame: three.
-    const own = files((await runDevices([languageSetFile()])).states);
-    expect(own.at(-1)?.total).toBe(3);
-    expect(own.at(-1)?.index).toBe(3);
-    expect(own.every((f) => f.index <= f.total)).toBe(true);
+    // Paired well or not at all, the Svenska captures make no frames: two.
+    for (const phoneTexts of [3, 0]) {
+      const seen = files((await runDevices([languageSetFile(phoneTexts)])).states);
+      expect(seen.every((f) => f.total === 2)).toBe(true);
+      expect(seen.at(-1)?.index).toBe(2);
+    }
   });
 
   test("Cancel after beginDeviceSet cancels the sandbox and imports nothing more", async () => {

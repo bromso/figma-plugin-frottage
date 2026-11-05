@@ -6,7 +6,6 @@ import {
   captureWidth,
   DEFAULT_IMPORT_OPTIONS,
   type DeviceEntry,
-  type DeviceFrame,
   dropSources,
   type FontRef,
   type ImportOptions,
@@ -232,11 +231,8 @@ export type ImportPort = {
   cancel(): Promise<void>;
 };
 
-/**
- * A device frame's Device mode, and its Breakpoint mode when the page has any. `language` is for a
- * frame of another language's page, which goes in that language's own section.
- */
-type DeviceModes = { mode: string; breakpoint: string | null; language?: string };
+/** A device frame's Device mode, and its Breakpoint mode when the page has any. */
+type DeviceModes = { mode: string; breakpoint: string | null };
 
 /** A collection's modes as the sandbox settled them: those it has, and those added to it now. */
 type SettledModes = { kind: string; collection: string; created: string[]; added: string[] };
@@ -564,8 +560,6 @@ type SetContext = Pick<VersionContext, "port" | "onState" | "signal" | "options"
   fail(name: string, error: unknown, size?: boolean): void;
   /** What the progress counts: the dropped files, or the sizes of one file. */
   unit: FileInfo["unit"];
-  /** Adds frames the set makes beyond its count, known only once it is merged. */
-  addFrames(count: number): void;
 };
 
 type SetOutcome = { versions: VersionReport[]; report: SetReport | null; cancelled: boolean };
@@ -670,21 +664,14 @@ function devicesSpec(
     { leftOut }
   );
   plans.length = 0;
-  // Progress counted the page's own frames; a language too unlike it adds its own.
-  if (merge.languageFrames.length > 0) ctx.addFrames(merge.languageFrames.length);
   const { layers } = merge;
-  const member = (frame: DeviceFrame, language?: string): SetMember => ({
-    version: set.versions[frame.index] as LoadedFile,
-    plan: merge.plans[frame.index] as Plan,
-    label: frame.device,
-    device: { mode: frame.device, breakpoint: frame.breakpoint, ...(language ? { language } : {}) },
-  });
   return {
-    // The page's own frames, then the languages too unlike it to share them.
-    members: [
-      ...merge.frames.map((frame) => member(frame)),
-      ...merge.languageFrames.map((frame) => member(frame, frame.language)),
-    ],
+    members: merge.frames.map((frame) => ({
+      version: set.versions[frame.index] as LoadedFile,
+      plan: merge.plans[frame.index] as Plan,
+      label: frame.device,
+      device: { mode: frame.device, breakpoint: frame.breakpoint },
+    })),
     async open() {
       const first = set.versions[0] as LoadedFile;
       await port.beginDeviceSet({
@@ -1157,11 +1144,6 @@ export async function runImports(
           assetsOf,
           fail,
           unit,
-          addFrames(count) {
-            counted += count;
-            index += count;
-            ctx.totalFiles = counted;
-          },
         };
         const outcome = await importSet(set, ctx, () =>
           devices ? devicesSpec(set, ctx, placement, leftOutOf(whole, set)) : modesSpec(set, ctx)
