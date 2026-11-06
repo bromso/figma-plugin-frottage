@@ -1,5 +1,11 @@
 # @repo/capture-schema
 
+## 0.5.0
+
+### Minor Changes
+
+- [#11](https://github.com/bromso/figma-plugin-frottage/pull/11) [`fd2f488`](https://github.com/bromso/figma-plugin-frottage/commit/fd2f48821b9975241a714a01862bc48104eba92c) Thanks [@bromso](https://github.com/bromso)! - Finds a page's languages, captures the ones you tick, and pairs their texts into a Language collection so switching its mode swaps the text.
+
 ## 0.4.0
 
 ### Minor Changes

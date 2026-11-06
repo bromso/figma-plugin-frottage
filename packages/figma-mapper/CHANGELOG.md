@@ -1,5 +1,18 @@
 # @repo/figma-mapper
 
+## 0.5.0
+
+### Minor Changes
+
+- [#12](https://github.com/bromso/figma-plugin-frottage/pull/12) [`e40688e`](https://github.com/bromso/figma-plugin-frottage/commit/e40688e92f1b3560d015015332789c660b41ccfc) Thanks [@bromso](https://github.com/bromso)! - Languages always become modes of the Language collection; the popup finds more languages, names them simply and lists breakpoints as rows; breakpoints a pixel apart count as one.
+
+- [#11](https://github.com/bromso/figma-plugin-frottage/pull/11) [`fd2f488`](https://github.com/bromso/figma-plugin-frottage/commit/fd2f48821b9975241a714a01862bc48104eba92c) Thanks [@bromso](https://github.com/bromso)! - Finds a page's languages, captures the ones you tick, and pairs their texts into a Language collection so switching its mode swaps the text.
+
+### Patch Changes
+
+- Updated dependencies [[`fd2f488`](https://github.com/bromso/figma-plugin-frottage/commit/fd2f48821b9975241a714a01862bc48104eba92c)]:
+  - @repo/capture-schema@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes
