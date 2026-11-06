@@ -324,6 +324,8 @@ export function fakeFigma(opts: Options = {}) {
     t.width = from.width;
     t.height = from.height;
     t.textAutoResize = from.textAutoResize;
+    // As in Figma, an instance's text follows its main's variables until it is unbound.
+    if (from.boundVariables) t.boundVariables = { ...from.boundVariables };
     return t;
   }
 

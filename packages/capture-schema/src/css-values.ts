@@ -359,3 +359,17 @@ const TAILWIND_BREAKPOINTS: Record<number, string> = {
 export function breakpointName(min: number): string {
   return TAILWIND_BREAKPOINTS[min] ?? `min ${min}`;
 }
+
+/**
+ * A language's name in itself ("sv" is "Svenska"), first letter upper-cased in that language. A
+ * code the runtime cannot name stays as the code.
+ */
+export function languageName(code: string): string {
+  try {
+    const name = new Intl.DisplayNames([code], { type: "language" }).of(code);
+    if (!name || name.toLowerCase() === code.toLowerCase()) return code;
+    return name.charAt(0).toLocaleUpperCase(code) + name.slice(1);
+  } catch {
+    return code;
+  }
+}

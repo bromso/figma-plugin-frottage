@@ -15,6 +15,8 @@ export type TokenOptions = {
   failStyleBinding?: string;
   /** A corner radius field that refuses its variable. */
   failRadiusBinding?: string;
+  /** Text refuses its characters' string variable. */
+  failTextBinding?: boolean;
   /** Modes a collection can hold: 10 on this owner's plan, 1 on Starter. */
   modeLimit?: number;
 };
@@ -515,16 +517,22 @@ export function tokenModel(
       node.setBoundVariable = (field: string, variable: Fake) => {
         called("node.setBoundVariable");
         if (typeof variable === "string") throw new Error("dynamic-page needs the variable");
-        if (![...BINDABLE_LENGTHS, ...CORNERS].includes(field))
+        // Text binds its characters to a string variable, with its font loaded as for any edit. What
+        // it shows stays: a frame binds in the language its text was captured in.
+        const text = field === "characters" && node.type === "TEXT";
+        if (![...BINDABLE_LENGTHS, ...CORNERS].includes(field) && !text)
           throw new Error(`can't bind ${field}`);
         if (opts.failRadiusBinding === field) throw new Error(`${field} refused`);
+        if (text && opts.failTextBinding) throw new Error("characters refused");
         if (variable === null) {
           const { [field]: _gone, ...rest } = node.boundVariables ?? {};
           node.boundVariables = rest;
           return;
         }
         if (!variables.has(variable?.id)) throw new Error("unknown variable");
-        if (variable.resolvedType !== "FLOAT") throw new Error("needs a number variable");
+        const type = text ? "STRING" : "FLOAT";
+        if (variable.resolvedType !== type) throw new Error(`needs a ${type} variable`);
+        if (text && !loaded.has(fontId(node.fontName))) throw new Error("the font isn't loaded");
         node.boundVariables = {
           ...node.boundVariables,
           [field]: { type: "VARIABLE_ALIAS", id: variable.id },

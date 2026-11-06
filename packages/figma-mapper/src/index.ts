@@ -6,6 +6,7 @@ export {
   type DeviceFrame,
   type DeviceMerge,
   deviceWidth,
+  dropSources,
   type MergeOptions,
   mergeDevices,
 } from "./devices";

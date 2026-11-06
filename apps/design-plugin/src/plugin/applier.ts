@@ -103,9 +103,12 @@ type HeldSet = {
   /** Where the next frame goes, in the section for a device set. */
   x: number;
   y: number;
+  /** Each frame and its mains. */
   finished: { root: FrameNode; components: ComponentSet }[];
   /** A device set's section, which holds its frames. */
   section?: SectionNode;
+  /** A device set's own language, which its section and mains open on. */
+  language?: string;
   /** The page a device set made for itself, which goes if the set does. */
   createdPage?: PageNode;
   /** The page the user was on before it, which a cancelled set goes back to. */
@@ -353,8 +356,9 @@ export function createApplier(api: PluginAPI) {
   /**
    * Opens a device set: settles its merged layers once, then a section, on the page open now or a
    * new one, takes a frame per device from `begin` to `end`, and `endSet` keeps them. The section
-   * opens on the Color Mode the page was captured in; each frame sets its own Device and Breakpoint
-   * modes. The user stays on the page they are on, as a single import leaves them.
+   * opens on the Color Mode the page was captured in, and on its language; each frame sets its own
+   * Device and Breakpoint modes. The user stays on the page they are on, as a single import leaves
+   * them.
    */
   async function beginDeviceSet(meta: DeviceSetMeta): Promise<void> {
     const stale = active || held !== null;
@@ -394,6 +398,8 @@ export function createApplier(api: PluginAPI) {
       if (createdPage) await dropPage(createdPage, previousPage);
       throw e;
     }
+    // The Language collection's first mode is the page's own language.
+    const language = meta.layers.collections.find((c) => c.kind === "language")?.modes[0];
     const set: HeldSet = {
       page: target,
       x: SECTION_PADDING,
@@ -401,6 +407,7 @@ export function createApplier(api: PluginAPI) {
       finished: [],
       plain: [],
       section,
+      ...(language ? { language } : {}),
       ...(createdPage ? { createdPage, previousPage } : {}),
     };
     held = set;
@@ -414,7 +421,7 @@ export function createApplier(api: PluginAPI) {
     };
     await own.resolve(plan, meta.options, tokenRuntime());
     if (held !== set) return; // cancelled meanwhile
-    openOnColorMode(section);
+    openSection(section, language);
   }
 
   /**
@@ -432,15 +439,21 @@ export function createApplier(api: PluginAPI) {
 
   /**
    * Puts a device set's section, or the section of a device's mains, on the Color Mode the page
-   * was captured in, which every frame and main in it then reads.
+   * was captured in and on the Language mode of `language`, which every frame and main in it then
+   * reads.
    */
-  function openOnColorMode(node: SectionNode): void {
-    const mode = tokens?.openingMode();
-    if (!mode) return;
-    try {
-      node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
-    } catch {
-      tokens?.failed();
+  function openSection(node: SectionNode, language: string | undefined): void {
+    const modes = [
+      tokens?.openingMode(),
+      language === undefined ? null : tokens?.layerMode("language", language),
+    ];
+    for (const mode of modes) {
+      if (!mode) continue;
+      try {
+        node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
+      } catch {
+        tokens?.failed();
+      }
     }
   }
 
@@ -469,8 +482,8 @@ export function createApplier(api: PluginAPI) {
         mode: setMode,
       },
       page,
-      // A device set's mains read the Color Mode its section opens on, as their instances do.
-      set?.section ? openOnColorMode : undefined
+      // A device set's mains read the modes their frame's section opens on, as their instances do.
+      set?.section ? (section) => openSection(section, set.language) : undefined
     );
     await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
     fallbackOk = loadedFonts.has(fontKey(FALLBACK));
@@ -504,15 +517,18 @@ export function createApplier(api: PluginAPI) {
   }
 
   /**
-   * A device frame's Device and Breakpoint modes. Without its Breakpoint mode a frame would read
-   * another range's values, so it stays plain; Device holds only reference values, so a frame the
-   * file had no Device mode for still binds.
+   * A device frame's Device and Breakpoint modes, and its Language mode. Without its Breakpoint
+   * mode a frame would read another range's values, so it stays plain; Device holds only reference
+   * values, so a frame the file had no Device mode for still binds. Language is set from the start,
+   * so that a main, built before it joins its section, isn't measured in the collection's default.
    */
   function deviceSetModes({ mode, breakpoint }: NonNullable<ImportMeta["device"]>) {
     const range =
       breakpoint === null ? null : (tokens?.layerMode("breakpoint", breakpoint) ?? null);
     if (breakpoint !== null && !range) return null;
-    return [tokens?.layerMode("device", mode) ?? null, range];
+    const own = held?.language;
+    const text = own === undefined ? null : (tokens?.layerMode("language", own) ?? null);
+    return [tokens?.layerMode("device", mode) ?? null, range, text];
   }
 
   /** The tokens this version may bind to: none once its mode was refused. */
@@ -853,6 +869,21 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
+  /**
+   * Binds a text's characters to its Language variable, once they are set. A refused binding
+   * counts and leaves the text as it is.
+   */
+  function bindText(node: TextNode, key: string | undefined) {
+    const set = bindable();
+    const variable = set?.text(key);
+    if (!set || !variable) return;
+    try {
+      node.setBoundVariable("characters", variable);
+    } catch {
+      set.failed();
+    }
+  }
+
   /** The style goes first, as linking one overrides the range's own type fields. */
   async function runProps(node: TextNode, run: PlanRun, start: number, end: number) {
     const styleId = bindable()?.textStyleId(run.styleKey);
@@ -999,6 +1030,7 @@ export function createApplier(api: PluginAPI) {
     join(parent, node, op);
     node.name = op.name;
     await setText(node, op, font);
+    bindText(node, op.textKey);
     node.textAlignHorizontal = op.align;
     // Figma's Inter runs slightly wider than the browser's, so a box sized to the
     // captured width can wrap differently. Single-line text never wraps; wrapped
@@ -1109,8 +1141,14 @@ export function createApplier(api: PluginAPI) {
       }
     } else {
       if (node.type !== "TEXT") throw new Error("not text");
+      // An instance's text keeps its main's binding through a text edit, so a text the mapper left
+      // plain (no `textKey`, such as one of mixed styles) drops it, or it would show the main's.
+      if (!override.textKey && node.boundVariables?.characters) {
+        node.setBoundVariable("characters", null);
+      }
       const before = node.height;
       await setText(node, override, usableFont(override.runs[0]?.fontName ?? FALLBACK));
+      bindText(node, override.textKey);
       noteGainedLine(node, before, override.runs);
     }
   }

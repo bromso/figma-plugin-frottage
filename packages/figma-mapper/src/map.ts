@@ -830,7 +830,8 @@ export function mapCapture(
         ? hoverPatches(pageRoot, ops, () => {
             lostHovers++;
           })
-        : undefined
+        : undefined,
+      capture.language !== undefined
     );
     finished = found.ops;
     report.components = found.components;

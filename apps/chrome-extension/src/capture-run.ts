@@ -1,4 +1,4 @@
-import { type Capture, countNodes, LIMITS } from "@repo/capture-schema";
+import { type Capture, countNodes, LIMITS, type PageLanguage } from "@repo/capture-schema";
 import { AssetAssembler, ChunkAssembler, type ChunkMessage } from "./chunks";
 import type { RunWidth } from "./plan-widths";
 
@@ -38,6 +38,8 @@ export type RunStatus =
       blockedImages: number;
       stopped?: string;
       cancelled?: boolean;
+      /** A line for each language that couldn't be loaded and was left out. */
+      leftOut?: string[];
       /** What the run was asked, so a re-run from a fresh popup repeats it. */
       request: {
         widths: number[];
@@ -47,6 +49,10 @@ export type RunStatus =
         versionLabel: string;
         /** Which themes to import, when the run was asked. */
         themes?: { light: boolean; dark: boolean };
+        /** Which languages to capture, current first; missing for a run of the current one only. */
+        languages?: PageLanguage[];
+        /** The lines for languages the popup left out before the run began. */
+        leftOut?: string[];
       };
     };
 

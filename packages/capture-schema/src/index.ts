@@ -7,7 +7,7 @@ export {
   unpackFrottage,
   unpackFrottageSet,
 } from "./container";
-export { evalLength, parseCssColor, type Rgba } from "./css-values";
+export { evalLength, languageName, parseCssColor, type Rgba } from "./css-values";
 export { countNodes, type ParseResult, parseCapture } from "./parse";
 export {
   type Capture,
@@ -15,6 +15,7 @@ export {
   captureSchema,
   type ElementNode,
   type ImageNode,
+  type PageLanguage,
   type PlaceholderNode,
   SCHEMA_VERSION,
   type SvgNode,

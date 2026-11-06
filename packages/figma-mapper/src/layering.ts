@@ -34,6 +34,7 @@ export const COLLECTION_ORDER: PlanCollectionKind[] = [
   "device",
   "breakpoint",
   "colorMode",
+  "language",
   "theme",
 ];
 const ORDER = COLLECTION_ORDER;
@@ -46,6 +47,7 @@ export const COLLECTION_NAMES: Record<PlanCollectionKind, string> = {
   device: "Device",
   breakpoint: "Breakpoint",
   colorMode: "Color Mode",
+  language: "Language",
   theme: "Theme",
 };
 

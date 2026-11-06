@@ -85,6 +85,7 @@ const CREATION_ORDER: PlanCollectionKind[] = [
   "device",
   "breakpoint",
   "colorMode",
+  "language",
   "theme",
 ];
 const ONE_MODE: Record<PlanCollectionKind, string> = {
@@ -95,6 +96,7 @@ const ONE_MODE: Record<PlanCollectionKind, string> = {
   device: "Default",
   breakpoint: "base",
   colorMode: "Light",
+  language: "Default",
   theme: "Default",
 };
 
@@ -493,6 +495,10 @@ export function createLayerSet(api: PluginAPI) {
       return home;
     };
 
+    /** Whether a collection has its first mode and another: one mode has nothing to switch. */
+    const switches = ({ modeIds }: Home) =>
+      modeIds[0] != null && modeIds.filter((id) => id !== null).length > 1;
+
     /**
      * The value a missing mode falls back to: a Breakpoint variable's widest mode, its last, since
      * the modes run narrowest to widest; any other's first.
@@ -597,6 +603,8 @@ export function createLayerSet(api: PluginAPI) {
         }
       }
       const home = homeOf(token.collection);
+      // Texts show the page's own language, so Language needs it and another to switch to.
+      if (token.collection === "language" && !switches(home)) return;
       const wants = new Map<string, VariableValue>();
       for (const [i, modeId] of home.modeIds.entries()) {
         const value = token.values[i];
@@ -750,7 +758,12 @@ export function createLayerSet(api: PluginAPI) {
     createdCollections = createdCollections.filter((collection) => {
       if (collection.variableIds.length > 0) return true;
       collection.remove();
-      for (const [kind, home] of homes) if (home.collection === collection) homes.delete(kind);
+      for (const [kind, home] of homes) {
+        if (home.collection !== collection) continue;
+        homes.delete(kind);
+        // Its modes went with it; the ones it had no room for are still in `modesDropped`.
+        counts.modes = counts.modes.filter((m) => m.kind !== kind);
+      }
       return false;
     });
   }

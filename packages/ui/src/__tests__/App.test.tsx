@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Capture } from "@repo/capture-schema";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../app";
 import {
@@ -10,6 +10,7 @@ import {
   fakePort,
   fontFile,
   frottageFile,
+  languageSetFile,
   repeatedFile,
   setFile,
   themedFile,
@@ -604,7 +605,7 @@ describe("App (a device set)", () => {
     for (const name of ["Laptop 1512", "Tablet portrait 834", "Phone portrait 390"]) {
       expect(screen.getByRole("checkbox", { name })).toBeChecked();
     }
-    expect(screen.getByRole("checkbox", { name: "lg breakpoint 1024" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "lg 1024" })).toBeChecked();
     expect(
       screen.getByText("Breakpoint captures make no frames. They give the Breakpoint values.")
     ).toBeInTheDocument();
@@ -612,6 +613,59 @@ describe("App (a device set)", () => {
     expect(screen.getByRole("radio", { name: "New page" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Current page" })).not.toBeChecked();
     expect(port.log).not.toContain("beginDeviceSet");
+  });
+
+  it("groups devices, then breakpoints with the note, before Themes", async () => {
+    await chosen(
+      undefined,
+      deviceSetFile({
+        devices: [{ name: "Laptop", width: 1512, height: 982 }],
+        extras: [
+          { breakpoint: "sm", width: 640 },
+          { breakpoint: "min 576", width: 576 },
+        ],
+        breakpoints: [576, 640],
+        edit: (c) => {
+          c.tokens = {
+            cssCustomProperties: { "--surface": "#ffffff" },
+            themes: [{ context: ".dark", mode: "Dark", properties: { "--surface": "#000000" } }],
+          };
+          c.themeChoice = { light: true, dark: true };
+        },
+      })
+    );
+    const devicesGroup = screen.getByRole("group", { name: "Devices" });
+    const breakpointsGroup = screen.getByRole("group", { name: "Breakpoints" });
+    const themesGroup = screen.getByRole("group", { name: "Themes" });
+    expect(devicesGroup.compareDocumentPosition(breakpointsGroup)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(breakpointsGroup.compareDocumentPosition(themesGroup)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(within(devicesGroup).getByRole("checkbox", { name: "Laptop 1512" })).toBeChecked();
+    expect(within(breakpointsGroup).getByRole("checkbox", { name: "sm 640" })).toBeChecked();
+    expect(within(breakpointsGroup).getByRole("checkbox", { name: "min 576" })).toBeChecked();
+    expect(
+      within(breakpointsGroup).getByText(
+        "Breakpoint captures make no frames. They give the Breakpoint values."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("a file with no breakpoint captures shows no Breakpoints group", async () => {
+    await chosen(
+      undefined,
+      deviceSetFile({
+        devices: [
+          { name: "Laptop", width: 1512, height: 982 },
+          { name: "Phone portrait", width: 390, height: 844 },
+        ],
+      })
+    );
+    expect(screen.getByRole("group", { name: "Devices" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Breakpoints" })).toBeNull();
+    expect(screen.queryByText(/Breakpoint captures make no frames/)).toBeNull();
   });
 
   it("an unticked device leaves the line and the import", async () => {
@@ -785,5 +839,51 @@ describe("App (themes in what's in this file)", () => {
     await second.user.click(screen.getByRole("button", { name: "Import" }));
     await screen.findByText("Import complete");
     expect(second.port.deviceSetMeta?.layers.modes).toEqual(["Light", "Brand"]);
+  });
+});
+
+describe("App (languages in what's in this file)", () => {
+  async function chosen(file: File) {
+    const user = userEvent.setup();
+    const port = fakePort();
+    render(<App port={port} />);
+    await user.upload(screen.getByLabelText("Choose .frottage files"), file);
+    await screen.findByText("What's in this file");
+    return { user, port };
+  }
+
+  it("a file in English and Svenska ticks both; English can't be unticked", async () => {
+    const { user, port } = await chosen(languageSetFile(3));
+    expect(screen.getByRole("group", { name: "Languages" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "English" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "English" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Svenska" })).toBeChecked();
+    expect(screen.getByText(/Language 2/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(
+      port.deviceSetMeta?.layers.collections.find((c) => c.kind === "language")?.modes
+    ).toEqual(["English", "Svenska"]);
+  });
+
+  it("Svenska unticked leaves the line and the import without a Language collection", async () => {
+    const { user, port } = await chosen(languageSetFile(3));
+    await user.click(screen.getByRole("checkbox", { name: "Svenska" }));
+    expect(screen.getByText(/^Device 2 modes/)).not.toHaveTextContent("Language");
+    await user.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("Import complete");
+    expect(port.deviceSetMeta?.layers.collections.some((c) => c.kind === "language")).toBe(false);
+  });
+
+  it("a file in one language shows no Languages group", async () => {
+    await chosen(
+      deviceSetFile({
+        devices: [
+          { name: "Laptop", width: 1512 },
+          { name: "Phone", width: 390 },
+        ],
+      })
+    );
+    expect(screen.queryByRole("group", { name: "Languages" })).toBeNull();
   });
 });

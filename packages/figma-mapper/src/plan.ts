@@ -128,7 +128,19 @@ export type PlanChildLayout = {
 
 /** A difference from the component, on the child at `path`, by index down the expanded tree. */
 export type PlanOverride =
-  | { path: number[]; kind: "text"; text: string; runs: PlanRun[] }
+  | {
+      path: number[];
+      kind: "text";
+      text: string;
+      runs: PlanRun[];
+      /**
+       * The captured text id this layer shows, in a capture with a language, so the device merge
+       * can bind it; the merge removes it.
+       */
+      source?: string;
+      /** The Language variable its characters are bound to, by `PlanVariable.key`. */
+      textKey?: string;
+    }
   | { path: number[]; kind: "image"; hash: string }
   | { path: number[]; kind: "swap"; key: string };
 
@@ -197,6 +209,8 @@ export type PlanOp = (
        * can pass with a different line count.
        */
       lineCount: number;
+      /** The Language variable its characters are bound to, by `PlanVariable.key`. */
+      textKey?: string;
     }
   | {
       op: "image";
@@ -340,7 +354,7 @@ export type PlanVarValue = (PlanRgb & { a: number }) | number | string | { alias
 
 /**
  * The collections an import makes, in the order they are created. Device and Breakpoint come only
- * from a set of device captures.
+ * from a set of device captures, and Language from a set captured in several languages.
  */
 export type PlanCollectionKind =
   | "palette"
@@ -350,6 +364,7 @@ export type PlanCollectionKind =
   | "device"
   | "breakpoint"
   | "colorMode"
+  | "language"
   | "theme";
 
 /** One collection: its kind, its name in the file, and its modes. */
