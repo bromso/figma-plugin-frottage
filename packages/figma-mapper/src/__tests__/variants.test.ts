@@ -617,8 +617,24 @@ describe("fix round 1", () => {
     };
     const p = plan([item("a", white), item("b", red)]);
     expect(p.report.warnings).toContain(
-      "1 carousel item looks different from its CarouselItem variant and stays as it is."
+      "1 carousel item looks different from its CarouselItem component and stays as it is."
     );
+  });
+
+  test("two props that read as one property name keep the first seen", () => {
+    const p = plan([
+      button("a", { size: "sm", Size: "x" }, { bg: white }),
+      button("b", { size: "lg", Size: "y" }, { bg: red }),
+    ]);
+    expect(variantNames(p, "Button")).toEqual(["Size=sm", "Size=lg"]);
+    expect(p.report.warnings).toContain("Button: 2 variants from the page's code (Size).");
+  });
+
+  test("a set only markers name says so", () => {
+    const marked = (id: string, variant: string, bg: typeof white) =>
+      button(id, { variant }, { bg, found: { source: "marker" } });
+    const p = plan([marked("a", "outline", white), marked("b", "default", red)]);
+    expect(p.report.warnings).toContain("Button: 2 variants from the page's markers (Variant).");
   });
 });
 

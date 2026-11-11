@@ -387,6 +387,14 @@ describe("probeComponents", () => {
     expect(found(doc.querySelector("div")).name).toBe("Card content");
   });
 
+  test("a data-slot holding =, , or | names nothing: it would break a variant name", () => {
+    const doc = page(
+      '<a data-slot="a=b">x</a><a data-slot="a,b">x</a><a data-slot="a|b">x</a><b data-slot="ok">x</b>'
+    );
+    expect(probeComponents(doc)).toBe(1);
+    expect(found(doc.querySelector("b")).name).toBe("Ok");
+  });
+
   test("marker props fill the props the code lacks", () => {
     const doc = page('<button data-slot="button" data-variant="ghost" data-size="sm">Go</button>');
     function Button() {

@@ -26,7 +26,8 @@ export function markerProps(el: Element): Record<string, string> {
 // The element's name from its `data-slot`, or null without one.
 export function markerName(el: Element): string | null {
   const slot = el.getAttribute("data-slot");
-  if (!slot) return null;
+  // `=`, `,` and `|` would break the Figma variant names a set is made of.
+  if (!slot || /[=,|]/.test(slot)) return null;
   const name = slotName(slot);
   return name.length > 0 && name.length <= 40 ? name : null;
 }

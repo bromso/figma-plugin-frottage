@@ -19,7 +19,13 @@ import type { PlanComponentProperty, PlanOp, PlanPaint, PlanPropertyValues } fro
 /** A component the page's code or a shadcn marker named, as the capture holds it. */
 export type FoundComponent = CaptureComponent;
 
-export type VariantSet = { name: string; variants: number; properties: string[] };
+export type VariantSet = {
+  name: string;
+  variants: number;
+  properties: string[];
+  /** Only shadcn markers named it, with no code behind them. */
+  markers?: true;
+};
 
 type FrameOp = Extract<PlanOp, { op: "frame" }>;
 type SvgOp = Extract<PlanOp, { op: "svg" }>;
@@ -217,6 +223,10 @@ function labelOf(root: Tree): { path: number[]; text: string } | undefined {
 
 const capital = (key: string) => `${key.charAt(0).toUpperCase()}${key.slice(1)}`;
 
+/** Another key already reads as this one's property name (`size` and `Size`): the first stays. */
+const collides = (keys: string[], key: string) =>
+  keys.some((k) => k !== key && capital(k) === capital(key));
+
 /** An icon's name from its markup: `data-icon`, `aria-label`, then a class that reads as a name. */
 function iconName(markup: string, n: number): string {
   const open = markup.match(/^\s*<svg\b[^>]*>/i)?.[0] ?? "";
@@ -355,6 +365,7 @@ function propsOf(side: Side): { keys: string[]; booleans: Set<string> } {
   const booleans = new Set<string>();
   for (const node of side.coded) {
     for (const [key, value] of Object.entries(side.found(node).props)) {
+      if (collides(keys, key)) continue;
       if (!keys.includes(key)) keys.push(key);
       if (typeof value === "boolean") booleans.add(key);
     }
@@ -420,7 +431,7 @@ function axesOf(sides: Side[], decides: (side: Side) => boolean): Axes {
     const own = propsOf(side);
     for (const key of own.booleans) booleans.add(key);
     if (!decides(side)) continue;
-    for (const key of own.keys) if (!keys.includes(key)) keys.push(key);
+    for (const key of own.keys) if (!keys.includes(key) && !collides(keys, key)) keys.push(key);
     for (const key of keptIn(side)) kept.add(key);
   }
   return { kept: keys.filter((key) => kept.has(key)), booleans };
@@ -701,10 +712,17 @@ export function shareVariantSets(
     for (const [i, c] of built.variants.entries()) owners.set(c, built.owners[i] as number);
     const firstSide = sides.find(decides) as Side;
     const first = { entry: firstSide.entry, node: firstSide.occurrences[0] as Tree };
-    sets.push({ name, variants: built.variants.length, properties: built.properties, first });
+    const found = sides.filter(decides).flatMap((s) => s.occurrences.map(s.found));
+    const markers = found.every((f) => f.source === "marker");
+    sets.push({
+      name,
+      variants: built.variants.length,
+      properties: built.properties,
+      ...(markers ? { markers: true as const } : {}),
+      first,
+    });
 
     if (built.notJoined > 0) notJoined.set(name, built.notJoined);
-    const found = sides.filter(decides).flatMap((s) => s.occurrences.map(s.found));
     if (found.every((f) => f.source === "marker" || f.codeName)) fromMarkers++;
     for (const { codeName } of found) {
       if (codeName) renamed.set(`${codeName}\0${name}`, { from: codeName, to: name });
@@ -789,7 +807,8 @@ export function componentLines(
   for (const set of found.sets) {
     const n = set.variants;
     const listed = set.properties.length > 0 ? ` (${set.properties.join(", ")})` : "";
-    lines.push(`${set.name}: ${n} variant${n === 1 ? "" : "s"} from the page's code${listed}.`);
+    const from = set.markers ? "markers" : "code";
+    lines.push(`${set.name}: ${n} variant${n === 1 ? "" : "s"} from the page's ${from}${listed}.`);
   }
   if (found.fromMarkers > 0) {
     const n = found.fromMarkers;
@@ -802,10 +821,12 @@ export function componentLines(
     // `CarouselItem` reads as `carousel item`.
     const words = name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
     const what = `${words}${n === 1 ? "" : "s"}`;
+    // A plain component has no variants: its occurrences differ from the component itself.
+    const of = found.sets.some((set) => set.name === name) ? "variant" : "component";
     lines.push(
       n === 1
-        ? `1 ${what} looks different from its ${name} variant and stays as it is.`
-        : `${n} ${what} look different from their ${name} variant and stay as they are.`
+        ? `1 ${what} looks different from its ${name} ${of} and stays as it is.`
+        : `${n} ${what} look different from their ${name} ${of} and stay as they are.`
     );
   }
   return lines;
