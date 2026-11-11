@@ -430,10 +430,6 @@ export function setFileWithImage(widths: number[], good = true, name = "set.frot
   });
 }
 
-/**
- * A File of one page captured on devices, plus extra captures for breakpoint ranges no device
- * covers. Every capture records the page's breakpoint boundaries.
- */
 /** Two buttons the page's code names `Button`, each with a label, added to the capture's root. */
 export function addButtons(capture: Capture): void {
   if (capture.root.kind !== "element") return;
@@ -448,6 +444,10 @@ export function addButtons(capture: Capture): void {
   }
 }
 
+/**
+ * A File of one page captured on devices, plus extra captures for breakpoint ranges no device
+ * covers. Every capture records the page's breakpoint boundaries.
+ */
 export function deviceSetFile(opts: {
   name?: string;
   url?: string;
