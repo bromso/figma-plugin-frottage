@@ -861,7 +861,9 @@ export function mapCapture(
       warn(`A component named "${from}" in the code was named ${to} from its data-slot.`);
     }
     for (const [name, n] of sets.notJoined) {
-      const what = `${name.toLowerCase()}${n === 1 ? "" : "s"}`;
+      // `CarouselItem` reads as `carousel item`.
+      const words = name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+      const what = `${words}${n === 1 ? "" : "s"}`;
       warn(
         n === 1
           ? `1 ${what} looks different from its ${name} variant and stays as it is.`

@@ -21,6 +21,8 @@ export type Component = {
   label?: number[];
   /** The main's icon child, which an occurrence without it (`iconless`) leaves out. */
   iconAt?: number;
+  /** Made from a component the page's code or markers name: a set's variant or a plain one. */
+  named?: boolean;
 };
 
 export type Tree = {
@@ -127,6 +129,15 @@ export function bareTag(tag: string, { op }: Tree): string {
   return `tag:${tag}:${w}x${h}`;
 }
 
+/**
+ * What an instance op adds to a signature: the set it is a variant of, or its component, and a size
+ * it is set to. Its variant, label and other values are overrides of whatever holds it.
+ */
+function instanceLook(op: Extract<PlanOp, { op: "instance" }>): string {
+  const of = op.key.startsWith("set:") ? op.key.slice(0, op.key.indexOf("|")) : op.key;
+  return `instance:${of}:${op.resize ? `${op.w}x${op.h}` : ""}`;
+}
+
 export function buildForest(ops: PlanOp[]): Tree[] {
   const byId = new Map<string, Tree>();
   const nodes: Tree[] = [];
@@ -180,7 +191,9 @@ function findComponents(nodes: Tree[], tags: Map<string, string>): Component[] {
           return `${placement(c, node)}${look}`;
         })
         .join(",");
-      node.signature = intern(`${ownLook(node.op, hugged(node.op))}|${below}`);
+      const own =
+        node.op.op === "instance" ? instanceLook(node.op) : ownLook(node.op, hugged(node.op));
+      node.signature = intern(`${own}|${below}`);
       const tag = tags.get(node.op.id);
       if (!tag?.includes("-") || node.op.op !== "frame" || !node.parent || node.rotated) continue;
       const group = `${tag}\0${ownLook(node.op, rootSize(node))}|${below}`;
@@ -243,7 +256,7 @@ function overridesOf(occurrence: Tree, sources: boolean): PlanOverride[] {
       swapped = true;
     } else if (
       node !== occurrence &&
-      node.component?.set &&
+      node.component?.named &&
       base !== node.component.occurrences[0]
     ) {
       // Another occurrence of the same variant may lack the icon, so the walk goes on beside the
@@ -264,6 +277,22 @@ function overridesOf(occurrence: Tree, sources: boolean): PlanOverride[] {
     } else if (base.op.op === "image" && node.op.op === "image") {
       const { hash } = node.op;
       if (swapped || hash !== base.op.hash) overrides.push({ path, kind: "image", hash });
+    } else if (base.op.op === "instance" && node.op.op === "instance") {
+      // An instance op holding its own variant and values, as a set's instance does in a
+      // structural component: the copy swaps to its variant and sets its values below.
+      const { key, properties, overrides: own } = node.op;
+      const other = key !== base.op.key;
+      if (other) overrides.push({ path, kind: "swap", key });
+      const fresh = swapped || other;
+      if (
+        properties &&
+        (fresh || JSON.stringify(properties) !== JSON.stringify(base.op.properties))
+      ) {
+        overrides.push({ path, kind: "properties", properties });
+      }
+      if (fresh || JSON.stringify(own) !== JSON.stringify(base.op.overrides)) {
+        for (const o of own) overrides.push({ ...o, path: [...path, ...o.path] });
+      }
     }
     const pairs = besides(base, node);
     for (let i = pairs.length - 1; i >= 0; i--) {
@@ -357,7 +386,7 @@ function hoverOf(top: Tree, hovers: Map<string, HoverPatch>): OccurrenceHover {
       out.swapped += hoversBelow(node, hovers);
       continue;
     }
-    if (node !== top && node.component?.set) base = node.component.occurrences[0] as Tree;
+    if (node !== top && node.component?.named) base = node.component.occurrences[0] as Tree;
     const hover = hovers.get(node.op.id);
     const patch = hover && forMain(hover, path, base);
     if (patch) {

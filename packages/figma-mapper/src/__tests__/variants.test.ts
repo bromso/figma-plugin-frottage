@@ -212,8 +212,16 @@ describe("a set from the page's components", () => {
       })
     );
     const p = plan(items);
-    expect(variantNames(p, "CarouselItem")).toEqual(["Default"]);
-    expect(p.report.warnings).toContain("CarouselItem: 1 variant from the page's code.");
+    // No variant property leaves nothing to choose: a plain component, and no set line.
+    const made = main(p, "component:CarouselItem");
+    expect(made?.name).toBe("CarouselItem");
+    expect(made?.component?.set).toBeUndefined();
+    expect(["i0", "i1", "i2"].map((id) => instance(p, id)?.key)).toEqual([
+      "component:CarouselItem",
+      "component:CarouselItem",
+      "component:CarouselItem",
+    ]);
+    expect(p.report.warnings.some((w) => w.startsWith("CarouselItem:"))).toBe(false);
   });
 
   test("a boolean prop missing elsewhere is false", () => {
@@ -258,21 +266,36 @@ describe("icons", () => {
       button("b", { size: "icon" }, { icon: plus }),
     ]);
     const icons = mains(p).filter((m) => m.component?.key.startsWith("icon:"));
-    expect(icons.map((m) => [m.component?.key, m.component?.name])).toEqual([
-      ["icon:1", "arrow-right"],
-      ["icon:2", "lucide-plus"],
-    ]);
-    const variant = mains(p).find((m) => m.component?.set) as FrameOp;
+    expect(icons.map((m) => m.component?.name)).toEqual(["arrow-right", "lucide-plus"]);
+    const [first, second] = icons.map((m) => m.component?.key as string);
+    expect(first).toMatch(/^icon:[0-9a-f]{8}$/);
+    expect(second).toMatch(/^icon:[0-9a-f]{8}$/);
+    expect(first).not.toBe(second);
+    const variant = main(p, "component:Button") as FrameOp;
     expect(variant.component?.properties).toContainEqual({
       type: "INSTANCE_SWAP",
       name: "Icon",
       path: [0],
-      default: "icon:1",
+      default: first,
     });
     // The main shows its icon as an instance of the icon component.
-    expect(below(p, variant.id).find((o) => o.op === "instance")).toMatchObject({ key: "icon:1" });
-    expect(instance(p, "a")?.properties?.Icon).toBe("icon:1");
-    expect(instance(p, "b")?.properties?.Icon).toBe("icon:2");
+    expect(below(p, variant.id).find((o) => o.op === "instance")).toMatchObject({ key: first });
+    expect(instance(p, "a")?.properties?.Icon).toBe(first);
+    expect(instance(p, "b")?.properties?.Icon).toBe(second);
+  });
+
+  test("an icon's key is its markup's, whatever else the page holds", () => {
+    const alone = plan([
+      button("a", { size: "icon" }, { icon: plus }),
+      button("b", { size: "icon" }, { icon: arrow }),
+    ]);
+    const before = plan([
+      button("x", { size: "icon" }, { icon: arrow }),
+      button("y", { size: "icon" }, { icon: plus }),
+    ]);
+    expect(instance(alone, "a")?.properties?.Icon).toBe(
+      instance(before, "y")?.properties?.Icon as string
+    );
   });
 
   test("the same svg everywhere is no Icon property", () => {
@@ -289,7 +312,7 @@ describe("icons", () => {
       button("a", { variant: "outline" }, { label: "A" }),
       button("b", { variant: "outline" }, { label: "B", icon: arrow }),
     ]);
-    const variant = mains(p).find((m) => m.component?.set) as FrameOp;
+    const variant = main(p, "component:Button") as FrameOp;
     expect(variant.component?.properties).toEqual([
       { type: "TEXT", name: "Label", path: [1], default: "B" },
       { type: "BOOLEAN", name: "Show icon", path: [0], default: true },
@@ -325,7 +348,7 @@ describe("an occurrence without the main's icon", () => {
       ...on,
       hoverComponents: true,
     });
-    const variant = mains(p).find((m) => m.component?.set) as FrameOp;
+    const variant = main(p, "component:Button") as FrameOp;
     expect(variant.component?.hover).toEqual([
       { path: [], fills: [{ type: "SOLID", color: { r: 1, g: 0, b: 0 }, opacity: 1 }] },
     ]);
@@ -344,13 +367,13 @@ describe("a component inside another (Review Focus 5)", () => {
       card("c1", button("b1", { variant: "outline" }, { bg: white, label: "One" })),
       card("c2", button("b2", {}, { bg: black, label: "Two" })),
     ]);
-    const cardMain = main(p, "set:Card|Default") as FrameOp;
+    const cardMain = main(p, "component:Card") as FrameOp;
     expect(cardMain).toBeDefined();
     const inside = below(p, cardMain.id).find((o): o is InstanceOp => o.op === "instance");
     expect(inside?.key).toBe("set:Button|Variant=outline");
     expect(inside?.properties?.Label).toBe("One");
     const second = instance(p, "c2");
-    expect(second?.key).toBe("set:Card|Default");
+    expect(second?.key).toBe("component:Card");
     expect(second?.overrides).toContainEqual({
       path: [0],
       kind: "swap",
@@ -365,7 +388,7 @@ describe("a component inside another (Review Focus 5)", () => {
     expect(p.report.instances).toBe(5);
     // The Button mains come before the Card main that uses them.
     const order = mains(p).map((m) => m.component?.key);
-    expect(order.indexOf("set:Card|Default")).toBeGreaterThan(
+    expect(order.indexOf("component:Card")).toBeGreaterThan(
       order.indexOf("set:Button|Variant=default")
     );
   });
@@ -448,13 +471,96 @@ describe("extractVariantSets", () => {
       ["b", item],
     ]);
     const found = extractVariantSets(ops, named);
-    expect(found.sets).toEqual([{ name: "CarouselItem", variants: 1, properties: [] }]);
+    expect(found.sets).toEqual([]);
+    expect(found.plain).toEqual(["CarouselItem"]);
     expect(found.notJoined.size).toBe(0);
     expect(found.ops.filter((o) => o.op === "instance").map((o) => o.id)).toEqual(["a", "b"]);
+  });
+
+  test("text that hugs its lines compares neither height nor line count", () => {
+    const hugging = (id: string, parent: string, lines: number): PlanOp => ({
+      ...(quote(id, parent, 300, "Quote") as Extract<PlanOp, { op: "text" }>),
+      h: 20 * lines,
+      lineCount: lines,
+    });
+    const ops = [
+      frame("root", null, 2),
+      frame("a", "root", 1),
+      hugging("a-t", "a", 2),
+      frame("b", "root", 1),
+      hugging("b-t", "b", 3),
+    ];
+    const named = new Map([
+      ["a", item],
+      ["b", item],
+    ]);
+    expect(extractVariantSets(ops, named).notJoined.size).toBe(0);
+  });
+
+  test("markup with only a data-slot joins only at its variant's own size", () => {
+    const fixed = (id: string, w: number): FrameOp => ({
+      ...frame(id, "root", 0),
+      w,
+      layout: { ...(frame(id, "root", 0).layout as object), sizingV: "FIXED" } as FrameOp["layout"],
+    });
+    const ops = [frame("root", null, 3), fixed("a", 300), fixed("b", 300), fixed("s", 200)];
+    const coded: FoundComponent = { source: "react", name: "Item", props: { variant: "x" } };
+    const named = new Map([
+      ["a", coded],
+      ["b", coded],
+      ["s", { source: "marker", name: "Item", props: {} } as FoundComponent],
+    ]);
+    expect(extractVariantSets(ops, named).notJoined.get("Item")).toBe(1);
   });
 
   test("nothing named leaves the ops as they are", () => {
     const ops = [frame("root", null, 1), frame("a", "root", 0)];
     expect(extractVariantSets(ops, new Map()).ops).toBe(ops);
+  });
+});
+
+describe("fix round 1", () => {
+  test("props that change the look together are both properties", () => {
+    const p = plan([
+      button("a", { variant: "destructive", size: "sm" }, { bg: red, label: "A" }),
+      button("b", {}, { bg: white, label: "B" }),
+    ]);
+    expect(variantNames(p, "Button")).toEqual([
+      "Variant=destructive, Size=sm",
+      "Variant=default, Size=default",
+    ]);
+    expect(p.report.warnings).toContain("Button: 2 variants from the page's code (Variant, Size).");
+  });
+
+  test("a custom element holding differently labelled buttons is a structural component again", () => {
+    const xcard = (id: string, inner: ElementNode) =>
+      el(id, [0, 0], [inner], { semantic: { tag: "x-card" } });
+    const p = plan([
+      xcard("c1", button("b1", { variant: "outline" }, { label: "One" })),
+      xcard("c2", button("b2", { variant: "outline" }, { label: "Two" })),
+    ]);
+    expect(instance(p, "c1")?.key).toBe("x-card#1");
+    expect(instance(p, "c2")?.key).toBe("x-card#1");
+    const held = below(p, "x-card#1/c1").find((o): o is InstanceOp => o.op === "instance");
+    expect(held?.properties?.Label).toBe("One");
+    expect(instance(p, "c2")?.overrides).toContainEqual({
+      path: [0],
+      kind: "properties",
+      properties: { Label: "Two" },
+    });
+  });
+
+  test("a component that looks different is named in words", () => {
+    const item = (id: string, bg: typeof white) => {
+      const base = el(id, [0, 0]);
+      return el(id, [0, 0], [], {
+        style: { ...base.style, backgroundColor: bg },
+        component: { source: "react", name: "CarouselItem", props: {} },
+      });
+    };
+    const p = plan([item("a", white), item("b", red)]);
+    expect(p.report.warnings).toContain(
+      "1 carousel item looks different from its CarouselItem variant and stays as it is."
+    );
   });
 });
