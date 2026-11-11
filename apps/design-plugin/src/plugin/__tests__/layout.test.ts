@@ -938,6 +938,7 @@ describe("when to verify", () => {
       hoverFailures: 0,
       paintFailures: 0,
       resizedFallbacks: 0,
+      componentNotes: [],
       stylesCreated: 0,
       stylesReused: 0,
       variablesCreated: 0,

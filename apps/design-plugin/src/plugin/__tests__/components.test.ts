@@ -3,6 +3,7 @@ import {
   DEFAULT_IMPORT_OPTIONS,
   extractComponents,
   type FontRef,
+  type PlanComponentProperty,
   type PlanHoverPatch,
   type PlanOp,
   type PlanOverride,
@@ -1329,4 +1330,245 @@ test("a component that cannot be sized does not stop the rest being placed", asy
   const second = setsOf(f).find((n) => n.name === "x-b") as FakeNode;
   expect(second.width).toBe(224);
   expect(second.x).toBeGreaterThan(40);
+});
+
+// ---------- Component sets
+
+const ICONS = { "icon:a": "Plus", "icon:b": "Minus" } as const;
+const iconDefs = (): PlanOp[] =>
+  Object.entries(ICONS).map(([key, name]) =>
+    main(key, { name, w: 16, h: 16, component: { key, name } })
+  );
+type Values = [string, string][];
+const BUTTONS: Values[] = [
+  [
+    ["Variant", "default"],
+    ["Size", "default"],
+  ],
+  [
+    ["Variant", "outline"],
+    ["Size", "default"],
+  ],
+  [
+    ["Variant", "outline"],
+    ["Size", "icon"],
+  ],
+];
+const variantName = (values: Values) => values.map(([k, v]) => `${k}=${v}`).join(", ");
+const buttonKey = (values: Values) => `set:Button|${variantName(values)}`;
+const BUTTON_PROPS: PlanComponentProperty[] = [
+  { type: "INSTANCE_SWAP", name: "Icon", path: [0], default: "icon:a" },
+  { type: "TEXT", name: "Label", path: [1], default: "Go" },
+];
+/** A variant main of Button: an icon instance, then its label. An icon-sized one is narrower. */
+function variant(values: Values, extra: object = {}): PlanOp[] {
+  const name = variantName(values);
+  const key = buttonKey(values);
+  const icon = values.some(([, v]) => v === "icon");
+  return [
+    frame(`${key}/n`, null, {
+      name,
+      x: 0,
+      y: 0,
+      w: icon ? 30 : 80,
+      h: 30,
+      childCount: 2,
+      component: {
+        key,
+        name,
+        set: { key: "set:Button", name: "Button", values },
+        properties: BUTTON_PROPS,
+        ...extra,
+      },
+    }),
+    instance(`${key}/i`, `${key}/n`, "icon:a", { w: 16, h: 16 }),
+    text(`${key}/t`, `${key}/n`, "Go"),
+  ];
+}
+const LABELS = [{ Label: "Go" }, { Label: "Back" }, { Label: "Next", Icon: "icon:b" }];
+/** Icons, Button's variants, and a page with one instance of each. */
+const buttonPage = (variants: Values[] = BUTTONS, hover: Record<number, PlanHoverPatch[]> = {}) => [
+  ...iconDefs(),
+  ...variants.flatMap((v, i) => variant(v, hover[i] ? { hover: hover[i] } : {})),
+  frame("root", null, { childCount: variants.length }),
+  ...variants.map((v, i) =>
+    instance(`b${i}`, "root", buttonKey(v), { properties: LABELS[i % LABELS.length] })
+  ),
+];
+
+async function importButtons(ops: PlanOp[], f = fakeFigma()) {
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.importTokens(
+    { textStyles: [], colors: [], collection: "example.com" },
+    DEFAULT_IMPORT_OPTIONS
+  );
+  await a.applyBatch(ops);
+  const r = await a.end();
+  return { f, r, root: f.node(r.rootId) };
+}
+
+const buttonSets = (f: ReturnType<typeof fakeFigma>) =>
+  setsOf(f).filter((n) => n.name === "Button" && !n.removed);
+type PropertyDef = { type: string; defaultValue: unknown; preferredValues?: unknown };
+const definitionNamed = (set: FakeNode, name: string) =>
+  Object.entries(set.componentPropertyDefinitions as Record<string, PropertyDef>).find(
+    ([full]) => full.split("#")[0] === name
+  );
+
+test("a set's variants make one component set, named as Figma names variants", async () => {
+  const { f, r } = await importButtons(buttonPage());
+  const [set] = buttonSets(f) as [FakeNode];
+  expect(buttonSets(f)).toHaveLength(1);
+  expect(set.children.map((v: FakeNode) => v.name)).toEqual(BUTTONS.map(variantName));
+  expect(set.parent.type).toBe("SECTION");
+  expect(set.getSharedPluginData("frottage", "component")).toBe("example.com#component:Button");
+  expect(r.failedOps).toBe(0);
+  expect(r.componentNotes).toEqual([]);
+});
+
+test("a set defines Label and Icon, and each variant's layers reference them", async () => {
+  const { f } = await importButtons(buttonPage());
+  const [set] = buttonSets(f) as [FakeNode];
+  const [label, labelDef] = definitionNamed(set, "Label") as [string, PropertyDef];
+  const [icon, iconDef] = definitionNamed(set, "Icon") as [string, PropertyDef];
+  expect(label).toMatch(/^Label#/);
+  expect(labelDef).toMatchObject({ type: "TEXT", defaultValue: "Go" });
+  const plus = f.frame("Plus");
+  const minus = f.frame("Minus");
+  expect(iconDef).toMatchObject({ type: "INSTANCE_SWAP", defaultValue: plus.id });
+  // Every icon the instances swap to, as well as the default.
+  expect(iconDef.preferredValues).toEqual([
+    { type: "COMPONENT", key: plus.key },
+    { type: "COMPONENT", key: minus.key },
+  ]);
+  for (const v of set.children as FakeNode[]) {
+    expect(v.children[1].componentPropertyReferences).toEqual({ characters: label });
+    expect(v.children[0].componentPropertyReferences).toEqual({ mainComponent: icon });
+  }
+});
+
+test("every instance holds its variant's values, its label and its icon", async () => {
+  const { f, root } = await importButtons(buttonPage());
+  const props = (n: FakeNode) =>
+    Object.fromEntries(
+      Object.entries(n.componentProperties as Record<string, { value: unknown }>).map(([k, v]) => [
+        k.split("#")[0],
+        v.value,
+      ])
+    );
+  const [go, back, next] = root.children as [FakeNode, FakeNode, FakeNode];
+  const plus = f.frame("Plus");
+  const minus = f.frame("Minus");
+  expect(props(go)).toEqual({ Variant: "default", Size: "default", Label: "Go", Icon: plus.id });
+  expect(props(back)).toMatchObject({ Variant: "outline", Size: "default", Label: "Back" });
+  expect(props(next)).toEqual({ Variant: "outline", Size: "icon", Label: "Next", Icon: minus.id });
+  expect(back.children[1].characters).toBe("Back");
+  expect(next.children[0].main).toBe(minus);
+});
+
+test("an icon's size override lands after its swap", async () => {
+  const ops = buttonPage();
+  const last = ops.at(-1) as Extract<PlanOp, { op: "instance" }>;
+  last.overrides = [{ path: [0], kind: "size", w: 24, h: 24 }];
+  const { f, root, r } = await importButtons(ops);
+  const icon = (root.children[2] as FakeNode).children[0] as FakeNode;
+  expect(icon.main).toBe(f.frame("Minus"));
+  expect([icon.width, icon.height]).toEqual([24, 24]);
+  expect(r.overrideFailures).toBe(0);
+});
+
+test("the variants sit in a grid: a column per first property, a row per the rest", async () => {
+  const { f } = await importButtons(buttonPage());
+  const [set] = buttonSets(f) as [FakeNode];
+  const at = (name: string) => {
+    const v = (set.children as FakeNode[]).find((c) => c.name === name) as FakeNode;
+    return [v.x, v.y];
+  };
+  expect(at("Variant=default, Size=default")).toEqual([0, 0]);
+  expect(at("Variant=outline, Size=default")).toEqual([80 + 24, 0]);
+  expect(at("Variant=outline, Size=icon")).toEqual([80 + 24, 30 + 24]);
+  expect([set.width, set.height]).toEqual([80 + 24 + 80, 30 + 24 + 30]);
+});
+
+test("a hovered variant gets a State=Hover copy, and every variant State=Default", async () => {
+  const hover = { 1: [{ path: [], fills: blueFill }] };
+  const { f, r, root } = await importButtons(buttonPage(BUTTONS, hover));
+  const [set] = buttonSets(f) as [FakeNode];
+  expect(set.children.map((v: FakeNode) => v.name).sort()).toEqual(
+    [
+      "Variant=default, Size=default, State=Default",
+      "Variant=outline, Size=default, State=Default",
+      "Variant=outline, Size=default, State=Hover",
+      "Variant=outline, Size=icon, State=Default",
+    ].sort()
+  );
+  const hovered = (set.children as FakeNode[]).find((v) => v.name.endsWith("State=Hover"));
+  expect(hovered?.fills).toEqual(blueFill);
+  // The copy references the set's properties too.
+  expect(hovered?.children[1].componentPropertyReferences?.characters).toMatch(/^Label#/);
+  expect(r).toMatchObject({ hoverVariants: 1, hoverFailures: 0 });
+  expect((root.children[1] as FakeNode).componentProperties.State.value).toBe("Default");
+});
+
+test("a set that can't be combined stays separate components, and the import goes on", async () => {
+  const { f, r, root } = await importButtons(buttonPage(), fakeFigma({ combineThrows: true }));
+  expect(buttonSets(f)).toEqual([]);
+  const mains = ofType(f, "COMPONENT").filter((m) => m.name.startsWith("Button"));
+  expect(mains).toHaveLength(3);
+  for (const m of mains) expect(m.parent.type).toBe("SECTION");
+  expect(r.componentNotes).toEqual([
+    "Button's variants couldn't be combined, so they stay separate components.",
+  ]);
+  // Each keeps the properties, so its instances still take their labels.
+  expect(root.children).toHaveLength(3);
+  expect((root.children[1] as FakeNode).children[1].characters).toBe("Back");
+});
+
+test("a property Figma refuses is left off, said once for the set", async () => {
+  const { f, r, root } = await importButtons(buttonPage(), fakeFigma({ failProperty: "Label" }));
+  const [set] = buttonSets(f) as [FakeNode];
+  expect(definitionNamed(set, "Label")).toBeUndefined();
+  expect(definitionNamed(set, "Icon")).toBeDefined();
+  expect(r.componentNotes).toEqual([
+    "Some of Button's properties couldn't be added, so its instances show the component's own content there.",
+  ]);
+  expect(root.children).toHaveLength(3);
+  expect((root.children[2] as FakeNode).children[0].main).toBe(f.frame("Minus"));
+});
+
+test("re-import adds the missing variants to Frottage's set only (Review Focus 4)", async () => {
+  const f = fakeFigma();
+  await importButtons(buttonPage(BUTTONS.slice(0, 2)), f);
+  const [own] = buttonSets(f) as [FakeNode];
+  // The user's own Button set, untagged, beside it.
+  const theirs = f.figma.createComponent() as unknown as FakeNode;
+  theirs.name = "Variant=ghost";
+  const user = f.figma.combineAsVariants(
+    [theirs as unknown as ComponentNode],
+    f.page as unknown as PageNode
+  ) as unknown as FakeNode;
+  user.name = "Button";
+  const before = user.children.map((c: FakeNode) => c.name);
+  const instancesBefore = ofType(f, "INSTANCE").length;
+
+  const { root } = await importButtons(buttonPage(), f);
+  expect(buttonSets(f)).toHaveLength(2);
+  expect(own.children.map((v: FakeNode) => v.name)).toEqual(BUTTONS.map(variantName));
+  expect(user.children.map((c: FakeNode) => c.name)).toEqual(before);
+  expect(Object.keys(user.componentPropertyDefinitions)).toEqual(["Variant"]);
+  // The new import's instances use the set's variants, the old one as the new.
+  const mains = (root.children as FakeNode[]).map((n) => n.main);
+  expect(mains.every((m) => m.parent === own)).toBe(true);
+  expect((root.children[2] as FakeNode).componentProperties).toMatchObject({
+    Size: { value: "icon" },
+  });
+  // The added variant references the set's own Label, not a second one.
+  const labels = Object.keys(own.componentPropertyDefinitions).filter((k) => k.startsWith("Label"));
+  expect(labels).toHaveLength(1);
+  expect((own.children[2] as FakeNode).children[1].componentPropertyReferences).toEqual({
+    characters: labels[0],
+  });
+  expect(ofType(f, "INSTANCE").length).toBeGreaterThan(instancesBefore);
+  expect(ofType(f, "INSTANCE").every((n) => !n.removed)).toBe(true);
 });

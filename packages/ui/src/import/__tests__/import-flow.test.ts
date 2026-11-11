@@ -1550,8 +1550,9 @@ describe("a device set", () => {
     });
     const { port, last } = await runDevices([file]);
     expect(last.step).toBe("done");
-    // Two frames, each with its two Button instances and no Button main of its own: the merge
-    // holds that, which it could only make from the component input it was handed.
+    // Two frames, each with its two Button instances, and one Button main for both: the merge
+    // holds that, which it could only make from the component input it was handed. The first
+    // frame brings it, ahead of its own ops, to be made on the widest frame's modes.
     const keys = (ops: PlanOp[]) => ops.flatMap((op) => (op.op === "instance" ? [op.key] : []));
     const mains = (ops: PlanOp[]) =>
       ops.filter((op) => op.op === "frame" && op.component?.key === "component:Button");
@@ -1562,7 +1563,12 @@ describe("a device set", () => {
       "component:Button",
       "component:Button",
     ]);
-    expect(mains(ops)).toEqual([]);
+    expect(mains(ops)).toHaveLength(1);
+    expect(ops[0]).toBe(mains(ops)[0] as PlanOp);
+    expect(port.begins.map((b) => b.components)).toEqual([
+      { keys: ["component:Button"], device: { mode: "Laptop", breakpoint: expect.any(String) } },
+      undefined,
+    ]);
   });
 
   test("always reviews, listing devices widest first, then the extras, all ticked", async () => {

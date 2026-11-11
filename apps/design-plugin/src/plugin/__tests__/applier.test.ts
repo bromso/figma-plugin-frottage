@@ -408,6 +408,7 @@ test("an import with no root op returns an empty rootId and counts a failure", a
     hoverFailures: 0,
     paintFailures: 0,
     resizedFallbacks: 0,
+    componentNotes: [],
     stylesCreated: 0,
     stylesReused: 0,
     variablesCreated: 0,
@@ -2101,5 +2102,103 @@ describe("a device set", () => {
     expect(r.rootIds).toHaveLength(2);
     expect(f.created.some((n) => n.type === "SECTION")).toBe(false);
     expect(r.rootIds.map((id) => f.node(id).parent)).toEqual([f.page, f.page]);
+  });
+  test("a page's shared components are built once, below its frames, on the widest device", async () => {
+    const f = fakeFigma();
+    const a = createApplier(f.figma);
+    await a.beginDeviceSet(open("current-page"));
+    const values = (v: string): [string, string][] => [["Variant", v]];
+    const variantOps = (v: string): PlanOp[] => {
+      const key = `set:Button|Variant=${v}`;
+      return [
+        frame(`${key}/n`, null, {
+          name: `Variant=${v}`,
+          w: 80,
+          h: 30,
+          childCount: 1,
+          component: {
+            key,
+            name: `Variant=${v}`,
+            set: { key: "set:Button", name: "Button", values: values(v) },
+            properties: [{ type: "TEXT", name: "Label", path: [0], default: "hello" }],
+          },
+        }),
+        textOp(`${key}/t`, `${key}/n`, [run(0, 5, inter)]),
+      ];
+    };
+    const components = [...variantOps("default"), ...variantOps("outline")];
+    const button = (id: string, v: string, label: string): PlanOp => ({
+      op: "instance",
+      id,
+      parent: "a",
+      name: id,
+      x: 0,
+      y: 0,
+      w: 80,
+      h: 30,
+      key: `set:Button|Variant=${v}`,
+      resize: false,
+      overrides: [],
+      properties: { Label: label },
+    });
+    // The Phone comes first; the mains still open on the Desktop's modes.
+    const devices = [
+      { device: "Phone", breakpoint: "base", w: 390, label: "Kort" },
+      { device: "Desktop", breakpoint: "lg", w: 1440, label: "Long label" },
+    ];
+    for (const [index, d] of devices.entries()) {
+      await a.begin({
+        ...meta,
+        name: TITLE,
+        version: { index, label: d.device },
+        device: { mode: d.device, breakpoint: d.breakpoint },
+        ...(index === 0
+          ? {
+              components: {
+                keys: ["set:Button|Variant=default", "set:Button|Variant=outline"],
+                device: { mode: "Desktop", breakpoint: "lg" },
+              },
+            }
+          : {}),
+      });
+      await a.importTokens(
+        { textStyles: [], colors: [], collection: "example.com", layers },
+        DEFAULT_IMPORT_OPTIONS
+      );
+      await a.applyBatch([
+        ...(index === 0 ? components : []),
+        frame("a", null, { w: d.w, h: 800, fills, childCount: 2 }),
+        button("b1", "default", d.label),
+        button("b2", "outline", d.label),
+      ]);
+      const r = await a.end();
+      expect(r.failedOps).toBe(0);
+    }
+    await a.endSet();
+    const sets = f.created.filter((n) => n.type === "COMPONENT_SET" && !n.removed);
+    expect(sets.map((n) => n.name)).toEqual(["Button"]);
+    const [set] = sets as [FakeNode];
+    const holder = set.parent as FakeNode;
+    expect(holder.type).toBe("SECTION");
+    expect(holder.name).toBe(`${TITLE} components`);
+    const section = sectionOf(f);
+    expect(holder.y).toBeGreaterThan(section.y + section.height);
+    expect(holder.x).toBe(section.x);
+    // One section of components for the set: none per frame.
+    expect(f.created.filter((n) => n.type === "SECTION" && !n.removed)).toHaveLength(2);
+    for (const [i, frameNode] of (section.children as FakeNode[]).entries()) {
+      for (const b of frameNode.children as FakeNode[]) {
+        expect(b.main.parent).toBe(set);
+        expect(b.children[0].characters).toBe(devices[i]?.label);
+      }
+    }
+    const device = collectionNamed(f, "Device");
+    const breakpoint = collectionNamed(f, "Breakpoint");
+    for (const v of set.children as FakeNode[]) {
+      expect(v.explicitModes).toMatchObject({
+        [device.id]: modeIn(device, "Desktop"),
+        [breakpoint.id]: modeIn(breakpoint, "lg"),
+      });
+    }
   });
 });

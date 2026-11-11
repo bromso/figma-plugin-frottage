@@ -195,6 +195,8 @@ export type ImportPort = {
     totalOps: number;
     version?: { index: number; label: string };
     device?: DeviceModes;
+    /** A device set's shared definitions, which this frame's ops bring first, by key. */
+    components?: { keys: string[]; device: DeviceModes };
   }): Promise<void>;
   tokens(tokens: PlanTokens, options: ImportOptions): Promise<void>;
   /** A set's tokens. Gives the versions that got no mode, which must lose their tokens. */
@@ -226,6 +228,7 @@ export type ImportPort = {
     variablesCreated?: number;
     variablesReused?: number;
     tokenFailures?: number;
+    componentNotes?: string[];
     layers?: { variablesRenamed: number; modesDropped: string[]; legacyCollections?: boolean };
   }>;
   endSet(): Promise<SetResult>;
@@ -414,6 +417,8 @@ export type PreparedVersion = {
   setIndex?: number;
   /** A device set's frame: its modes. It sends its own tokens, which carry the set's layers. */
   device?: DeviceModes;
+  /** The device set's shared definitions, at the front of this frame's ops. */
+  components?: { keys: string[]; device: DeviceModes };
 };
 
 type VersionContext = {
@@ -432,8 +437,10 @@ function versionResult(
   result: Awaited<ReturnType<ImportPort["end"]>>,
   layers?: PlanTokens["layers"]
 ): VersionResult {
+  // What Figma made of the component sets goes with the plan's own lines on them.
+  const notes = result.componentNotes ?? [];
   return {
-    report,
+    report: notes.length > 0 ? { ...report, warnings: [...report.warnings, ...notes] } : report,
     ...(layers
       ? {
           theme: {
@@ -480,7 +487,7 @@ export async function importVersion(
   ctx: VersionContext
 ): Promise<VersionReport | null> {
   const { port, onState, signal, file } = ctx;
-  const { plan, assets, version, setIndex, device } = prepared;
+  const { plan, assets, version, setIndex, device, components } = prepared;
   const inSet = setIndex !== undefined;
   const before = ctx.progress?.done ?? 0;
   let begun = false;
@@ -503,6 +510,7 @@ export async function importVersion(
       totalOps: plan.ops.length,
       ...(inSet ? { version: { index: setIndex, label: version.label } } : {}),
       ...(device ? { device } : {}),
+      ...(components ? { components } : {}),
     });
     // A Cancel pressed while begin ran waits for it to return, then undoes what it made.
     if (signal?.aborted) return await stop();
@@ -569,7 +577,14 @@ type SetContext = Pick<VersionContext, "port" | "onState" | "signal" | "options"
 type SetOutcome = { versions: VersionReport[]; report: SetReport | null; cancelled: boolean };
 
 /** One frame of a set: its version, its plan, and the label its frame and mode go by. */
-type SetMember = { version: LoadedFile; plan: Plan; label: string; device?: DeviceModes };
+type SetMember = {
+  version: LoadedFile;
+  plan: Plan;
+  label: string;
+  device?: DeviceModes;
+  /** The first frame of a device set brings the definitions every frame shares. */
+  components?: { keys: string[]; device: DeviceModes };
+};
 
 /** How one kind of set opens and reports. Made inside the set's try, so a merge that throws fails it. */
 type SetSpec = {
@@ -655,6 +670,57 @@ export function plainFramesLine(count: number): string {
     : `${count} frames couldn't get their device or breakpoint modes and keep their captured values, not linked to variables.`;
 }
 
+/** A frame's plan with the shared definitions in front, and the fonts and images they use. */
+function withShared(plan: Plan, shared: PlanOp[]): Plan {
+  const fonts = new Map(plan.fonts.map((f) => [`${f.family}\u0000${f.style}`, f]));
+  const hashes = new Set(plan.assetHashes);
+  for (const op of shared) {
+    if (op.op === "text")
+      for (const r of op.runs)
+        fonts.set(`${r.fontName.family}\u0000${r.fontName.style}`, r.fontName);
+    if (op.op === "image") hashes.add(op.hash);
+    if (op.op === "frame") for (const p of op.fills) if (p.type === "IMAGE") hashes.add(p.hash);
+    if (op.op !== "instance") continue;
+    for (const o of op.overrides) {
+      if (o.kind === "image") hashes.add(o.hash);
+      if (o.kind === "text")
+        for (const r of o.runs)
+          fonts.set(`${r.fontName.family}\u0000${r.fontName.style}`, r.fontName);
+    }
+  }
+  return {
+    ...plan,
+    ops: [...shared, ...plan.ops],
+    fonts: [...fonts.values()],
+    assetHashes: [...hashes],
+  };
+}
+
+/**
+ * A version's images, and those its frame's shared definitions use from the set's other versions:
+ * a definition comes from the widest version that has it.
+ */
+async function assetsFor(
+  member: SetMember,
+  versions: LoadedFile[],
+  assetsOf: SetContext["assetsOf"]
+): Promise<Map<string, Uint8Array>> {
+  const own = await assetsOf(member.version);
+  if (!member.components) return own;
+  const assets = new Map(own);
+  for (const other of versions) {
+    const missing = member.plan.assetHashes.filter((h) => !assets.has(h));
+    if (missing.length === 0) break;
+    if (other === member.version) continue;
+    const more = await assetsOf(other);
+    for (const hash of missing) {
+      const data = more.get(hash);
+      if (data) assets.set(hash, data);
+    }
+  }
+  return assets;
+}
+
 /** A page captured on devices, and extra captures for its breakpoints: a frame per device. */
 function devicesSpec(
   set: VersionSet,
@@ -676,13 +742,39 @@ function devicesSpec(
   plans.length = 0;
   components.length = 0;
   const { layers } = merge;
+  const rootWidth = (plan: Plan) =>
+    plan.ops.find((op) => op.op === "frame" && op.parent === null && !op.component)?.w ?? 0;
+  // The shared mains open on the widest frame's modes, as the mapper took them from it.
+  const widest = merge.frames.reduce<(typeof merge.frames)[number] | undefined>(
+    (best, frame) =>
+      !best ||
+      rootWidth(merge.plans[frame.index] as Plan) > rootWidth(merge.plans[best.index] as Plan)
+        ? frame
+        : best,
+    undefined
+  );
+  const shared = merge.components;
   return {
-    members: merge.frames.map((frame) => ({
-      version: set.versions[frame.index] as LoadedFile,
-      plan: merge.plans[frame.index] as Plan,
-      label: frame.device,
-      device: { mode: frame.device, breakpoint: frame.breakpoint },
-    })),
+    members: merge.frames.map((frame, at) => {
+      const plan = merge.plans[frame.index] as Plan;
+      const brings = at === 0 && shared.length > 0 && widest;
+      return {
+        version: set.versions[frame.index] as LoadedFile,
+        plan: brings ? withShared(plan, shared) : plan,
+        label: frame.device,
+        device: { mode: frame.device, breakpoint: frame.breakpoint },
+        ...(brings
+          ? {
+              components: {
+                keys: shared.flatMap((op) =>
+                  op.op === "frame" && op.component ? [op.component.key] : []
+                ),
+                device: { mode: widest.device, breakpoint: widest.breakpoint },
+              },
+            }
+          : {}),
+      };
+    }),
     async open() {
       const first = set.versions[0] as LoadedFile;
       await port.beginDeviceSet({
@@ -763,11 +855,12 @@ async function importSet(
         const report = await importVersion(
           {
             plan,
-            assets: await ctx.assetsOf(version),
+            assets: await assetsFor(member, set.versions, ctx.assetsOf),
             rootName: importName(version.capture.source),
             version: { name: version.name, label: member.label },
             setIndex: i,
             ...(member.device ? { device: member.device } : {}),
+            ...(member.components ? { components: member.components } : {}),
           },
           { port, onState, signal, options, file, progress: { done, total } }
         );
