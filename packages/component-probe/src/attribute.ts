@@ -6,6 +6,8 @@ export type FoundComponent = {
   source: "react" | "vue" | "marker";
   name: string;
   props: Record<string, string | number | boolean>;
+  // The minified code name a `data-slot` name replaced (`o` for a Button), only then.
+  codeName?: string;
 };
 
 export const ATTRIBUTE = "data-frottage-component";

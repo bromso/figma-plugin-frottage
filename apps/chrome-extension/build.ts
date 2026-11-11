@@ -1,5 +1,6 @@
-// Extension build: popup, run and offscreen pages, service worker (ESM), capture, breakpoints and
-// component probe scripts (IIFE) and manifest.
+// Extension build: popup, run and offscreen pages, service worker (ESM), capture and breakpoints
+// scripts (IIFE), the component probe (a wrapped function whose value `executeScript` returns)
+// and manifest.
 //   bun build.ts              one production-or-dev build (NODE_ENV decides)
 //   bun build.ts --watch      rebuild on changes under the source dirs
 //   bun build.ts --analyze    also write dist/meta-*.json
@@ -97,6 +98,31 @@ async function buildPageScript(name: string, label: string) {
   await writeMetafile(`meta-${name}.json`, result.metafile);
 }
 
+// An injected file's completion value is what `executeScript` returns, but an IIFE's is
+// `undefined` and a bundle at the top level would leak its names into the page's globals. So the
+// script is built as ESM, its `export { x as default }` becomes `return x`, and the whole is
+// wrapped in a function called by the file's last (and only) expression.
+const DEFAULT_EXPORT = /export\s*\{\s*([\w$]+)\s+as\s+default\s*\};?/;
+
+async function buildCompletionScript(name: string, label: string) {
+  const result = await Bun.build({
+    entrypoints: [path.join(src, `${name}.ts`)],
+    target: "browser",
+    format: "esm",
+    minify: isProd,
+    sourcemap,
+    define,
+    metafile: analyze,
+  });
+  failOnErrors(label, result);
+  const [output] = result.outputs;
+  const code = output ? await output.text() : "";
+  if (!DEFAULT_EXPORT.test(code)) throw new Error(`${label} has no default export`);
+  const body = code.replace(DEFAULT_EXPORT, "return $1;");
+  await Bun.write(path.join(outdir, `${name}.js`), `(()=>{"use strict";\n${body}\n})();\n`);
+  await writeMetafile(`meta-${name}.json`, result.metafile);
+}
+
 function loadManifest(): Manifest {
   // Drop the cached module so edits are picked up in --watch.
   delete require.cache[manifestFile];
@@ -118,7 +144,7 @@ async function build() {
   await buildWorker();
   await buildPageScript("capture-entry", "capture script");
   await buildPageScript("breakpoints-entry", "breakpoints script");
-  await buildPageScript("component-probe-entry", "component probe");
+  await buildCompletionScript("component-probe-entry", "component probe");
   await writeManifest();
   const ms = Math.round(performance.now() - started);
   console.log(`[build] ${isProd ? "production" : "development"} build done in ${ms}ms → ${outdir}`);

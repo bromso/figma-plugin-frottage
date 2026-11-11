@@ -16,6 +16,8 @@ const named = (name: string) => Object.defineProperty(() => null, "name", { valu
 const found = (el: Element | null) => JSON.parse(el?.getAttribute(ATTRIBUTE) ?? "null");
 // What React leaves on a rendered element: its host fiber, whose `return` chain leads up through
 // the components that rendered it.
+// A forwardRef with a displayName, as Radix declares its parts.
+const forwardRef = (displayName: string) => ({ $$typeof: 1, render: () => null, displayName });
 const fiber = (el: Element | null, parent: object) =>
   Object.assign(el as object, {
     __reactFiber$x: { type: el?.tagName.toLowerCase(), return: parent },
@@ -29,7 +31,7 @@ describe("probeComponents", () => {
     fiber(doc.querySelector("button"), { type: o, memoizedProps: props });
     expect(probeComponents(doc)).toBe(1);
     expect(doc.querySelector("button")?.getAttribute(ATTRIBUTE)).toBe(
-      '{"source":"react","name":"Button","props":{"variant":"outline","size":"icon"}}'
+      '{"source":"react","name":"Button","props":{"variant":"outline","size":"icon"},"codeName":"o"}'
     );
   });
 
@@ -61,7 +63,114 @@ describe("probeComponents", () => {
       source: "react",
       name: "Button",
       props: { variant: "ghost" },
+      codeName: "o",
     });
+  });
+
+  test("Radix slots, providers, presences and collections are passed through", () => {
+    const names = [
+      "Slot",
+      "SlotClone",
+      "Slottable",
+      "Presence",
+      "Portal",
+      "Slot.Slot",
+      "Slot.SlotClone",
+      "AccordionCollectionSlot.SlotClone",
+      "CollapsibleProvider",
+      "NavigationMenuItemProvider",
+      "CollapsibleContentImpl",
+      "MenuContext",
+      "ThemeConsumer",
+      "MenuCollection",
+      "__next_root_layout_boundary__",
+      "Primitive.div",
+    ];
+    const doc = page(names.map(() => "<div></div>").join(""));
+    doc.querySelectorAll("div").forEach((div, i) => {
+      fiber(div, { type: forwardRef(names[i] as string), memoizedProps: {} });
+    });
+    expect(probeComponents(doc)).toBe(0);
+  });
+
+  test('<Button asChild><a data-slot="button"> inside a TooltipTrigger stays Button', () => {
+    const doc = page('<a data-slot="button" data-state="closed">Docs</a>');
+    const a = doc.querySelector("a");
+    // From the element up, as React renders shadcn's Button inside a TooltipTrigger `asChild`.
+    const trigger = { type: named("TooltipTrigger"), memoizedProps: { asChild: true } };
+    const radixTrigger = { type: forwardRef("TooltipTrigger"), memoizedProps: {}, return: trigger };
+    const button = { type: named("o"), memoizedProps: { variant: "ghost", asChild: true } };
+    Object.assign(button, { return: radixTrigger });
+    const slot = { type: forwardRef("Slot.Slot"), memoizedProps: {}, return: button };
+    const clone = { type: forwardRef("Slot.SlotClone"), memoizedProps: {}, return: slot };
+    fiber(a, clone);
+    expect(probeComponents(doc)).toBe(1);
+    expect(found(a)).toEqual({
+      source: "react",
+      name: "Button",
+      props: { variant: "ghost", asChild: true, state: "closed" },
+      codeName: "o",
+    });
+  });
+
+  test("a minified name without a data-slot gives way to the next named component up", () => {
+    const doc = page("<div>a</div><span>b</span>");
+    function Card() {
+      return null;
+    }
+    fiber(doc.querySelector("div"), {
+      type: named("g"),
+      memoizedProps: {},
+      return: { type: Card, memoizedProps: { size: "sm" } },
+    });
+    fiber(doc.querySelector("span"), { type: named("g"), memoizedProps: {} });
+    expect(probeComponents(doc)).toBe(1);
+    expect(found(doc.querySelector("div"))).toEqual({
+      source: "react",
+      name: "Card",
+      props: { size: "sm" },
+    });
+    expect(found(doc.querySelector("span"))).toBeNull();
+  });
+
+  test("a throwing getter or Proxy skips its element only", () => {
+    const doc = page("<i>a</i><b>b</b><em>c</em>");
+    function Icon() {
+      return null;
+    }
+    function Bold() {
+      return null;
+    }
+    const getter = Object.defineProperty({}, "variant", {
+      enumerable: true,
+      get() {
+        throw new Error("no");
+      },
+    });
+    const proxy = new Proxy(
+      {},
+      {
+        ownKeys() {
+          throw new Error("no");
+        },
+      }
+    );
+    fiber(doc.querySelector("i"), { type: Icon, memoizedProps: getter });
+    fiber(doc.querySelector("b"), { type: Bold, memoizedProps: proxy });
+    fiber(doc.querySelector("em"), { type: named("Emphasis"), memoizedProps: { tone: "loud" } });
+    expect(probeComponents(doc)).toBe(1);
+    expect(found(doc.querySelector("em")).name).toBe("Emphasis");
+  });
+
+  test("a hoisted fiber without an element is passed over when finding the first element", () => {
+    const doc = page("<div>a</div>");
+    const div = doc.querySelector("div");
+    const card: Record<string, unknown> = { type: named("Card"), memoizedProps: {} };
+    const divFiber = { type: "div", stateNode: div, return: card };
+    card.child = { type: "title", stateNode: null, return: card, sibling: divFiber };
+    Object.assign(div as object, { __reactFiber$z: divFiber });
+    expect(probeComponents(doc)).toBe(1);
+    expect(found(div).name).toBe("Card");
   });
 
   test("forwardRef and memo components are named from what they wrap", () => {
@@ -132,6 +241,40 @@ describe("probeComponents", () => {
     );
   });
 
+  test("Vue keeps the outermost component on a shared root and survives a cycle", () => {
+    const doc = page('<div id="__nuxt"><a data-slot="base">x</a></div>');
+    const a = doc.querySelector("a");
+    const base = { el: a, component: { type: { name: "ULinkBase" }, props: {} } };
+    const link = { el: a, component: { type: { name: "ULink" }, props: {}, subTree: base } };
+    const button: Record<string, unknown> = {
+      el: a,
+      component: { type: { __name: "UButton" }, props: { size: "md" }, subTree: link },
+    };
+    // A vnode that leads back to itself.
+    button.children = [button];
+    const app = { _container: { _vnode: { children: [button] } } };
+    Object.assign(doc.querySelector("#__nuxt") as object, { __vue_app__: app });
+    expect(probeComponents(doc)).toBe(1);
+    expect(found(a)).toEqual({ source: "vue", name: "UButton", props: { size: "md" } });
+  });
+
+  test("a data-slot alone names a component only where the code names none or the same one", () => {
+    const doc = page(
+      '<button>Go</button><a data-slot="button" data-variant="ghost">x</a><span data-slot="label">y</span>'
+    );
+    function Button() {
+      return null;
+    }
+    fiber(doc.querySelector("button"), { type: Button, memoizedProps: {} });
+    expect(probeComponents(doc)).toBe(2);
+    expect(found(doc.querySelector("a"))).toEqual({
+      source: "marker",
+      name: "Button",
+      props: { variant: "ghost" },
+    });
+    expect(found(doc.querySelector("span"))).toBeNull();
+  });
+
   test("a static shadcn element is named by its markers", () => {
     const doc = page(
       '<a data-slot="button" data-variant="ghost">x</a><div data-slot="card-content"></div>'
@@ -199,6 +342,22 @@ describe("keepProps", () => {
       raw[key] = "x";
     for (const key of ["src", "alt", "title", "value", "placeholder", "name"]) raw[key] = "x";
     expect(keepProps(raw)).toEqual({});
+  });
+
+  test("drops ids and the attributes a form or link carries", () => {
+    const raw: Record<string, unknown> = {
+      contentId: "radix-_R_mddbrlb_",
+      triggerID: "a",
+      uid: "b",
+    };
+    for (const key of ["for", "htmlFor", "form", "target", "rel", "type"]) raw[key] = "x";
+    expect(keepProps(raw)).toEqual({});
+  });
+
+  test("the markers fill only the keys the code's kept props lack", () => {
+    expect(
+      keepProps({ variant: "outline", size: "a b" }, { variant: "ghost", size: "sm" })
+    ).toEqual({ variant: "outline", size: "sm" });
   });
 
   test("keeps at most 16 props", () => {

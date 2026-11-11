@@ -19,26 +19,47 @@ function safely(find: (doc: Document) => Map<Element, CodeComponent>, doc: Docum
   }
 }
 
-// A readable code name wins over a `data-slot`, a minified one loses to it; marker props fill the
-// props the code lacks.
-function merge(code: CodeComponent | undefined, el: Element): FoundComponent | null {
+// A readable code name wins over a `data-slot`, a minified one loses to it (the adapters keep a
+// minified one only on an element with a `data-slot`). The code's props are filtered first; the
+// markers' fill only the keys they lack.
+function fromCode(code: CodeComponent, el: Element): FoundComponent {
   const slot = markerName(el);
-  const marked = markerProps(el);
-  if (!code) return slot ? { source: "marker", name: slot, props: keepProps(marked) } : null;
-  const name = slot && isMinified(code.name) ? slot : code.name;
-  return { source: code.source, name, props: keepProps({ ...marked, ...code.props }) };
+  const props = keepProps(code.props, markerProps(el));
+  if (slot && isMinified(code.name)) {
+    return { source: code.source, name: slot, props, codeName: code.name };
+  }
+  return { source: code.source, name: code.name, props };
 }
 
 export function probeComponents(doc: Document): number {
   clearComponents(doc);
   const react = safely(findReact, doc);
   const vue = safely(findVue, doc);
-  let count = 0;
+  const found = new Map<Element, FoundComponent>();
+  const codeNames = new Set<string>();
+  const marked: Element[] = [];
   for (const el of doc.querySelectorAll("*")) {
-    const found = merge(react.get(el) ?? vue.get(el), el);
-    if (!found) continue;
-    el.setAttribute(ATTRIBUTE, JSON.stringify(found));
-    count++;
+    const code = react.get(el) ?? vue.get(el);
+    if (!code) {
+      if (el.hasAttribute("data-slot")) marked.push(el);
+      continue;
+    }
+    // Reading the props can throw (a getter, a Proxy); that skips this element only.
+    try {
+      const component = fromCode(code, el);
+      found.set(el, component);
+      codeNames.add(component.name);
+    } catch {}
   }
-  return count;
+  // A `data-slot` alone names a component only on a page whose code names none, or where the code
+  // names one the same: Astro's static Button joins the islands' Button, while Nuxt UI's parts
+  // (`Wrapper`, `Label`, `Title`) stay layers.
+  for (const el of marked) {
+    const name = markerName(el);
+    if (name && (codeNames.size === 0 || codeNames.has(name))) {
+      found.set(el, { source: "marker", name, props: keepProps({}, markerProps(el)) });
+    }
+  }
+  for (const [el, component] of found) el.setAttribute(ATTRIBUTE, JSON.stringify(component));
+  return found.size;
 }

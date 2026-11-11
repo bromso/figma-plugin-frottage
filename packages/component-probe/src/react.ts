@@ -1,7 +1,8 @@
 // React leaves its fiber on every rendered element under a `__reactFiber$<random>` key. Walking
 // `return` from an element's host fiber reaches the components that rendered it; the nearest one
 // that isn't a pass-through wrapper is the element's component, tagged on its first element.
-import { type CodeComponent, isPassThrough, usableName } from "./names";
+// Every read of the page's objects can throw (a getter, a Proxy), so each element is read apart.
+import { type CodeComponent, isPassThrough, namesElement, usableName } from "./names";
 
 type Fiber = {
   type?: unknown;
@@ -38,16 +39,51 @@ function componentName(type: unknown, depth = 0): string | null {
   return usableName(wrapper.displayName) ?? componentName(inner, depth + 1);
 }
 
-// The element a component renders first: its first host fiber, depth first.
+function isElement(node: unknown): node is Element {
+  return !!node && typeof node === "object" && (node as Node).nodeType === 1;
+}
+
+// The element a component renders first: its first host fiber holding an element, depth first.
+// React 19's hoisted `<title>`, `<meta>` and `<link>` fibers hold none and are passed over.
 function firstHost(fiber: Fiber): unknown {
   const stack: Fiber[] = fiber.child ? [fiber.child] : [];
   for (let steps = 0; stack.length > 0 && steps < MAX_DEPTH * 10; steps++) {
     const next = stack.pop() as Fiber;
-    if (typeof next.type === "string") return next.stateNode;
     if (next.sibling) stack.push(next.sibling);
+    if (typeof next.type === "string") {
+      if (isElement(next.stateNode)) return next.stateNode;
+      continue;
+    }
     if (next.child) stack.push(next.child);
   }
   return undefined;
+}
+
+// The element's component, when it is that component's first element. Of several components
+// sharing the element, the nearest named one wins (a Button inside a TooltipTrigger `asChild`
+// stays Button); a minified name the element's `data-slot` can't replace is passed over for the
+// next one up.
+function componentOf(el: Element, claimed: Set<Fiber>): CodeComponent | null {
+  let fiber = fiberOf(el)?.return;
+  for (let depth = 0; fiber && depth < MAX_DEPTH; depth++, fiber = fiber.return) {
+    const name = componentName(fiber.type);
+    if (name === null || isPassThrough(name)) continue;
+    if (claimed.has(fiber)) return null;
+    // Real fibers know their first element; without a `child` the element is taken to be it,
+    // and document order makes it the first one to reach the component.
+    const root = fiber.child ? firstHost(fiber) : el;
+    if (root !== el) return null;
+    claimed.add(fiber);
+    if (fiber.alternate) claimed.add(fiber.alternate);
+    if (!namesElement(name, el)) continue;
+    const props = fiber.memoizedProps;
+    return {
+      source: "react",
+      name,
+      props: props && typeof props === "object" ? (props as Record<string, unknown>) : {},
+    };
+  }
+  return null;
 }
 
 export function findReact(doc: Document): Map<Element, CodeComponent> {
@@ -55,25 +91,11 @@ export function findReact(doc: Document): Map<Element, CodeComponent> {
   // A component and its alternate (React's other copy of the same fiber) are one component.
   const claimed = new Set<Fiber>();
   for (const el of doc.querySelectorAll("*")) {
-    let fiber = fiberOf(el)?.return;
-    for (let depth = 0; fiber && depth < MAX_DEPTH; depth++, fiber = fiber.return) {
-      const name = componentName(fiber.type);
-      if (name === null || isPassThrough(name)) continue;
-      if (claimed.has(fiber)) break;
-      // Real fibers know their first element; without a `child` the element is taken to be it,
-      // and document order makes it the first one to reach the component.
-      const root = fiber.child ? firstHost(fiber) : el;
-      if (root !== el) break;
-      claimed.add(fiber);
-      if (fiber.alternate) claimed.add(fiber.alternate);
-      const props = fiber.memoizedProps;
-      found.set(el, {
-        source: "react",
-        name,
-        props: props && typeof props === "object" ? (props as Record<string, unknown>) : {},
-      });
-      break;
-    }
+    // A page object that throws on reading skips its element only.
+    try {
+      const component = componentOf(el, claimed);
+      if (component) found.set(el, component);
+    } catch {}
   }
   return found;
 }
