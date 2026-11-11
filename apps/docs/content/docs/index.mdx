@@ -31,6 +31,20 @@ These collections sit beside any `<hostname>` collection, and any `<hostname> ·
 
 The report lists the Color Mode modes found. If there are none, it says "No theme found in the stylesheet, so Color Mode has Light only." It also lists inferred roles, near twins, raw values left unbound, modes the plan could not create and renamed variables.
 
+## Components
+
+Frottage reads the names of a page's components from its own code: React props, Vue 3 apps and shadcn or Nuxt `data-slot` markers. Framework wrappers such as Radix `Primitive`, `Slot`, providers and portals are skipped. A minified name such as `o` is used only when a `data-slot` gives the real one, and the report says so.
+
+A named component that occurs at least twice on one device frame becomes a Figma component set. The props that change how it looks become variant properties, such as `Variant` and `Size`, and each combination the page showed becomes one variant. A prop that an occurrence lacks counts as `default`, or `false` for a boolean. Frottage makes only the variants the page showed. It does not invent the rest. A component whose props never change its look becomes a plain component.
+
+The text becomes a `Label` property. Where occurrences differ by an icon, you get a `Show icon` switch or an `Icon` swap. Every occurrence on the page is an instance with its properties set, and one set is shared by all the page's device frames. With hover components on, the sets also get a `State` property with Default and Hover. If two occurrences have the same props but look different, Frottage does not join them, and the report counts them. On a re-import, Frottage adds missing variants only to sets it made itself, never to your own.
+
+"What's in this file" lists them in one line, such as `Components: Button (4 variants), Card`: sets with their variant counts first, then other components.
+
+Frottage keeps only a prop that is a boolean, a number or a short token-like word of letters, digits, hyphens and underscores. It never reads children, class names, styles, ids, links, text-like props such as `value`, `placeholder`, `title`, `alt` or `name`, event handlers, `aria-*` or `data-*` attributes, apart from the `data-variant`, `data-size` and `data-state` markers. The capture and the plugin both enforce this.
+
+Frottage does not read Svelte code, because Svelte compiles components away, or Angular code, which in production shows only custom-element tag names. Pages built with them keep the components made from repeated custom elements. It also cannot name a component whose name is minified and has no `data-slot` marker.
+
 ## Devices and breakpoints
 
 When the popup opens, it reads the page's CSS breakpoints; Capture waits for them, for up to 1.5 seconds. Breakpoints within 2 px of each other count as one. Under the devices, a `Breakpoints` list shows one row per breakpoint range: its name (`sm`, `min 576`, `base`), the width it is captured at, and a checkbox, ticked by default. If a ticked device covers the range, the row shows that device's name, such as Laptop, instead of a checkbox. The list is hidden when the page records no breakpoints. Capture records each device by name, such as Laptop or Tablet portrait, with a nominal height, and adds one extra capture for each ticked breakpoint no device covers.
