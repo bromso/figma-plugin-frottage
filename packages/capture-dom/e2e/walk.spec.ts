@@ -16,6 +16,7 @@ import {
   type DeviceEntry,
   type LayerPlan,
   mapCapture,
+  mapCaptureParts,
   mergeDevices,
 } from "@repo/figma-mapper";
 
@@ -2761,14 +2762,14 @@ for (const components of [false, true]) {
           device: { id: d.id, name: d.name, height: d.height },
         };
         c.language = { ...languages[code], current: code === "en" };
-        const plan = mapCapture(c, [{ family: "Arial", style: "Regular" }], {
+        const made = mapCaptureParts(c, [{ family: "Arial", style: "Regular" }], {
           ...DEFAULT_IMPORT_OPTIONS,
           components,
           layers: true,
         });
         // The cards, and the Button set's two variants.
-        expect(plan.report.components).toBe(components ? 3 : 0);
-        entries.push({ capture: c, plan });
+        expect(made.plan.report.components).toBe(components ? 3 : 0);
+        entries.push({ capture: c, ...made });
       }
     }
     const { layers, plans, frames, report, components: shared } = mergeDevices(entries);

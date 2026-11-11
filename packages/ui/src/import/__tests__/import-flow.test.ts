@@ -2,7 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import * as schema from "@repo/capture-schema";
 import { FrottageFileError, packFrottage } from "@repo/capture-schema";
 import * as mapper from "@repo/figma-mapper";
-import { DEFAULT_IMPORT_OPTIONS } from "@repo/figma-mapper";
+import { DEFAULT_IMPORT_OPTIONS, type PlanOp } from "@repo/figma-mapper";
 import {
   failureHeading,
   failuresHeading,
@@ -16,6 +16,7 @@ import {
   yieldToPaint,
 } from "../import-flow";
 import {
+  addButtons,
   captureWithTexts,
   deviceSetFile,
   fakePort,
@@ -972,7 +973,7 @@ describe("a set of versions", () => {
   });
 
   test("a page on its own is mapped with layers, a set's versions without", async () => {
-    const spy = spyOn(mapper, "mapCapture");
+    const spy = spyOn(mapper, "mapCaptureParts");
     try {
       await runSet([frottageFile(2)]);
       expect(spy.mock.calls.length).toBeGreaterThan(0);
@@ -1537,6 +1538,32 @@ describe("a device set", () => {
     await runImports(files, port, (s) => states.push(s), session, signal);
     return { port, states, review, last: states.at(-1) as ImportState };
   }
+
+  test("a page's named components reach the merge, so every frame shares them", async () => {
+    const file = deviceSetFile({
+      devices: [
+        { name: "Laptop", width: 1512, height: 982 },
+        { name: "Phone portrait", width: 390, height: 844 },
+      ],
+      breakpoints: [640],
+      edit: addButtons,
+    });
+    const { port, last } = await runDevices([file]);
+    expect(last.step).toBe("done");
+    // Two frames, each with its two Button instances and no Button main of its own: the merge
+    // holds that, which it could only make from the component input it was handed.
+    const keys = (ops: PlanOp[]) => ops.flatMap((op) => (op.op === "instance" ? [op.key] : []));
+    const mains = (ops: PlanOp[]) =>
+      ops.filter((op) => op.op === "frame" && op.component?.key === "component:Button");
+    const ops = port.batches.flat();
+    expect(keys(ops)).toEqual([
+      "component:Button",
+      "component:Button",
+      "component:Button",
+      "component:Button",
+    ]);
+    expect(mains(ops)).toEqual([]);
+  });
 
   test("always reviews, listing devices widest first, then the extras, all ticked", async () => {
     const { review } = await runDevices([devicesFile()]);

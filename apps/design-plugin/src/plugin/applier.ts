@@ -1127,6 +1127,9 @@ export function createApplier(api: PluginAPI) {
     const node = childAt(instance, override.path);
     if (override.kind === "image") {
       setImage(node, override.hash);
+    } else if (override.kind === "size") {
+      if (!("resize" in node)) throw new Error("nothing to resize");
+      node.resize(clampSize(override.w), clampSize(override.h));
     } else if (override.kind === "swap") {
       const main = components?.main(override.key);
       if (!main || node.type !== "INSTANCE") throw new Error("nothing to swap");

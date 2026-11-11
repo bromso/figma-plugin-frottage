@@ -143,6 +143,8 @@ export type PlanOverride =
     }
   | { path: number[]; kind: "image"; hash: string }
   | { path: number[]; kind: "swap"; key: string }
+  /** A set's icon at another size than its main's: the same icon, resized. */
+  | { path: number[]; kind: "size"; w: number; h: number }
   /** A nested instance of a set's variant: its `Label`, `Show icon` and `Icon` values. */
   | { path: number[]; kind: "properties"; properties: PlanPropertyValues };
 

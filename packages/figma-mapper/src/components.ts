@@ -274,6 +274,10 @@ function overridesOf(occurrence: Tree, sources: boolean): PlanOverride[] {
       const same = text === base.op.text && JSON.stringify(runs) === JSON.stringify(base.op.runs);
       if (sources) overrides.push({ path, kind: "text", text, runs, source: node.op.id });
       else if (swapped || !same) overrides.push({ path, kind: "text", text, runs });
+    } else if (base.op.op === "svg" && node.op.op === "svg") {
+      // Only a set's icon can differ in size from its main's: a look compares any other's.
+      const { w, h } = node.op;
+      if (w !== base.op.w || h !== base.op.h) overrides.push({ path, kind: "size", w, h });
     } else if (base.op.op === "image" && node.op.op === "image") {
       const { hash } = node.op;
       if (swapped || hash !== base.op.hash) overrides.push({ path, kind: "image", hash });

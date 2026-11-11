@@ -14,13 +14,7 @@ import {
   type Tree,
 } from "./components";
 import type { HoverPatch } from "./hover";
-import type {
-  LayerPlan,
-  PlanComponentProperty,
-  PlanOp,
-  PlanPaint,
-  PlanPropertyValues,
-} from "./plan";
+import type { PlanComponentProperty, PlanOp, PlanPaint, PlanPropertyValues } from "./plan";
 
 /** A component the page's code or a shadcn marker named, as the capture holds it. */
 export type FoundComponent = CaptureComponent;
@@ -177,7 +171,8 @@ function rootLook(node: Tree, looks: Looks, bare: boolean, sized = false): strin
   const below = node.children.flatMap((c) => {
     if (c !== icon) return [childLook(c, node, looks)];
     if (bare) return [];
-    return [`${placement(c, node)}${ownLook(looks.norm(c.op), ["markup"], TOKENS)}`];
+    // Nor does its size: an instance resizes it.
+    return [`${placement(c, node)}${ownLook(looks.norm(c.op), ["markup", "w", "h"], TOKENS)}`];
   });
   // The children say how many there are, the icon or not.
   const skip = [...(sized ? hugged(node.op) : rootSize(node)), "childCount"];
@@ -210,6 +205,17 @@ function iconName(markup: string, n: number): string {
   return (attribute("data-icon") || attribute("aria-label") || named || `Icon ${n}`).slice(0, 40);
 }
 
+/**
+ * An icon's markup without the svg root's own `width` and `height`: the same icon at another size
+ * is the same icon, which an instance resizes.
+ */
+function iconMarkup(markup: string): string {
+  return markup.replace(/^(\s*<svg\b)([^>]*)>/i, (_, open: string, attributes: string) => {
+    const kept = attributes.replace(/\s(width|height)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+    return `${open}${kept}>`;
+  });
+}
+
 /** FNV-1a over the markup: the same icon has the same key on every device. */
 function markupHash(markup: string): string {
   let h = 0x811c9dc5;
@@ -229,10 +235,11 @@ class Icons {
   private byMarkup = new Map<string, Component>();
 
   of(svg: SvgOp, entry = 0): Component {
-    const known = this.byMarkup.get(svg.markup);
+    const markup = iconMarkup(svg.markup);
+    const known = this.byMarkup.get(markup);
     if (known) return known;
     const n = this.components.length + 1;
-    const hash = markupHash(svg.markup);
+    const hash = markupHash(markup);
     // Two markups with one hash keep apart; on another device the pair may count the other way.
     const taken = this.components.some((c) => c.key === `icon:${hash}`);
     const key = taken ? `icon:${hash}-${n}` : `icon:${hash}`;
@@ -268,7 +275,7 @@ class Icons {
     };
     const component: Component = { key, name, tag: "icon", occurrences: [tree] };
     tree.component = component;
-    this.byMarkup.set(svg.markup, component);
+    this.byMarkup.set(markup, component);
     this.components.push(component);
     this.owners.push(entry);
     return component;
@@ -480,10 +487,19 @@ function buildSet(
   const crossLook = (part: Part, bare: boolean) => rootLook(part.main, cross, bare);
   const variants: { name: string; parts: Part[] }[] = [];
   for (const [variantName, parts] of byVariant) {
-    const winner = parts.find((p) => iconOf(p.main)) ?? (parts[0] as Part);
+    // The page's own language decides: a variant only another language shows is none, and the
+    // main is a deciding entry's, with an icon when one has it.
+    const deciding = parts.filter((p) => decides(p.side));
+    const winner = deciding.find((p) => iconOf(p.main)) ?? deciding[0];
+    if (!winner) continue;
     const joined = [winner];
     for (const part of parts) {
       if (part === winner) continue;
+      // A main without the icon has no place for it.
+      if (iconOf(part.main) && !iconOf(winner.main)) {
+        if (decides(part.side)) notJoined += part.members.length;
+        continue;
+      }
       const bare = !iconOf(part.main) || !iconOf(winner.main);
       if (crossLook(part, bare) === crossLook(winner, bare)) joined.push(part);
       else if (decides(part.side)) notJoined += part.members.length;
@@ -498,7 +514,12 @@ function buildSet(
       membersOf(v.parts.filter((p) => decides(p.side))).flatMap((n) => labelOf(n)?.text ?? [])
     )
   );
-  const markups = new Set(all.flatMap((n) => (iconOf(n)?.op as SvgOp | undefined)?.markup ?? []));
+  const markups = new Set(
+    all.flatMap((n) => {
+      const svg = iconOf(n)?.op as SvgOp | undefined;
+      return svg ? [iconMarkup(svg.markup)] : [];
+    })
+  );
   const swaps = markups.size > 1;
 
   const built: Component[] = [];
@@ -769,19 +790,8 @@ export function componentLines(
 }
 
 /**
- * What `mapCapture` made a plan's named components from: the capture's ops before any component,
- * with its tags, and the report lines it wrote for them, so a device merge can make the sets again
- * across its frames. Kept beside the plan, not in it: a plan crosses postMessage.
+ * What `mapCaptureParts` made a plan's named components from: the capture's ops before any
+ * component, with its tags, and the report lines it wrote for them, so a device merge can make the
+ * sets again across its frames.
  */
 export type ComponentInput = VariantInput & { tags: Map<string, string>; lines: string[] };
-
-const componentInputs = new WeakMap<LayerPlan, ComponentInput>();
-
-export function keepComponentInput(plan: LayerPlan, input: ComponentInput): void {
-  componentInputs.set(plan, input);
-}
-
-/** The input `plan` was made with, for a plan `mapCapture` made with named components. */
-export function componentInputOf(plan: LayerPlan): ComponentInput | undefined {
-  return componentInputs.get(plan);
-}

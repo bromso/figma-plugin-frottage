@@ -17,12 +17,7 @@ import type {
   PlanVarValue,
   SpacingKeys,
 } from "./plan";
-import {
-  type ComponentInput,
-  componentInputOf,
-  componentLines,
-  shareVariantSets,
-} from "./variants";
+import { type ComponentInput, componentLines, shareVariantSets } from "./variants";
 import { joinStyles, type StyleJoins, textsOf } from "./versions";
 
 /**
@@ -46,7 +41,15 @@ import { joinStyles, type StyleJoins, textsOf } from "./versions";
  * it, once, in `components`, and every frame's instances use the same keys.
  */
 
-export type DeviceEntry = { capture: Capture; plan: LayerPlan };
+export type DeviceEntry = {
+  capture: Capture;
+  plan: LayerPlan;
+  /**
+   * What the plan's named components were made from, from `mapCaptureParts`: null when it made
+   * none. A capture that names components must bring it, or the merge throws.
+   */
+  components?: ComponentInput | null;
+};
 
 /** A device capture's frame: its Device mode, and its Breakpoint mode when the page has any. */
 export type DeviceFrame = { index: number; device: string; breakpoint: string | null };
@@ -72,7 +75,7 @@ export type DeviceMerge = {
 type SetMerge = Omit<DeviceMerge, "components"> & {
   adopt: (plan: LayerPlan, like: number) => LayerPlan;
   inputs: (ComponentInput | undefined)[];
-  adoptInput: (plan: LayerPlan, like: number) => ComponentInput | undefined;
+  adoptInput: (entry: DeviceEntry, like: number) => ComponentInput | undefined;
 };
 
 /** A Breakpoint mode: `[min, max)` in pixels, and the entry its values come from. */
@@ -265,7 +268,23 @@ const TYPE_FIELDS = [
 export type MergeOptions = {
   /** Breakpoints whose extra capture the user left out: not reported as having none. */
   leftOut?: string[];
+  /**
+   * False to leave the plans' components as each capture made them, for a merge that only needs
+   * its `layers`; `components` is then empty.
+   */
+  components?: boolean;
 };
+
+/** Whether any element of the capture is a component the code or a marker named. */
+function namesComponents(capture: Capture): boolean {
+  const stack = [capture.root];
+  for (let node = stack.pop(); node; node = stack.pop()) {
+    if (node.kind !== "element") continue;
+    if (node.component) return true;
+    stack.push(...node.children);
+  }
+  return false;
+}
 
 function mergeSet(entries: DeviceEntry[], options: MergeOptions): SetMerge {
   const report: string[] = [];
@@ -823,9 +842,9 @@ function mergeSet(entries: DeviceEntry[], options: MergeOptions): SetMerge {
       styleMaps[like]?.get(key) ?? (styleKeys.has(key) ? key : undefined);
   const plans = entries.map(({ plan }, i) => rekeyPlan(plan, styleKeyOf(i)));
   const adopt = (plan: LayerPlan, like: number) => rekeyPlan(plan, adoptedKey(like));
-  /** A plan's component input with its keys into `layers`, as its ops'. */
-  const rekeyInput = (plan: LayerPlan, styleKey: Rekey): ComponentInput | undefined => {
-    const input = componentInputOf(plan);
+  /** An entry's component input with its keys into `layers`, as its plan's ops'. */
+  const rekeyInput = (entry: DeviceEntry, styleKey: Rekey): ComponentInput | undefined => {
+    const input = entry.components;
     if (!input) return undefined;
     const { hovers } = input;
     return {
@@ -843,8 +862,8 @@ function mergeSet(entries: DeviceEntry[], options: MergeOptions): SetMerge {
         : {}),
     };
   };
-  const inputs = entries.map(({ plan }, i) => rekeyInput(plan, styleKeyOf(i)));
-  const adoptInput = (plan: LayerPlan, like: number) => rekeyInput(plan, adoptedKey(like));
+  const inputs = entries.map((entry, i) => rekeyInput(entry, styleKeyOf(i)));
+  const adoptInput = (entry: DeviceEntry, like: number) => rekeyInput(entry, adoptedKey(like));
 
   const frames = deviceAt.map((i, at): DeviceFrame => {
     const range = rangeOf(i);
@@ -999,6 +1018,12 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
   const tagged = entries.flatMap((e) => (e.capture.language ? [e.capture.language] : []));
   const current = tagged.find((l) => l.current);
   const widths = entries.map(widthOf);
+  const sharing = options.components !== false;
+  if (sharing && entries.some((e) => e.components === undefined && namesComponents(e.capture))) {
+    throw new Error("A device entry whose capture names components needs its component input.");
+  }
+  /** Entries that take part in sharing: device captures, unless sharing is off. */
+  const framed = entries.map((e) => sharing && isDevice(e));
   if (!current) {
     const { adopt: _, inputs, adoptInput: __, ...merge } = mergeSet(entries, options);
     const shared = shareComponents(
@@ -1006,7 +1031,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
       inputs,
       entries.map(() => true),
       widths,
-      entries.map(isDevice)
+      framed
     );
     dropSources([...shared.plans, { ops: shared.components }]);
     const report = [...merge.report, ...shared.lines];
@@ -1049,11 +1074,11 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     adopted,
     entries.map((e, i) => {
       const at = baseAt.indexOf(i);
-      return at >= 0 ? set.inputs[at] : set.adoptInput(e.plan, likeOf(e));
+      return at >= 0 ? set.inputs[at] : set.adoptInput(e, likeOf(e));
     }),
     entries.map((e) => codeOf(e) === current.code),
     widths,
-    entries.map(isDevice)
+    framed
   );
   const { plans, components } = shared;
 

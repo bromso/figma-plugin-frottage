@@ -36,7 +36,6 @@ import {
   componentLines,
   extractVariantSets,
   type FoundComponent,
-  keepComponentInput,
 } from "./variants";
 
 type Fit = "FILL" | "FIT" | "CROP" | "TILE";
@@ -423,6 +422,21 @@ export function mapCapture(
   /** Missing family to the available family the user chose for it. */
   fontOverrides: Readonly<Record<string, string>> = {}
 ): LayerPlan {
+  return mapCaptureParts(capture, available, options, fontOverrides).plan;
+}
+
+/**
+ * A plan, and what its named components were made from, which a device merge takes beside the
+ * plan to make them again across its frames (`DeviceEntry.components`). Null with components off
+ * or none named. The input stays out of the plan, which crosses postMessage.
+ */
+export function mapCaptureParts(
+  capture: Capture,
+  available: FontRef[],
+  options: PlanOptions = DEFAULT_IMPORT_OPTIONS,
+  /** Missing family to the available family the user chose for it. */
+  fontOverrides: Readonly<Record<string, string>> = {}
+): { plan: LayerPlan; components: ComponentInput | null } {
   const ops: PlanOp[] = [];
   const fonts = new Map<string, FontRef>();
   const hashes = new Set<string>();
@@ -840,7 +854,7 @@ export function mapCapture(
     );
   }
   let finished = ops;
-  let input: ComponentInput | undefined;
+  let input: ComponentInput | null = null;
   if (options.components) {
     let lostHovers = 0;
     const hovers = options.hoverComponents
@@ -887,8 +901,7 @@ export function mapCapture(
     assetHashes: [...hashes],
     report,
   };
-  if (input) keepComponentInput(plan, input);
-  return plan;
+  return { plan, components: input };
 }
 
 export function batchOps(ops: PlanOp[], size = 50): PlanOp[][] {

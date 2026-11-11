@@ -9,7 +9,7 @@ import type {
 } from "@repo/capture-schema";
 import { parseCssColor } from "@repo/capture-schema/css-values";
 import { type DeviceEntry, MAX_LANGUAGE_VARIABLES, mergeDevices } from "../devices";
-import { mapCapture } from "../map";
+import { mapCapture, mapCaptureParts } from "../map";
 import { DEFAULT_IMPORT_OPTIONS } from "../options";
 import type { LayerPlan, PlanLayers, PlanOp, PlanVariable, PlanVarValue } from "../plan";
 import { cap, el, inter, run, textNode } from "./fixtures";
@@ -1041,23 +1041,46 @@ describe("components across devices", () => {
   const clear = { r: 0, g: 0, b: 0, a: 0 };
   const SIZES = { Laptop: [1512, 982], Phone: [390, 844] } as const;
 
-  type Btn = { bg?: typeof white; pad?: number; label?: string; padRef?: string };
+  type Btn = {
+    bg?: typeof white;
+    pad?: number;
+    label?: string;
+    padRef?: string;
+    /** An icon before the label: its markup and size. */
+    icon?: { markup: string; size: number };
+  };
 
   /** A coded Button: a row with padding, a background and a label. */
   function btn(
     id: string,
     props: Record<string, string>,
-    { bg = white, pad = 16, label = id, padRef }: Btn = {}
+    { bg = white, pad = 16, label = id, padRef, icon }: Btn = {}
   ): ElementNode {
     const base = el(id, [0, 0]);
+    const at = pad + (icon?.size ?? 0);
     return el(
       id,
       [0, 0],
       [
+        ...(icon
+          ? [
+              {
+                id: `${id}-i`,
+                kind: "svg",
+                box: { x: pad, y: pad, w: icon.size, h: icon.size },
+                paintOrder: 0,
+                visible: true,
+                opacity: 1,
+                blendMode: "normal",
+                semantic: { tag: "svg" },
+                markup: icon.markup,
+              } as CaptureNode,
+            ]
+          : []),
         textNode(`${id}-t`, {
           text: label,
-          box: { x: pad, y: pad, w: 40, h: 16 },
-          lines: [{ x: pad, y: pad, w: 40, h: 16 }],
+          box: { x: at, y: pad, w: 40, h: 16 },
+          lines: [{ x: at, y: pad, w: 40, h: 16 }],
           runs: [run({ end: label.length })],
         }),
       ],
@@ -1081,9 +1104,22 @@ describe("components across devices", () => {
         component: { source: "react", name: "Button", props },
         ...(padRef ? { tokenRefs: { padding: [padRef, padRef, padRef, padRef] } } : {}),
       },
-      [40 + 2 * pad, 16 + 2 * pad]
+      [at + 40 + pad, Math.max(16, icon?.size ?? 0) + 2 * pad]
     );
   }
+
+  /** The entry as captured in a language: English is the page's own. */
+  const inLanguage = (entry: DeviceEntry, code: "en" | "sv"): DeviceEntry => {
+    const url = `https://a.example/${code}`;
+    entry.capture.language = {
+      code,
+      name: code === "en" ? "English" : "Svenska",
+      url,
+      current: code === "en",
+    };
+    entry.capture.source.url = url;
+    return { ...entry, ...mapCaptureParts(entry.capture, inter, ON) };
+  };
 
   function on(
     name: keyof typeof SIZES,
@@ -1098,7 +1134,7 @@ describe("components across devices", () => {
     capture.version = device(name, height);
     capture.breakpoints = { widths: BOUNDARIES, unreadable: 0 };
     capture.tokens = { cssCustomProperties: props };
-    return { capture, plan: mapCapture(capture, inter, options) };
+    return { capture, ...mapCaptureParts(capture, inter, options) };
   }
 
   const pair = (prefix: string, over: Btn = {}) => [
@@ -1242,6 +1278,88 @@ describe("components across devices", () => {
     );
   });
 
+  test("another language's variant adds none: its buttons stay as they are, uncounted", () => {
+    const ghost = (id: string) => btn(id, { variant: "ghost" }, { bg: clear });
+    const merge = mergeDevices([
+      inLanguage(on("Laptop", pair("l")), "en"),
+      inLanguage(on("Laptop", [...pair("s"), ghost("sg1"), ghost("sg2")]), "sv"),
+    ]);
+    expect(variantsOf(merge.components, "Button")).toEqual([
+      "Variant=outline, Size=icon",
+      "Variant=default, Size=default",
+    ]);
+    const sv = merge.plans[1] as LayerPlan;
+    expect(instancesOf(sv).map((o) => o.id)).toEqual(["sa", "sb", "sc", "sd"]);
+    expect(merge.report.some((line) => line.includes("different"))).toBe(false);
+  });
+
+  test("a variant's main is the own language's, even where another's has the icon", () => {
+    const arrow = { markup: '<svg viewBox="0 0 24 24"><path d="M1 1"/></svg>', size: 16 };
+    const merge = mergeDevices([
+      inLanguage(on("Laptop", pair("l")), "en"),
+      inLanguage(
+        on(
+          "Laptop",
+          pair("s").map((b, i) =>
+            i < 2 ? btn(b.id, { variant: "outline", size: "icon" }, { pad: 8, icon: arrow }) : b
+          )
+        ),
+        "sv"
+      ),
+    ]);
+    const main = mainsOf(merge.components).find(
+      (m) => m.component?.name === "Variant=outline, Size=icon"
+    );
+    expect(main?.id).toBe("set:Button|Variant=outline, Size=icon/la");
+    expect(instancesOf(merge.plans[1] as LayerPlan).map((o) => o.id)).toEqual(["sc", "sd"]);
+  });
+
+  test("an icon at another size on the Phone is the same icon, resized (the carousel arrows)", () => {
+    const left = '<svg width="32" height="32" viewBox="0 0 24 24"><path d="M15 18l-6-6"/></svg>';
+    const right = '<svg width="32" height="32" viewBox="0 0 24 24"><path d="M9 18l6-6"/></svg>';
+    const small = (markup: string) => markup.replaceAll('"32"', '"24"');
+    const arrows = (prefix: string, size: number, fit: (m: string) => string) => [
+      btn(
+        `${prefix}a`,
+        { variant: "outline", size: "icon" },
+        {
+          pad: 4,
+          icon: { markup: fit(left), size },
+        }
+      ),
+      btn(
+        `${prefix}b`,
+        { variant: "outline", size: "icon" },
+        {
+          pad: 4,
+          icon: { markup: fit(right), size },
+        }
+      ),
+      btn(`${prefix}c`, {}, { bg: black }),
+      btn(`${prefix}d`, {}, { bg: black }),
+    ];
+    const merge = mergeDevices([
+      on(
+        "Laptop",
+        arrows("l", 32, (m) => m)
+      ),
+      on("Phone", arrows("p", 24, small)),
+    ]);
+    const icons = mainsOf(merge.components).filter((m) => m.component?.key.startsWith("icon:"));
+    expect(icons).toHaveLength(2);
+    const [laptop, phone] = merge.plans.map((plan) => instancesOf(plan).slice(0, 2));
+    expect(phone?.map((o) => o.properties?.Icon)).toEqual(laptop?.map((o) => o.properties?.Icon));
+    const main = mainsOf(merge.components).find(
+      (m) => m.component?.name === "Variant=outline, Size=icon"
+    );
+    const iconAt = main?.component?.properties?.find((p) => p.name === "Icon")?.path as number[];
+    for (const o of phone ?? []) {
+      expect(o.overrides).toContainEqual({ path: iconAt, kind: "size", w: 24, h: 24 });
+    }
+    for (const o of laptop ?? []) expect(o.overrides.some((v) => v.kind === "size")).toBe(false);
+    expect(merge.report.some((line) => line.includes("different"))).toBe(false);
+  });
+
   test("an extra makes no frame, so its buttons neither count nor make a variant", () => {
     const lg = on("Laptop", [
       ...pair("x").map((b) => btn(b.id, { variant: "outline", size: "icon" }, { pad: 8, bg: red })),
@@ -1250,7 +1368,7 @@ describe("components across devices", () => {
     ]);
     lg.capture.version = extra("lg");
     lg.capture.source.viewport.w = 1024;
-    lg.plan = mapCapture(lg.capture, inter, ON);
+    Object.assign(lg, mapCaptureParts(lg.capture, inter, ON));
     const merge = mergeDevices([on("Laptop", pair("l")), on("Phone", pair("p")), lg]);
     expect(merge.frames).toHaveLength(2);
     expect(variantsOf(merge.components, "Button")).toEqual([
@@ -1258,6 +1376,18 @@ describe("components across devices", () => {
       "Variant=default, Size=default",
     ]);
     expect(merge.report.some((line) => line.includes("different"))).toBe(false);
+  });
+
+  test("a capture that names components without its input is refused, not merged plainly", () => {
+    const entries = [on("Laptop", pair("l")), on("Phone", pair("p"))];
+    const bare = entries.map(({ capture, plan }) => ({ capture, plan }));
+    expect(() => mergeDevices(bare)).toThrow("needs its component input");
+    // A merge for its layers alone needs none, and makes no components.
+    expect(mergeDevices(bare, { components: false }).components).toEqual([]);
+    // Components off: the input is null, and the plans keep what each capture made.
+    const off = [on("Laptop", pair("l"), {}, { ...ON, components: false })];
+    expect(off[0]?.components).toBeNull();
+    expect(mergeDevices(off).components).toEqual([]);
   });
 
   test("a set of captures without named components merges as before", () => {
@@ -1268,8 +1398,8 @@ describe("components across devices", () => {
         })
       );
     const entries = [on("Laptop", xcards("l")), on("Phone", xcards("p"))];
-    // A copy holds nothing from the mapping but the plan itself.
-    const before = mergeDevices(entries.map((e) => ({ ...e, plan: structuredClone(e.plan) })));
+    expect(entries.map((e) => e.components)).toEqual([null, null]);
+    const before = mergeDevices(entries, { components: false });
     const merge = mergeDevices(entries);
     expect(merge.components).toEqual([]);
     expect(merge.plans.map((p) => p.ops)).toEqual(before.plans.map((p) => p.ops));
@@ -1277,27 +1407,10 @@ describe("components across devices", () => {
   });
 
   test("another language's frame uses the own language's keys", () => {
-    const en = on("Laptop", pair("l"));
-    en.capture.language = {
-      code: "en",
-      name: "English",
-      url: "https://a.example/en",
-      current: true,
-    };
-    const svPage = on(
-      "Laptop",
-      pair("s").map((b) => b)
-    );
-    svPage.capture.language = {
-      code: "sv",
-      name: "Svenska",
-      url: "https://a.example/sv",
-      current: false,
-    };
-    svPage.capture.source.url = "https://a.example/sv";
-    en.capture.source.url = "https://a.example/en";
-    const fresh = [en, svPage].map((e) => ({ ...e, plan: mapCapture(e.capture, inter, ON) }));
-    const merge = mergeDevices(fresh);
+    const merge = mergeDevices([
+      inLanguage(on("Laptop", pair("l")), "en"),
+      inLanguage(on("Laptop", pair("s")), "sv"),
+    ]);
     expect(variantsOf(merge.components, "Button")).toHaveLength(2);
     const keys = merge.plans.map((plan) => instancesOf(plan).map((o) => o.key));
     expect(keys[1]).toEqual(keys[0]);

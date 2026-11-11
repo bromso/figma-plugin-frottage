@@ -3,6 +3,7 @@ import { sha256Hex } from "@repo/capture-schema/hash";
 import {
   batchOps,
   COLLECTION_NAMES,
+  type ComponentInput,
   captureWidth,
   DEFAULT_IMPORT_OPTIONS,
   type DeviceEntry,
@@ -11,6 +12,7 @@ import {
   type ImportOptions,
   type ImportReport,
   mapCapture,
+  mapCaptureParts,
   mergeDevices,
   mergeVersions,
   missingFonts,
@@ -552,6 +554,8 @@ export function mergeMissing(
 type SetContext = Pick<VersionContext, "port" | "onState" | "signal" | "options"> & {
   /** One plan per version. */
   plans: Plan[];
+  /** Per version, what its plan's named components were made from, for a device merge. */
+  components: (ComponentInput | null)[];
   /** The file number of the set's first version, from 1, and the files in the drop. */
   firstFile: number;
   totalFiles: number;
@@ -658,12 +662,19 @@ function devicesSpec(
   placement: Placement,
   leftOut: string[]
 ): SetSpec {
-  const { port, signal, options, plans } = ctx;
+  const { port, signal, options, plans, components } = ctx;
   const merge = mergeDevices(
-    set.versions.map((v, i): DeviceEntry => ({ capture: v.capture, plan: plans[i] as Plan })),
+    set.versions.map(
+      (v, i): DeviceEntry => ({
+        capture: v.capture,
+        plan: plans[i] as Plan,
+        components: components[i] ?? null,
+      })
+    ),
     { leftOut }
   );
   plans.length = 0;
+  components.length = 0;
   const { layers } = merge;
   return {
     members: merge.frames.map((frame) => ({
@@ -992,7 +1003,7 @@ export async function runImports(
     );
 
     const missing = new Map<string, string>();
-    let firstPlan: Plan | undefined;
+    let firstPlan: ReturnType<typeof mapCaptureParts> | undefined;
     // A page imported on its own, or on devices, gets the layered collections; a set of themes or
     // languages keeps one.
     const alone = (o: ImportOptions) => ({ ...o, layers: true });
@@ -1006,8 +1017,9 @@ export async function runImports(
     const previewPlans = new Map<LoadedFile, Plan>();
     for (const v of ordered) {
       const layers = ordered.length === 1 || layered.has(v);
-      const plan = mapCapture(v.capture, available, layers ? alone(options) : options);
-      if (ordered.length === 1) firstPlan = plan;
+      const made = mapCaptureParts(v.capture, available, layers ? alone(options) : options);
+      const { plan } = made;
+      if (ordered.length === 1) firstPlan = made;
       if (session && reviewed?.versions.includes(v)) previewPlans.set(v, plan);
       mergeMissing(missing, missingFonts(plan.report, available));
     }
@@ -1125,9 +1137,11 @@ export async function runImports(
       const base =
         set.versions.length > 1 && !devices ? { ...options, tokenFloor: 1 } : alone(options);
       const planOptions = chosen ? { ...base, themes: chosen } : base;
-      const plans = set.versions.map(
-        (v) => firstPlan ?? mapCapture(v.capture, available, planOptions, overrides)
+      const made = set.versions.map(
+        (v) => firstPlan ?? mapCaptureParts(v.capture, available, planOptions, overrides)
       );
+      const plans = made.map((m) => m.plan);
+      const components = made.map((m) => m.components);
       // Only a device merge binds texts by their captured ids.
       if (!devices) dropSources(plans);
 
@@ -1139,6 +1153,7 @@ export async function runImports(
           signal,
           options,
           plans,
+          components,
           firstFile,
           totalFiles: counted,
           assetsOf,
@@ -1262,7 +1277,8 @@ async function reviewContents(
     const entries = kept.map(
       (v): DeviceEntry => ({ capture: v.capture, plan: planUnder(v, themes) })
     );
-    return summarizeLayers(mergeDevices(entries).layers, limit);
+    // Only the layers are summed up, so the components are left as each capture made them.
+    return summarizeLayers(mergeDevices(entries, { components: false }).layers, limit);
   };
   return {
     devices: devices.map((v) => ({
