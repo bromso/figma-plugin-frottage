@@ -24,6 +24,12 @@ export function isPassThrough(name: string): boolean {
   );
 }
 
+// A component given `asChild` renders its child's element as its own, so it is a pass-through
+// too, whatever its name (Radix's `PopperAnchor`, a `TooltipTrigger`, a Button around a link).
+export function rendersChild(props: unknown): boolean {
+  return !!props && typeof props === "object" && (props as { asChild?: unknown }).asChild === true;
+}
+
 // A trigger (`TooltipTrigger`, `PopoverTrigger`) usually wraps the real component on the same
 // element, so it yields to any other named component there; alone on its element it stands.
 export function isTrigger(name: string): boolean {

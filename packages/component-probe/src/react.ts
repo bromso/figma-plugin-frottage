@@ -2,7 +2,14 @@
 // `return` from an element's host fiber reaches the components that rendered it; the nearest one
 // that isn't a pass-through wrapper is the element's component, tagged on its first element.
 // Every read of the page's objects can throw (a getter, a Proxy), so each element is read apart.
-import { type CodeComponent, isPassThrough, isTrigger, namesElement, usableName } from "./names";
+import {
+  type CodeComponent,
+  isPassThrough,
+  isTrigger,
+  namesElement,
+  rendersChild,
+  usableName,
+} from "./names";
 
 type Fiber = {
   type?: unknown;
@@ -69,7 +76,7 @@ function componentOf(el: Element, claimed: Set<Fiber>): CodeComponent | null {
   let fiber = fiberOf(el)?.return;
   for (let depth = 0; fiber && depth < MAX_DEPTH; depth++, fiber = fiber.return) {
     const name = componentName(fiber.type);
-    if (name === null || isPassThrough(name)) continue;
+    if (name === null || isPassThrough(name) || rendersChild(fiber.memoizedProps)) continue;
     if (claimed.has(fiber)) return trigger;
     // Real fibers know their first element; without a `child` the element is taken to be it,
     // and document order makes it the first one to reach the component.

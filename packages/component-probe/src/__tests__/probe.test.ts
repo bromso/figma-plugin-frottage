@@ -97,24 +97,52 @@ describe("probeComponents", () => {
     expect(probeComponents(doc)).toBe(0);
   });
 
-  test('<Button asChild><a data-slot="button"> inside a TooltipTrigger stays Button', () => {
-    const doc = page('<a data-slot="button" data-state="closed">Docs</a>');
-    const a = doc.querySelector("a");
-    // From the element up, as React renders shadcn's Button inside a TooltipTrigger `asChild`.
+  test("a Button inside a TooltipTrigger asChild stays Button", () => {
+    const doc = page('<button data-slot="button" data-state="closed">Docs</button>');
+    const button = doc.querySelector("button");
+    // From the element up, as React renders shadcn's Button inside a Radix TooltipTrigger.
     const trigger = { type: named("TooltipTrigger"), memoizedProps: { asChild: true } };
-    const radixTrigger = { type: forwardRef("TooltipTrigger"), memoizedProps: {}, return: trigger };
-    const button = { type: named("o"), memoizedProps: { variant: "ghost", asChild: true } };
-    Object.assign(button, { return: radixTrigger });
-    const slot = { type: forwardRef("Slot.Slot"), memoizedProps: {}, return: button };
-    const clone = { type: forwardRef("Slot.SlotClone"), memoizedProps: {}, return: slot };
-    fiber(a, clone);
+    const anchor = {
+      type: named("PopperAnchor"),
+      memoizedProps: { asChild: true },
+      return: trigger,
+    };
+    const radix = { type: forwardRef("TooltipTrigger"), memoizedProps: {}, return: anchor };
+    const o = { type: named("o"), memoizedProps: { variant: "ghost" }, return: radix };
+    const slot = { type: forwardRef("Slot.Slot"), memoizedProps: {}, return: o };
+    fiber(button, { type: forwardRef("Slot.SlotClone"), memoizedProps: {}, return: slot });
     expect(probeComponents(doc)).toBe(1);
-    expect(found(a)).toEqual({
+    expect(found(button)).toEqual({
       source: "react",
       name: "Button",
-      props: { variant: "ghost", asChild: true, state: "closed" },
+      props: { variant: "ghost", state: "closed" },
       codeName: "o",
     });
+  });
+
+  test("a React component given asChild is passed through to its child's element", () => {
+    const doc = page('<a data-slot="button">Docs</a><div>x</div>');
+    const a = doc.querySelector("a");
+    const div = doc.querySelector("div");
+    // <Button asChild><a data-slot="button">: no code component of its own; the marker names it.
+    fiber(a, { type: named("o"), memoizedProps: { variant: "ghost", asChild: true } });
+    // An asChild component above a readable one on the same element leaves that one.
+    fiber(div, {
+      type: named("Badge"),
+      memoizedProps: {},
+      return: { type: named("Anchor"), memoizedProps: { asChild: true } },
+    });
+    const near = doc.createElement("span");
+    doc.body.append(near);
+    fiber(near, {
+      type: named("PopperAnchor"),
+      memoizedProps: { asChild: true },
+      return: { type: named("Chip"), memoizedProps: {} },
+    });
+    expect(probeComponents(doc)).toBe(2);
+    expect(found(a)).toBeNull();
+    expect(found(div).name).toBe("Badge");
+    expect(found(near).name).toBe("Chip");
   });
 
   test("a React trigger yields to another named component on its element, and stands alone", () => {
@@ -287,6 +315,34 @@ describe("probeComponents", () => {
     expect(probeComponents(doc)).toBe(2);
     expect(found(button)).toEqual({ source: "vue", name: "UButton", props: { size: "sm" } });
     expect(found(span).name).toBe("TooltipTrigger");
+  });
+
+  test("a Vue component given asChild yields the element to the component it wraps", () => {
+    const doc = page('<div id="__nuxt"><button>x</button></div>');
+    const button = doc.querySelector("button");
+    const ub = { el: button, component: { type: { name: "UButton" }, props: { size: "sm" } } };
+    const anchor = {
+      el: button,
+      component: { type: { name: "PopperAnchor" }, props: { asChild: true }, subTree: ub },
+    };
+    const trigger = {
+      el: button,
+      component: { type: { name: "TooltipTrigger" }, props: { asChild: true }, subTree: anchor },
+    };
+    const app = { _container: { _vnode: { children: [trigger] } } };
+    Object.assign(doc.querySelector("#__nuxt") as object, { __vue_app__: app });
+    expect(probeComponents(doc)).toBe(1);
+    expect(found(button)).toEqual({ source: "vue", name: "UButton", props: { size: "sm" } });
+  });
+
+  test("a data-slot inside a code component's element is a part of it, not a component", () => {
+    const doc = page(
+      '<div><span data-slot="button">x</span></div><a data-slot="button" data-variant="ghost">y</a>'
+    );
+    fiber(doc.querySelector("div"), { type: named("Button"), memoizedProps: {} });
+    expect(probeComponents(doc)).toBe(2);
+    expect(found(doc.querySelector("span"))).toBeNull();
+    expect(found(doc.querySelector("a")).source).toBe("marker");
   });
 
   test("a data-slot alone names a component only where the code names none or the same one", () => {

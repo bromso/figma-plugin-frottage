@@ -31,6 +31,11 @@ function fromCode(code: CodeComponent, el: Element): FoundComponent {
   return { source: code.source, name: code.name, props };
 }
 
+function inside(el: Element, roots: Set<Element>): boolean {
+  for (let up = el.parentElement; up; up = up.parentElement) if (roots.has(up)) return true;
+  return false;
+}
+
 export function probeComponents(doc: Document): number {
   clearComponents(doc);
   const react = safely(findReact, doc);
@@ -53,10 +58,12 @@ export function probeComponents(doc: Document): number {
   }
   // A `data-slot` alone names a component only on a page whose code names none, or where the code
   // names one the same: Astro's static Button joins the islands' Button, while Nuxt UI's parts
-  // (`Wrapper`, `Label`, `Title`) stay layers.
+  // (`Wrapper`, `Label`, `Title`) stay layers. Inside a code-found component's root element a
+  // `data-slot` marks a part of it (UButton's label span), never a component of its own.
+  const codeRoots = new Set(found.keys());
   for (const el of marked) {
     const name = markerName(el);
-    if (name && (codeNames.size === 0 || codeNames.has(name))) {
+    if (name && (codeNames.size === 0 || codeNames.has(name)) && !inside(el, codeRoots)) {
       found.set(el, { source: "marker", name, props: keepProps({}, markerProps(el)) });
     }
   }

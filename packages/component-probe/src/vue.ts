@@ -3,7 +3,7 @@
 // name (`type.name || type.__name`) and its props. When several components share one root
 // element, the outermost is kept (Nuxt's `UButton`, not the `ULink` and `ULinkBase` inside it),
 // the opposite of React, where the walk goes up from the element and the nearest is kept.
-import { type CodeComponent, isTrigger, namesElement, usableName } from "./names";
+import { type CodeComponent, isTrigger, namesElement, rendersChild, usableName } from "./names";
 
 type VNode = {
   el?: unknown;
@@ -50,6 +50,7 @@ function visit(vnode: VNode, found: Map<Element, CodeComponent>): unknown[] {
       !BUILT_IN.has(name) &&
       isElement(el) &&
       namesElement(name, el) &&
+      !rendersChild(component.props) &&
       takes(found.get(el), name)
     ) {
       const props = component.props;
