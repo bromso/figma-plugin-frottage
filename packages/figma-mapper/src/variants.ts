@@ -837,4 +837,10 @@ export function componentLines(
  * component, with its tags, and the report lines it wrote for them, so a device merge can make the
  * sets again across its frames.
  */
-export type ComponentInput = VariantInput & { tags: Map<string, string>; lines: string[] };
+export type ComponentInput = VariantInput & {
+  tags: Map<string, string>;
+  lines: string[];
+  /** The sets and plain components it made, for a review of the capture alone. */
+  sets: VariantSet[];
+  plain: string[];
+};

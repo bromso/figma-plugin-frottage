@@ -628,6 +628,22 @@ describe("App (a device set)", () => {
     expect(await screen.findByText("Components: Button (3 variants)")).toBeInTheDocument();
   });
 
+  it("lists a lone page's components in its review, with variables off too", async () => {
+    const port = fakePort();
+    port.prefs.set("options:example.com", { tokens: false });
+    const user = userEvent.setup();
+    render(<App port={port} />);
+    const dark = {
+      cssCustomProperties: { "--surface": "#ffffff" },
+      themes: [{ context: ".dark", mode: "Dark", properties: { "--surface": "#000000" } }],
+    };
+    await user.upload(
+      screen.getByLabelText("Choose .frottage files"),
+      themedFile(dark, ["#ffffff"], addVariantButtons)
+    );
+    expect(await screen.findByText("Components: Button (3 variants)")).toBeInTheDocument();
+  });
+
   it("shows no components line when the page names none", async () => {
     await chosen();
     expect(screen.queryByText(/^Components:/)).toBeNull();

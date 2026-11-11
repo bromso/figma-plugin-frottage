@@ -1382,8 +1382,6 @@ describe("components across devices", () => {
     const entries = [on("Laptop", pair("l")), on("Phone", pair("p"))];
     const bare = entries.map(({ capture, plan }) => ({ capture, plan }));
     expect(() => mergeDevices(bare)).toThrow("needs its component input");
-    // A merge for its layers alone needs none, and makes no components.
-    expect(mergeDevices(bare, { components: false }).components).toEqual([]);
     // Components off: the input is null, and the plans keep what each capture made.
     const off = [on("Laptop", pair("l"), {}, { ...ON, components: false })];
     expect(off[0]?.components).toBeNull();
@@ -1399,11 +1397,13 @@ describe("components across devices", () => {
       );
     const entries = [on("Laptop", xcards("l")), on("Phone", xcards("p"))];
     expect(entries.map((e) => e.components)).toEqual([null, null]);
-    const before = mergeDevices(entries, { components: false });
     const merge = mergeDevices(entries);
     expect(merge.components).toEqual([]);
-    expect(merge.plans.map((p) => p.ops)).toEqual(before.plans.map((p) => p.ops));
-    expect(merge.report).toEqual(before.report);
+    // Each frame keeps the instances its own capture made.
+    expect(merge.plans.map((p) => instancesOf(p).length)).toEqual(
+      entries.map((e) => instancesOf(e.plan).length)
+    );
+    expect(merge.report.some((line) => /variant|component/.test(line))).toBe(false);
   });
 
   test("another language's frame uses the own language's keys", () => {

@@ -874,7 +874,8 @@ export function mapCaptureParts(
     const lines = componentLines(sets);
     for (const line of lines) warn(line);
     if (named.size > 0) {
-      input = { ops, named, tags, ...(hovers ? { hovers } : {}), sources, lines };
+      const made = { sets: sets.sets, plain: sets.plain };
+      input = { ops, named, tags, ...(hovers ? { hovers } : {}), sources, lines, ...made };
     }
     const hoverCapped = (sets.hoverCapped ?? 0) + (found.hoverCapped ?? 0);
     const hoverSwapped = (sets.hoverSwapped ?? 0) + (found.hoverSwapped ?? 0);

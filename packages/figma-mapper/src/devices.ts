@@ -271,11 +271,6 @@ const TYPE_FIELDS = [
 export type MergeOptions = {
   /** Breakpoints whose extra capture the user left out: not reported as having none. */
   leftOut?: string[];
-  /**
-   * False to leave the plans' components as each capture made them, for a merge that only needs
-   * its `layers`; `components` is then empty.
-   */
-  components?: boolean;
 };
 
 /** Whether any element of the capture is a component the code or a marker named. */
@@ -1030,12 +1025,11 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
   const tagged = entries.flatMap((e) => (e.capture.language ? [e.capture.language] : []));
   const current = tagged.find((l) => l.current);
   const widths = entries.map(widthOf);
-  const sharing = options.components !== false;
-  if (sharing && entries.some((e) => e.components === undefined && namesComponents(e.capture))) {
+  if (entries.some((e) => e.components === undefined && namesComponents(e.capture))) {
     throw new Error("A device entry whose capture names components needs its component input.");
   }
-  /** Entries that take part in sharing: device captures, unless sharing is off. */
-  const framed = entries.map((e) => sharing && isDevice(e));
+  /** Entries that take part in sharing: device captures. */
+  const framed = entries.map(isDevice);
   if (!current) {
     const { adopt: _, inputs, adoptInput: __, ...merge } = mergeSet(entries, options);
     const shared = shareComponents(

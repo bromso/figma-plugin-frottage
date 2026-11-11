@@ -135,7 +135,8 @@ export function repeatedFile(count: number, language?: Capture["language"]): Fil
  */
 export function themedFile(
   tokens: Capture["tokens"],
-  fills: (string | [string, string])[] = []
+  fills: (string | [string, string])[] = [],
+  edit?: (capture: Capture) => void
 ): File {
   const capture = captureWithTexts(1);
   capture.tokens = tokens;
@@ -157,6 +158,7 @@ export function themedFile(
   });
   const root = capture.root as { children: CaptureNode[] };
   capture.root = element("root", [...root.children, ...frames]);
+  edit?.(capture);
   return new File([packFrottage(capture, new Map()) as BlobPart], "page.frottage");
 }
 

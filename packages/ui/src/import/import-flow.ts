@@ -8,7 +8,6 @@ import {
   DEFAULT_IMPORT_OPTIONS,
   type DeviceEntry,
   dropSources,
-  extractVariantSets,
   type FontRef,
   type ImportOptions,
   type ImportReport,
@@ -1410,16 +1409,9 @@ async function reviewContents(
     if (!deviceSet) {
       const { plan, components } = planUnder(set.versions[0] as LoadedFile, themes);
       const layers = plan.tokens.layers;
-      const found = components
-        ? extractVariantSets(
-            components.ops,
-            components.named,
-            components.hovers,
-            components.sources
-          )
-        : null;
-      const line = found ? summarizeComponents(found.sets, found.plain) : "";
-      return layers ? { ...summarizeLayers(layers, limit), components: line } : none;
+      // The sets the plan was made with; with variables off there are no collections to list.
+      const line = components ? summarizeComponents(components.sets, components.plain) : "";
+      return { ...(layers ? summarizeLayers(layers, limit) : none), components: line };
     }
     const kept = keptVersions(set.versions, deviceTicks, extraTicks, languages);
     if (!kept.some((v) => !isExtra(v))) return none;
