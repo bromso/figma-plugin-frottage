@@ -39,14 +39,21 @@ describe("capturePage", () => {
   test("the walk sees the probe's tags, and none are left after the capture", async () => {
     const doc = taggedPage();
     let seen = -1;
+    let afterWalk = -1;
     const { sent, deps: d } = deps({
       captureDocument: ((page: Document) => {
         seen = tags(page);
         return { root: {} };
       }) as never,
+      collectAssets: (async () => {
+        afterWalk = tags(doc);
+        return { assets: new Map() };
+      }) as never,
     });
     await capturePage(run(), doc, d);
     expect(seen).toBe(2);
+    // Cleared as soon as the walk returns, before the image fetches.
+    expect(afterWalk).toBe(0);
     expect(sent.at(-1)).toEqual({ type: "end" });
     expect(tags(doc)).toBe(0);
   });
@@ -64,6 +71,7 @@ describe("capturePage", () => {
   test("none are left after a cancel closes the port mid-capture", async () => {
     const doc = taggedPage();
     let open = true;
+    let refused = 0;
     const { deps: d } = deps({
       collectAssets: (async () => {
         open = false;
@@ -76,12 +84,17 @@ describe("capturePage", () => {
       return {
         ...port,
         postMessage: (m: unknown) => {
-          if (!open) throw new Error("Attempting to use a disconnected port object");
+          if (!open) {
+            refused++;
+            throw new Error("Attempting to use a disconnected port object");
+          }
           port.postMessage(m);
         },
       };
     };
     await capturePage(run(), doc, d);
+    // The capture's send and the error's send both met the closed port.
+    expect(refused).toBe(2);
     expect(tags(doc)).toBe(0);
   });
   test("none are left when the run has no id", async () => {
@@ -92,7 +105,7 @@ describe("capturePage", () => {
 });
 
 describe("injectCapture", () => {
-  const scripting = (refuseProbe: boolean) => {
+  const scripting = (refuseProbe: boolean, refuseCapture = false) => {
     const calls: Array<{ world?: string; files?: string[]; func?: unknown }> = [];
     return {
       calls,
@@ -100,6 +113,9 @@ describe("injectCapture", () => {
         executeScript: async (injection: { world?: string; files?: string[]; func?: unknown }) => {
           calls.push(injection);
           if (refuseProbe && injection.world === "MAIN") throw new Error("Cannot access the page");
+          if (refuseCapture && injection.files?.[0] === "capture-entry.js") {
+            throw new Error("The tab was closed");
+          }
           return [{ result: 3 }];
         },
       },
@@ -120,6 +136,16 @@ describe("injectCapture", () => {
     const { calls, api } = scripting(true);
     await injectCapture(api, 7);
     expect(calls.at(-1)?.files).toEqual(["capture-entry.js"]);
+  });
+  test("clears the probe's tags again when the capture script can't start, and says why", async () => {
+    const { calls, api } = scripting(false, true);
+    await expect(injectCapture(api, 7)).rejects.toThrow("The tab was closed");
+    expect(calls.map((c) => c.files?.[0] ?? "clear")).toEqual([
+      "clear",
+      "component-probe-entry.js",
+      "capture-entry.js",
+      "clear",
+    ]);
   });
   test("the clear removes the tags in the page", async () => {
     const { calls, api } = scripting(false);

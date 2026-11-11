@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ATTRIBUTE } from "@repo/component-probe/attribute";
 import { Window } from "happy-dom";
-import { componentOf } from "../component";
+import { componentOf, readComponents } from "../component";
 
 function tagged(value: string | null): Element {
   const doc = new Window().document as unknown as Document;
@@ -42,6 +42,11 @@ describe("componentOf", () => {
     ["a 25-character value", JSON.stringify({ ...BUTTON, props: { v: "a".repeat(25) } })],
     ["a null value", JSON.stringify({ ...BUTTON, props: { v: null } })],
     ["a 41-character key", JSON.stringify({ ...BUTTON, props: { ["k".repeat(41)]: 1 } })],
+    ["an onClick key", JSON.stringify({ ...BUTTON, props: { onClick: true } })],
+    ["a userId key", JSON.stringify({ ...BUTTON, props: { userId: 5 } })],
+    ["a value key", JSON.stringify({ ...BUTTON, props: { value: "x" } })],
+    ["an aria- key", JSON.stringify({ ...BUTTON, props: { "aria-label": "x" } })],
+    ["a non-finite number", '{"source":"react","name":"Button","props":{"n":1e999}}'],
     ["a __proto__ key", `{"source":"react","name":"Button","props":{"__proto__":{"x":1}}}`],
   ])("ignores the whole value for %s", (_, value) => {
     expect(componentOf(tagged(value))).toBeUndefined();
@@ -50,5 +55,34 @@ describe("componentOf", () => {
     expect(componentOf(tagged(JSON.stringify({ ...BUTTON, props: props(16) })))?.props).toEqual(
       props(16)
     );
+  });
+});
+
+describe("readComponents", () => {
+  test("a component repeats when its valid name occurs twice; a bad value counts for nothing", () => {
+    const doc = new Window().document as unknown as Document;
+    const card = JSON.stringify({ source: "react", name: "Card", props: {} });
+    const bad = JSON.stringify({ ...BUTTON, props: { onClick: true } });
+    doc.body.innerHTML = `<i></i><i></i><b></b><s></s>`;
+    const [a, b, c, d] = [...doc.body.children];
+    a?.setAttribute(ATTRIBUTE, JSON.stringify(BUTTON));
+    b?.setAttribute(ATTRIBUTE, JSON.stringify(BUTTON));
+    c?.setAttribute(ATTRIBUTE, card);
+    d?.setAttribute(ATTRIBUTE, bad);
+    const found = readComponents(doc);
+    expect([a, b, c, d].map((el) => found.repeats(el as Element))).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+    expect(found.of(c as Element)?.name).toBe("Card");
+    expect(found.of(d as Element)).toBeUndefined();
+  });
+  test("a page without the attribute has none", () => {
+    const doc = new Window().document as unknown as Document;
+    doc.body.innerHTML = "<div><p>a</p></div>";
+    const found = readComponents(doc);
+    expect(found.repeats(doc.body.firstElementChild as Element)).toBe(false);
   });
 });

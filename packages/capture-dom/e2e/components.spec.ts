@@ -43,21 +43,35 @@ type Hooks = {
   __frottageProbe: (doc: Document) => number;
 };
 
-async function capture(page: Page, collapseWrappers = false): Promise<Capture> {
+type Options = { collapseWrappers?: boolean; probe?: boolean };
+
+async function capture(page: Page, options: Options = {}): Promise<Capture> {
   await page.goto("/components.html");
   await page.addScriptTag({ content: probe });
   await page.addScriptTag({ content: walk });
-  const json = await page.evaluate((collapse) => {
-    const hooks = globalThis as unknown as Hooks;
-    hooks.__frottageProbe(document);
-    return JSON.stringify(
-      hooks.__frottageCapture.captureDocument(document, {
-        now: () => "2026-01-01T00:00:00.000Z",
-        toolVersion: "test",
-        collapseWrappers: collapse,
-      })
-    );
-  }, collapseWrappers);
+  const json = await page.evaluate(
+    ({ collapse, run }) => {
+      const hooks = globalThis as unknown as Hooks;
+      if (run) {
+        hooks.__frottageProbe(document);
+        // What a page script could write after the probe: a prop the privacy rule refuses.
+        for (const el of document.querySelectorAll(".forged")) {
+          el.setAttribute(
+            "data-frottage-component",
+            '{"source":"react","name":"Panel","props":{"onClick":true}}'
+          );
+        }
+      }
+      return JSON.stringify(
+        hooks.__frottageCapture.captureDocument(document, {
+          now: () => "2026-01-01T00:00:00.000Z",
+          toolVersion: "test",
+          collapseWrappers: collapse,
+        })
+      );
+    },
+    { collapse: options.collapseWrappers === true, run: options.probe !== false }
+  );
   return JSON.parse(json) as Capture;
 }
 
@@ -85,10 +99,38 @@ test("two Mainline-like buttons are captured with their component", async ({ pag
       },
     },
     { tag: "button", component: { source: "react", name: "Button", props: {}, codeName: "o" } },
+    { tag: "div", component: { source: "react", name: "Field", props: { required: true } } },
+    { tag: "div", component: { source: "react", name: "Field", props: { required: true } } },
   ]);
 });
 
-test("a component's root element is kept when wrappers collapse", async ({ page }) => {
-  const found = components(await capture(page, true));
-  expect(found.map((f) => f.component?.name)).toEqual(["Card", "Button", "Button"]);
+const divs = (c: Capture): number => {
+  let n = 0;
+  const go = (node: CaptureNode) => {
+    if (node.kind !== "element") return;
+    if (node.semantic.tag === "div") n++;
+    for (const child of node.children) go(child);
+  };
+  go(c.root);
+  return n;
+};
+
+test("when wrappers collapse, only a component that can become a set keeps its root", async ({
+  page,
+}) => {
+  const c = await capture(page, { collapseWrappers: true });
+  // Card occurs once and collapses; the forged Panels are ignored and collapse too.
+  expect(components(c).map((f) => f.component?.name)).toEqual([
+    "Button",
+    "Button",
+    "Field",
+    "Field",
+  ]);
+  expect(divs(c)).toBe(2);
+});
+
+test("a page without the attributes collapses as before", async ({ page }) => {
+  const c = await capture(page, { collapseWrappers: true, probe: false });
+  expect(components(c)).toEqual([]);
+  expect(divs(c)).toBe(0);
 });

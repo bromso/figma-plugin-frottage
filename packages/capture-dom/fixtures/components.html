@@ -16,6 +16,12 @@
       <button id="plain" data-slot="button">Save</button>
     </section>
   </div>
+  <!-- One-child wrappers: Field occurs twice, so it can become a set; Card above occurs once. -->
+  <div class="field"><p>Name</p></div>
+  <div class="field"><p>Email</p></div>
+  <!-- Wrappers the test tags itself after the probe, with a value the privacy rule refuses. -->
+  <div class="forged"><p>One</p></div>
+  <div class="forged"><p>Two</p></div>
   <script>
     // Fake React fibers, enough for the probe: each element's host fiber returns to its component.
     function o() {}
@@ -29,6 +35,10 @@
     });
     fiber(document.getElementById("plain"), { type: o, memoizedProps: { children: "Save" } });
     fiber(document.getElementById("card"), { type: Card, memoizedProps: { children: [] } });
+    function Field() {}
+    for (const el of document.querySelectorAll(".field")) {
+      fiber(el, { type: Field, memoizedProps: { required: true } });
+    }
   </script>
 </body>
 </html>

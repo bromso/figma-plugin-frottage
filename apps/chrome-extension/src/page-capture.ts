@@ -38,8 +38,8 @@ export type PageDeps = {
 };
 
 /**
- * Runs one capture. The component probe's attributes are removed on every path (sent, failed,
- * cancelled or never started), so none stays in the page.
+ * Runs one capture. The component probe's attributes are removed once the walk has read them, and
+ * on every other path (failed, cancelled or never started), so none stays in the page.
  */
 export async function capturePage(win: RunWindow, doc: Document, deps: PageDeps): Promise<void> {
   try {
@@ -87,6 +87,8 @@ async function run(win: RunWindow, doc: Document, deps: PageDeps): Promise<void>
       collapseWrappers,
       getShadowRoot: deps.shadowRoot,
     });
+    // The walk has read them; the image fetches that follow can take a while.
+    clearComponents(doc);
     if (version) capture.version = version;
     if (themeChoice) capture.themeChoice = themeChoice;
     if (language) capture.language = language;

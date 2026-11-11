@@ -1353,7 +1353,8 @@
                         "type": "boolean"
                       }
                     ]
-                  }
+                  },
+                  "maxProperties": 16
                 },
                 "codeName": {
                   "type": "string",

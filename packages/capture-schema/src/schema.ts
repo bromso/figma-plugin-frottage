@@ -126,7 +126,9 @@ const component = z.object({
       z.string().min(1).max(40),
       z.union([z.string().regex(/^[A-Za-z0-9_-]{1,24}$/), z.number(), z.boolean()])
     )
-    .refine((p) => Object.keys(p).length <= MAX_COMPONENT_PROPS, "too many props"),
+    .refine((p) => Object.keys(p).length <= MAX_COMPONENT_PROPS, "too many props")
+    // The refine is code, so the JSON Schema states the bound itself.
+    .meta({ maxProperties: MAX_COMPONENT_PROPS }),
   /** The minified code name a `data-slot` name replaced, only then. */
   codeName: z.string().min(1).max(40).optional(),
 });
