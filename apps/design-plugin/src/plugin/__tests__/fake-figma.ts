@@ -911,9 +911,25 @@ export function fakeFigma(opts: Options = {}) {
     },
   };
 
+  /**
+   * The mode a node reads for a collection, as Figma resolves it: its own explicit mode; for an
+   * instance with none, the explicit mode its main has (Figma help, "Modes for variables"); else
+   * its parent's.
+   */
+  function modeOf(node: FakeNode | null | undefined, collectionId: string): string | undefined {
+    for (let n = node; n; n = n.parent) {
+      const own = n.explicitModes?.[collectionId];
+      if (own !== undefined) return own;
+      const main = n.type === "INSTANCE" ? n.main?.explicitModes?.[collectionId] : undefined;
+      if (main !== undefined) return main;
+    }
+    return undefined;
+  }
+
   return {
     figma: figma as unknown as PluginAPI,
     calls,
+    modeOf,
     count: (c: string) => calls.filter((x) => x === c).length,
     node: (id: string) => nodes.get(id) as FakeNode,
     hashOf: (bytes: Uint8Array) => hashes.get(Array.from(bytes).join(",")),

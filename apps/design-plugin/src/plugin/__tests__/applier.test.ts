@@ -2355,6 +2355,34 @@ describe("a device set", () => {
     expect(desktop.fills[0].boundVariables.color.id).toBe(id);
   });
 
+  test("a frame's instances of the shared mains read its own Device and Breakpoint modes", async () => {
+    const { f } = await importShared({
+      devices: [
+        { device: "Desktop", breakpoint: "lg", w: 1440 },
+        { device: "Phone", breakpoint: "base", w: 390 },
+      ],
+      brings: [sharedButtons(), null],
+    });
+    const device = collectionNamed(f, "Device");
+    const breakpoint = collectionNamed(f, "Breakpoint");
+    const frames = sectionOf(f).children as FakeNode[];
+    const expected = [
+      ["Desktop", "lg"],
+      ["Phone", "base"],
+    ];
+    for (const [i, frameNode] of frames.entries()) {
+      const [d, b] = expected[i] as [string, string];
+      for (const button of frameNode.children as FakeNode[]) {
+        expect(f.modeOf(button, device.id)).toBe(modeIn(device, d));
+        expect(f.modeOf(button, breakpoint.id)).toBe(modeIn(breakpoint, b));
+      }
+    }
+    // The mains stay on the widest frame's modes.
+    const [buttons] = liveSets(f) as [FakeNode];
+    for (const v of buttons.children as FakeNode[])
+      expect(v.explicitModes[breakpoint.id]).toBe(modeIn(breakpoint, "lg"));
+  });
+
   test("the shared sets report with the set, not with the frame that made them", async () => {
     const { ends, set } = await importShared({
       devices: [

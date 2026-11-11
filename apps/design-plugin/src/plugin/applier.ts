@@ -567,7 +567,7 @@ export function createApplier(api: PluginAPI) {
    * be true to, and what it builds from then on stays plain. A version's mains are built first, so
    * that catches it before anything binds, or leaves a main already made as it is.
    */
-  function setMode(node: FrameNode | ComponentNode, device = deviceModes): void {
+  function setMode(node: FrameNode | ComponentNode | InstanceNode, device = deviceModes): void {
     // The shared mains open on the widest frame's modes, so a refusal of those is theirs alone.
     const shared = held?.shared && device === held.shared.device ? held.shared : null;
     const refuse = () => {
@@ -1297,6 +1297,17 @@ export function createApplier(api: PluginAPI) {
     else broken.add(key);
   }
 
+  /**
+   * An instance with no mode of its own reads its main's explicit modes, so one of a shared main
+   * (on the widest frame's modes) in another frame is given its own frame's Device and Breakpoint.
+   * Inside a shared main it reads that main's modes, which are the same.
+   */
+  function readsOwnModes(key: string): boolean {
+    const shared = held?.shared;
+    if (!shared?.keys.has(key) || deviceModes === null) return false;
+    return definition === null || !shared.keys.has(definition);
+  }
+
   async function buildInstance(op: InstanceOp, parent: FrameNode): Promise<InstanceNode> {
     const main = mainOf(op.key);
     if (!main) throw new Error(`no component ${op.key}`);
@@ -1304,6 +1315,8 @@ export function createApplier(api: PluginAPI) {
     pending = node;
     join(parent, node, op);
     node.name = op.name;
+    // Before its properties and overrides, so that what they size reads this frame's values.
+    if (readsOwnModes(op.key)) setMode(node);
     const swapsBroken = op.overrides.some((o) => o.kind === "swap" && isBroken(o.key));
     if (isBroken(op.key) || swapsBroken) {
       noteOverrideFailures(op.overrides.length);
