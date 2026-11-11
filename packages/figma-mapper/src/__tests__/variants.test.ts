@@ -564,3 +564,74 @@ describe("fix round 1", () => {
     );
   });
 });
+
+describe("fix round 2", () => {
+  test("a prop the others already decide the look by is no property", () => {
+    const p = plan([
+      button("a", { variant: "outline", index: 0 }, { bg: white }),
+      button("b", { variant: "default", index: 1 }, { bg: red }),
+      button("c", { variant: "outline", index: 2 }, { bg: white }),
+    ]);
+    expect(p.report.warnings).toContain("Button: 2 variants from the page's code (Variant).");
+  });
+
+  test("text that wraps in auto layout compares no width", () => {
+    const wrapping = (id: string, parent: string, w: number): PlanOp => ({
+      op: "text",
+      id,
+      parent,
+      name: "Question",
+      x: 0,
+      y: 0,
+      w,
+      h: 40,
+      text: "Question",
+      runs: [],
+      align: "LEFT",
+      wrap: true,
+      lineCount: 2,
+      childLayout: { positioning: "AUTO", sizingH: "FIXED", sizingV: "FIXED" },
+    });
+    const frame = (id: string, parent: string | null, childCount: number): PlanOp => ({
+      op: "frame",
+      id,
+      parent,
+      name: id,
+      x: 0,
+      y: 0,
+      w: 300,
+      h: 40,
+      fills: [],
+      strokes: null,
+      radius: [0, 0, 0, 0],
+      opacity: 1,
+      effects: [],
+      clips: false,
+      layout: {
+        mode: "HORIZONTAL",
+        wrap: false,
+        itemSpacing: 0,
+        counterSpacing: null,
+        padding: [0, 0, 0, 0],
+        primaryAlign: "MIN",
+        counterAlign: "MIN",
+        sizingH: "FIXED",
+        sizingV: "HUG",
+      },
+      childCount,
+    });
+    const ops = [
+      frame("root", null, 2),
+      frame("a", "root", 1),
+      wrapping("a-t", "a", 253.58),
+      frame("b", "root", 1),
+      wrapping("b-t", "b", 244.53),
+    ];
+    const trigger: FoundComponent = { source: "react", name: "CollapsibleTrigger", props: {} };
+    const named = new Map([
+      ["a", trigger],
+      ["b", trigger],
+    ]);
+    expect(extractVariantSets(ops, named).notJoined.size).toBe(0);
+  });
+});

@@ -60,8 +60,8 @@ function childLook(child: Tree, parent: Tree, looks: Looks): string {
 }
 
 /**
- * Sizes an instance lays out again: what the layer hugs, what fills its parent, and the height of a
- * text that hugs its lines, which follow its content.
+ * Sizes an instance lays out again: what the layer hugs, what fills its parent, the height of a
+ * text that hugs its lines, and the width of one that wraps in auto layout.
  */
 function follows(op: PlanOp): string[] {
   const { sizingH, sizingV } = op.childLayout ?? {};
@@ -70,6 +70,8 @@ function follows(op: PlanOp): string[] {
     ...(sizingH === "FILL" ? ["w"] : []),
     ...(sizingV === "FILL" ? ["h"] : []),
     ...(op.op === "text" && sizingV === "HUG" ? ["h", "lineCount"] : []),
+    // Text that wraps in auto layout is as wide as its words; the instance wraps it again.
+    ...(op.op === "text" && op.wrap && op.childLayout?.positioning === "AUTO" ? ["w"] : []),
   ];
 }
 
@@ -259,17 +261,27 @@ function buildSet(
     }
     return look;
   };
-  const kept = keys.filter((key) => {
+  /** The looks of the occurrences, by their values of `of`. */
+  const looksBy = (of: string[]): string[] => {
     const byValue = new Map<string, Set<string>>();
     for (const node of coded) {
-      const value = propValue(node, key);
+      const value = combination(node, of);
       const seen = byValue.get(value) ?? new Set<string>();
       seen.add(sizedOf(node));
       byValue.set(value, seen);
     }
-    const lookSets = [...byValue.values()].map((seen) => JSON.stringify([...seen].sort()));
-    return new Set(lookSets).size > 1;
-  });
+    return [...byValue.values()].map((seen) => JSON.stringify([...seen].sort()));
+  };
+  let kept = keys.filter((key) => new Set(looksBy([key])).size > 1);
+  // A prop the others already decide the look by, and two of whose values look alike, only
+  // numbers what the others tell apart (an index beside a variant): it goes. Props that change
+  // the look together each tell their looks apart, so both stay.
+  for (const key of [...kept]) {
+    const others = kept.filter((k) => k !== key);
+    const decided = looksBy(others).every((seen) => JSON.parse(seen).length === 1);
+    const own = looksBy([key]);
+    if (decided && new Set(own).size < own.length) kept = others;
+  }
 
   let notJoined = 0;
   const groups = new Map<string, Tree[]>();
