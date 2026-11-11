@@ -256,6 +256,8 @@ type SetResult = {
   modesDropped: number;
   /** The layered collections' modes, for a set with layers. */
   layers?: { modesDropped: string[]; modes: SettledModes[] };
+  /** A device set's shared definitions: what Figma made of their sets and Hover variants. */
+  components?: { notes: string[]; hoverVariants: number; hoverFailures: number };
 };
 
 /**
@@ -582,9 +584,10 @@ type SetMember = {
   plan: Plan;
   label: string;
   device?: DeviceModes;
-  /** The first frame of a device set brings the definitions every frame shares. */
-  components?: { keys: string[]; device: DeviceModes };
 };
+
+/** A device set's definitions every frame shares, which the first frame that imports brings. */
+type SharedComponents = { ops: PlanOp[]; keys: string[]; device: DeviceModes };
 
 /** How one kind of set opens and reports. Made inside the set's try, so a merge that throws fails it. */
 type SetSpec = {
@@ -597,6 +600,7 @@ type SetSpec = {
   modesOwnFrames: boolean;
   /** The frames share one theme, which the set reports once rather than each frame. */
   sharedTheme: boolean;
+  shared?: SharedComponents;
 };
 
 /** The theme its frames share, reported once: their raw values summed, their notes joined. */
@@ -701,17 +705,17 @@ function withShared(plan: Plan, shared: PlanOp[]): Plan {
  * a definition comes from the widest version that has it.
  */
 async function assetsFor(
-  member: SetMember,
+  version: LoadedFile,
+  plan: Plan,
   versions: LoadedFile[],
   assetsOf: SetContext["assetsOf"]
 ): Promise<Map<string, Uint8Array>> {
-  const own = await assetsOf(member.version);
-  if (!member.components) return own;
+  const own = await assetsOf(version);
   const assets = new Map(own);
   for (const other of versions) {
-    const missing = member.plan.assetHashes.filter((h) => !assets.has(h));
+    const missing = plan.assetHashes.filter((h) => !assets.has(h));
     if (missing.length === 0) break;
-    if (other === member.version) continue;
+    if (other === version) continue;
     const more = await assetsOf(other);
     for (const hash of missing) {
       const data = more.get(hash);
@@ -719,6 +723,22 @@ async function assetsFor(
     }
   }
   return assets;
+}
+
+/** What a device set's shared definitions came to in Figma, for the set's notes. */
+function sharedLines(made: SetResult["components"]): string[] {
+  if (!made) return [];
+  const lines = [...made.notes];
+  const { hoverVariants: n, hoverFailures: failed } = made;
+  if (n > 0) lines.push(`Hover variants: ${n}.`);
+  if (failed > 0) {
+    lines.push(
+      failed === 1
+        ? "1 component could not get a Hover variant and stays as imported."
+        : `${failed} components could not get a Hover variant and stay as imported.`
+    );
+  }
+  return lines;
 }
 
 /** A page captured on devices, and extra captures for its breakpoints: a frame per device. */
@@ -753,28 +773,23 @@ function devicesSpec(
         : best,
     undefined
   );
-  const shared = merge.components;
+  const ops = merge.components;
+  const shared: SharedComponents | undefined =
+    ops.length > 0 && widest
+      ? {
+          ops,
+          keys: ops.flatMap((op) => (op.op === "frame" && op.component ? [op.component.key] : [])),
+          device: { mode: widest.device, breakpoint: widest.breakpoint },
+        }
+      : undefined;
   return {
-    members: merge.frames.map((frame, at) => {
-      const plan = merge.plans[frame.index] as Plan;
-      const brings = at === 0 && shared.length > 0 && widest;
-      return {
-        version: set.versions[frame.index] as LoadedFile,
-        plan: brings ? withShared(plan, shared) : plan,
-        label: frame.device,
-        device: { mode: frame.device, breakpoint: frame.breakpoint },
-        ...(brings
-          ? {
-              components: {
-                keys: shared.flatMap((op) =>
-                  op.op === "frame" && op.component ? [op.component.key] : []
-                ),
-                device: { mode: widest.device, breakpoint: widest.breakpoint },
-              },
-            }
-          : {}),
-      };
-    }),
+    members: merge.frames.map((frame) => ({
+      version: set.versions[frame.index] as LoadedFile,
+      plan: merge.plans[frame.index] as Plan,
+      label: frame.device,
+      device: { mode: frame.device, breakpoint: frame.breakpoint },
+    })),
+    ...(shared ? { shared } : {}),
     async open() {
       const first = set.versions[0] as LoadedFile;
       await port.beginDeviceSet({
@@ -799,6 +814,7 @@ function devicesSpec(
       const dropped = [...new Set(result.layers?.modesDropped ?? [])];
       if (dropped.length > 0) lines.push(`Not created: ${dropped.join(", ")}.`);
       lines.push(...merge.report);
+      lines.push(...sharedLines(result.components));
       const plain = result.plainVersions?.length ?? 0;
       if (plain > 0) lines.push(plainFramesLine(plain));
       return lines;
@@ -835,7 +851,10 @@ async function importSet(
   try {
     const spec = makeSpec();
     members = spec.members;
-    const total = members.reduce((sum, m) => sum + m.plan.ops.length, 0);
+    /** The shared definitions, until a frame that brought them has imported. */
+    let carry = spec.shared;
+    let total = members.reduce((sum, m) => sum + m.plan.ops.length, 0) + (carry?.ops.length ?? 0);
+    let carried = false;
 
     // Set first: an open that fails halfway may still have created state to cancel.
     open = true;
@@ -850,17 +869,24 @@ async function importSet(
       const index = ctx.firstFile + i;
       const file: FileInfo = { index, total: ctx.totalFiles, name: version.name, unit };
       onState({ step: "working", done, total, file });
-      const plan = dropped.has(i) ? stripTokens(member.plan) : member.plan;
+      // A frame left without its modes loses its own tokens; the shared mains keep theirs.
+      const own = dropped.has(i) ? stripTokens(member.plan) : member.plan;
+      const plan = carry ? withShared(own, carry.ops) : own;
+      // Brought again after a frame that failed: counted again.
+      if (carry && carried) total += carry.ops.length;
+      if (carry) carried = true;
       try {
         const report = await importVersion(
           {
             plan,
-            assets: await assetsFor(member, set.versions, ctx.assetsOf),
+            assets: carry
+              ? await assetsFor(version, plan, set.versions, ctx.assetsOf)
+              : await ctx.assetsOf(version),
             rootName: importName(version.capture.source),
             version: { name: version.name, label: member.label },
             setIndex: i,
             ...(member.device ? { device: member.device } : {}),
-            ...(member.components ? { components: member.components } : {}),
+            ...(carry ? { components: { keys: carry.keys, device: carry.device } } : {}),
           },
           { port, onState, signal, options, file, progress: { done, total } }
         );
@@ -869,6 +895,7 @@ async function importSet(
           return cancelled;
         }
         kept.push(report);
+        carry = undefined;
         if (dropped.has(i)) plainFrames += 1;
       } catch (error) {
         failed.add(version);

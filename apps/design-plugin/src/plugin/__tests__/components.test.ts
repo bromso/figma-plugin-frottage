@@ -1572,3 +1572,96 @@ test("re-import adds the missing variants to Frottage's set only (Review Focus 4
   expect(ofType(f, "INSTANCE").length).toBeGreaterThan(instancesBefore);
   expect(ofType(f, "INSTANCE").every((n) => !n.removed)).toBe(true);
 });
+
+test("a set whose code has a State hovers by Interaction, as State is taken", async () => {
+  const states: Values[] = [
+    [
+      ["Variant", "default"],
+      ["State", "open"],
+    ],
+    [
+      ["Variant", "default"],
+      ["State", "closed"],
+    ],
+  ];
+  const { f, r } = await importButtons(buttonPage(states, { 0: [{ path: [], fills: blueFill }] }));
+  const [set] = buttonSets(f) as [FakeNode];
+  expect(set.children.map((v: FakeNode) => v.name)).toEqual([
+    "Variant=default, State=open, Interaction=Default",
+    "Variant=default, State=open, Interaction=Hover",
+    "Variant=default, State=closed, Interaction=Default",
+  ]);
+  expect(r).toMatchObject({ hoverVariants: 1, hoverFailures: 0, componentNotes: [] });
+});
+
+test("a property named as a variant property yields: Label text, Icon swap", async () => {
+  const coded: Values[] = [
+    [
+      ["Label", "short"],
+      ["Icon", "left"],
+    ],
+    [
+      ["Label", "long"],
+      ["Icon", "left"],
+    ],
+  ];
+  const { f, r, root } = await importButtons(buttonPage(coded));
+  const [set] = buttonSets(f) as [FakeNode];
+  expect(Object.keys(set.componentPropertyDefinitions).map((k) => k.split("#")[0])).toEqual([
+    "Label",
+    "Icon",
+    "Icon swap",
+    "Label text",
+  ]);
+  expect(r.componentNotes).toEqual([]);
+  // The instances' plan names find them.
+  expect((root.children[1] as FakeNode).children[1].characters).toBe("Back");
+  const props = (root.children[1] as FakeNode).componentProperties;
+  expect(props.Label.value).toBe("long");
+});
+
+test("an icon swap prefers every icon the import defines, used or not", async () => {
+  const ops = buttonPage();
+  ops.splice(
+    2,
+    0,
+    main("icon:c", { name: "Star", w: 16, h: 16, component: { key: "icon:c", name: "Star" } })
+  );
+  const { f } = await importButtons(ops);
+  const [set] = buttonSets(f) as [FakeNode];
+  const [, def] = definitionNamed(set, "Icon") as [string, PropertyDef];
+  expect(def.preferredValues).toEqual(
+    ["Plus", "Minus", "Star"].map((n) => ({ type: "COMPONENT", key: f.frame(n).key }))
+  );
+});
+
+test("a variant that can't join the set in the file stays in the section, said once", async () => {
+  const f = fakeFigma();
+  await importButtons(buttonPage(BUTTONS.slice(0, 2)), f);
+  const [own] = buttonSets(f) as [FakeNode];
+  const append = own.appendChild;
+  own.appendChild = () => {
+    throw new Error("refused");
+  };
+  const { r, root } = await importButtons(buttonPage(), f);
+  own.appendChild = append;
+  expect(own.children).toHaveLength(2);
+  expect(r.componentNotes).toEqual([
+    "Some of Button's variants couldn't join its set in the file, so they stay in this import's section.",
+  ]);
+  const left = (root.children[2] as FakeNode).main as FakeNode;
+  expect(left.name).toBe("Variant=outline, Size=icon");
+  expect(left.parent.type).toBe("SECTION");
+  expect(left.parent.removed).toBe(false);
+  expect((root.children[2] as FakeNode).children[1].characters).toBe("Next");
+});
+
+test("a re-import with hover adds no State to a set that has none", async () => {
+  const f = fakeFigma();
+  await importButtons(buttonPage(BUTTONS.slice(0, 2)), f);
+  const [own] = buttonSets(f) as [FakeNode];
+  const { r } = await importButtons(buttonPage(BUTTONS, { 0: [{ path: [], fills: blueFill }] }), f);
+  expect(own.children.map((v: FakeNode) => v.name)).toEqual(BUTTONS.map(variantName));
+  expect(buttonSets(f)).toHaveLength(1);
+  expect(r.failedOps).toBe(0);
+});

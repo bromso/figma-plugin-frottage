@@ -67,8 +67,10 @@ type Group = {
   separate: boolean;
   /** Some property couldn't be added or set. */
   propertyFailed: boolean;
-  /** Each owner's swap property and the icons it prefers, by key. */
-  swaps: { owner: Owner; full: string; icons: string[] }[];
+  /** Some variant couldn't join the set already in the file, and stays in the section. */
+  joinFailed: boolean;
+  /** The variant property its Hover variants go by. */
+  axis: string;
 };
 
 /** A variant as it goes into a set: its main or Hover copy, its values and its definition. */
@@ -76,6 +78,29 @@ type Member = { node: ComponentNode; values: Values; def: Definition; key?: stri
 
 const variantName = (values: Values) => values.map(([k, v]) => `${k}=${v}`).join(", ");
 const baseName = (full: string) => full.split("#")[0] as string;
+
+/** A variant name's values, `Size=sm, State=Hover` as `[["Size", "sm"], ["State", "Hover"]]`. */
+const valuesOf = (name: string): Values =>
+  name.split(",").flatMap((part) => {
+    const [key, value] = part.split("=").map((x) => x.trim());
+    return key && value !== undefined ? [[key, value] as [string, string]] : [];
+  });
+/** Values in a fixed order, to compare variants named in another. */
+const sameValues = (a: Values, b: Values) =>
+  JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+
+/** The hover axis: `State`, unless the code already gave the set a `State` (Radix `data-state`). */
+const hoverAxis = (keys: Iterable<string>) =>
+  [...keys].includes("State") ? "Interaction" : "State";
+
+/** A property's name in Figma, which yields to a variant property of the same name. */
+const RENAMED: Record<PlanComponentProperty["name"], string> = {
+  Label: "Label text",
+  Icon: "Icon swap",
+  "Show icon": "Show icon toggle",
+};
+export const propertyName = (name: PlanComponentProperty["name"], variants: Set<string>) =>
+  variants.has(name) ? RENAMED[name] : name;
 
 /**
  * Sets an instance's properties by their names in the plan, `Label` for `Label#1:2`, and its
@@ -86,18 +111,21 @@ export function setInstanceProperties(
   node: InstanceNode,
   values: PlanPropertyValues,
   variant: Values,
-  lookup: (key: string) => ComponentNode | undefined,
-  onIcon?: (name: string, key: string) => void
+  lookup: (key: string) => ComponentNode | undefined
 ): boolean {
   const known = node.componentProperties;
-  const byName = new Map(Object.keys(known).map((full) => [baseName(full), full]));
+  const kinds = Object.entries(known);
+  const variants = new Set(kinds.flatMap(([k, p]) => (p.type === "VARIANT" ? [k] : [])));
+  const byName = new Map(
+    kinds.flatMap(([full, p]) => (p.type === "VARIANT" ? [] : [[baseName(full), full]]))
+  );
   const out: Record<string, string | boolean> = {};
   let ok = true;
   for (const [name, value] of variant) {
-    if (known[name]?.type === "VARIANT") out[name] = value;
+    if (variants.has(name)) out[name] = value;
   }
   for (const [name, value] of Object.entries(values)) {
-    const full = byName.get(name);
+    const full = byName.get(propertyName(name as PlanComponentProperty["name"], variants));
     const type = full ? known[full]?.type : undefined;
     if (!full || !type || type === "VARIANT") {
       ok = false;
@@ -113,7 +141,6 @@ export function setInstanceProperties(
       continue;
     }
     out[full] = icon.id;
-    onIcon?.(name, value as string);
   }
   try {
     node.setProperties(out);
@@ -336,24 +363,53 @@ export function createComponentSet(
     return lookup(prop.default)?.id;
   }
 
+  /** Every icon definition of the import, which a swap offers first. */
+  function preferredIcons(): InstanceSwapPreferredValue[] {
+    return order.flatMap((key) => {
+      const icon = key.startsWith("icon:") ? lookup(key) : undefined;
+      return icon ? [{ type: "COMPONENT" as const, key: icon.key }] : [];
+    });
+  }
+
+  /** A variant property's names on `owner`, which a component property must not take. */
+  function variantsOn(owner: Owner): string[] {
+    try {
+      return Object.entries(owner.componentPropertyDefinitions).flatMap(([name, def]) =>
+        def.type === "VARIANT" ? [name] : []
+      );
+    } catch {
+      return [];
+    }
+  }
+
   /** A property `owner` has of this name and type, or a new one. Null when Figma refused it. */
-  function propertyOn(owner: Owner, prop: PlanComponentProperty, icons: string[]): string | null {
+  function propertyOn(owner: Owner, prop: PlanComponentProperty, name: string): string | null {
     try {
       const have = Object.entries(owner.componentPropertyDefinitions).find(
-        ([full, def]) => baseName(full) === prop.name && def.type === prop.type
+        ([full, def]) => baseName(full) === name && def.type === prop.type
       );
-      if (have) return have[0];
+      if (have) {
+        // A set already in the file keeps the icons it prefers, and offers this import's too.
+        if (prop.type === "INSTANCE_SWAP") {
+          const current = have[1].preferredValues ?? [];
+          const more = preferredIcons().filter((v) => !current.some((c) => c.key === v.key));
+          if (more.length > 0) {
+            try {
+              owner.editComponentProperty(have[0], { preferredValues: [...current, ...more] });
+            } catch {
+              // the swap still takes them; they're just not offered first
+            }
+          }
+        }
+        return have[0];
+      }
       const value = defaultOf(prop);
       if (value === undefined) return null;
-      const preferredValues = icons.flatMap((key) => {
-        const icon = lookup(key);
-        return icon ? [{ type: "COMPONENT" as const, key: icon.key }] : [];
-      });
       const full = owner.addComponentProperty(
-        prop.name,
+        name,
         prop.type,
         value,
-        prop.type === "INSTANCE_SWAP" ? { preferredValues } : undefined
+        prop.type === "INSTANCE_SWAP" ? { preferredValues: preferredIcons() } : undefined
       );
       // A set made by an earlier import keeps what this one gave it only if this one stays.
       if (owner.type === "COMPONENT_SET" && !made.has(owner.id)) {
@@ -369,28 +425,21 @@ export function createComponentSet(
   function addProperties(group: Group, owner: Owner, members: Member[]) {
     const props = new Map<string, PlanComponentProperty>();
     for (const { def } of members) {
-      for (const prop of def.properties ?? [])
+      for (const prop of def.properties ?? []) {
         if (!props.has(prop.name)) props.set(prop.name, prop);
+      }
     }
+    if (props.size === 0) return;
+    const variants = new Set([
+      ...members.flatMap((m) => m.values.map(([k]) => k)),
+      ...variantsOn(owner),
+    ]);
     for (const prop of props.values()) {
-      const icons =
-        prop.type === "INSTANCE_SWAP"
-          ? [
-              ...new Set(
-                members.flatMap(({ def }) =>
-                  (def.properties ?? []).flatMap((p) =>
-                    p.name === prop.name && p.type === "INSTANCE_SWAP" ? [p.default] : []
-                  )
-                )
-              ),
-            ]
-          : [];
-      const full = propertyOn(owner, prop, icons);
+      const full = propertyOn(owner, prop, propertyName(prop.name, variants));
       if (!full) {
         group.propertyFailed = true;
         continue;
       }
-      if (prop.type === "INSTANCE_SWAP") group.swaps.push({ owner, full, icons });
       const field = FIELDS[prop.type];
       for (const { node, def, key } of members) {
         const own = def.properties?.find((p) => p.name === prop.name && p.type === prop.type);
@@ -420,17 +469,18 @@ export function createComponentSet(
       return patches.length > 0 && !isBroken(key) ? patches : null;
     };
     const hovered = group.keys.some((key) => hovers(key));
+    const axis = group.axis;
     const members: Member[] = [];
     for (const { key, node, def } of entries) {
       const own = def.set?.values ?? [];
       if (def.hover && def.hover.length > 0 && isBroken(key)) hoverFailures++;
-      const values: Values = hovered ? [...own, ["State", "Default"]] : own;
+      const values: Values = hovered ? [...own, [axis, "Default"]] : own;
       if (values.length > 0) node.name = variantName(values);
       members.push({ node, values, def, key });
       const patches = hovers(key);
       const copy = patches ? hoverCopy(node, patches) : null;
       if (!copy) continue;
-      const hover: Values = [...own, ["State", "Hover"]];
+      const hover: Values = [...own, [axis, "Hover"]];
       copy.name = variantName(hover);
       hoverVariants++;
       members.push({ node: copy, values: hover, def });
@@ -438,45 +488,82 @@ export function createComponentSet(
     return members;
   }
 
-  /** Adds members to a set that is already made: an earlier import's, or this one's. */
-  function join(group: Group, set: ComponentSetNode, members: Member[]) {
-    const have = new Map(set.children.map((c) => [c.name, c as ComponentNode]));
+  /** Takes back a Hover copy that has no set to be a variant of. */
+  function dropCopy(member: Member) {
+    hoverVariants--;
+    hoverFailures++;
+    try {
+      member.node.remove();
+    } catch {
+      // already gone
+    }
+  }
+
+  /**
+   * Adds members to a set that is already made: an earlier import's, or this one's. They take its
+   * naming first: an earlier set without the hover axis gets no Hover variants, and one with it
+   * names theirs Default.
+   */
+  function join(group: Group, set: ComponentSetNode, all: Member[]) {
+    const axis = group.axis;
+    const theirs = new Set(variantsOn(set));
+    const ours = all.some((m) => m.values.some(([k]) => k === axis));
+    const members: Member[] = [];
+    for (const member of all) {
+      if (ours && !theirs.has(axis)) {
+        if (member.key === undefined) {
+          dropCopy(member);
+          continue;
+        }
+        member.values = member.values.filter(([k]) => k !== axis);
+      } else if (!ours && theirs.has(axis)) {
+        member.values = [...member.values, [axis, "Default"]];
+      }
+      member.node.name = variantName(member.values);
+      members.push(member);
+    }
     const fresh: Member[] = [];
     for (const member of members) {
-      const there = have.get(member.node.name);
-      if (!there) {
+      const there = set.children.find((c) => sameValues(valuesOf(c.name), member.values));
+      if (!there || there === member.node) {
         fresh.push(member);
         continue;
       }
       // That variant is there already: its instances use it, and this copy goes.
-      if (member.key !== undefined) mains.set(member.key, there);
+      if (member.key !== undefined) {
+        mains.set(member.key, there as ComponentNode);
+        elsewhere.add(member.key);
+      }
       try {
         member.node.remove();
       } catch {
         // stays in the section
       }
     }
-    const moved: ComponentNode[] = [];
+    const moved: Member[] = [];
     for (const member of fresh) {
       try {
-        set.appendChild(member.node);
-        moved.push(member.node);
+        if (member.node.parent !== set) set.appendChild(member.node);
+        moved.push(member);
         if (group.existing) addedVariants.push(member.node);
+        if (member.key !== undefined) elsewhere.add(member.key);
       } catch {
-        group.propertyFailed = true;
+        // It stays a component of its own in the section, with its own properties.
+        group.joinFailed = true;
+        if (member.key === undefined) dropCopy(member);
+        else addProperties(group, member.node, [member]);
       }
     }
     try {
-      if (moved.length > 0) addBelow(set, moved);
+      if (moved.length > 0)
+        addBelow(
+          set,
+          moved.map((m) => m.node)
+        );
     } catch {
       layoutFailed = true;
     }
-    for (const member of members) if (member.key !== undefined) elsewhere.add(member.key);
-    addProperties(
-      group,
-      set,
-      fresh.filter((m) => moved.includes(m.node))
-    );
+    addProperties(group, set, moved);
   }
 
   /** Makes a group's set, or its plain component's properties, once all its mains are in. */
@@ -510,14 +597,7 @@ export function createComponentSet(
       group.separate = true;
       for (const member of members) {
         if (member.key === undefined) {
-          // A Hover copy has no set to be a variant of.
-          hoverVariants--;
-          hoverFailures++;
-          try {
-            member.node.remove();
-          } catch {
-            // already gone
-          }
+          dropCopy(member);
           continue;
         }
         try {
@@ -590,31 +670,19 @@ export function createComponentSet(
     for (const key of order) {
       if (elsewhere.has(key)) continue;
       const group = groupOf.get(key);
-      const node = group?.set ?? hoverSets.get(key) ?? (mains.get(key) as ComponentNode);
+      const main = mains.get(key) as ComponentNode;
+      // A set already in the file stays where it is; a main that couldn't join it stays here.
+      const inSet = group?.set && !group.existing && main.parent === group.set;
+      const node = hoverSets.get(key) ?? (inSet ? (group.set as ComponentSetNode) : main);
       if (!out.includes(node)) out.push(node);
     }
     return out;
   }
 
-  /** Adds `icon` to a set's preferred swaps, once an instance swaps to it. */
-  function preferIcon(group: Group, name: string, icon: string) {
-    const main = lookup(icon);
-    for (const swap of group.swaps) {
-      if (!main || baseName(swap.full) !== name || swap.icons.includes(icon)) continue;
-      swap.icons.push(icon);
-      try {
-        // Those a set already in the file prefers stay.
-        const current = swap.owner.componentPropertyDefinitions[swap.full]?.preferredValues ?? [];
-        if (current.some((v) => v.key === main.key)) continue;
-        const preferredValues = [...current, { type: "COMPONENT" as const, key: main.key }];
-        swap.owner.editComponentProperty(swap.full, { preferredValues });
-      } catch {
-        // the swap still takes it; it's just not offered first
-      }
-    }
-  }
-
   return {
+    /** Whether a main of `key` came in, without making its set. */
+    has: (key: string) => mains.has(key),
+
     /** A main by key. A set is made the first time one of its variants is asked for. */
     main(key: string): ComponentNode | undefined {
       const group = groupOf.get(key);
@@ -649,7 +717,8 @@ export function createComponentSet(
           existing: false,
           separate: false,
           propertyFailed: false,
-          swaps: [],
+          joinFailed: false,
+          axis: hoverAxis((def.set?.values ?? []).map(([k]) => k)),
         };
         groups.set(id, group);
       }
@@ -667,9 +736,7 @@ export function createComponentSet(
     setProperties(key: string, node: InstanceNode, values: PlanPropertyValues) {
       const group = groupOf.get(key);
       const variant = defs.get(key)?.set?.values ?? [];
-      const ok = setInstanceProperties(node, values, variant, lookup, (name, icon) => {
-        if (group) preferIcon(group, name, icon);
-      });
+      const ok = setInstanceProperties(node, values, variant, lookup);
       if (!ok && group) group.propertyFailed = true;
     },
 
@@ -682,6 +749,11 @@ export function createComponentSet(
         if (group.separate && group.variants) {
           lines.push(
             `${group.name}'s variants couldn't be combined, so they stay separate components.`
+          );
+        }
+        if (group.joinFailed) {
+          lines.push(
+            `Some of ${group.name}'s variants couldn't join its set in the file, so they stay in this import's section.`
           );
         }
         if (group.propertyFailed) {

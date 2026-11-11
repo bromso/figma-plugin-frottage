@@ -109,6 +109,8 @@ export type SetResult = TokenCounts & {
   layoutFailures: number;
   /** A device set's versions left plain, unbound: their Device or Breakpoint mode wasn't set. */
   plainVersions: number[];
+  /** What a device set's shared definitions came to, which no one frame reports. */
+  components?: { notes: string[]; hoverVariants: number; hoverFailures: number };
 };
 
 /** A set of versions under way. Its finished frames and sections are held until `endSet`. */
@@ -136,6 +138,8 @@ type HeldSet = {
     device: NonNullable<ImportMeta["device"]>;
     /** Shared mains that lost layers. */
     broken: Set<string>;
+    /** Figma refused the widest frame's modes, so the shared mains stay plain from then on. */
+    modeRefused: boolean;
   };
 };
 
@@ -260,6 +264,10 @@ export function createApplier(api: PluginAPI) {
   let host = "";
   /** The component sets this import made, which none of its later versions adds to. */
   let madeSets = new Set<string>();
+  /** Ops of a shared definition an earlier frame made already, which this one passes over. */
+  let skipped = new Set<string>();
+  /** Set while a shared set's Hover variant is painted, which binds as the shared mains do. */
+  let paintingShared = false;
 
   /** Clears the version in hand and removes what it left. The set around it, if any, stays. */
   function clearVersion() {
@@ -305,6 +313,7 @@ export function createApplier(api: PluginAPI) {
     modeRefused = false;
     deviceModes = null;
     buildsShared = false;
+    skipped = new Set();
   }
 
   function reset() {
@@ -507,12 +516,22 @@ export function createApplier(api: PluginAPI) {
     rootName = meta.version ? `${meta.name} — ${meta.version.label}` : meta.name;
     page = set?.page ?? api.currentPage;
     const target = page;
-    const hoverPaint = (device: ImportMeta["device"] | null): HoverPaint => ({
-      paints: (list) => paints(list, false),
-      effects,
-      solid: (color, opacity) => solidPaint(color, opacity),
-      mode: (node) => setMode(node, device),
-    });
+    const hoverPaint = (device: ImportMeta["device"] | null, shared = false): HoverPaint => {
+      const as = <T>(paint: () => T): T => {
+        paintingShared = shared;
+        try {
+          return paint();
+        } finally {
+          paintingShared = false;
+        }
+      };
+      return {
+        paints: (list) => as(() => paints(list, false)),
+        effects,
+        solid: (color, opacity) => as(() => solidPaint(color, opacity)),
+        mode: (node) => setMode(node, device),
+      };
+    };
     const options = {
       // A device set's mains read the modes their frame's section opens on, as their instances do.
       ...(set?.section ? { prepare: (s: SectionNode) => openSection(s, set.language) } : {}),
@@ -522,14 +541,18 @@ export function createApplier(api: PluginAPI) {
       made: madeSets,
     };
     components = createComponentSet(api, rootName, hoverPaint(deviceModes), target, options);
-    if (set?.section && meta.components && !set.shared) {
+    // The first frame brings the shared definitions; if it fails, the next brings them again, and
+    // only those not made yet are made.
+    if (set?.section && meta.components) {
       const { keys, device } = meta.components;
-      set.shared = {
-        components: createComponentSet(api, meta.name, hoverPaint(device), target, options),
-        keys: new Set(keys),
+      set.shared ??= {
+        components: createComponentSet(api, meta.name, hoverPaint(device, true), target, options),
+        keys: new Set(),
         device,
         broken: new Set(),
+        modeRefused: false,
       };
+      for (const key of keys) set.shared.keys.add(key);
       buildsShared = true;
     }
     await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
@@ -545,12 +568,18 @@ export function createApplier(api: PluginAPI) {
    * that catches it before anything binds, or leaves a main already made as it is.
    */
   function setMode(node: FrameNode | ComponentNode, device = deviceModes): void {
-    if (versionIndex === null || modeRefused) return;
+    // The shared mains open on the widest frame's modes, so a refusal of those is theirs alone.
+    const shared = held?.shared && device === held.shared.device ? held.shared : null;
+    const refuse = () => {
+      if (shared) shared.modeRefused = true;
+      else modeRefused = true;
+    };
+    if (versionIndex === null || (shared ? shared.modeRefused : modeRefused)) return;
     // With tokens off nothing binds, so no mode is missed.
     if (device && !tokens?.hasLayers()) return;
     const modes = device ? deviceSetModes(device) : [tokens?.modeOf(versionIndex)];
     if (!modes) {
-      modeRefused = true;
+      refuse();
       return;
     }
     try {
@@ -558,7 +587,7 @@ export function createApplier(api: PluginAPI) {
         if (mode) node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
       }
     } catch {
-      modeRefused = true;
+      refuse();
       tokens?.failed();
     }
   }
@@ -579,7 +608,12 @@ export function createApplier(api: PluginAPI) {
   }
 
   /** The tokens this version may bind to: none once its mode was refused. */
-  const bindable = () => (modeRefused ? undefined : tokens);
+  const bindable = () => {
+    // A shared definition's layers bind as its main's modes allow, whatever this frame's are.
+    const shared = held?.shared;
+    const inShared = paintingShared || (definition !== null && shared?.keys.has(definition));
+    return (inShared ? shared?.modeRefused : modeRefused) ? undefined : tokens;
+  };
 
   /**
    * Opens a page, not a version, on the Color Mode mode it was captured in: Dark for a page
@@ -1385,6 +1419,13 @@ export function createApplier(api: PluginAPI) {
   }
 
   async function applyOp(op: PlanOp): Promise<void> {
+    // A shared definition an earlier frame made, brought again by this one: passed over, whole.
+    const again =
+      op.op === "frame" && op.component && held?.shared?.components.has(op.component.key);
+    if (again || (op.parent !== null && skipped.has(op.parent))) {
+      skipped.add(op.id);
+      return;
+    }
     const run = generation;
     pending = null;
     fillFit = null;
@@ -1446,26 +1487,20 @@ export function createApplier(api: PluginAPI) {
 
   /** A set's tokens are the whole set's, so `endSet` gives them and no version does. */
   const tokenCounts = () => (held ? NO_TOKENS : (tokens?.counts() ?? NO_TOKENS));
-  const componentCounts = () => {
-    const own = components?.hoverCounts() ?? { hoverVariants: 0, hoverFailures: 0 };
-    // The version that made a device set's shared definitions reports on them.
-    const shared = buildsShared ? held?.shared?.components : undefined;
-    const more = shared?.hoverCounts() ?? { hoverVariants: 0, hoverFailures: 0 };
-    return {
-      componentsCreated,
-      instancesCreated,
-      overrideFailures,
-      overrideFailuresInMains,
-      layoutFailures,
-      paintFailures,
-      resizedFallbacks,
-      hoverVariants: own.hoverVariants + more.hoverVariants,
-      hoverFailures: own.hoverFailures + more.hoverFailures,
-      componentNotes: [...(shared?.notes() ?? []), ...(components?.notes() ?? [])],
-    };
-  };
+  /** A device set's shared definitions report with the set, in `endSet`. */
+  const componentCounts = () => ({
+    componentsCreated,
+    instancesCreated,
+    overrideFailures,
+    overrideFailuresInMains,
+    layoutFailures,
+    paintFailures,
+    resizedFallbacks,
+    ...(components?.hoverCounts() ?? { hoverVariants: 0, hoverFailures: 0 }),
+    componentNotes: components?.notes() ?? [],
+  });
 
-  /** Makes the shared sets once their version is done, so that it counts what they made. */
+  /** Makes the shared sets once the frame that brought them is done, before the next uses them. */
   function finishShared() {
     if (!buildsShared) return;
     try {
@@ -1610,11 +1645,13 @@ export function createApplier(api: PluginAPI) {
     layoutFailures += placeSections(held);
     api.commitUndo();
     select(target, section ? [section] : frames);
+    const shared = held.shared?.components;
     const result = {
       ...(tokens?.counts() ?? NO_TOKENS),
       rootIds: frames.map((f) => f.id),
       layoutFailures,
       plainVersions: [...held.plain],
+      ...(shared ? { components: { notes: shared.notes(), ...shared.hoverCounts() } } : {}),
     };
     held = null; // keep the frames and the sections
     tokens = null; // and the tokens they use

@@ -2201,4 +2201,175 @@ describe("a device set", () => {
       });
     }
   });
+  /** Button's two variants, with a Label, as a device merge shares them. */
+  const sharedButtons = (extra: object = {}): PlanOp[] =>
+    ["default", "outline"].flatMap((v): PlanOp[] => {
+      const key = `set:Button|Variant=${v}`;
+      return [
+        frame(`${key}/n`, null, {
+          name: `Variant=${v}`,
+          w: 80,
+          h: 30,
+          fills,
+          childCount: 1,
+          component: {
+            key,
+            name: `Variant=${v}`,
+            set: { key: "set:Button", name: "Button", values: [["Variant", v]] },
+            properties: [{ type: "TEXT", name: "Label", path: [0], default: "hello" }],
+            ...extra,
+          },
+        }),
+        textOp(`${key}/t`, `${key}/n`, [run(0, 5, inter)]),
+      ];
+    });
+  const SHARED_KEYS = ["set:Button|Variant=default", "set:Button|Variant=outline"];
+  const buttonOn = (id: string, v: string): PlanOp => ({
+    op: "instance",
+    id,
+    parent: "a",
+    name: id,
+    x: 0,
+    y: 0,
+    w: 80,
+    h: 30,
+    key: `set:Button|Variant=${v}`,
+    resize: false,
+    overrides: [],
+    properties: { Label: id },
+  });
+  type SharedRun = {
+    devices: { device: string; breakpoint: string; w: number }[];
+    /** Per frame, the shared ops it brings, if any. */
+    brings: (PlanOp[] | null)[];
+    /** Frames that stop after their batch, as one that fails. */
+    fails?: number[];
+    f?: ReturnType<typeof fakeFigma>;
+    /** The breakpoint the shared mains open on, the widest frame's. */
+    sharedBreakpoint?: string;
+  };
+  async function importShared(run_: SharedRun) {
+    const f = run_.f ?? fakeFigma();
+    const a = createApplier(f.figma);
+    await a.beginDeviceSet(open("current-page"));
+    const ends = [];
+    for (const [index, d] of run_.devices.entries()) {
+      const brought = run_.brings[index];
+      await a.begin({
+        ...meta,
+        name: TITLE,
+        version: { index, label: d.device },
+        device: { mode: d.device, breakpoint: d.breakpoint },
+        ...(brought
+          ? {
+              components: {
+                keys: SHARED_KEYS,
+                device: { mode: "Desktop", breakpoint: run_.sharedBreakpoint ?? "lg" },
+              },
+            }
+          : {}),
+      });
+      await a.importTokens(
+        { textStyles: [], colors: [], collection: "example.com", layers },
+        DEFAULT_IMPORT_OPTIONS
+      );
+      await a.applyBatch([
+        ...(brought ?? []),
+        frame("a", null, { w: d.w, h: 800, fills, childCount: 2 }),
+        buttonOn(`b1-${index}`, "default"),
+        buttonOn(`b2-${index}`, "outline"),
+      ]);
+      if (run_.fails?.includes(index)) continue;
+      ends.push(await a.end());
+    }
+    return { f, ends, set: await a.endSet() };
+  }
+  const liveSets = (f: ReturnType<typeof fakeFigma>) =>
+    f.created.filter((n) => n.type === "COMPONENT_SET" && !n.removed);
+
+  test("a frame after one that failed brings the shared definitions, made only once", async () => {
+    // The first frame makes the default variant only, then fails; the next brings all again.
+    const [half] = [sharedButtons().slice(0, 2)];
+    const { f, ends } = await importShared({
+      devices: [
+        { device: "Phone", breakpoint: "base", w: 390 },
+        { device: "Desktop", breakpoint: "lg", w: 1440 },
+      ],
+      brings: [half as PlanOp[], sharedButtons()],
+      fails: [0],
+    });
+    expect(ends.map((r) => r.failedOps)).toEqual([0]);
+    const [set] = liveSets(f) as [FakeNode];
+    expect(liveSets(f)).toHaveLength(1);
+    expect(set.children.map((v: FakeNode) => v.name)).toEqual([
+      "Variant=default",
+      "Variant=outline",
+    ]);
+    // Made once each: the Desktop passes over the default variant the Phone made.
+    expect(f.count("createComponent")).toBe(2);
+    const mains = f.created.filter((n) => n.type === "COMPONENT" && !n.removed);
+    expect(mains.map((n) => n.name)).toEqual(["Variant=default", "Variant=outline"]);
+    const frames = sectionOf(f).children as FakeNode[];
+    expect(frames).toHaveLength(1);
+    for (const b of (frames[0] as FakeNode).children) expect(b.main.parent).toBe(set);
+  });
+
+  test("the frame that brings the shared mains keeps its modes when theirs are refused", async () => {
+    const { f, set } = await importShared({
+      devices: [
+        { device: "Phone", breakpoint: "base", w: 390 },
+        { device: "Desktop", breakpoint: "lg", w: 1440 },
+      ],
+      brings: [sharedButtons(), null],
+      // A breakpoint the file has no mode for: the mains stay plain, the Phone does not.
+      sharedBreakpoint: "xl",
+    });
+    expect(set.plainVersions).toEqual([]);
+    const [buttons] = liveSets(f) as [FakeNode];
+    for (const v of buttons.children as FakeNode[])
+      expect(v.fills[0].boundVariables).toBeUndefined();
+    const id = themeVariable(f, "color/card").id;
+    const [phone] = sectionOf(f).children as [FakeNode];
+    expect(phone.fills[0].boundVariables.color.id).toBe(id);
+  });
+
+  test("the shared mains keep their modes and tokens when a frame's own are refused", async () => {
+    const { f, set } = await importShared({
+      // The Phone's breakpoint is not in the file: the Phone stays plain, the mains do not.
+      devices: [
+        { device: "Phone", breakpoint: "xs", w: 390 },
+        { device: "Desktop", breakpoint: "lg", w: 1440 },
+      ],
+      brings: [sharedButtons(), null],
+    });
+    expect(set.plainVersions).toEqual([0]);
+    const [buttons] = liveSets(f) as [FakeNode];
+    const device = collectionNamed(f, "Device");
+    const id = themeVariable(f, "color/card").id;
+    for (const v of buttons.children as FakeNode[]) {
+      expect(v.explicitModes[device.id]).toBe(modeIn(device, "Desktop"));
+      expect(v.fills[0].boundVariables.color.id).toBe(id);
+    }
+    const [phone, desktop] = sectionOf(f).children as [FakeNode, FakeNode];
+    expect(phone.fills[0].boundVariables).toBeUndefined();
+    expect(desktop.fills[0].boundVariables.color.id).toBe(id);
+  });
+
+  test("the shared sets report with the set, not with the frame that made them", async () => {
+    const { ends, set } = await importShared({
+      devices: [
+        { device: "Desktop", breakpoint: "lg", w: 1440 },
+        { device: "Phone", breakpoint: "base", w: 390 },
+      ],
+      brings: [sharedButtons({ hover: [{ path: [], fills: [] }] }), null],
+      f: fakeFigma({ combineThrows: true }),
+    });
+    expect(ends.map((r) => r.componentNotes)).toEqual([[], []]);
+    expect(ends.map((r) => r.hoverVariants)).toEqual([0, 0]);
+    expect(set.components).toEqual({
+      notes: ["Button's variants couldn't be combined, so they stay separate components."],
+      hoverVariants: 0,
+      hoverFailures: 2,
+    });
+  });
 });

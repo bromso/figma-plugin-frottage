@@ -99,6 +99,8 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     layoutFailures: number;
     /** A device set's versions left plain, unbound: their Device or Breakpoint mode wasn't set. */
     plainVersions: number[];
+    /** A device set's shared definitions: what Figma made of their sets and Hover variants. */
+    components?: { notes: string[]; hoverVariants: number; hoverFailures: number };
     stylesCreated: number;
     stylesReused: number;
     variablesCreated: number;

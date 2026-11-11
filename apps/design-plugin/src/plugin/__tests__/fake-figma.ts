@@ -196,6 +196,12 @@ export function fakeFigma(opts: Options = {}) {
       })
     );
 
+  /** As in Figma, a variant name can't give one property two values. */
+  const checkVariantName = (name: string) => {
+    const keys = name.split(",").map((part) => part.split("=")[0]?.trim());
+    if (new Set(keys).size !== keys.length) throw new Error(`ambiguous variant name: ${name}`);
+  };
+
   /** The node whose properties a main's layers and instances use: its set, or itself. */
   const ownerOf = (main: FakeNode): FakeNode =>
     main.parent?.type === "COMPONENT_SET" ? main.parent : main;
@@ -246,6 +252,10 @@ export function fakeFigma(opts: Options = {}) {
       calls.push("addComponentProperty");
       if (isVariant()) throw new Error("add the property to the variant's set");
       if (opts.failProperty === name) throw new Error(`property ${name} refused`);
+      if (node.type === "COMPONENT_SET") {
+        const taken = (node.kids as FakeNode[]).some((kid) => name in variantValues(kid.name));
+        if (taken) throw new Error(`a variant property is named ${name}`);
+      }
       if (type === "TEXT" && typeof value !== "string") throw new Error("TEXT needs a string");
       if (type === "BOOLEAN" && typeof value !== "boolean")
         throw new Error("BOOLEAN needs a boolean");
@@ -362,6 +372,7 @@ export function fakeFigma(opts: Options = {}) {
       },
     };
     const join = (child: FakeNode, cell: [number, number] | null) => {
+      if (type === "COMPONENT_SET") checkVariantName(child.name);
       if (child.type === "COMPONENT" && insideComponent(node)) {
         throw new Error("a component cannot go inside a component or an instance");
       }
@@ -704,6 +715,7 @@ export function fakeFigma(opts: Options = {}) {
     combineAsVariants(variants: FakeNode[], parent: FakeNode) {
       calls.push("combineAsVariants");
       if (opts.combineThrows) throw new Error("combineAsVariants refused");
+      for (const v of variants) checkVariantName(v.name);
       if (variants.length < 1 || variants.some((v) => v.type !== "COMPONENT")) {
         throw new Error("combineAsVariants needs components");
       }

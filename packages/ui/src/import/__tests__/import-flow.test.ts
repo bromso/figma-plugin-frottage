@@ -1571,6 +1571,62 @@ describe("a device set", () => {
     ]);
   });
 
+  test("when the frame that brings the shared components fails, the next brings them", async () => {
+    const file = deviceSetFile({
+      devices: [
+        { name: "Laptop", width: 1512, height: 982 },
+        { name: "Tablet portrait", width: 834, height: 1194 },
+        { name: "Phone portrait", width: 390, height: 844 },
+      ],
+      breakpoints: [640],
+      edit: addButtons,
+    });
+    const port = fakePort();
+    port.failVersion = 0;
+    const { last } = await runDevices([file], port);
+    if (last.step !== "done") throw new Error(last.step);
+    expect(last.versions.map((v) => v.label)).toEqual(["Tablet portrait", "Phone portrait"]);
+    const carried = port.begins.map((b) => b.components?.keys);
+    expect(carried).toEqual([["component:Button"], ["component:Button"], undefined]);
+    // The Tablet's ops start with the Button main again, and its frame holds instances of it.
+    const tablet = port.batches.slice(1).flat();
+    expect(tablet[0]).toMatchObject({ op: "frame", component: { key: "component:Button" } });
+    expect(tablet.some((op) => op.op === "instance" && op.key === "component:Button")).toBe(true);
+  });
+
+  test("the shared components' notes from endSet go into the set's notes", async () => {
+    const file = deviceSetFile({
+      devices: [
+        { name: "Laptop", width: 1512, height: 982 },
+        { name: "Phone portrait", width: 390, height: 844 },
+      ],
+      breakpoints: [640],
+      edit: addButtons,
+    });
+    const port = fakePort();
+    port.setResult = {
+      components: {
+        notes: ["Button's variants couldn't be combined, so they stay separate components."],
+        hoverVariants: 2,
+        hoverFailures: 1,
+      },
+    };
+    const { last } = await runDevices([file], port);
+    if (last.step !== "done") throw new Error(last.step);
+    expect(last.sets[0]?.notes).toEqual(
+      expect.arrayContaining([
+        "Button's variants couldn't be combined, so they stay separate components.",
+        "Hover variants: 2.",
+        "1 component could not get a Hover variant and stays as imported.",
+      ])
+    );
+    for (const v of last.versions) {
+      expect(v.report.warnings).not.toContain(
+        "Button's variants couldn't be combined, so they stay separate components."
+      );
+    }
+  });
+
   test("always reviews, listing devices widest first, then the extras, all ticked", async () => {
     const { review } = await runDevices([devicesFile()]);
     expect(review?.contents?.devices).toEqual([
