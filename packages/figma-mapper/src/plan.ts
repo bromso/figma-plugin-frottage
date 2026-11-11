@@ -142,7 +142,21 @@ export type PlanOverride =
       textKey?: string;
     }
   | { path: number[]; kind: "image"; hash: string }
-  | { path: number[]; kind: "swap"; key: string };
+  | { path: number[]; kind: "swap"; key: string }
+  /** A nested instance of a set's variant: its `Label`, `Show icon` and `Icon` values. */
+  | { path: number[]; kind: "properties"; properties: PlanPropertyValues };
+
+/** An instance's component property values by property name, as `PlanComponentProperty` names them. */
+export type PlanPropertyValues = Record<string, string | boolean>;
+
+/**
+ * A property a set's variant defines on the layer at `path`, by index down its expanded tree. A
+ * swap's `default` is an icon component's key.
+ */
+export type PlanComponentProperty =
+  | { type: "TEXT"; name: "Label"; path: number[]; default: string }
+  | { type: "BOOLEAN"; name: "Show icon"; path: number[]; default: boolean }
+  | { type: "INSTANCE_SWAP"; name: "Icon"; path: number[]; default: string };
 
 /**
  * What `:hover` changes on one layer of a definition, at `path` by index down the expanded tree
@@ -188,7 +202,14 @@ export type PlanOp = (
       /** Direct child ops that follow, so the applier knows when this frame is complete. */
       childCount: number;
       /** Set on the root of a definition, whose `parent` is null. */
-      component?: { key: string; name: string; hover?: PlanHoverPatch[] };
+      component?: {
+        key: string;
+        name: string;
+        hover?: PlanHoverPatch[];
+        /** On a variant of a component set: the set, and this variant's value of each property. */
+        set?: { key: string; name: string; values: [string, string][] };
+        properties?: PlanComponentProperty[];
+      };
     }
   | {
       op: "text";
@@ -275,6 +296,8 @@ export type PlanOp = (
       /** Whether the instance must be set to its own size: the definition's root will not follow. */
       resize: boolean;
       overrides: PlanOverride[];
+      /** On an instance of a set's variant: its values of the variant's `properties`. */
+      properties?: PlanPropertyValues;
     }
 ) & {
   /** How the node sits in an auto layout parent; absent under a parent with mode NONE. */

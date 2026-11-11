@@ -31,6 +31,7 @@ import type {
 import { extractTokens } from "./tokens";
 import { readMotion } from "./transform";
 import { unrotateTree } from "./unrotate";
+import { extractVariantSets, type FoundComponent } from "./variants";
 
 type Fit = "FILL" | "FIT" | "CROP" | "TILE";
 type Color = { r: number; g: number; b: number; a: number };
@@ -384,6 +385,18 @@ function settle(layout: PlanLayout, childLayout: PlanChildLayout | undefined): P
     sizingH: childLayout.sizingH === "FILL" ? "FIXED" : layout.sizingH,
     sizingV: childLayout.sizingV === "FILL" ? "FIXED" : layout.sizingV,
   };
+}
+
+/** The component each element is the root of, by node id, as the probe found it. */
+function namedOf(root: CaptureNode): Map<string, FoundComponent> {
+  const named = new Map<string, FoundComponent>();
+  const stack = [root];
+  for (let node = stack.pop(); node; node = stack.pop()) {
+    if (node.kind !== "element") continue;
+    if (node.component) named.set(node.id, node.component);
+    stack.push(...node.children);
+  }
+  return named;
 }
 
 /** Each element's tag by node id; iterative, like the walk, so depth is no limit. */
@@ -823,22 +836,43 @@ export function mapCapture(
   let finished = ops;
   if (options.components) {
     let lostHovers = 0;
-    const found = extractComponents(
-      ops,
-      tagsOf(pageRoot),
-      options.hoverComponents
-        ? hoverPatches(pageRoot, ops, () => {
-            lostHovers++;
-          })
-        : undefined,
-      capture.language !== undefined
-    );
+    const hovers = options.hoverComponents
+      ? hoverPatches(pageRoot, ops, () => {
+          lostHovers++;
+        })
+      : undefined;
+    const sources = capture.language !== undefined;
+    const sets = extractVariantSets(ops, namedOf(pageRoot), hovers, sources);
+    const found = extractComponents(sets.ops, tagsOf(pageRoot), hovers, sources);
     finished = found.ops;
-    report.components = found.components;
+    const variants = sets.ops.filter((op) => op.op === "frame" && op.component).length;
+    report.components = found.components + variants;
     report.instances = found.instances;
-    if (found.hoverCapped) {
+    for (const set of sets.sets) {
+      const n = set.variants;
+      const listed = set.properties.length > 0 ? ` (${set.properties.join(", ")})` : "";
+      warn(`${set.name}: ${n} variant${n === 1 ? "" : "s"} from the page's code${listed}.`);
+    }
+    if (sets.fromMarkers > 0) {
+      const n = sets.fromMarkers;
+      warn(`${n} component${n === 1 ? "" : "s"} named by shadcn markers.`);
+    }
+    for (const { from, to } of sets.renamed) {
+      warn(`A component named "${from}" in the code was named ${to} from its data-slot.`);
+    }
+    for (const [name, n] of sets.notJoined) {
+      const what = `${name.toLowerCase()}${n === 1 ? "" : "s"}`;
       warn(
-        `Hover changes on ${found.hoverCapped} component${found.hoverCapped === 1 ? "" : "s"} were cut off at ${MAX_HOVER_PATCHES} layers each.`
+        n === 1
+          ? `1 ${what} looks different from its ${name} variant and stays as it is.`
+          : `${n} ${what} look different from their ${name} variant and stay as they are.`
+      );
+    }
+    const hoverCapped = (sets.hoverCapped ?? 0) + (found.hoverCapped ?? 0);
+    const hoverSwapped = (sets.hoverSwapped ?? 0) + (found.hoverSwapped ?? 0);
+    if (hoverCapped > 0) {
+      warn(
+        `Hover changes on ${hoverCapped} component${hoverCapped === 1 ? "" : "s"} were cut off at ${MAX_HOVER_PATCHES} layers each.`
       );
     }
     if (lostHovers > 0) {
@@ -846,9 +880,9 @@ export function mapCapture(
         `Hover changes on ${lostHovers} layer${lostHovers === 1 ? "" : "s"} have no place in Figma and were left out.`
       );
     }
-    if (found.hoverSwapped) {
+    if (hoverSwapped > 0) {
       warn(
-        `Hover changes on ${found.hoverSwapped} layer${found.hoverSwapped === 1 ? "" : "s"} inside a swapped component were left out.`
+        `Hover changes on ${hoverSwapped} layer${hoverSwapped === 1 ? "" : "s"} inside a swapped component were left out.`
       );
     }
   }

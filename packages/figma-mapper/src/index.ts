@@ -25,6 +25,7 @@ export type {
   PlanCollection,
   PlanCollectionKind,
   PlanColor,
+  PlanComponentProperty,
   PlanEffect,
   PlanEffectStyle,
   PlanGradientStyle,
@@ -37,6 +38,7 @@ export type {
   PlanOp,
   PlanOverride,
   PlanPaint,
+  PlanPropertyValues,
   PlanRgb,
   PlanRun,
   PlanSpacing,
@@ -53,4 +55,5 @@ export type {
   StagedLayers,
   StagedVariable,
 } from "./plan";
+export { extractVariantSets, type FoundComponent, type VariantSet } from "./variants";
 export { mergeVersions, stripTokens, type TokenVersion } from "./versions";

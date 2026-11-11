@@ -1122,6 +1122,8 @@ export function createApplier(api: PluginAPI) {
   }
 
   async function applyOverride(instance: InstanceNode, override: PlanOverride) {
+    // A nested variant's property values, which are not set yet.
+    if (override.kind === "properties") return;
     const node = childAt(instance, override.path);
     if (override.kind === "image") {
       setImage(node, override.hash);
