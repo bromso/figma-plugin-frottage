@@ -470,3 +470,12 @@ describe("keepProps", () => {
     expect(Object.keys(keepProps(raw))).toHaveLength(16);
   });
 });
+
+describe("names", () => {
+  test("Impl as its own word passes through; a name that merely starts with it doesn't", async () => {
+    const { isPassThrough } = await import("../names");
+    expect(isPassThrough("CollapsibleContentImpl")).toBe(true);
+    expect(isPassThrough("AccordionImplSingle")).toBe(true);
+    expect(isPassThrough("ImplementationCard")).toBe(false);
+  });
+});

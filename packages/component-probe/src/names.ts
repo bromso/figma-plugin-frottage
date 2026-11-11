@@ -13,14 +13,17 @@ const PASS_EXACT = new Set(["Primitive", "Slot", "SlotClone", "Slottable", "Pres
 const PASS_PREFIX = ["Primitive.", "__next_", "motion."];
 const PASS_SUFFIX = ["Slot", ".SlotClone", ".Slottable", "Provider", "Context", "Consumer"];
 
-const PASS_CONTAINS = ["Collection", "Impl", "ReusableTemplate"];
+const PASS_CONTAINS = ["Collection", "ReusableTemplate"];
+/** `Impl` as its own word: `CollapsibleContentImpl`, `AccordionImplSingle`, not `ImplementationCard`. */
+const IMPL = /Impl(?![a-z])/;
 
 export function isPassThrough(name: string): boolean {
   return (
     PASS_EXACT.has(name) ||
     PASS_PREFIX.some((prefix) => name.startsWith(prefix)) ||
     PASS_SUFFIX.some((suffix) => name.endsWith(suffix)) ||
-    PASS_CONTAINS.some((part) => name.includes(part))
+    PASS_CONTAINS.some((part) => name.includes(part)) ||
+    IMPL.test(name)
   );
 }
 
