@@ -14,7 +14,13 @@ import {
   type Tree,
 } from "./components";
 import type { HoverPatch } from "./hover";
-import type { PlanComponentProperty, PlanOp, PlanPropertyValues } from "./plan";
+import type {
+  LayerPlan,
+  PlanComponentProperty,
+  PlanOp,
+  PlanPaint,
+  PlanPropertyValues,
+} from "./plan";
 
 /** A component the page's code or a shadcn marker named, as the capture holds it. */
 export type FoundComponent = CaptureComponent;
@@ -37,10 +43,17 @@ const TOKENS = new Set([
   "textKey",
 ]);
 
-/** Looks of nodes below an occurrence's root, for one set: its children's sets are settled. */
-type Looks = { intern: (text: string) => number; inner: Map<Tree, number> };
+/**
+ * Looks of nodes below an occurrence's root, for one set: its children's sets are settled. `norm`
+ * is what each op compares as.
+ */
+type Looks = {
+  intern: (text: string) => number;
+  inner: Map<Tree, number>;
+  norm: (op: PlanOp) => PlanOp;
+};
 
-function newLooks(): Looks {
+function newLooks(norm: (op: PlanOp) => PlanOp = (op) => op): Looks {
   const interned = new Map<string, number>();
   const intern = (text: string): number => {
     let n = interned.get(text);
@@ -50,7 +63,64 @@ function newLooks(): Looks {
     }
     return n;
   };
-  return { intern, inner: new Map() };
+  return { intern, inner: new Map(), norm };
+}
+
+const BOUND = (key: string) => `bound:${key}`;
+
+/**
+ * An op with each value a token that switches by Breakpoint binds replaced by the token's key, for
+ * comparing occurrences on two devices: such a token holds each device's value, so the same key is
+ * the same look, and a plain value or another token's is not. Any other value compares as it is.
+ * Keys are a merge's, so a text style joined across devices is one key.
+ */
+function bound(op: PlanOp, switches: (key: string) => boolean): PlanOp {
+  const out: Record<string, unknown> = { ...op };
+  const by = (key: string | undefined): key is string => key !== undefined && switches(key);
+  const paint = (p: PlanPaint): unknown => {
+    if (p.type === "SOLID" && by(p.colorKey)) return { ...p, color: BOUND(p.colorKey) };
+    return p;
+  };
+  if ("fills" in op) out.fills = op.fills.map(paint);
+  if ("strokes" in op && op.strokes && by(op.strokes.colorKey)) {
+    out.strokes = { ...op.strokes, color: BOUND(op.strokes.colorKey) };
+  }
+  if ("radiusKeys" in op && op.radiusKeys) {
+    const keys = op.radiusKeys;
+    out.radius = op.radius.map((r, i) => (by(keys[i]) ? BOUND(keys[i]) : r));
+  }
+  if (op.op === "frame") {
+    const { layout } = op;
+    if (layout.mode !== "NONE" && layout.spacingKeys) {
+      const keys = layout.spacingKeys;
+      const next: Record<string, unknown> = {
+        ...layout,
+        padding: layout.padding.map((n, i) => {
+          const key = keys.padding?.[i];
+          return by(key) ? BOUND(key) : n;
+        }),
+      };
+      for (const field of ["itemSpacing", "counterSpacing", "rowGap", "columnGap"] as const) {
+        const key = keys[field];
+        if (by(key) && field in layout) next[field] = BOUND(key);
+      }
+      out.layout = next;
+    }
+  }
+  if (op.op === "text") {
+    out.runs = op.runs.map((r) => ({
+      ...r,
+      ...(by(r.colorKey) ? { color: BOUND(r.colorKey) } : {}),
+      ...(by(r.styleKey)
+        ? {
+            fontSize: BOUND(r.styleKey),
+            lineHeight: BOUND(r.styleKey),
+            letterSpacing: BOUND(r.styleKey),
+          }
+        : {}),
+    }));
+  }
+  return out as PlanOp;
 }
 
 /** What a child adds to its parent's look: an occurrence of a set reads as that set, any variant. */
@@ -88,7 +158,8 @@ function innerLook(top: Tree, looks: Looks): number {
   for (let i = order.length - 1; i >= 0; i--) {
     const node = order[i] as Tree;
     const below = node.children.map((c) => childLook(c, node, looks)).join(",");
-    looks.inner.set(node, looks.intern(`${ownLook(node.op, follows(node.op), TOKENS)}|${below}`));
+    const own = ownLook(looks.norm(node.op), follows(node.op), TOKENS);
+    looks.inner.set(node, looks.intern(`${own}|${below}`));
   }
   return looks.inner.get(top) as number;
 }
@@ -106,11 +177,11 @@ function rootLook(node: Tree, looks: Looks, bare: boolean, sized = false): strin
   const below = node.children.flatMap((c) => {
     if (c !== icon) return [childLook(c, node, looks)];
     if (bare) return [];
-    return [`${placement(c, node)}${ownLook(c.op, ["markup"], TOKENS)}`];
+    return [`${placement(c, node)}${ownLook(looks.norm(c.op), ["markup"], TOKENS)}`];
   });
   // The children say how many there are, the icon or not.
   const skip = [...(sized ? hugged(node.op) : rootSize(node)), "childCount"];
-  return `${ownLook(node.op, skip, TOKENS)}|${below.join(",")}`;
+  return `${ownLook(looks.norm(node.op), skip, TOKENS)}|${below.join(",")}`;
 }
 
 /** The first text below the root, down its own layers only, with its path. */
@@ -153,9 +224,11 @@ function markupHash(markup: string): string {
 class Icons {
   readonly components: Component[] = [];
   readonly ops: PlanOp[] = [];
+  /** The entry each icon was first met in. */
+  readonly owners: number[] = [];
   private byMarkup = new Map<string, Component>();
 
-  of(svg: SvgOp): Component {
+  of(svg: SvgOp, entry = 0): Component {
     const known = this.byMarkup.get(svg.markup);
     if (known) return known;
     const n = this.components.length + 1;
@@ -197,77 +270,95 @@ class Icons {
     tree.component = component;
     this.byMarkup.set(svg.markup, component);
     this.components.push(component);
+    this.owners.push(entry);
     return component;
   }
 }
 
-type Built = { variants: Component[]; properties: string[]; notJoined: number };
+/** One entry's occurrences of one name, with the looks they compare by in that entry. */
+type Side = {
+  entry: number;
+  occurrences: Tree[];
+  found: (node: Tree) => FoundComponent;
+  looks: Looks;
+  bareOf: (node: Tree) => string;
+  /** With a fixed root size: an icon button is a smaller one. */
+  sizedOf: (node: Tree) => string;
+  /** Occurrences whose props the code gave, or all when none did. */
+  coded: Tree[];
+  /** Static markup with only a data-slot, which joins by its look alone. */
+  late: Tree[];
+};
 
-/**
- * One name's set: a variant per combination of the props that change the look, each built from its
- * first occurrence, or from its first with an icon when only some have one. Occurrences that look
- * different from their variant stay as they are and are counted.
- */
-function buildSet(
-  name: string,
-  occurrences: Tree[],
-  named: Map<string, FoundComponent>,
-  icons: Icons
-): Built {
+function sideOf(entry: number, occurrences: Tree[], named: Map<string, FoundComponent>): Side {
   const looks = newLooks();
-  const bare = new Map<Tree, string>();
-  const bareOf = (node: Tree): string => {
-    let look = bare.get(node);
-    if (look === undefined) {
-      look = rootLook(node, looks, true);
-      bare.set(node, look);
-    }
-    return look;
+  const cache = (sized: boolean) => {
+    const seen = new Map<Tree, string>();
+    return (node: Tree): string => {
+      let look = seen.get(node);
+      if (look === undefined) {
+        look = rootLook(node, looks, true, sized);
+        seen.set(node, look);
+      }
+      return look;
+    };
   };
   const found = (node: Tree) => named.get(node.op.id) as FoundComponent;
   // Static markup with only a data-slot says nothing of its props: it joins by its look alone.
   const propless = (node: Tree) =>
     found(node).source === "marker" && Object.keys(found(node).props).length === 0;
   const someCoded = occurrences.some((n) => !propless(n));
-  const coded = someCoded ? occurrences.filter((n) => !propless(n)) : occurrences;
-  const late = someCoded ? occurrences.filter(propless) : [];
+  return {
+    entry,
+    occurrences,
+    found,
+    looks,
+    bareOf: cache(false),
+    sizedOf: cache(true),
+    coded: someCoded ? occurrences.filter((n) => !propless(n)) : occurrences,
+    late: someCoded ? occurrences.filter(propless) : [],
+  };
+}
 
+/** The props the coded occurrences set, in first-seen order, and which of them are flags. */
+function propsOf(side: Side): { keys: string[]; booleans: Set<string> } {
   const keys: string[] = [];
   const booleans = new Set<string>();
-  for (const node of coded) {
-    for (const [key, value] of Object.entries(found(node).props)) {
+  for (const node of side.coded) {
+    for (const [key, value] of Object.entries(side.found(node).props)) {
       if (!keys.includes(key)) keys.push(key);
       if (typeof value === "boolean") booleans.add(key);
     }
   }
-  // A prop the code leaves out takes its default: `false` for a flag.
-  const propValue = (node: Tree, key: string): string => {
-    const value = found(node).props[key];
+  return { keys, booleans };
+}
+
+/** A prop the code leaves out takes its default: `false` for a flag. */
+const propValueIn =
+  (side: Side, booleans: Set<string>) =>
+  (node: Tree, key: string): string => {
+    const value = side.found(node).props[key];
     if (value !== undefined) return String(value);
     return booleans.has(key) ? "false" : "default";
   };
+
+/**
+ * The props that are variant properties in one entry: a prop is one when its values differ and the
+ * occurrences of one value look otherwise than those of another; one that every value shares a
+ * look across (an index) is none. A fixed size is part of the look here.
+ */
+function keptIn(side: Side): string[] {
+  const { keys, booleans } = propsOf(side);
+  const propValue = propValueIn(side, booleans);
   const combination = (node: Tree, of: string[]) =>
     JSON.stringify(of.map((k) => propValue(node, k)));
-
-  // A prop is a property when its values differ and the occurrences of one value look otherwise
-  // than those of another; one that every value shares a look across (an index) is none. A fixed
-  // size is part of the look here: an icon button is a smaller one.
-  const sized = new Map<Tree, string>();
-  const sizedOf = (node: Tree): string => {
-    let look = sized.get(node);
-    if (look === undefined) {
-      look = rootLook(node, looks, true, true);
-      sized.set(node, look);
-    }
-    return look;
-  };
   /** The looks of the occurrences, by their values of `of`. */
   const looksBy = (of: string[]): string[] => {
     const byValue = new Map<string, Set<string>>();
-    for (const node of coded) {
+    for (const node of side.coded) {
       const value = combination(node, of);
       const seen = byValue.get(value) ?? new Set<string>();
-      seen.add(sizedOf(node));
+      seen.add(side.sizedOf(node));
       byValue.set(value, seen);
     }
     return [...byValue.values()].map((seen) => JSON.stringify([...seen].sort()));
@@ -282,52 +373,147 @@ function buildSet(
     const own = looksBy([key]);
     if (decided && new Set(own).size < own.length) kept = others;
   }
+  return kept;
+}
 
+/** A name's variant properties and flags, decided once for every entry. */
+type Axes = { kept: string[]; booleans: Set<string> };
+
+/**
+ * The axes over the entries that decide: a prop is kept when any of them keeps it, so every entry's
+ * variant names and keys agree.
+ */
+function axesOf(sides: Side[], decides: (side: Side) => boolean): Axes {
+  const keys: string[] = [];
+  const kept = new Set<string>();
+  const booleans = new Set<string>();
+  for (const side of sides) {
+    const own = propsOf(side);
+    for (const key of own.booleans) booleans.add(key);
+    if (!decides(side)) continue;
+    for (const key of own.keys) if (!keys.includes(key)) keys.push(key);
+    for (const key of keptIn(side)) kept.add(key);
+  }
+  return { kept: keys.filter((key) => kept.has(key)), booleans };
+}
+
+/** One entry's occurrences of one variant: its main, the ones that join it, and its values. */
+type Part = { side: Side; main: Tree; members: Tree[]; values: [string, string][] };
+
+/** An entry's variants against fixed axes; occurrences that look different are counted. */
+function partsOf(side: Side, { kept, booleans }: Axes): { parts: Part[]; notJoined: number } {
+  const propValue = propValueIn(side, booleans);
+  const combination = (node: Tree) => JSON.stringify(kept.map((k) => propValue(node, k)));
   let notJoined = 0;
   const groups = new Map<string, Tree[]>();
-  for (const node of coded) {
-    const c = combination(node, kept);
+  for (const node of side.coded) {
+    const c = combination(node);
     const members = groups.get(c);
     if (!members) groups.set(c, [node]);
-    else if (bareOf(members[0] as Tree) === bareOf(node)) members.push(node);
+    else if (side.bareOf(members[0] as Tree) === side.bareOf(node)) members.push(node);
     else notJoined++;
   }
-  for (const node of late) {
+  for (const node of side.late) {
     // Nothing but the look ties it to a variant, so its size must match too.
-    const members = [...groups.values()].find((m) => sizedOf(m[0] as Tree) === sizedOf(node));
+    const members = [...groups.values()].find(
+      (m) => side.sizedOf(m[0] as Tree) === side.sizedOf(node)
+    );
     if (members) members.push(node);
     else notJoined++;
   }
-
   // Each variant's main, and who joins it: with an icon, the same icon place as the main's.
-  const variants: { members: Tree[]; values: [string, string][] }[] = [];
+  const parts: Part[] = [];
   for (const members of groups.values()) {
     const main = members.find((m) => iconOf(m)) ?? (members[0] as Tree);
-    const full = rootLook(main, looks, false);
+    const full = rootLook(main, side.looks, false);
     const joined = [main];
     for (const node of members) {
       if (node === main) continue;
-      if (!iconOf(node) || rootLook(node, looks, false) === full) joined.push(node);
+      if (!iconOf(node) || rootLook(node, side.looks, false) === full) joined.push(node);
       else notJoined++;
     }
     const values = kept.map((k): [string, string] => [capital(k), propValue(main, k)]);
-    variants.push({ members: joined, values });
+    parts.push({ side, main, members: joined, values });
+  }
+  return { parts, notJoined };
+}
+
+type Built = {
+  variants: Component[];
+  /** The entry each variant's main comes from. */
+  owners: number[];
+  properties: string[];
+  notJoined: number;
+};
+
+/**
+ * One name's set across entries, the first the widest: a variant per combination of the props that
+ * change the look, its main from the first entry that has it, from its first occurrence there, or
+ * from the first with an icon when only some have one. Another entry's occurrences of a variant are
+ * instances of that main when they look like it, a token's Breakpoint value aside; occurrences
+ * that look different from their variant stay as they are and are counted, in entries that decide.
+ */
+function buildSet(
+  name: string,
+  sides: Side[],
+  decides: (side: Side) => boolean,
+  icons: Icons,
+  switches: (key: string) => boolean
+): Built {
+  const axes = axesOf(sides, decides);
+  const { kept } = axes;
+  let notJoined = 0;
+  const byVariant = new Map<string, Part[]>();
+  for (const side of sides) {
+    const made = partsOf(side, axes);
+    if (decides(side)) notJoined += made.notJoined;
+    for (const part of made.parts) {
+      const variantName = part.values.map(([k, v]) => `${k}=${v}`).join(", ");
+      const parts = byVariant.get(variantName);
+      if (parts) parts.push(part);
+      else byVariant.set(variantName, [part]);
+    }
   }
 
-  const all = variants.flatMap((v) => v.members);
-  const labels = new Set(all.flatMap((n) => labelOf(n)?.text ?? []));
+  // Each variant's main entry, and the others that look like it.
+  const cross = newLooks((op) => bound(op, switches));
+  const crossLook = (part: Part, bare: boolean) => rootLook(part.main, cross, bare);
+  const variants: { name: string; parts: Part[] }[] = [];
+  for (const [variantName, parts] of byVariant) {
+    const winner = parts.find((p) => iconOf(p.main)) ?? (parts[0] as Part);
+    const joined = [winner];
+    for (const part of parts) {
+      if (part === winner) continue;
+      const bare = !iconOf(part.main) || !iconOf(winner.main);
+      if (crossLook(part, bare) === crossLook(winner, bare)) joined.push(part);
+      else if (decides(part.side)) notJoined += part.members.length;
+    }
+    variants.push({ name: variantName, parts: joined });
+  }
+
+  const membersOf = (parts: Part[]) => parts.flatMap((p) => p.members);
+  const all = variants.flatMap((v) => membersOf(v.parts));
+  const labels = new Set(
+    variants.flatMap((v) =>
+      membersOf(v.parts.filter((p) => decides(p.side))).flatMap((n) => labelOf(n)?.text ?? [])
+    )
+  );
   const markups = new Set(all.flatMap((n) => (iconOf(n)?.op as SvgOp | undefined)?.markup ?? []));
   const swaps = markups.size > 1;
 
   const built: Component[] = [];
-  for (const { members, values } of variants) {
-    const main = members[0] as Tree;
-    const variantName = values.map(([k, v]) => `${k}=${v}`).join(", ");
+  const owners: number[] = [];
+  for (const { name: variantName, parts } of variants) {
+    const winner = parts[0] as Part;
+    const main = winner.main;
+    const members = membersOf(parts);
+    const values = winner.values;
     const icon = iconOf(main);
     const iconAt = icon ? main.children.indexOf(icon) : -1;
     const showIcon = icon !== undefined && members.some((m) => !iconOf(m));
     const label = labels.size > 1 ? labelOf(main) : undefined;
-    const iconComponent = swaps && icon ? icons.of(icon.op as SvgOp) : undefined;
+    const entry = winner.side.entry;
+    const iconComponent = swaps && icon ? icons.of(icon.op as SvgOp, entry) : undefined;
     const properties: PlanComponentProperty[] = [];
     if (label)
       properties.push({ type: "TEXT", name: "Label", path: label.path, default: label.text });
@@ -343,28 +529,32 @@ function buildSet(
       key: plain ? `component:${name}` : `set:${name}|${variantName}`,
       name: plain ? name : variantName,
       tag: plain ? `component:${name}` : `set:${name}`,
-      occurrences: members,
+      // The main's own entry's occurrences: the definition reads its hovers there.
+      occurrences: winner.members,
       named: true,
       ...(plain ? {} : { set: { key: `set:${name}`, name, values } }),
       properties,
       ...(label ? { label: label.path } : {}),
       ...(icon ? { iconAt } : {}),
     };
-    for (const node of members) {
-      node.component = component;
-      const own = iconOf(node);
-      if (icon && !own) node.iconless = true;
-      const values: PlanPropertyValues = {};
-      if (label) values.Label = labelOf(node)?.text ?? "";
-      if (showIcon) values["Show icon"] = own !== undefined;
-      if (iconComponent && own) values.Icon = icons.of(own.op as SvgOp).key;
-      if (Object.keys(values).length > 0) node.properties = values;
+    for (const part of parts) {
+      for (const node of part.members) {
+        node.component = component;
+        const own = iconOf(node);
+        if (icon && !own) node.iconless = true;
+        const values: PlanPropertyValues = {};
+        if (label) values.Label = labelOf(node)?.text ?? "";
+        if (showIcon) values["Show icon"] = own !== undefined;
+        if (iconComponent && own) values.Icon = icons.of(own.op as SvgOp, part.side.entry).key;
+        if (Object.keys(values).length > 0) node.properties = values;
+      }
     }
     // The main shows its icon as an instance, which an instance's Icon swaps.
     if (icon && iconComponent) icon.component = iconComponent;
     built.push(component);
+    owners.push(entry);
   }
-  return { variants: built, properties: kept.map(capital), notJoined };
+  return { variants: built, owners, properties: kept.map(capital), notJoined };
 }
 
 /** The sets each definition's main holds instances of, so it can come after them. */
@@ -379,21 +569,27 @@ function usedBy(component: Component): Component[] {
   return used;
 }
 
-/**
- * Makes a component set of every component the page's code or markers name at least twice in
- * `ops`: one variant per combination of props seen, its definition at the front, inner-first, and
- * each occurrence that looks like its variant an instance of it with its `Label`, `Show icon` and
- * `Icon` values. One without variant properties is a plain component, listed in `plain`. `named`
- * maps a node id to the component it is the root of. What is left goes on to `extractComponents`.
- */
-export function extractVariantSets(
-  ops: PlanOp[],
-  named: Map<string, FoundComponent>,
-  hovers: Map<string, HoverPatch> = new Map(),
-  /** Name each instance text's captured id, for a capture with a language. */
-  sources = false
-): {
+/** One capture's ops before components, and what names them, as `shareVariantSets` takes it. */
+export type VariantInput = {
   ops: PlanOp[];
+  /** A node id to the component it is the root of. */
+  named: Map<string, FoundComponent>;
+  hovers?: Map<string, HoverPatch>;
+  /** Name each instance text's captured id, for a capture with a language. */
+  sources?: boolean;
+  /**
+   * Whether its occurrences decide the sets, their properties and the report: the page's own
+   * language does, another language's capture takes the same keys. Default true.
+   */
+  decides?: boolean;
+};
+
+/** What the sets of several captures of one page came to, the first capture the widest. */
+export type SharedSets = {
+  /** Icon definitions, then every variant main after the mains it holds instances of. */
+  definitions: { owner: number; ops: PlanOp[] }[];
+  /** Per input, its page with each occurrence that joined an instance. */
+  pages: PlanOp[][];
   sets: VariantSet[];
   /** Named components made without variant properties, in page order. */
   plain: string[];
@@ -402,43 +598,70 @@ export function extractVariantSets(
   notJoined: Map<string, number>;
   hoverCapped?: number;
   hoverSwapped?: number;
-} {
-  const none = { ops, sets: [], plain: [], fromMarkers: 0, renamed: [], notJoined: new Map() };
-  if (named.size === 0) return none;
-  const nodes = buildForest(ops);
-  const byName = new Map<string, Tree[]>();
-  for (const node of nodes) {
-    const found = named.get(node.op.id);
-    if (!found || node.op.op !== "frame" || !node.parent || node.rotated) continue;
-    const occurrences = byName.get(found.name);
-    if (occurrences) occurrences.push(node);
-    else byName.set(found.name, [node]);
+};
+
+/**
+ * Makes one component set of every component the code or markers name at least twice in one of
+ * the inputs that decide, for all of them: the props a set's variants differ by are those any of
+ * them keeps, each variant's main comes from the first input that has it, and each input's
+ * occurrences that look like their variant are instances of it. Null when no name qualifies.
+ */
+export function shareVariantSets(
+  inputs: VariantInput[],
+  /** Whether a token or text style key switches by Breakpoint, its value then each device's. */
+  switches: (key: string) => boolean = () => false
+): SharedSets | null {
+  const decidesAt = inputs.map((input) => input.decides !== false);
+  const forests = inputs.map((input) => buildForest(input.ops));
+  /** Per name, its occurrences in each input. */
+  const byName = new Map<string, Tree[][]>();
+  for (const [entry, nodes] of forests.entries()) {
+    const { named } = inputs[entry] as VariantInput;
+    for (const node of nodes) {
+      const found = named.get(node.op.id);
+      if (!found || node.op.op !== "frame" || !node.parent || node.rotated) continue;
+      let perEntry = byName.get(found.name);
+      if (!perEntry) {
+        perEntry = inputs.map(() => []);
+        byName.set(found.name, perEntry);
+      }
+      perEntry[entry]?.push(node);
+    }
   }
   // Inner names first, so an outer one's look reads them as their sets.
   const qualifying = [...byName]
-    .filter(([, occurrences]) => occurrences.length >= 2)
-    .map(([name, occurrences]) => ({
+    .filter(([, perEntry]) => perEntry.some((o, entry) => decidesAt[entry] && o.length >= 2))
+    .map(([name, perEntry]) => ({
       name,
-      occurrences,
-      height: Math.max(...occurrences.map((n) => n.height)),
+      perEntry,
+      height: Math.max(...perEntry.flat().map((n) => n.height)),
     }))
     .sort((a, b) => a.height - b.height);
-  if (qualifying.length === 0) return none;
+  if (qualifying.length === 0) return null;
 
   const icons = new Icons();
   const variants: Component[] = [];
-  const sets: (VariantSet & { first: Tree })[] = [];
+  const owners = new Map<Component, number>();
+  const sets: (VariantSet & { first: { entry: number; node: Tree } })[] = [];
   const notJoined = new Map<string, number>();
   const renamed = new Map<string, { from: string; to: string }>();
   let fromMarkers = 0;
-  for (const { name, occurrences } of qualifying) {
-    const built = buildSet(name, occurrences, named, icons);
+  for (const { name, perEntry } of qualifying) {
+    const sides = perEntry.flatMap((occurrences, entry) =>
+      occurrences.length > 0
+        ? [sideOf(entry, occurrences, (inputs[entry] as VariantInput).named)]
+        : []
+    );
+    const decides = (side: Side) => decidesAt[side.entry] === true;
+    const built = buildSet(name, sides, decides, icons, switches);
     variants.push(...built.variants);
-    const first = occurrences[0] as Tree;
+    for (const [i, c] of built.variants.entries()) owners.set(c, built.owners[i] as number);
+    const firstSide = sides.find(decides) as Side;
+    const first = { entry: firstSide.entry, node: firstSide.occurrences[0] as Tree };
     sets.push({ name, variants: built.variants.length, properties: built.properties, first });
 
     if (built.notJoined > 0) notJoined.set(name, built.notJoined);
-    const found = occurrences.map((n) => named.get(n.op.id) as FoundComponent);
+    const found = sides.filter(decides).flatMap((s) => s.occurrences.map(s.found));
     if (found.every((f) => f.source === "marker" || f.codeName)) fromMarkers++;
     for (const { codeName } of found) {
       if (codeName) renamed.set(`${codeName}\0${name}`, { from: codeName, to: name });
@@ -457,14 +680,32 @@ export function extractVariantSets(
   for (const component of variants) visit(component);
 
   const notes: HoverNotes = { capped: 0, swapped: 0 };
-  const definitions = ordered.flatMap((c) => definition(c, hovers, notes, sources));
-  const page = nodes
-    .filter((n) => n.parent === null)
-    .flatMap((r) => flatten(r, (id) => id, sources));
-  const order = new Map(nodes.map((n, i) => [n, i]));
-  sets.sort((a, b) => (order.get(a.first) ?? 0) - (order.get(b.first) ?? 0));
+  const definitions = [
+    ...icons.owners.map((owner, i) => ({ owner, ops: icons.ops.slice(2 * i, 2 * i + 2) })),
+    ...ordered.map((c) => {
+      const owner = owners.get(c) ?? 0;
+      const { hovers = new Map(), sources = false } = inputs[owner] as VariantInput;
+      return { owner, ops: definition(c, hovers, notes, sources) };
+    }),
+  ];
+  const pages = forests.map((nodes, entry) =>
+    nodes
+      .filter((n) => n.parent === null)
+      .flatMap((r) => flatten(r, (id) => id, (inputs[entry] as VariantInput).sources ?? false))
+  );
+  const orders = forests.map((nodes) => new Map(nodes.map((n, i) => [n, i])));
+  const rank = ({ first }: (typeof sets)[number]) => [
+    first.entry,
+    orders[first.entry]?.get(first.node) ?? 0,
+  ];
+  sets.sort((a, b) => {
+    const [ea, na] = rank(a) as [number, number];
+    const [eb, nb] = rank(b) as [number, number];
+    return ea - eb || na - nb;
+  });
   return {
-    ops: [...icons.ops, ...definitions, ...page],
+    definitions,
+    pages,
     sets: sets.filter((set) => set.properties.length > 0).map(({ first: _, ...set }) => set),
     plain: sets.filter((set) => set.properties.length === 0).map((set) => set.name),
     fromMarkers,
@@ -473,4 +714,74 @@ export function extractVariantSets(
     ...(notes.capped > 0 ? { hoverCapped: notes.capped } : {}),
     ...(notes.swapped > 0 ? { hoverSwapped: notes.swapped } : {}),
   };
+}
+
+/**
+ * Makes a component set of every component the page's code or markers name at least twice in
+ * `ops`: one variant per combination of props seen, its definition at the front, inner-first, and
+ * each occurrence that looks like its variant an instance of it with its `Label`, `Show icon` and
+ * `Icon` values. One without variant properties is a plain component, listed in `plain`. `named`
+ * maps a node id to the component it is the root of. What is left goes on to `extractComponents`.
+ */
+export function extractVariantSets(
+  ops: PlanOp[],
+  named: Map<string, FoundComponent>,
+  hovers: Map<string, HoverPatch> = new Map(),
+  /** Name each instance text's captured id, for a capture with a language. */
+  sources = false
+): Omit<SharedSets, "definitions" | "pages"> & { ops: PlanOp[] } {
+  const none = { ops, sets: [], plain: [], fromMarkers: 0, renamed: [], notJoined: new Map() };
+  if (named.size === 0) return none;
+  const shared = shareVariantSets([{ ops, named, hovers, sources }]);
+  if (!shared) return none;
+  const { definitions, pages, ...rest } = shared;
+  return { ...rest, ops: [...definitions.flatMap((d) => d.ops), ...(pages[0] ?? [])] };
+}
+
+/** The report's lines for a page's sets: each set, markers, names replaced, looks that differ. */
+export function componentLines(
+  found: Pick<SharedSets, "sets" | "fromMarkers" | "renamed" | "notJoined">
+): string[] {
+  const lines: string[] = [];
+  for (const set of found.sets) {
+    const n = set.variants;
+    const listed = set.properties.length > 0 ? ` (${set.properties.join(", ")})` : "";
+    lines.push(`${set.name}: ${n} variant${n === 1 ? "" : "s"} from the page's code${listed}.`);
+  }
+  if (found.fromMarkers > 0) {
+    const n = found.fromMarkers;
+    lines.push(`${n} component${n === 1 ? "" : "s"} named by shadcn markers.`);
+  }
+  for (const { from, to } of found.renamed) {
+    lines.push(`A component named "${from}" in the code was named ${to} from its data-slot.`);
+  }
+  for (const [name, n] of found.notJoined) {
+    // `CarouselItem` reads as `carousel item`.
+    const words = name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+    const what = `${words}${n === 1 ? "" : "s"}`;
+    lines.push(
+      n === 1
+        ? `1 ${what} looks different from its ${name} variant and stays as it is.`
+        : `${n} ${what} look different from their ${name} variant and stay as they are.`
+    );
+  }
+  return lines;
+}
+
+/**
+ * What `mapCapture` made a plan's named components from: the capture's ops before any component,
+ * with its tags, and the report lines it wrote for them, so a device merge can make the sets again
+ * across its frames. Kept beside the plan, not in it: a plan crosses postMessage.
+ */
+export type ComponentInput = VariantInput & { tags: Map<string, string>; lines: string[] };
+
+const componentInputs = new WeakMap<LayerPlan, ComponentInput>();
+
+export function keepComponentInput(plan: LayerPlan, input: ComponentInput): void {
+  componentInputs.set(plan, input);
+}
+
+/** The input `plan` was made with, for a plan `mapCapture` made with named components. */
+export function componentInputOf(plan: LayerPlan): ComponentInput | undefined {
+  return componentInputs.get(plan);
 }

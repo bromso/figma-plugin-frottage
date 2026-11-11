@@ -1,6 +1,8 @@
 import type { Capture, PageLanguage } from "@repo/capture-schema";
 import { breakpointName } from "@repo/capture-schema/css-values";
 import { isRadiusDiffers, isThemeNote, MAX_VARIABLES } from "./catalogue";
+import { canvasInstances, extractComponents } from "./components";
+import type { HoverPatch } from "./hover";
 import { languageHrefMap, pairTexts } from "./languages";
 import { COLLECTION_NAMES, COLLECTION_ORDER, orderVariables } from "./layering";
 import { isSectionName } from "./names";
@@ -15,6 +17,12 @@ import type {
   PlanVarValue,
   SpacingKeys,
 } from "./plan";
+import {
+  type ComponentInput,
+  componentInputOf,
+  componentLines,
+  shareVariantSets,
+} from "./variants";
 import { joinStyles, type StyleJoins, textsOf } from "./versions";
 
 /**
@@ -32,6 +40,10 @@ import { joinStyles, type StyleJoins, textsOf } from "./versions";
  * language's capture at a device pairs its texts with that device's; a paired text binds its
  * characters to a Language variable holding its text per language, shared by every device with the
  * same texts. A device that pairs under 80% of its texts is reported.
+ *
+ * The page's named components make one set each for every frame: their variant properties are
+ * decided over every device's occurrences, each definition comes from the widest device that has
+ * it, once, in `components`, and every frame's instances use the same keys.
  */
 
 export type DeviceEntry = { capture: Capture; plan: LayerPlan };
@@ -45,12 +57,22 @@ export type DeviceMerge = {
   plans: LayerPlan[];
   /** Device entries only; extras make no frame. */
   frames: DeviceFrame[];
+  /**
+   * Every set's variant, plain named component and icon definition, once, from the widest entry
+   * that has it, with its keys pointing into `layers`; no plan holds them.
+   */
+  components: PlanOp[];
   report: string[];
 };
 
-/** A merge of one language's entries; `adopt` moves another plan's keys as entry `like`'s. */
-type SetMerge = DeviceMerge & {
+/**
+ * A merge of one language's entries, before components; `adopt` moves another plan's keys as
+ * entry `like`'s. `inputs` are the entries' component inputs with keys into `layers`.
+ */
+type SetMerge = Omit<DeviceMerge, "components"> & {
   adopt: (plan: LayerPlan, like: number) => LayerPlan;
+  inputs: (ComponentInput | undefined)[];
+  adoptInput: (plan: LayerPlan, like: number) => ComponentInput | undefined;
 };
 
 /** A Breakpoint mode: `[min, max)` in pixels, and the entry its values come from. */
@@ -791,9 +813,38 @@ function mergeSet(entries: DeviceEntry[], options: MergeOptions): SetMerge {
       tokens: { ...plan.tokens, textStyles: styles, layers },
     };
   };
-  const plans = entries.map(({ plan }, i) => rekeyPlan(plan, (key) => styleMaps[i]?.get(key)));
-  const adopt = (plan: LayerPlan, like: number) =>
-    rekeyPlan(plan, (key) => styleMaps[like]?.get(key) ?? (styleKeys.has(key) ? key : undefined));
+  const styleKeyOf =
+    (i: number): Rekey =>
+    (key) =>
+      styleMaps[i]?.get(key);
+  const adoptedKey =
+    (like: number): Rekey =>
+    (key) =>
+      styleMaps[like]?.get(key) ?? (styleKeys.has(key) ? key : undefined);
+  const plans = entries.map(({ plan }, i) => rekeyPlan(plan, styleKeyOf(i)));
+  const adopt = (plan: LayerPlan, like: number) => rekeyPlan(plan, adoptedKey(like));
+  /** A plan's component input with its keys into `layers`, as its ops'. */
+  const rekeyInput = (plan: LayerPlan, styleKey: Rekey): ComponentInput | undefined => {
+    const input = componentInputOf(plan);
+    if (!input) return undefined;
+    const { hovers } = input;
+    return {
+      ...input,
+      ops: rekeyed(input.ops, themeKey, styleKey) as PlanOp[],
+      ...(hovers
+        ? {
+            hovers: new Map(
+              [...hovers].map(([id, patch]) => [
+                id,
+                rekeyed(patch, themeKey, styleKey) as HoverPatch,
+              ])
+            ),
+          }
+        : {}),
+    };
+  };
+  const inputs = entries.map(({ plan }, i) => rekeyInput(plan, styleKeyOf(i)));
+  const adoptInput = (plan: LayerPlan, like: number) => rekeyInput(plan, adoptedKey(like));
 
   const frames = deviceAt.map((i, at): DeviceFrame => {
     const range = rangeOf(i);
@@ -804,7 +855,88 @@ function mergeSet(entries: DeviceEntry[], options: MergeOptions): SetMerge {
     };
   });
 
-  return { layers, plans, frames, report, adopt };
+  return { layers, plans, frames, report, adopt, inputs, adoptInput };
+}
+
+type Shared = {
+  plans: LayerPlan[];
+  components: PlanOp[];
+  /** Per plan index, the definitions made from it, whose texts bind with its frame's. */
+  owned: Map<number, PlanOp[]>;
+  lines: string[];
+};
+
+/**
+ * Makes the page's named components again across its device entries, so every frame shares one set
+ * per name (see `shareVariantSets`), and its structural components per frame as before. Entries
+ * that decide come first, widest first; an extra makes no frame and keeps its plan. The report
+ * lines are the merge's, no longer each plan's.
+ */
+function shareComponents(
+  plans: LayerPlan[],
+  inputs: (ComponentInput | undefined)[],
+  decides: boolean[],
+  widths: number[],
+  framed: boolean[]
+): Shared {
+  const none: Shared = { plans, components: [], owned: new Map(), lines: [] };
+  const at = inputs.flatMap((input, i) => (input && input.named.size > 0 && framed[i] ? [i] : []));
+  if (at.length === 0) return none;
+  const rank = (i: number) => (decides[i] ? 0 : 1);
+  at.sort((a, b) => rank(a) - rank(b) || (widths[b] ?? 0) - (widths[a] ?? 0) || a - b);
+  // A Theme token aliasing a Breakpoint variable, or a text style bound to one, holds each
+  // device's value.
+  const { tokens } = plans[at[0] as number] as LayerPlan;
+  const switching = new Set(
+    (tokens.layers?.variables ?? [])
+      .filter((v) =>
+        v.values.some((value) => isAlias(value) && value.alias.startsWith("breakpoint:"))
+      )
+      .map((v) => v.key)
+  );
+  for (const style of tokens.textStyles) {
+    if (Object.values(style.bind ?? {}).some((key) => switching.has(key))) switching.add(style.key);
+  }
+  const shared = shareVariantSets(
+    at.map((i) => ({ ...(inputs[i] as ComponentInput), decides: decides[i] === true })),
+    (key) => switching.has(key)
+  );
+  if (!shared) return none;
+  const components = shared.definitions.flatMap((d) => d.ops);
+  const own = new Set(components);
+  const owned = new Map<number, PlanOp[]>();
+  for (const { owner, ops } of shared.definitions) {
+    const i = at[owner] as number;
+    owned.set(i, [...(owned.get(i) ?? []), ...ops]);
+  }
+  /** Instances inside the mains, which are on the canvas once, with the first frame. */
+  const inMains = canvasInstances(components);
+  const next = [...plans];
+  at.forEach((i, k) => {
+    const input = inputs[i] as ComponentInput;
+    const plan = plans[i] as LayerPlan;
+    // The shared mains are in front, as definitions already made, so the structural pass reads
+    // their instances as it does on one capture.
+    const found = extractComponents(
+      [...components, ...(shared.pages[k] ?? [])],
+      input.tags,
+      input.hovers,
+      input.sources
+    );
+    const lines = new Set(input.lines);
+    const made = shared.definitions.filter((d) => d.owner === k).length;
+    next[i] = {
+      ...plan,
+      ops: found.ops.filter((op) => !own.has(op)),
+      report: {
+        ...plan.report,
+        warnings: plan.report.warnings.filter((line) => !lines.has(line)),
+        components: found.components + made,
+        instances: found.instances - (k === 0 ? 0 : inMains),
+      },
+    };
+  });
+  return { plans: next, components, owned, lines: componentLines(shared) };
 }
 
 type TextOp = Extract<PlanOp, { op: "text" }>;
@@ -854,7 +986,7 @@ function textAt(key: string, path: number[], ops: PlanOp[]): TextOp | undefined 
  * The captured text ids are only for binding; a finished plan doesn't carry them. A plan that no
  * device merge takes drops them so too.
  */
-export function dropSources(plans: LayerPlan[]): void {
+export function dropSources(plans: Pick<LayerPlan, "ops">[]): void {
   for (const plan of plans) {
     for (const op of plan.ops) {
       if (op.op !== "instance") continue;
@@ -866,13 +998,22 @@ export function dropSources(plans: LayerPlan[]): void {
 export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {}): DeviceMerge {
   const tagged = entries.flatMap((e) => (e.capture.language ? [e.capture.language] : []));
   const current = tagged.find((l) => l.current);
+  const widths = entries.map(widthOf);
   if (!current) {
-    const { adopt: _, ...merge } = mergeSet(entries, options);
-    dropSources(merge.plans);
+    const { adopt: _, inputs, adoptInput: __, ...merge } = mergeSet(entries, options);
+    const shared = shareComponents(
+      merge.plans,
+      inputs,
+      entries.map(() => true),
+      widths,
+      entries.map(isDevice)
+    );
+    dropSources([...shared.plans, { ops: shared.components }]);
+    const report = [...merge.report, ...shared.lines];
     if (tagged.length > 0) {
-      merge.report.push("No capture in the page's own language, so languages were left out.");
+      report.push("No capture in the page's own language, so languages were left out.");
     }
-    return merge;
+    return { ...merge, plans: shared.plans, components: shared.components, report };
   }
   const codeOf = (e: DeviceEntry) => e.capture.language?.code ?? current.code;
   // The current language's entries make the frames and every value but the texts'.
@@ -895,16 +1036,30 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
   const frames = set.frames.map((f) => ({ ...f, index: baseAt[f.index] as number }));
   const frameOf = (e: DeviceEntry) =>
     frames.find((f) => sameDevice(e.capture, entries[f.index]?.capture as Capture));
-  const plans = entries.map((e, i) => {
+  const likeOf = (e: DeviceEntry) => {
+    const frame = frameOf(e);
+    return frame ? baseAt.indexOf(frame.index) : 0;
+  };
+  const adopted = entries.map((e, i) => {
     const at = baseAt.indexOf(i);
     if (at >= 0) return set.plans[at] as LayerPlan;
-    const frame = frameOf(e);
-    return set.adopt(e.plan, frame ? baseAt.indexOf(frame.index) : 0);
+    return set.adopt(e.plan, likeOf(e));
   });
+  const shared = shareComponents(
+    adopted,
+    entries.map((e, i) => {
+      const at = baseAt.indexOf(i);
+      return at >= 0 ? set.inputs[at] : set.adoptInput(e.plan, likeOf(e));
+    }),
+    entries.map((e) => codeOf(e) === current.code),
+    widths,
+    entries.map(isDevice)
+  );
+  const { plans, components } = shared;
 
   // ---------- Pair each device's texts with each other language's, and bind them.
 
-  const report = [...set.report];
+  const report = [...set.report, ...shared.lines];
   const counts = codes.map(() => ({ onlyOther: 0, onlyBase: 0 }));
   let mixed = 0;
   let full = 0;
@@ -941,7 +1096,10 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
       }
     }
     const plan = plans[frame.index] as LayerPlan;
-    const byId = new Map(plan.ops.map((op) => [op.id, op]));
+    // The shared mains made from this frame bind their texts with its own.
+    const ops = [...(shared.owned.get(frame.index) ?? []), ...plan.ops];
+    const pool = [...components, ...plan.ops];
+    const byId = new Map(ops.map((op) => [op.id, op]));
     const reached = new Set<string>();
     /** Binds the layer showing captured text `id`, as `text`; its key, or none to stay plain. */
     const bind = (id: string, text: string, nameOf: () => string): string | undefined => {
@@ -977,7 +1135,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
       }
       return key;
     };
-    for (const op of plan.ops) {
+    for (const op of ops) {
       if (op.op === "text") {
         // A main's text is its first occurrence's, with the component key before its id; it is
         // named where that occurrence's instance sits on the page.
@@ -991,7 +1149,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
         for (const over of op.overrides) {
           if (over.kind !== "text" || over.source === undefined) continue;
           const key = bind(over.source, over.text, () => {
-            const main = textAt(op.key, over.path, plan.ops);
+            const main = textAt(op.key, over.path, pool);
             return variableNameOf({ ...(main ?? { name: "Text" }), parent: op.id } as TextOp, byId);
           });
           if (key) over.textKey = key;
@@ -1004,7 +1162,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
       else repeated++;
     }
   }
-  dropSources(plans);
+  dropSources([...plans, { ops: components }]);
 
   for (const [l, count] of counts.entries()) {
     const name = names[l];
@@ -1074,5 +1232,5 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     );
   }
 
-  return { layers, plans, frames, report };
+  return { layers, plans, frames, components, report };
 }

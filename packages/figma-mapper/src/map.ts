@@ -31,7 +31,13 @@ import type {
 import { extractTokens } from "./tokens";
 import { readMotion } from "./transform";
 import { unrotateTree } from "./unrotate";
-import { extractVariantSets, type FoundComponent } from "./variants";
+import {
+  type ComponentInput,
+  componentLines,
+  extractVariantSets,
+  type FoundComponent,
+  keepComponentInput,
+} from "./variants";
 
 type Fit = "FILL" | "FIT" | "CROP" | "TILE";
 type Color = { r: number; g: number; b: number; a: number };
@@ -834,6 +840,7 @@ export function mapCapture(
     );
   }
   let finished = ops;
+  let input: ComponentInput | undefined;
   if (options.components) {
     let lostHovers = 0;
     const hovers = options.hoverComponents
@@ -842,33 +849,18 @@ export function mapCapture(
         })
       : undefined;
     const sources = capture.language !== undefined;
-    const sets = extractVariantSets(ops, namedOf(pageRoot), hovers, sources);
-    const found = extractComponents(sets.ops, tagsOf(pageRoot), hovers, sources);
+    const named = namedOf(pageRoot);
+    const tags = tagsOf(pageRoot);
+    const sets = extractVariantSets(ops, named, hovers, sources);
+    const found = extractComponents(sets.ops, tags, hovers, sources);
     finished = found.ops;
     const variants = sets.ops.filter((op) => op.op === "frame" && op.component).length;
     report.components = found.components + variants;
     report.instances = found.instances;
-    for (const set of sets.sets) {
-      const n = set.variants;
-      const listed = set.properties.length > 0 ? ` (${set.properties.join(", ")})` : "";
-      warn(`${set.name}: ${n} variant${n === 1 ? "" : "s"} from the page's code${listed}.`);
-    }
-    if (sets.fromMarkers > 0) {
-      const n = sets.fromMarkers;
-      warn(`${n} component${n === 1 ? "" : "s"} named by shadcn markers.`);
-    }
-    for (const { from, to } of sets.renamed) {
-      warn(`A component named "${from}" in the code was named ${to} from its data-slot.`);
-    }
-    for (const [name, n] of sets.notJoined) {
-      // `CarouselItem` reads as `carousel item`.
-      const words = name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
-      const what = `${words}${n === 1 ? "" : "s"}`;
-      warn(
-        n === 1
-          ? `1 ${what} looks different from its ${name} variant and stays as it is.`
-          : `${n} ${what} look different from their ${name} variant and stay as they are.`
-      );
+    const lines = componentLines(sets);
+    for (const line of lines) warn(line);
+    if (named.size > 0) {
+      input = { ops, named, tags, ...(hovers ? { hovers } : {}), sources, lines };
     }
     const hoverCapped = (sets.hoverCapped ?? 0) + (found.hoverCapped ?? 0);
     const hoverSwapped = (sets.hoverSwapped ?? 0) + (found.hoverSwapped ?? 0);
@@ -888,7 +880,15 @@ export function mapCapture(
       );
     }
   }
-  return { ops: finished, tokens, fonts: [...fonts.values()], assetHashes: [...hashes], report };
+  const plan = {
+    ops: finished,
+    tokens,
+    fonts: [...fonts.values()],
+    assetHashes: [...hashes],
+    report,
+  };
+  if (input) keepComponentInput(plan, input);
+  return plan;
 }
 
 export function batchOps(ops: PlanOp[], size = 50): PlanOp[][] {

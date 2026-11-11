@@ -2749,7 +2749,11 @@ for (const components of [false, true]) {
     for (const code of ["en", "sv"] as const) {
       for (const d of devices) {
         await page.setViewportSize({ width: d.width, height: d.height });
-        const c = await capture(page, `lang-${code}.html`);
+        await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+        await page.goto(`/lang-${code}.html`);
+        if (components) await addButtons(page, code === "en" ? "Get started" : "Kom igång");
+        await page.addScriptTag({ content: bundle });
+        const c = await runCapture(page, "2026-01-01T00:00:00.000Z");
         c.version = {
           label: d.name,
           kind: "viewport",
@@ -2762,11 +2766,12 @@ for (const components of [false, true]) {
           components,
           layers: true,
         });
-        expect(plan.report.components).toBe(components ? 1 : 0);
+        // The cards, and the Button set's two variants.
+        expect(plan.report.components).toBe(components ? 3 : 0);
         entries.push({ capture: c, plan });
       }
     }
-    const { layers, plans, frames, report } = mergeDevices(entries);
+    const { layers, plans, frames, report, components: shared } = mergeDevices(entries);
     expect(frames.map((f) => f.device)).toEqual(["Laptop", "Phone"]);
     // Both pages pair well: no device is reported as matching poorly.
     expect(report.some((line) => line.startsWith("Only"))).toBe(false);
@@ -2791,5 +2796,66 @@ for (const components of [false, true]) {
     expect(laptop).toEqual([key, key, key]);
     // The phone's frame binds the same variable.
     expect(keysOf(plans[1] as LayerPlan, "Learn more")).toEqual([key, key, key]);
+    if (!components) {
+      expect(shared).toEqual([]);
+      return;
+    }
+    // One Button set for both frames: the Phone's padding is the same token's base value.
+    const variants = shared.flatMap((op) =>
+      op.op === "frame" && op.component?.set ? [op.component.name] : []
+    );
+    expect(variants).toEqual(["Variant=outline, Size=icon", "Variant=default, Size=default"]);
+    expect(report.filter((line) => line.startsWith("Button:"))).toEqual([
+      "Button: 2 variants from the page's code (Variant, Size).",
+    ]);
+    expect(report.some((line) => line.includes("different from"))).toBe(false);
+    const buttons = (plan: LayerPlan) =>
+      plan.ops.flatMap((op) => (op.op === "instance" && op.key.startsWith("set:") ? [op.key] : []));
+    expect(buttons(plans[0] as LayerPlan)).toHaveLength(4);
+    expect(buttons(plans[1] as LayerPlan)).toEqual(buttons(plans[0] as LayerPlan));
+    for (const plan of plans) {
+      expect(plan.ops.some((op) => op.op === "frame" && op.component?.set)).toBe(false);
+    }
+    // The label binds to a Language variable, in the frames' instances.
+    const label = layers.variables.find(
+      (v) => v.collection === "language" && v.values[0] === "Get started"
+    );
+    expect(label?.values).toEqual(["Get started", "Kom igång"]);
   });
+}
+
+/**
+ * Four Mainline-like buttons, tagged as the component probe leaves them: two outline icon buttons
+ * and two default ones, their padding a spacing token that is smaller below 640 px.
+ */
+async function addButtons(page: Page, label: string): Promise<void> {
+  await page.evaluate((text) => {
+    const style = document.createElement("style");
+    style.textContent = `
+      :root { --button-padding: 12px; }
+      @media (min-width: 640px) { :root { --button-padding: 16px; } }
+      .actions { display: flex; gap: 8px; align-items: flex-start; }
+      .actions button { display: flex; padding: var(--button-padding); border: 0; font: inherit; }
+      .actions .icon { width: 40px; height: 40px; padding: 0; background: #fff; }
+      .actions .solid { background: #111; color: #fff; }
+    `;
+    document.head.append(style);
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const tag = (props: Record<string, string>) =>
+      JSON.stringify({ source: "react", name: "Button", props });
+    for (const [kind, words, props] of [
+      ["icon", "+", { variant: "outline", size: "icon" }],
+      ["icon", "-", { variant: "outline", size: "icon" }],
+      ["solid", text, {}],
+      ["solid", text, {}],
+    ] as const) {
+      const button = document.createElement("button");
+      button.className = kind;
+      button.textContent = words;
+      button.setAttribute("data-frottage-component", tag(props));
+      actions.append(button);
+    }
+    document.querySelector("main")?.append(actions);
+  }, label);
 }

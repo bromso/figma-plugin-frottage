@@ -1032,3 +1032,277 @@ describe("languages", () => {
     expect(report).toContain("3 texts stay in English: the Language collection is full.");
   });
 });
+
+describe("components across devices", () => {
+  const ON = { ...DEFAULT_IMPORT_OPTIONS, components: true, layers: true };
+  const white = { r: 1, g: 1, b: 1, a: 1 };
+  const black = { r: 0, g: 0, b: 0, a: 1 };
+  const red = { r: 1, g: 0, b: 0, a: 1 };
+  const clear = { r: 0, g: 0, b: 0, a: 0 };
+  const SIZES = { Laptop: [1512, 982], Phone: [390, 844] } as const;
+
+  type Btn = { bg?: typeof white; pad?: number; label?: string; padRef?: string };
+
+  /** A coded Button: a row with padding, a background and a label. */
+  function btn(
+    id: string,
+    props: Record<string, string>,
+    { bg = white, pad = 16, label = id, padRef }: Btn = {}
+  ): ElementNode {
+    const base = el(id, [0, 0]);
+    return el(
+      id,
+      [0, 0],
+      [
+        textNode(`${id}-t`, {
+          text: label,
+          box: { x: pad, y: pad, w: 40, h: 16 },
+          lines: [{ x: pad, y: pad, w: 40, h: 16 }],
+          runs: [run({ end: label.length })],
+        }),
+      ],
+      {
+        semantic: { tag: "button" },
+        layout: {
+          display: "flex",
+          flexDirection: "row",
+          flexWrap: "nowrap",
+          justifyContent: "normal",
+          alignItems: "flex-start",
+          gap: [0, 0],
+          position: "static",
+          padding: [pad, pad, pad, pad],
+          margin: [0, 0, 0, 0],
+          order: 0,
+          grow: 0,
+          shrink: 1,
+        },
+        style: { ...base.style, backgroundColor: bg },
+        component: { source: "react", name: "Button", props },
+        ...(padRef ? { tokenRefs: { padding: [padRef, padRef, padRef, padRef] } } : {}),
+      },
+      [40 + 2 * pad, 16 + 2 * pad]
+    );
+  }
+
+  function on(
+    name: keyof typeof SIZES,
+    children: CaptureNode[],
+    props: Record<string, string> = {},
+    options = ON
+  ): DeviceEntry {
+    const [width, height] = SIZES[name];
+    const capture = cap(el("root", [0, 0], children, { semantic: { tag: "body" } }));
+    capture.source.url = "https://mainline.example.com/";
+    capture.source.viewport.w = width;
+    capture.version = device(name, height);
+    capture.breakpoints = { widths: BOUNDARIES, unreadable: 0 };
+    capture.tokens = { cssCustomProperties: props };
+    return { capture, plan: mapCapture(capture, inter, options) };
+  }
+
+  const pair = (prefix: string, over: Btn = {}) => [
+    btn(`${prefix}a`, { variant: "outline", size: "icon" }, { pad: 8, ...over }),
+    btn(`${prefix}b`, { variant: "outline", size: "icon" }, { pad: 8, ...over }),
+    btn(`${prefix}c`, {}, { bg: black, ...over }),
+    btn(`${prefix}d`, {}, { bg: black, ...over }),
+  ];
+
+  type FrameOp = Extract<PlanOp, { op: "frame" }>;
+  type InstanceOp = Extract<PlanOp, { op: "instance" }>;
+  const named = (key: string | undefined) => /^(set|component|icon):/.test(key ?? "");
+  const mainsOf = (ops: PlanOp[]) =>
+    ops.filter((o): o is FrameOp => o.op === "frame" && o.parent === null && !!o.component);
+  const instancesOf = (plan: LayerPlan) =>
+    plan.ops.filter((o): o is InstanceOp => o.op === "instance");
+  const variantsOf = (ops: PlanOp[], set: string) =>
+    mainsOf(ops)
+      .filter((m) => m.component?.set?.name === set)
+      .map((m) => m.component?.name);
+
+  test("one Button set for both frames, its definitions in the merge only", () => {
+    const merge = mergeDevices([on("Laptop", pair("l")), on("Phone", pair("p"))]);
+    expect(variantsOf(merge.components, "Button")).toEqual([
+      "Variant=outline, Size=icon",
+      "Variant=default, Size=default",
+    ]);
+    for (const plan of merge.plans) {
+      expect(mainsOf(plan.ops).filter((m) => named(m.component?.key))).toEqual([]);
+    }
+    const keys = merge.plans.map((plan) => instancesOf(plan).map((o) => o.key));
+    expect(keys[0]).toEqual([
+      "set:Button|Variant=outline, Size=icon",
+      "set:Button|Variant=outline, Size=icon",
+      "set:Button|Variant=default, Size=default",
+      "set:Button|Variant=default, Size=default",
+    ]);
+    expect(keys[1]).toEqual(keys[0]);
+    // Built from the widest frame.
+    const main = mainsOf(merge.components)[0] as FrameOp;
+    expect(main.id).toBe("set:Button|Variant=outline, Size=icon/la");
+    expect(merge.report).toContain("Button: 2 variants from the page's code (Variant, Size).");
+    for (const plan of merge.plans) {
+      expect(plan.report.warnings.some((w) => w.startsWith("Button:"))).toBe(false);
+    }
+  });
+
+  test("a variant only the Phone shows joins the set, built from the Phone", () => {
+    const ghost = (id: string) => btn(id, { variant: "ghost" }, { bg: clear });
+    const merge = mergeDevices([
+      on("Laptop", pair("l")),
+      on("Phone", [...pair("p"), ghost("pg1"), ghost("pg2")]),
+    ]);
+    expect(variantsOf(merge.components, "Button")).toEqual([
+      "Variant=outline, Size=icon",
+      "Variant=default, Size=default",
+      "Variant=ghost, Size=default",
+    ]);
+    const ghostMain = mainsOf(merge.components).find(
+      (m) => m.component?.name === "Variant=ghost, Size=default"
+    );
+    expect(ghostMain?.id).toBe("set:Button|Variant=ghost, Size=default/pg1");
+    expect(merge.report).toContain("Button: 3 variants from the page's code (Variant, Size).");
+  });
+
+  test("a prop kept on one device is kept on every device, so the keys agree", () => {
+    // The Laptop's buttons all look alike, so alone it would keep no prop.
+    const laptop = [
+      btn("la", { variant: "outline" }, { bg: white }),
+      btn("lb", { variant: "outline" }, { bg: white }),
+    ];
+    const phone = [
+      btn("pa", { variant: "outline" }, { bg: white }),
+      btn("pb", { variant: "default" }, { bg: black }),
+    ];
+    const merge = mergeDevices([on("Laptop", laptop), on("Phone", phone)]);
+    const keys = merge.plans.map((plan) => instancesOf(plan).map((o) => o.key));
+    expect(keys).toEqual([
+      ["set:Button|Variant=outline", "set:Button|Variant=outline"],
+      ["set:Button|Variant=outline", "set:Button|Variant=default"],
+    ]);
+    expect(variantsOf(merge.components, "Button")).toEqual(["Variant=outline", "Variant=default"]);
+    expect(merge.report).toContain("Button: 2 variants from the page's code (Variant).");
+    expect(merge.report.some((line) => line.includes("different"))).toBe(false);
+  });
+
+  test("padding from a token that varies by breakpoint is the same variant (Review Focus 3)", () => {
+    const merge = mergeDevices([
+      on("Laptop", pair("l", { padRef: "--btn-padding" }), { "--btn-padding": "16px" }),
+      on(
+        "Phone",
+        pair("p", { pad: 12, padRef: "--btn-padding" }).map((b, i) =>
+          i < 2 ? btn(b.id, { variant: "outline", size: "icon" }, { pad: 12 }) : b
+        ),
+        { "--btn-padding": "12px" }
+      ),
+    ]);
+    // Phone's icon buttons have 12 px unbound, where the Laptop's 8: a real difference.
+    const keys = merge.plans.map((plan) => instancesOf(plan).map((o) => o.key));
+    expect(keys[1]).toEqual([
+      "set:Button|Variant=default, Size=default",
+      "set:Button|Variant=default, Size=default",
+    ]);
+    const frame = merge.plans[1]?.ops.find((o) => o.id === "pc");
+    expect(frame?.op).toBe("instance");
+    expect(merge.report).toContain(
+      "2 buttons look different from their Button variant and stay as they are."
+    );
+  });
+
+  test("buttons that differ only by a breakpoint token are instances, with no look line", () => {
+    const merge = mergeDevices([
+      on("Laptop", pair("l", { pad: 16, padRef: "--btn-padding" }), { "--btn-padding": "16px" }),
+      on("Phone", pair("p", { pad: 12, padRef: "--btn-padding" }), { "--btn-padding": "12px" }),
+    ]);
+    const layout = (mainsOf(merge.components)[1] as FrameOp).layout;
+    const key = "spacingKeys" in layout ? layout.spacingKeys?.padding?.[0] : undefined;
+    expect(key).toBeDefined();
+    const token = merge.layers.variables.find((v) => v.key === key);
+    expect(aliasOf(token?.values[0])?.startsWith("breakpoint:")).toBe(true);
+    for (const plan of merge.plans) {
+      expect(instancesOf(plan).map((o) => o.key)).toHaveLength(4);
+    }
+    expect(merge.report.some((line) => line.includes("look different"))).toBe(false);
+    expect(merge.report.some((line) => line.includes("looks different"))).toBe(false);
+  });
+
+  test("another background on the Phone is counted, not joined", () => {
+    const merge = mergeDevices([
+      on("Laptop", pair("l")),
+      on(
+        "Phone",
+        pair("p").map((b, i) =>
+          i < 2 ? btn(b.id, { variant: "outline", size: "icon" }, { pad: 8, bg: red }) : b
+        )
+      ),
+    ]);
+    expect(instancesOf(merge.plans[1] as LayerPlan).map((o) => o.id)).toEqual(["pc", "pd"]);
+    expect(merge.report).toContain(
+      "2 buttons look different from their Button variant and stay as they are."
+    );
+  });
+
+  test("an extra makes no frame, so its buttons neither count nor make a variant", () => {
+    const lg = on("Laptop", [
+      ...pair("x").map((b) => btn(b.id, { variant: "outline", size: "icon" }, { pad: 8, bg: red })),
+      btn("xg", { variant: "ghost" }, { bg: clear }),
+      btn("xh", { variant: "ghost" }, { bg: clear }),
+    ]);
+    lg.capture.version = extra("lg");
+    lg.capture.source.viewport.w = 1024;
+    lg.plan = mapCapture(lg.capture, inter, ON);
+    const merge = mergeDevices([on("Laptop", pair("l")), on("Phone", pair("p")), lg]);
+    expect(merge.frames).toHaveLength(2);
+    expect(variantsOf(merge.components, "Button")).toEqual([
+      "Variant=outline, Size=icon",
+      "Variant=default, Size=default",
+    ]);
+    expect(merge.report.some((line) => line.includes("different"))).toBe(false);
+  });
+
+  test("a set of captures without named components merges as before", () => {
+    const xcards = (prefix: string) =>
+      [0, 1].map((i) =>
+        el(`${prefix}${i}`, [0, i * 120], [textNode(`${prefix}t${i}`, { text: `Card ${i}` })], {
+          semantic: { tag: "x-card" },
+        })
+      );
+    const entries = [on("Laptop", xcards("l")), on("Phone", xcards("p"))];
+    // A copy holds nothing from the mapping but the plan itself.
+    const before = mergeDevices(entries.map((e) => ({ ...e, plan: structuredClone(e.plan) })));
+    const merge = mergeDevices(entries);
+    expect(merge.components).toEqual([]);
+    expect(merge.plans.map((p) => p.ops)).toEqual(before.plans.map((p) => p.ops));
+    expect(merge.report).toEqual(before.report);
+  });
+
+  test("another language's frame uses the own language's keys", () => {
+    const en = on("Laptop", pair("l"));
+    en.capture.language = {
+      code: "en",
+      name: "English",
+      url: "https://a.example/en",
+      current: true,
+    };
+    const svPage = on(
+      "Laptop",
+      pair("s").map((b) => b)
+    );
+    svPage.capture.language = {
+      code: "sv",
+      name: "Svenska",
+      url: "https://a.example/sv",
+      current: false,
+    };
+    svPage.capture.source.url = "https://a.example/sv";
+    en.capture.source.url = "https://a.example/en";
+    const fresh = [en, svPage].map((e) => ({ ...e, plan: mapCapture(e.capture, inter, ON) }));
+    const merge = mergeDevices(fresh);
+    expect(variantsOf(merge.components, "Button")).toHaveLength(2);
+    const keys = merge.plans.map((plan) => instancesOf(plan).map((o) => o.key));
+    expect(keys[1]).toEqual(keys[0]);
+    expect(merge.report.filter((l) => l.startsWith("Button:"))).toEqual([
+      "Button: 2 variants from the page's code (Variant, Size).",
+    ]);
+  });
+});
