@@ -11,6 +11,7 @@ export { evalLength, languageName, parseCssColor, type Rgba } from "./css-values
 export { countNodes, type ParseResult, parseCapture } from "./parse";
 export {
   type Capture,
+  type CaptureComponent,
   type CaptureNode,
   captureSchema,
   type ElementNode,

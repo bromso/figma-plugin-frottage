@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Components</title>
+<style>
+  body { font: 14px sans-serif; margin: 24px; }
+  button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; background: #fff; }
+</style>
+</head>
+<body>
+  <!-- Like Mainline: a minified Button (`o`) with shadcn's markers, one outline icon, one plain. -->
+  <div id="card">
+    <section>
+      <button id="icon" data-slot="button" data-variant="outline" data-size="icon">+</button>
+      <button id="plain" data-slot="button">Save</button>
+    </section>
+  </div>
+  <script>
+    // Fake React fibers, enough for the probe: each element's host fiber returns to its component.
+    function o() {}
+    function Card() {}
+    const fiber = (el, component) => {
+      el.__reactFiber$e2e = { type: el.localName, stateNode: el, return: component };
+    };
+    fiber(document.getElementById("icon"), {
+      type: o,
+      memoizedProps: { variant: "outline", size: "icon", onClick() {}, className: "inline-flex" },
+    });
+    fiber(document.getElementById("plain"), { type: o, memoizedProps: { children: "Save" } });
+    fiber(document.getElementById("card"), { type: Card, memoizedProps: { children: [] } });
+  </script>
+</body>
+</html>

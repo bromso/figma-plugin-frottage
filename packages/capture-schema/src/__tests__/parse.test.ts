@@ -367,3 +367,56 @@ describe("language", () => {
     if (result.ok) expect(result.capture.language).toBeUndefined();
   });
 });
+
+describe("component", () => {
+  const BUTTON = { source: "react", name: "Button", props: { variant: "outline", size: "icon" } };
+  const withComponent = (component: unknown) => {
+    const c = minimalCapture() as any;
+    c.root.component = component;
+    return c;
+  };
+  const props = (n: number) =>
+    Object.fromEntries(Array.from({ length: n }, (_, i) => [`p${i}`, i]));
+  test("an element records its component, like the schema does", async () => {
+    const { captureSchema } = await import("../index");
+    const input = withComponent({
+      ...BUTTON,
+      codeName: "o",
+      props: { variant: "outline", disabled: true, level: 2 },
+    });
+    const result = parseCapture(input);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect((result.capture.root as any).component).toEqual(input.root.component);
+      expect(result.capture).toEqual(captureSchema.parse(input));
+    }
+  });
+  test("16 props parse; 17 are refused before they are read", () => {
+    expect(parseCapture(withComponent({ ...BUTTON, props: props(16) })).ok).toBe(true);
+    expect(parseCapture(withComponent({ ...BUTTON, props: props(17) }))).toMatchObject({
+      ok: false,
+      reason: "invalid",
+    });
+    expect(parseCapture(withComponent({ ...BUTTON, props: props(100_000) })).ok).toBe(false);
+  });
+  test("a long or empty name, a bad source or a string value with a space is refused", () => {
+    expect(parseCapture(withComponent({ ...BUTTON, name: "B".repeat(40) })).ok).toBe(true);
+    expect(parseCapture(withComponent({ ...BUTTON, name: "B".repeat(41) })).ok).toBe(false);
+    expect(parseCapture(withComponent({ ...BUTTON, name: "" })).ok).toBe(false);
+    expect(parseCapture(withComponent({ ...BUTTON, source: "svelte" })).ok).toBe(false);
+    expect(parseCapture(withComponent({ ...BUTTON, codeName: "o".repeat(41) })).ok).toBe(false);
+    expect(parseCapture(withComponent({ ...BUTTON, props: { label: "Jane Doe" } })).ok).toBe(false);
+    expect(parseCapture(withComponent({ ...BUTTON, props: { v: "a".repeat(25) } })).ok).toBe(false);
+    expect(parseCapture(withComponent({ ...BUTTON, props: { ["k".repeat(41)]: 1 } })).ok).toBe(
+      false
+    );
+    expect(parseCapture(withComponent({ ...BUTTON, props: { v: null } })).ok).toBe(false);
+    expect(parseCapture(withComponent({ ...BUTTON, props: [] })).ok).toBe(false);
+    expect(parseCapture(withComponent("Button")).ok).toBe(false);
+  });
+  test("an older capture without it parses unchanged", () => {
+    const result = parseCapture(minimalCapture());
+    expect(result.ok).toBe(true);
+    if (result.ok) expect((result.capture.root as any).component).toBeUndefined();
+  });
+});

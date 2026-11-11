@@ -111,6 +111,26 @@ const tokenRefs = z.object({
   fontWeight: ref.optional(),
 });
 
+/** Past this many props a component is refused; the probe keeps no more. */
+const MAX_COMPONENT_PROPS = 16;
+
+/**
+ * The page's component an element is the root of, as the probe found it. Only values that can't
+ * hold what a person typed: a boolean, a finite number or a short plain word.
+ */
+const component = z.object({
+  source: z.enum(["react", "vue", "marker"]),
+  name: z.string().min(1).max(40),
+  props: z
+    .record(
+      z.string().min(1).max(40),
+      z.union([z.string().regex(/^[A-Za-z0-9_-]{1,24}$/), z.number(), z.boolean()])
+    )
+    .refine((p) => Object.keys(p).length <= MAX_COMPONENT_PROPS, "too many props"),
+  /** The minified code name a `data-slot` name replaced, only then. */
+  codeName: z.string().min(1).max(40).optional(),
+});
+
 const marginAuto = z.tuple([z.boolean(), z.boolean(), z.boolean(), z.boolean()]);
 
 const layout = z.object({
@@ -242,6 +262,7 @@ const elementBase = z.object({
   layout,
   hover: hover.optional(),
   tokenRefs: tokenRefs.optional(),
+  component: component.optional(),
 });
 
 const elementNode = z.object({
@@ -264,6 +285,7 @@ export type ImageNode = z.infer<typeof imageNode>;
 export type SvgNode = z.infer<typeof svgNode>;
 export type PlaceholderNode = z.infer<typeof placeholderNode>;
 export type TokenRefs = z.infer<typeof tokenRefs>;
+export type CaptureComponent = z.infer<typeof component>;
 export type ElementNode = z.infer<typeof elementBase> & {
   children: CaptureNode[];
 };
@@ -399,6 +421,8 @@ export const parts = {
   textRun,
   boxShadow,
   maxHoverShadows: MAX_HOVER_SHADOWS,
+  component,
+  maxComponentProps: MAX_COMPONENT_PROPS,
   maxThemes: MAX_THEMES,
   maxThemeProperties: MAX_THEME_PROPERTIES,
   theme: captureSchema.shape.tokens.shape.themes.unwrap().unwrap(),
@@ -415,7 +439,7 @@ export const parts = {
     root: true,
   }),
   // Node kinds without `children` or any array.
-  element: elementBase.extend({
+  element: elementBase.omit({ component: true }).extend({
     style: style.omit({ backgroundImages: true, boxShadows: true, filters: true }),
     hover: hoverBase.optional(),
   }),
