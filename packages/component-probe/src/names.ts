@@ -24,16 +24,13 @@ export function isPassThrough(name: string): boolean {
   );
 }
 
-// A component given `asChild` renders its child's element as its own, so it is a pass-through
-// too, whatever its name (Radix's `PopperAnchor`, a `TooltipTrigger`, a Button around a link).
-export function rendersChild(props: unknown): boolean {
-  return !!props && typeof props === "object" && (props as { asChild?: unknown }).asChild === true;
-}
-
-// A trigger (`TooltipTrigger`, `PopoverTrigger`) usually wraps the real component on the same
-// element, so it yields to any other named component there; alone on its element it stands.
-export function isTrigger(name: string): boolean {
-  return name.endsWith("Trigger");
+// A component that yields its element to any other named component there, but stands when it is
+// the only one: a trigger (`TooltipTrigger`, `PopoverTrigger`), which usually wraps the real
+// component, and one given `asChild`, which renders its child's element as its own (Radix's
+// `PopperAnchor` around Nuxt's `UButton`; alone, shadcn's `<Button asChild variant="outline">`
+// around a link is the Button).
+export function yields(component: CodeComponent): boolean {
+  return component.name.endsWith("Trigger") || component.props.asChild === true;
 }
 
 // Whether a code name may name the element: a minified one only when the element's `data-slot`

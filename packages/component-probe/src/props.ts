@@ -25,6 +25,8 @@ const NEVER = new Set([
   "rel",
   "type",
   "__proto__",
+  // How a component renders, not how it looks.
+  "asChild",
 ]);
 const MAX_PROPS = 16;
 const MAX_KEY = 40;

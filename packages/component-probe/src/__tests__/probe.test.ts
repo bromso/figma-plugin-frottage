@@ -120,29 +120,42 @@ describe("probeComponents", () => {
     });
   });
 
-  test("a React component given asChild is passed through to its child's element", () => {
-    const doc = page('<a data-slot="button">Docs</a><div>x</div>');
+  test('<Button asChild><a data-slot="button"> inside a TooltipTrigger stays Button', () => {
+    const doc = page('<a data-slot="button" data-state="closed">Docs</a>');
     const a = doc.querySelector("a");
-    const div = doc.querySelector("div");
-    // <Button asChild><a data-slot="button">: no code component of its own; the marker names it.
-    fiber(a, { type: named("o"), memoizedProps: { variant: "ghost", asChild: true } });
-    // An asChild component above a readable one on the same element leaves that one.
+    // From the element up, as React renders shadcn's Button asChild inside a TooltipTrigger.
+    const trigger = { type: named("TooltipTrigger"), memoizedProps: { asChild: true } };
+    const radixTrigger = { type: forwardRef("TooltipTrigger"), memoizedProps: {}, return: trigger };
+    const button = { type: named("o"), memoizedProps: { variant: "outline", asChild: true } };
+    Object.assign(button, { return: radixTrigger });
+    const slot = { type: forwardRef("Slot.Slot"), memoizedProps: {}, return: button };
+    const clone = { type: forwardRef("Slot.SlotClone"), memoizedProps: {}, return: slot };
+    fiber(a, clone);
+    expect(probeComponents(doc)).toBe(1);
+    expect(found(a)).toEqual({
+      source: "react",
+      name: "Button",
+      props: { variant: "outline", state: "closed" },
+      codeName: "o",
+    });
+  });
+
+  test("a React asChild component yields to another named one on its element", () => {
+    const doc = page("<div>x</div><span>y</span>");
+    const [div, span] = [doc.querySelector("div"), doc.querySelector("span")];
     fiber(div, {
       type: named("Badge"),
       memoizedProps: {},
       return: { type: named("Anchor"), memoizedProps: { asChild: true } },
     });
-    const near = doc.createElement("span");
-    doc.body.append(near);
-    fiber(near, {
+    fiber(span, {
       type: named("PopperAnchor"),
       memoizedProps: { asChild: true },
       return: { type: named("Chip"), memoizedProps: {} },
     });
     expect(probeComponents(doc)).toBe(2);
-    expect(found(a)).toBeNull();
     expect(found(div).name).toBe("Badge");
-    expect(found(near).name).toBe("Chip");
+    expect(found(span).name).toBe("Chip");
   });
 
   test("a React trigger yields to another named component on its element, and stands alone", () => {
