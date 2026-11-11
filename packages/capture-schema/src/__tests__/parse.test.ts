@@ -414,6 +414,20 @@ describe("component", () => {
     expect(parseCapture(withComponent({ ...BUTTON, props: [] })).ok).toBe(false);
     expect(parseCapture(withComponent("Button")).ok).toBe(false);
   });
+  test("the privacy rule holds in the file: a key or value the probe never keeps is refused", () => {
+    const refused = (props: object) => !parseCapture(withComponent({ ...BUTTON, props })).ok;
+    for (const key of ["label", "text", "content", "description", "email", "initials"])
+      expect(refused({ [key]: "x" })).toBe(true);
+    for (const key of ["defaultValue", "query", "search", "username", "userRole", "firstName"])
+      expect(refused({ [key]: "x" })).toBe(true);
+    for (const key of ["className", "onClick", "aria-label", "data-x", "contentId", "a=b", "a,b"])
+      expect(refused({ [key]: "x" })).toBe(true);
+    expect(refused({ "a|b": true })).toBe(true);
+    expect(refused({ n: 10_001 })).toBe(true);
+    expect(refused({ n: -10_001 })).toBe(true);
+    expect(refused({ n: 19_801_231 })).toBe(true);
+    expect(refused({ n: 10_000, d: -2.5, variant: "outline", disabled: false })).toBe(false);
+  });
   test("an older capture without it parses unchanged", () => {
     const result = parseCapture(minimalCapture());
     expect(result.ok).toBe(true);

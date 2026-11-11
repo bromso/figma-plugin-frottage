@@ -455,6 +455,22 @@ describe("keepProps", () => {
     expect(keepProps(raw)).toEqual({});
   });
 
+  test("drops the keys that name a person's words, and keys that break a variant name", () => {
+    const raw: Record<string, unknown> = {};
+    for (const key of ["label", "defaultValue", "text", "content", "description", "email"])
+      raw[key] = "x";
+    for (const key of ["query", "search", "initials", "username", "user", "userRole"])
+      raw[key] = "x";
+    for (const key of ["firstName", "displayName", "nickname", "a=b", "a,b", "a|b"]) raw[key] = "x";
+    expect(keepProps(raw)).toEqual({});
+  });
+
+  test("keeps numbers only up to 10000 either way", () => {
+    expect(
+      keepProps({ a: 10_000, b: -10_000, c: 1.5, d: 10_001, e: -10_001, f: 19_801_231 })
+    ).toEqual({ a: 10_000, b: -10_000, c: 1.5 });
+  });
+
   test("keeps keys that merely end in a lowercase id", () => {
     expect(keepProps({ valid: true, grid: "cols-2" })).toEqual({ valid: true, grid: "cols-2" });
   });

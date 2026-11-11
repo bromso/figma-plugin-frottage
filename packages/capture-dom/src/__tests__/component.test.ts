@@ -47,6 +47,17 @@ describe("componentOf", () => {
     ["a value key", JSON.stringify({ ...BUTTON, props: { value: "x" } })],
     ["an aria- key", JSON.stringify({ ...BUTTON, props: { "aria-label": "x" } })],
     ["a non-finite number", '{"source":"react","name":"Button","props":{"n":1e999}}'],
+    ["a label key", JSON.stringify({ ...BUTTON, props: { label: "Save" } })],
+    ["a text key", JSON.stringify({ ...BUTTON, props: { text: "Save" } })],
+    ["an email key", JSON.stringify({ ...BUTTON, props: { email: "jane" } })],
+    ["an initials key", JSON.stringify({ ...BUTTON, props: { initials: "JB" } })],
+    ["a username key", JSON.stringify({ ...BUTTON, props: { username: "jane" } })],
+    ["a user key", JSON.stringify({ ...BUTTON, props: { userRole: "admin" } })],
+    ["a key ending Name", JSON.stringify({ ...BUTTON, props: { firstName: "Jane" } })],
+    ["a key ending name", JSON.stringify({ ...BUTTON, props: { nickname: "jb" } })],
+    ["a key with an =", JSON.stringify({ ...BUTTON, props: { "a=b": true } })],
+    ["a key with a |", JSON.stringify({ ...BUTTON, props: { "a|b": true } })],
+    ["a number past 10000", JSON.stringify({ ...BUTTON, props: { n: 19_801_231 } })],
     ["a __proto__ key", `{"source":"react","name":"Button","props":{"__proto__":{"x":1}}}`],
   ])("ignores the whole value for %s", (_, value) => {
     expect(componentOf(tagged(value))).toBeUndefined();

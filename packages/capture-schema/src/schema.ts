@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { keepKey, keepValue, MAX_PROPS } from "./component-rules";
 
 export const SCHEMA_VERSION = 1;
 
@@ -111,8 +112,7 @@ const tokenRefs = z.object({
   fontWeight: ref.optional(),
 });
 
-/** Past this many props a component is refused; the probe keeps no more. */
-const MAX_COMPONENT_PROPS = 16;
+const MAX_COMPONENT_PROPS = MAX_PROPS;
 
 /**
  * The page's component an element is the root of, as the probe found it. Only values that can't
@@ -127,6 +127,11 @@ const component = z.object({
       z.union([z.string().regex(/^[A-Za-z0-9_-]{1,24}$/), z.number(), z.boolean()])
     )
     .refine((p) => Object.keys(p).length <= MAX_COMPONENT_PROPS, "too many props")
+    // The probe's privacy rule, so a file written by hand can't carry what it never keeps.
+    .refine(
+      (p) => Object.entries(p).every(([k, v]) => keepKey(k) && keepValue(v)),
+      "a prop the privacy rule refuses"
+    )
     // The refine is code, so the JSON Schema states the bound itself.
     .meta({ maxProperties: MAX_COMPONENT_PROPS }),
   /** The minified code name a `data-slot` name replaced, only then. */

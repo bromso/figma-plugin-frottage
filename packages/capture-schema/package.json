@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./json-schema": "./src/json-schema.ts",
     "./hash": "./src/hash.ts",
-    "./css-values": "./src/css-values.ts"
+    "./css-values": "./src/css-values.ts",
+    "./component-rules": "./src/component-rules.ts"
   },
   "scripts": {
     "lint": "biome check .",
