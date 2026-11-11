@@ -86,6 +86,7 @@ describe("probeComponents", () => {
       "__next_root_layout_boundary__",
       "Primitive.div",
       "Primitive",
+      "PrimitiveSlot",
       "AccordionImplSingle",
       "motion.div",
       "DefineReusableTemplate",

@@ -1,5 +1,5 @@
 // Which code names count. Pass-through wrappers (Radix's `Primitive.*`, slots, providers,
-// presences, portals, collections and `*Impl` parts, Next's `__next_*` boundaries, Motion's
+// presences, portals, collections, Reka's `PrimitiveSlot` and `*Impl` parts, Next's `__next_*` boundaries, Motion's
 // `motion.*`, VueUse's reusable templates) are never components: the walk goes on to the
 // component they wrap.
 
@@ -11,7 +11,7 @@ export function isMinified(name: string): boolean {
 
 const PASS_EXACT = new Set(["Primitive", "Slot", "SlotClone", "Slottable", "Presence", "Portal"]);
 const PASS_PREFIX = ["Primitive.", "__next_", "motion."];
-const PASS_SUFFIX = [".Slot", ".SlotClone", ".Slottable", "Provider", "Context", "Consumer"];
+const PASS_SUFFIX = ["Slot", ".SlotClone", ".Slottable", "Provider", "Context", "Consumer"];
 
 const PASS_CONTAINS = ["Collection", "Impl", "ReusableTemplate"];
 
