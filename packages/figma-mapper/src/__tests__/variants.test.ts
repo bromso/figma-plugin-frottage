@@ -497,6 +497,63 @@ describe("extractVariantSets", () => {
     expect(extractVariantSets(ops, named).notJoined.size).toBe(0);
   });
 
+  test("a card its grid row stretches is its hugging variant, resized by its parent", () => {
+    const card: FoundComponent = { source: "react", name: "Card", props: {} };
+    const hugging = (id: string): FrameOp => ({
+      ...frame(id, "root", 1),
+      childLayout: { positioning: "AUTO", sizingH: "FILL", sizingV: "HUG" },
+    });
+    const stretched = (id: string, h: number): FrameOp => ({
+      ...frame(id, "root", 1),
+      h,
+      layout: { ...(frame(id, "root", 1).layout as object), sizingV: "FIXED" } as FrameOp["layout"],
+      childLayout: { positioning: "AUTO", sizingH: "FILL", sizingV: "FILL" },
+    });
+    const ops = [
+      frame("root", null, 3),
+      hugging("a"),
+      quote("a-t", "a", 300, "One"),
+      stretched("b", 180),
+      quote("b-t", "b", 300, "Two"),
+      stretched("c", 240),
+      quote("c-t", "c", 300, "Three"),
+    ];
+    const named = new Map([
+      ["a", card],
+      ["b", card],
+      ["c", card],
+    ]);
+    const found = extractVariantSets(ops, named);
+    expect(found.notJoined.size).toBe(0);
+    const instances = found.ops.filter((o): o is InstanceOp => o.op === "instance");
+    expect(instances.map((o) => o.id)).toEqual(["a", "b", "c"]);
+    // The parent's FILL sizes it; the main hugs, so no resize is needed.
+    expect(instances.map((o) => o.childLayout?.sizingV)).toEqual(["HUG", "FILL", "FILL"]);
+  });
+
+  test("a root fixed at its own size is still another look from a hugging one", () => {
+    const card: FoundComponent = { source: "react", name: "Card", props: {} };
+    const fixed = (id: string): FrameOp => ({
+      ...frame(id, "root", 1),
+      layout: { ...(frame(id, "root", 1).layout as object), sizingV: "FIXED" } as FrameOp["layout"],
+    });
+    const ops = [
+      frame("root", null, 3),
+      frame("a", "root", 1),
+      quote("a-t", "a", 300, "One"),
+      frame("b", "root", 1),
+      quote("b-t", "b", 300, "Two"),
+      fixed("c"),
+      quote("c-t", "c", 300, "Three"),
+    ];
+    const named = new Map([
+      ["a", card],
+      ["b", card],
+      ["c", card],
+    ]);
+    expect(extractVariantSets(ops, named).notJoined.get("Card")).toBe(1);
+  });
+
   test("markup with only a data-slot joins only at its variant's own size", () => {
     const fixed = (id: string, w: number): FrameOp => ({
       ...frame(id, "root", 0),

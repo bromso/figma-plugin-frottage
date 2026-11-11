@@ -176,7 +176,29 @@ function rootLook(node: Tree, looks: Looks, bare: boolean, sized = false): strin
   });
   // The children say how many there are, the icon or not.
   const skip = [...(sized ? hugged(node.op) : rootSize(node)), "childCount"];
-  return `${ownLook(looks.norm(node.op), skip, TOKENS)}|${below.join(",")}`;
+  const op = sized ? node.op : resizable(node.op);
+  return `${ownLook(looks.norm(op), skip, TOKENS)}|${below.join(",")}`;
+}
+
+/**
+ * A root's size is an instance's to take: an axis it hugs, or one its parent fills, compares as the
+ * same sizing, so a card its grid row stretches is its hugging variant. Its children follow by
+ * their own FILL and HUG sizing. An axis fixed at the root's own size still compares.
+ */
+function resizable(op: PlanOp): PlanOp {
+  if (op.op !== "frame" || (op.layout.mode !== "HORIZONTAL" && op.layout.mode !== "VERTICAL"))
+    return op;
+  const { layout, childLayout } = op;
+  const follows = (sizing: string, parent: string | undefined) =>
+    sizing === "HUG" || parent === "FILL" ? "FOLLOWS" : sizing;
+  return {
+    ...op,
+    layout: {
+      ...layout,
+      sizingH: follows(layout.sizingH, childLayout?.sizingH),
+      sizingV: follows(layout.sizingV, childLayout?.sizingV),
+    },
+  } as PlanOp;
 }
 
 /** The first text below the root, down its own layers only, with its path. */
