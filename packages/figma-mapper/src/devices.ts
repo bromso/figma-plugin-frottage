@@ -17,7 +17,7 @@ import type {
   PlanVarValue,
   SpacingKeys,
 } from "./plan";
-import { type ComponentInput, componentLines, shareVariantSets } from "./variants";
+import { type ComponentInput, componentLines, shareVariantSets, type VariantSet } from "./variants";
 import { joinStyles, type StyleJoins, textsOf } from "./versions";
 
 /**
@@ -65,6 +65,9 @@ export type DeviceMerge = {
    * that has it, with its keys pointing into `layers`; no plan holds them.
    */
   components: PlanOp[];
+  /** The component sets the frames share, and the named components made without properties. */
+  sets: VariantSet[];
+  plain: string[];
   report: string[];
 };
 
@@ -72,7 +75,7 @@ export type DeviceMerge = {
  * A merge of one language's entries, before components; `adopt` moves another plan's keys as
  * entry `like`'s. `inputs` are the entries' component inputs with keys into `layers`.
  */
-type SetMerge = Omit<DeviceMerge, "components"> & {
+type SetMerge = Omit<DeviceMerge, "components" | "sets" | "plain"> & {
   adopt: (plan: LayerPlan, like: number) => LayerPlan;
   inputs: (ComponentInput | undefined)[];
   adoptInput: (entry: DeviceEntry, like: number) => ComponentInput | undefined;
@@ -883,6 +886,8 @@ type Shared = {
   /** Per plan index, the definitions made from it, whose texts bind with its frame's. */
   owned: Map<number, PlanOp[]>;
   lines: string[];
+  sets: VariantSet[];
+  plain: string[];
 };
 
 /**
@@ -898,7 +903,7 @@ function shareComponents(
   widths: number[],
   framed: boolean[]
 ): Shared {
-  const none: Shared = { plans, components: [], owned: new Map(), lines: [] };
+  const none: Shared = { plans, components: [], owned: new Map(), lines: [], sets: [], plain: [] };
   const at = inputs.flatMap((input, i) => (input && input.named.size > 0 && framed[i] ? [i] : []));
   if (at.length === 0) return none;
   const rank = (i: number) => (decides[i] ? 0 : 1);
@@ -955,7 +960,14 @@ function shareComponents(
       },
     };
   });
-  return { plans: next, components, owned, lines: componentLines(shared) };
+  return {
+    plans: next,
+    components,
+    owned,
+    lines: componentLines(shared),
+    sets: shared.sets,
+    plain: shared.plain,
+  };
 }
 
 type TextOp = Extract<PlanOp, { op: "text" }>;
@@ -1038,7 +1050,14 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     if (tagged.length > 0) {
       report.push("No capture in the page's own language, so languages were left out.");
     }
-    return { ...merge, plans: shared.plans, components: shared.components, report };
+    return {
+      ...merge,
+      plans: shared.plans,
+      components: shared.components,
+      sets: shared.sets,
+      plain: shared.plain,
+      report,
+    };
   }
   const codeOf = (e: DeviceEntry) => e.capture.language?.code ?? current.code;
   // The current language's entries make the frames and every value but the texts'.
@@ -1080,7 +1099,7 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     widths,
     framed
   );
-  const { plans, components } = shared;
+  const { plans, components, sets, plain } = shared;
 
   // ---------- Pair each device's texts with each other language's, and bind them.
 
@@ -1257,5 +1276,5 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     );
   }
 
-  return { layers, plans, frames, components, report };
+  return { layers, plans, frames, components, sets, plain, report };
 }

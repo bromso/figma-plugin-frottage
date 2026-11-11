@@ -527,3 +527,24 @@ export function languageSetFile(phoneTexts = 0, phone = true): File {
   );
   return new File([bytes as BlobPart], "languages.frottage");
 }
+
+/** Three buttons the page's code names `Button`, which differ by `variant` and by their look. */
+export function addVariantButtons(capture: Capture): void {
+  const { root } = capture;
+  if (root.kind !== "element") return;
+  const looks = [
+    ["outline", { r: 1, g: 1, b: 1, a: 1 }],
+    ["default", { r: 0, g: 0, b: 0, a: 1 }],
+    ["ghost", { r: 1, g: 0, b: 0, a: 1 }],
+  ] as const;
+  looks.forEach(([variant, color], n) => {
+    const button = element(`variant${n}`, [text(`variantlabel${n}`)]) as Extract<
+      CaptureNode,
+      { kind: "element" }
+    >;
+    button.semantic = { tag: "button" };
+    button.style.backgroundColor = color;
+    button.component = { source: "react", name: "Button", props: { variant } };
+    root.children.push(button);
+  });
+}

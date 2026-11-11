@@ -316,7 +316,11 @@ function Review({
   );
   const summary = useMemo(() => {
     if (!contents || !picked) return null;
-    const first = { collections: contents.collections, overLimit: contents.overLimit };
+    const first = {
+      collections: contents.collections,
+      components: contents.components,
+      overLimit: contents.overLimit,
+    };
     const unchanged =
       picked.devices.every((on, i) => on === contents.devices[i]?.on) &&
       picked.extras.every((on, i) => on === contents.extras[i]?.on) &&

@@ -8,10 +8,11 @@ import {
   DEFAULT_IMPORT_OPTIONS,
   type DeviceEntry,
   dropSources,
+  extractVariantSets,
   type FontRef,
   type ImportOptions,
   type ImportReport,
-  mapCapture,
+  type mapCapture,
   mapCaptureParts,
   mergeDevices,
   mergeVersions,
@@ -104,7 +105,7 @@ export type FileFailure = {
 export type Placement = "new-page" | "current-page";
 
 /** What a device set's collections and mode warnings come to, for the ticks given. */
-export type ContentsSummary = { collections: string; overLimit: string[] };
+export type ContentsSummary = { collections: string; components: string; overLimit: string[] };
 
 /** The themes a file holds, each ticked or not; Dark is absent from a file with no dark theme. */
 export type ReviewThemes = { light?: { on: boolean }; dark?: { on: boolean } };
@@ -128,6 +129,8 @@ export type ReviewContents = {
   languages: ReviewLanguage[];
   /** The collections the ticked captures make, in one line. */
   collections: string;
+  /** The components the page's code names, in one line: sets with their variants, then the rest. */
+  components: string;
   placement: Placement;
   /** One warning per collection that needs more modes than the remembered limit. */
   overLimit: string[];
@@ -978,7 +981,19 @@ export function summarizeLayers(layers: PlanLayers, limit: number | null): Conte
     }
   }
   const parts = [...switching, ...(named.length > 0 ? [named.join(", ")] : [])];
-  return { collections: parts.join(" · "), overLimit };
+  return { collections: parts.join(" · "), components: "", overLimit };
+}
+
+/** `Components: Button (4 variants), Card`: sets with their variant count, then other components. */
+export function summarizeComponents(
+  sets: { name: string; variants: number }[],
+  plain: string[]
+): string {
+  const parts = [
+    ...sets.map((s) => `${s.name} (${s.variants} variant${s.variants === 1 ? "" : "s"})`),
+    ...plain,
+  ];
+  return parts.length > 0 ? `Components: ${parts.join(", ")}` : "";
 }
 
 /**
@@ -1134,22 +1149,22 @@ export async function runImports(
     const reviewed =
       firstDevices ??
       (ordered.length === 1 && ordered[0] && holdsDark(ordered[0].capture) ? sets[0] : undefined);
-    const previewPlans = new Map<LoadedFile, Plan>();
+    const previewParts = new Map<LoadedFile, ReturnType<typeof mapCaptureParts>>();
     for (const v of ordered) {
       const layers = ordered.length === 1 || layered.has(v);
       const made = mapCaptureParts(v.capture, available, layers ? alone(options) : options);
       const { plan } = made;
       if (ordered.length === 1) firstPlan = made;
-      if (session && reviewed?.versions.includes(v)) previewPlans.set(v, plan);
+      if (session && reviewed?.versions.includes(v)) previewParts.set(v, made);
       mergeMissing(missing, missingFonts(plan.report, available));
     }
     const contents =
       session && reviewed
         ? await reviewContents(
             reviewed,
-            previewPlans,
+            previewParts,
             await readModeLimit(port),
-            (v, themes) => mapCapture(v.capture, available, { ...alone(options), themes }),
+            (v, themes) => mapCaptureParts(v.capture, available, { ...alone(options), themes }),
             reviewed === firstDevices
           )
         : undefined;
@@ -1218,7 +1233,7 @@ export async function runImports(
       for (const [family, chosen] of changed) await writePref(port, `font:${family}`, chosen);
     }
     // The review is over, and its summary with it: the plans go, to be made again below.
-    previewPlans.clear();
+    previewParts.clear();
 
     // A set's plans are built after the review and before its first begin, so their tokens can be
     // merged; each plan is dropped once its version is created.
@@ -1349,15 +1364,17 @@ function themeTicks(capture: Capture): { shown: ReviewThemes; initial: ThemeChoi
   };
 }
 
+type Parts = ReturnType<typeof mapCaptureParts>;
+
 /**
  * What a file holds as the review shows it, all ticked as the capture chose, with what it makes. A
  * device set lists its captures; a lone page lists only its themes.
  */
 async function reviewContents(
   set: VersionSet,
-  plans: ReadonlyMap<LoadedFile, Plan>,
+  parts: ReadonlyMap<LoadedFile, Parts>,
   limit: number | null,
-  replan: (v: LoadedFile, themes: ThemeChoice) => Plan,
+  replan: (v: LoadedFile, themes: ThemeChoice) => Parts,
   deviceSet: boolean
 ): Promise<ReviewContents> {
   await yieldToPaint();
@@ -1369,11 +1386,13 @@ async function reviewContents(
     : [];
   const extras = deviceSet ? set.versions.filter(isExtra) : [];
   const { shown, initial } = themeTicks((set.versions[0] as LoadedFile).capture);
-  const none = { collections: "", overLimit: [] };
-  const replanned = new Map<string, Plan>();
-  /** A capture's plan under these themes: the one made for the review, or made again. */
-  const planUnder = (v: LoadedFile, themes: ThemeChoice): Plan => {
-    if (themes.light === initial.light && themes.dark === initial.dark) return plans.get(v) as Plan;
+  const none = { collections: "", components: "", overLimit: [] };
+  const replanned = new Map<string, Parts>();
+  /** A capture's plan and components under these themes: made for the review, or made again. */
+  const planUnder = (v: LoadedFile, themes: ThemeChoice): Parts => {
+    if (themes.light === initial.light && themes.dark === initial.dark) {
+      return parts.get(v) as Parts;
+    }
     const key = `${set.versions.indexOf(v)}:${themes.light}:${themes.dark}`;
     let plan = replanned.get(key);
     if (!plan) {
@@ -1389,16 +1408,31 @@ async function reviewContents(
     languages?: string[]
   ): ContentsSummary => {
     if (!deviceSet) {
-      const layers = planUnder(set.versions[0] as LoadedFile, themes).tokens.layers;
-      return layers ? summarizeLayers(layers, limit) : none;
+      const { plan, components } = planUnder(set.versions[0] as LoadedFile, themes);
+      const layers = plan.tokens.layers;
+      const found = components
+        ? extractVariantSets(
+            components.ops,
+            components.named,
+            components.hovers,
+            components.sources
+          )
+        : null;
+      const line = found ? summarizeComponents(found.sets, found.plain) : "";
+      return layers ? { ...summarizeLayers(layers, limit), components: line } : none;
     }
     const kept = keptVersions(set.versions, deviceTicks, extraTicks, languages);
     if (!kept.some((v) => !isExtra(v))) return none;
-    const entries = kept.map(
-      (v): DeviceEntry => ({ capture: v.capture, plan: planUnder(v, themes) })
-    );
-    // Only the layers are summed up, so the components are left as each capture made them.
-    return summarizeLayers(mergeDevices(entries, { components: false }).layers, limit);
+    const entries = kept.map((v): DeviceEntry => {
+      const { plan, components } = planUnder(v, themes);
+      return { capture: v.capture, plan, components };
+    });
+    // One merge gives the layers and the components the frames share.
+    const merge = mergeDevices(entries);
+    return {
+      ...summarizeLayers(merge.layers, limit),
+      components: summarizeComponents(merge.sets, merge.plain),
+    };
   };
   return {
     devices: devices.map((v) => ({
