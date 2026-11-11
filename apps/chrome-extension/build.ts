@@ -1,5 +1,5 @@
-// Extension build: popup, run and offscreen pages, service worker (ESM), capture and breakpoints
-// scripts (IIFE) and manifest.
+// Extension build: popup, run and offscreen pages, service worker (ESM), capture, breakpoints and
+// component probe scripts (IIFE) and manifest.
 //   bun build.ts              one production-or-dev build (NODE_ENV decides)
 //   bun build.ts --watch      rebuild on changes under the source dirs
 //   bun build.ts --analyze    also write dist/meta-*.json
@@ -18,6 +18,7 @@ const watched = [
   path.resolve(root, "../../packages/ui/src"),
   path.resolve(root, "../../packages/capture-dom/src"),
   path.resolve(root, "../../packages/capture-schema/src"),
+  path.resolve(root, "../../packages/component-probe/src"),
 ];
 const manifestFile = path.resolve(root, "chrome.manifest.ts");
 const outdir = path.resolve(root, "dist");
@@ -117,6 +118,7 @@ async function build() {
   await buildWorker();
   await buildPageScript("capture-entry", "capture script");
   await buildPageScript("breakpoints-entry", "breakpoints script");
+  await buildPageScript("component-probe-entry", "component probe");
   await writeManifest();
   const ms = Math.round(performance.now() - started);
   console.log(`[build] ${isProd ? "production" : "development"} build done in ${ms}ms → ${outdir}`);
