@@ -3,7 +3,7 @@
 // name (`type.name || type.__name`) and its props. When several components share one root
 // element, the outermost is kept (Nuxt's `UButton`, not the `ULink` and `ULinkBase` inside it),
 // the opposite of React, where the walk goes up from the element and the nearest is kept.
-import { type CodeComponent, namesElement, usableName } from "./names";
+import { type CodeComponent, isTrigger, namesElement, usableName } from "./names";
 
 type VNode = {
   el?: unknown;
@@ -31,6 +31,12 @@ function appRoot(host: Element): VNode | undefined {
   return app?._container?._vnode;
 }
 
+// The outermost component keeps a shared element, but a trigger there yields to the component it
+// wraps (`TooltipTrigger` around `UButton`).
+function takes(current: CodeComponent | undefined, name: string): boolean {
+  return !current || (isTrigger(current.name) && !isTrigger(name));
+}
+
 // Records one vnode's component, if it names its root element, and gives the vnodes below it.
 function visit(vnode: VNode, found: Map<Element, CodeComponent>): unknown[] {
   const next: unknown[] = [];
@@ -39,7 +45,13 @@ function visit(vnode: VNode, found: Map<Element, CodeComponent>): unknown[] {
     const type = component.type;
     const name = usableName(type?.name) ?? usableName(type?.__name);
     const el = vnode.el;
-    if (name && !BUILT_IN.has(name) && isElement(el) && !found.has(el) && namesElement(name, el)) {
+    if (
+      name &&
+      !BUILT_IN.has(name) &&
+      isElement(el) &&
+      namesElement(name, el) &&
+      takes(found.get(el), name)
+    ) {
       const props = component.props;
       found.set(el, {
         source: "vue",

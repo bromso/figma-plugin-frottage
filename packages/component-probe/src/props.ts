@@ -38,8 +38,7 @@ export function keepKey(key: string): boolean {
     !key.startsWith("aria-") &&
     !key.startsWith("data-") &&
     !key.endsWith("Id") &&
-    !key.endsWith("ID") &&
-    !key.endsWith("id")
+    !key.endsWith("ID")
   );
 }
 

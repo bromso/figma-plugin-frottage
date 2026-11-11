@@ -85,6 +85,10 @@ describe("probeComponents", () => {
       "MenuCollection",
       "__next_root_layout_boundary__",
       "Primitive.div",
+      "Primitive",
+      "AccordionImplSingle",
+      "motion.div",
+      "DefineReusableTemplate",
     ];
     const doc = page(names.map(() => "<div></div>").join(""));
     doc.querySelectorAll("div").forEach((div, i) => {
@@ -111,6 +115,17 @@ describe("probeComponents", () => {
       props: { variant: "ghost", asChild: true, state: "closed" },
       codeName: "o",
     });
+  });
+
+  test("a React trigger yields to another named component on its element, and stands alone", () => {
+    const doc = page("<button>a</button><div>b</div>");
+    const button = { type: named("IconButton"), memoizedProps: { size: "sm" } };
+    const trigger = { type: named("PopoverTrigger"), memoizedProps: {}, return: button };
+    fiber(doc.querySelector("button"), trigger);
+    fiber(doc.querySelector("div"), { type: named("CollapsibleTrigger"), memoizedProps: {} });
+    expect(probeComponents(doc)).toBe(2);
+    expect(found(doc.querySelector("button")).name).toBe("IconButton");
+    expect(found(doc.querySelector("div")).name).toBe("CollapsibleTrigger");
   });
 
   test("a minified name without a data-slot gives way to the next named component up", () => {
@@ -258,6 +273,22 @@ describe("probeComponents", () => {
     expect(found(a)).toEqual({ source: "vue", name: "UButton", props: { size: "md" } });
   });
 
+  test("a Vue trigger yields to the component it wraps on the same element", () => {
+    const doc = page('<div id="__nuxt"><button>x</button><span>y</span></div>');
+    const [button, span] = [doc.querySelector("button"), doc.querySelector("span")];
+    const ub = { el: button, component: { type: { name: "UButton" }, props: { size: "sm" } } };
+    const tip = {
+      el: button,
+      component: { type: { name: "TooltipTrigger" }, props: {}, subTree: ub },
+    };
+    const alone = { el: span, component: { type: { name: "TooltipTrigger" }, props: {} } };
+    const app = { _container: { _vnode: { children: [tip, alone] } } };
+    Object.assign(doc.querySelector("#__nuxt") as object, { __vue_app__: app });
+    expect(probeComponents(doc)).toBe(2);
+    expect(found(button)).toEqual({ source: "vue", name: "UButton", props: { size: "sm" } });
+    expect(found(span).name).toBe("TooltipTrigger");
+  });
+
   test("a data-slot alone names a component only where the code names none or the same one", () => {
     const doc = page(
       '<button>Go</button><a data-slot="button" data-variant="ghost">x</a><span data-slot="label">y</span>'
@@ -348,10 +379,14 @@ describe("keepProps", () => {
     const raw: Record<string, unknown> = {
       contentId: "radix-_R_mddbrlb_",
       triggerID: "a",
-      uid: "b",
+      id: "b",
     };
     for (const key of ["for", "htmlFor", "form", "target", "rel", "type"]) raw[key] = "x";
     expect(keepProps(raw)).toEqual({});
+  });
+
+  test("keeps keys that merely end in a lowercase id", () => {
+    expect(keepProps({ valid: true, grid: "cols-2" })).toEqual({ valid: true, grid: "cols-2" });
   });
 
   test("the markers fill only the keys the code's kept props lack", () => {

@@ -2,7 +2,7 @@
 // `return` from an element's host fiber reaches the components that rendered it; the nearest one
 // that isn't a pass-through wrapper is the element's component, tagged on its first element.
 // Every read of the page's objects can throw (a getter, a Proxy), so each element is read apart.
-import { type CodeComponent, isPassThrough, namesElement, usableName } from "./names";
+import { type CodeComponent, isPassThrough, isTrigger, namesElement, usableName } from "./names";
 
 type Fiber = {
   type?: unknown;
@@ -61,29 +61,33 @@ function firstHost(fiber: Fiber): unknown {
 
 // The element's component, when it is that component's first element. Of several components
 // sharing the element, the nearest named one wins (a Button inside a TooltipTrigger `asChild`
-// stays Button); a minified name the element's `data-slot` can't replace is passed over for the
+// stays Button), except that a trigger yields to any other one; a minified name the element's `data-slot` can't replace is passed over for the
 // next one up.
 function componentOf(el: Element, claimed: Set<Fiber>): CodeComponent | null {
+  // A trigger found first is kept only if no other named component shares the element.
+  let trigger: CodeComponent | null = null;
   let fiber = fiberOf(el)?.return;
   for (let depth = 0; fiber && depth < MAX_DEPTH; depth++, fiber = fiber.return) {
     const name = componentName(fiber.type);
     if (name === null || isPassThrough(name)) continue;
-    if (claimed.has(fiber)) return null;
+    if (claimed.has(fiber)) return trigger;
     // Real fibers know their first element; without a `child` the element is taken to be it,
     // and document order makes it the first one to reach the component.
     const root = fiber.child ? firstHost(fiber) : el;
-    if (root !== el) return null;
+    if (root !== el) return trigger;
     claimed.add(fiber);
     if (fiber.alternate) claimed.add(fiber.alternate);
     if (!namesElement(name, el)) continue;
     const props = fiber.memoizedProps;
-    return {
+    const component: CodeComponent = {
       source: "react",
       name,
       props: props && typeof props === "object" ? (props as Record<string, unknown>) : {},
     };
+    if (!isTrigger(name)) return component;
+    trigger ??= component;
   }
-  return null;
+  return trigger;
 }
 
 export function findReact(doc: Document): Map<Element, CodeComponent> {
