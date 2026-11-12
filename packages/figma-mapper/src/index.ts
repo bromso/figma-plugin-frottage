@@ -13,7 +13,7 @@ export {
 export { matchFont } from "./fonts";
 export { COLLECTION_NAMES, COLLECTION_ORDER, layerCollections, paletteName } from "./layering";
 export { inferChildLayout, inferLayout } from "./layout";
-export { batchOps, type MissingFont, mapCapture, missingFonts } from "./map";
+export { batchOps, type MissingFont, mapCapture, mapCaptureParts, missingFonts } from "./map";
 export { isReadableName, layerName } from "./names";
 export { DEFAULT_IMPORT_OPTIONS, type ImportOptions } from "./options";
 export type {
@@ -25,6 +25,7 @@ export type {
   PlanCollection,
   PlanCollectionKind,
   PlanColor,
+  PlanComponentProperty,
   PlanEffect,
   PlanEffectStyle,
   PlanGradientStyle,
@@ -37,6 +38,7 @@ export type {
   PlanOp,
   PlanOverride,
   PlanPaint,
+  PlanPropertyValues,
   PlanRgb,
   PlanRun,
   PlanSpacing,
@@ -53,4 +55,10 @@ export type {
   StagedLayers,
   StagedVariable,
 } from "./plan";
+export {
+  type ComponentInput,
+  extractVariantSets,
+  type FoundComponent,
+  type VariantSet,
+} from "./variants";
 export { mergeVersions, stripTokens, type TokenVersion } from "./versions";

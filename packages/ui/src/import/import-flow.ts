@@ -3,6 +3,7 @@ import { sha256Hex } from "@repo/capture-schema/hash";
 import {
   batchOps,
   COLLECTION_NAMES,
+  type ComponentInput,
   captureWidth,
   DEFAULT_IMPORT_OPTIONS,
   type DeviceEntry,
@@ -10,7 +11,8 @@ import {
   type FontRef,
   type ImportOptions,
   type ImportReport,
-  mapCapture,
+  type mapCapture,
+  mapCaptureParts,
   mergeDevices,
   mergeVersions,
   missingFonts,
@@ -102,7 +104,7 @@ export type FileFailure = {
 export type Placement = "new-page" | "current-page";
 
 /** What a device set's collections and mode warnings come to, for the ticks given. */
-export type ContentsSummary = { collections: string; overLimit: string[] };
+export type ContentsSummary = { collections: string; components: string; overLimit: string[] };
 
 /** The themes a file holds, each ticked or not; Dark is absent from a file with no dark theme. */
 export type ReviewThemes = { light?: { on: boolean }; dark?: { on: boolean } };
@@ -126,6 +128,8 @@ export type ReviewContents = {
   languages: ReviewLanguage[];
   /** The collections the ticked captures make, in one line. */
   collections: string;
+  /** The components the page's code names, in one line: sets with their variants, then the rest. */
+  components: string;
   placement: Placement;
   /** One warning per collection that needs more modes than the remembered limit. */
   overLimit: string[];
@@ -193,6 +197,8 @@ export type ImportPort = {
     totalOps: number;
     version?: { index: number; label: string };
     device?: DeviceModes;
+    /** A device set's shared definitions, which this frame's ops bring first, by key. */
+    components?: { keys: string[]; device: DeviceModes };
   }): Promise<void>;
   tokens(tokens: PlanTokens, options: ImportOptions): Promise<void>;
   /** A set's tokens. Gives the versions that got no mode, which must lose their tokens. */
@@ -224,6 +230,7 @@ export type ImportPort = {
     variablesCreated?: number;
     variablesReused?: number;
     tokenFailures?: number;
+    componentNotes?: string[];
     layers?: { variablesRenamed: number; modesDropped: string[]; legacyCollections?: boolean };
   }>;
   endSet(): Promise<SetResult>;
@@ -251,6 +258,8 @@ type SetResult = {
   modesDropped: number;
   /** The layered collections' modes, for a set with layers. */
   layers?: { modesDropped: string[]; modes: SettledModes[] };
+  /** A device set's shared definitions: what Figma made of their sets and Hover variants. */
+  components?: { notes: string[]; hoverVariants: number; hoverFailures: number };
 };
 
 /**
@@ -412,6 +421,8 @@ export type PreparedVersion = {
   setIndex?: number;
   /** A device set's frame: its modes. It sends its own tokens, which carry the set's layers. */
   device?: DeviceModes;
+  /** The device set's shared definitions, at the front of this frame's ops. */
+  components?: { keys: string[]; device: DeviceModes };
 };
 
 type VersionContext = {
@@ -430,8 +441,10 @@ function versionResult(
   result: Awaited<ReturnType<ImportPort["end"]>>,
   layers?: PlanTokens["layers"]
 ): VersionResult {
+  // What Figma made of the component sets goes with the plan's own lines on them.
+  const notes = result.componentNotes ?? [];
   return {
-    report,
+    report: notes.length > 0 ? { ...report, warnings: [...report.warnings, ...notes] } : report,
     ...(layers
       ? {
           theme: {
@@ -478,7 +491,7 @@ export async function importVersion(
   ctx: VersionContext
 ): Promise<VersionReport | null> {
   const { port, onState, signal, file } = ctx;
-  const { plan, assets, version, setIndex, device } = prepared;
+  const { plan, assets, version, setIndex, device, components } = prepared;
   const inSet = setIndex !== undefined;
   const before = ctx.progress?.done ?? 0;
   let begun = false;
@@ -501,6 +514,7 @@ export async function importVersion(
       totalOps: plan.ops.length,
       ...(inSet ? { version: { index: setIndex, label: version.label } } : {}),
       ...(device ? { device } : {}),
+      ...(components ? { components } : {}),
     });
     // A Cancel pressed while begin ran waits for it to return, then undoes what it made.
     if (signal?.aborted) return await stop();
@@ -552,6 +566,8 @@ export function mergeMissing(
 type SetContext = Pick<VersionContext, "port" | "onState" | "signal" | "options"> & {
   /** One plan per version. */
   plans: Plan[];
+  /** Per version, what its plan's named components were made from, for a device merge. */
+  components: (ComponentInput | null)[];
   /** The file number of the set's first version, from 1, and the files in the drop. */
   firstFile: number;
   totalFiles: number;
@@ -565,7 +581,15 @@ type SetContext = Pick<VersionContext, "port" | "onState" | "signal" | "options"
 type SetOutcome = { versions: VersionReport[]; report: SetReport | null; cancelled: boolean };
 
 /** One frame of a set: its version, its plan, and the label its frame and mode go by. */
-type SetMember = { version: LoadedFile; plan: Plan; label: string; device?: DeviceModes };
+type SetMember = {
+  version: LoadedFile;
+  plan: Plan;
+  label: string;
+  device?: DeviceModes;
+};
+
+/** A device set's definitions every frame shares, which the first frame that imports brings. */
+type SharedComponents = { ops: PlanOp[]; keys: string[]; device: DeviceModes };
 
 /** How one kind of set opens and reports. Made inside the set's try, so a merge that throws fails it. */
 type SetSpec = {
@@ -578,6 +602,7 @@ type SetSpec = {
   modesOwnFrames: boolean;
   /** The frames share one theme, which the set reports once rather than each frame. */
   sharedTheme: boolean;
+  shared?: SharedComponents;
 };
 
 /** The theme its frames share, reported once: their raw values summed, their notes joined. */
@@ -651,6 +676,73 @@ export function plainFramesLine(count: number): string {
     : `${count} frames couldn't get their device or breakpoint modes and keep their captured values, not linked to variables.`;
 }
 
+/** A frame's plan with the shared definitions in front, and the fonts and images they use. */
+function withShared(plan: Plan, shared: PlanOp[]): Plan {
+  const fonts = new Map(plan.fonts.map((f) => [`${f.family}\u0000${f.style}`, f]));
+  const hashes = new Set(plan.assetHashes);
+  for (const op of shared) {
+    if (op.op === "text")
+      for (const r of op.runs)
+        fonts.set(`${r.fontName.family}\u0000${r.fontName.style}`, r.fontName);
+    if (op.op === "image") hashes.add(op.hash);
+    if (op.op === "frame") for (const p of op.fills) if (p.type === "IMAGE") hashes.add(p.hash);
+    if (op.op !== "instance") continue;
+    for (const o of op.overrides) {
+      if (o.kind === "image") hashes.add(o.hash);
+      if (o.kind === "text")
+        for (const r of o.runs)
+          fonts.set(`${r.fontName.family}\u0000${r.fontName.style}`, r.fontName);
+    }
+  }
+  return {
+    ...plan,
+    ops: [...shared, ...plan.ops],
+    fonts: [...fonts.values()],
+    assetHashes: [...hashes],
+  };
+}
+
+/**
+ * A version's images, and those its frame's shared definitions use from the set's other versions:
+ * a definition comes from the widest version that has it.
+ */
+async function assetsFor(
+  version: LoadedFile,
+  plan: Plan,
+  versions: LoadedFile[],
+  assetsOf: SetContext["assetsOf"]
+): Promise<Map<string, Uint8Array>> {
+  const own = await assetsOf(version);
+  const assets = new Map(own);
+  for (const other of versions) {
+    const missing = plan.assetHashes.filter((h) => !assets.has(h));
+    if (missing.length === 0) break;
+    if (other === version) continue;
+    const more = await assetsOf(other);
+    for (const hash of missing) {
+      const data = more.get(hash);
+      if (data) assets.set(hash, data);
+    }
+  }
+  return assets;
+}
+
+/** What a device set's shared definitions came to in Figma, for the set's notes. */
+function sharedLines(made: SetResult["components"]): string[] {
+  if (!made) return [];
+  const lines = [...made.notes];
+  const { hoverVariants: n, hoverFailures: failed } = made;
+  if (n > 0) lines.push(`Hover variants: ${n}.`);
+  if (failed > 0) {
+    lines.push(
+      failed === 1
+        ? "1 component could not get a Hover variant and stays as imported."
+        : `${failed} components could not get a Hover variant and stay as imported.`
+    );
+  }
+  return lines;
+}
+
 /** A page captured on devices, and extra captures for its breakpoints: a frame per device. */
 function devicesSpec(
   set: VersionSet,
@@ -658,13 +750,40 @@ function devicesSpec(
   placement: Placement,
   leftOut: string[]
 ): SetSpec {
-  const { port, signal, options, plans } = ctx;
+  const { port, signal, options, plans, components } = ctx;
   const merge = mergeDevices(
-    set.versions.map((v, i): DeviceEntry => ({ capture: v.capture, plan: plans[i] as Plan })),
+    set.versions.map(
+      (v, i): DeviceEntry => ({
+        capture: v.capture,
+        plan: plans[i] as Plan,
+        components: components[i] ?? null,
+      })
+    ),
     { leftOut }
   );
   plans.length = 0;
+  components.length = 0;
   const { layers } = merge;
+  const rootWidth = (plan: Plan) =>
+    plan.ops.find((op) => op.op === "frame" && op.parent === null && !op.component)?.w ?? 0;
+  // The shared mains open on the widest frame's modes, as the mapper took them from it.
+  const widest = merge.frames.reduce<(typeof merge.frames)[number] | undefined>(
+    (best, frame) =>
+      !best ||
+      rootWidth(merge.plans[frame.index] as Plan) > rootWidth(merge.plans[best.index] as Plan)
+        ? frame
+        : best,
+    undefined
+  );
+  const ops = merge.components;
+  const shared: SharedComponents | undefined =
+    ops.length > 0 && widest
+      ? {
+          ops,
+          keys: ops.flatMap((op) => (op.op === "frame" && op.component ? [op.component.key] : [])),
+          device: { mode: widest.device, breakpoint: widest.breakpoint },
+        }
+      : undefined;
   return {
     members: merge.frames.map((frame) => ({
       version: set.versions[frame.index] as LoadedFile,
@@ -672,6 +791,7 @@ function devicesSpec(
       label: frame.device,
       device: { mode: frame.device, breakpoint: frame.breakpoint },
     })),
+    ...(shared ? { shared } : {}),
     async open() {
       const first = set.versions[0] as LoadedFile;
       await port.beginDeviceSet({
@@ -696,6 +816,7 @@ function devicesSpec(
       const dropped = [...new Set(result.layers?.modesDropped ?? [])];
       if (dropped.length > 0) lines.push(`Not created: ${dropped.join(", ")}.`);
       lines.push(...merge.report);
+      lines.push(...sharedLines(result.components));
       const plain = result.plainVersions?.length ?? 0;
       if (plain > 0) lines.push(plainFramesLine(plain));
       return lines;
@@ -732,7 +853,10 @@ async function importSet(
   try {
     const spec = makeSpec();
     members = spec.members;
-    const total = members.reduce((sum, m) => sum + m.plan.ops.length, 0);
+    /** The shared definitions, until a frame that brought them has imported. */
+    let carry = spec.shared;
+    let total = members.reduce((sum, m) => sum + m.plan.ops.length, 0) + (carry?.ops.length ?? 0);
+    let carried = false;
 
     // Set first: an open that fails halfway may still have created state to cancel.
     open = true;
@@ -747,16 +871,24 @@ async function importSet(
       const index = ctx.firstFile + i;
       const file: FileInfo = { index, total: ctx.totalFiles, name: version.name, unit };
       onState({ step: "working", done, total, file });
-      const plan = dropped.has(i) ? stripTokens(member.plan) : member.plan;
+      // A frame left without its modes loses its own tokens; the shared mains keep theirs.
+      const own = dropped.has(i) ? stripTokens(member.plan) : member.plan;
+      const plan = carry ? withShared(own, carry.ops) : own;
+      // Brought again after a frame that failed: counted again.
+      if (carry && carried) total += carry.ops.length;
+      if (carry) carried = true;
       try {
         const report = await importVersion(
           {
             plan,
-            assets: await ctx.assetsOf(version),
+            assets: carry
+              ? await assetsFor(version, plan, set.versions, ctx.assetsOf)
+              : await ctx.assetsOf(version),
             rootName: importName(version.capture.source),
             version: { name: version.name, label: member.label },
             setIndex: i,
             ...(member.device ? { device: member.device } : {}),
+            ...(carry ? { components: { keys: carry.keys, device: carry.device } } : {}),
           },
           { port, onState, signal, options, file, progress: { done, total } }
         );
@@ -765,6 +897,7 @@ async function importSet(
           return cancelled;
         }
         kept.push(report);
+        carry = undefined;
         if (dropped.has(i)) plainFrames += 1;
       } catch (error) {
         failed.add(version);
@@ -847,7 +980,19 @@ export function summarizeLayers(layers: PlanLayers, limit: number | null): Conte
     }
   }
   const parts = [...switching, ...(named.length > 0 ? [named.join(", ")] : [])];
-  return { collections: parts.join(" · "), overLimit };
+  return { collections: parts.join(" · "), components: "", overLimit };
+}
+
+/** `Components: Button (4 variants), Card`: sets with their variant count, then other components. */
+export function summarizeComponents(
+  sets: { name: string; variants: number }[],
+  plain: string[]
+): string {
+  const parts = [
+    ...sets.map((s) => `${s.name} (${s.variants} variant${s.variants === 1 ? "" : "s"})`),
+    ...plain,
+  ];
+  return parts.length > 0 ? `Components: ${parts.join(", ")}` : "";
 }
 
 /**
@@ -992,7 +1137,7 @@ export async function runImports(
     );
 
     const missing = new Map<string, string>();
-    let firstPlan: Plan | undefined;
+    let firstPlan: ReturnType<typeof mapCaptureParts> | undefined;
     // A page imported on its own, or on devices, gets the layered collections; a set of themes or
     // languages keeps one.
     const alone = (o: ImportOptions) => ({ ...o, layers: true });
@@ -1003,21 +1148,22 @@ export async function runImports(
     const reviewed =
       firstDevices ??
       (ordered.length === 1 && ordered[0] && holdsDark(ordered[0].capture) ? sets[0] : undefined);
-    const previewPlans = new Map<LoadedFile, Plan>();
+    const previewParts = new Map<LoadedFile, ReturnType<typeof mapCaptureParts>>();
     for (const v of ordered) {
       const layers = ordered.length === 1 || layered.has(v);
-      const plan = mapCapture(v.capture, available, layers ? alone(options) : options);
-      if (ordered.length === 1) firstPlan = plan;
-      if (session && reviewed?.versions.includes(v)) previewPlans.set(v, plan);
+      const made = mapCaptureParts(v.capture, available, layers ? alone(options) : options);
+      const { plan } = made;
+      if (ordered.length === 1) firstPlan = made;
+      if (session && reviewed?.versions.includes(v)) previewParts.set(v, made);
       mergeMissing(missing, missingFonts(plan.report, available));
     }
     const contents =
       session && reviewed
         ? await reviewContents(
             reviewed,
-            previewPlans,
+            previewParts,
             await readModeLimit(port),
-            (v, themes) => mapCapture(v.capture, available, { ...alone(options), themes }),
+            (v, themes) => mapCaptureParts(v.capture, available, { ...alone(options), themes }),
             reviewed === firstDevices
           )
         : undefined;
@@ -1086,7 +1232,7 @@ export async function runImports(
       for (const [family, chosen] of changed) await writePref(port, `font:${family}`, chosen);
     }
     // The review is over, and its summary with it: the plans go, to be made again below.
-    previewPlans.clear();
+    previewParts.clear();
 
     // A set's plans are built after the review and before its first begin, so their tokens can be
     // merged; each plan is dropped once its version is created.
@@ -1125,9 +1271,11 @@ export async function runImports(
       const base =
         set.versions.length > 1 && !devices ? { ...options, tokenFloor: 1 } : alone(options);
       const planOptions = chosen ? { ...base, themes: chosen } : base;
-      const plans = set.versions.map(
-        (v) => firstPlan ?? mapCapture(v.capture, available, planOptions, overrides)
+      const made = set.versions.map(
+        (v) => firstPlan ?? mapCaptureParts(v.capture, available, planOptions, overrides)
       );
+      const plans = made.map((m) => m.plan);
+      const components = made.map((m) => m.components);
       // Only a device merge binds texts by their captured ids.
       if (!devices) dropSources(plans);
 
@@ -1139,6 +1287,7 @@ export async function runImports(
           signal,
           options,
           plans,
+          components,
           firstFile,
           totalFiles: counted,
           assetsOf,
@@ -1214,15 +1363,17 @@ function themeTicks(capture: Capture): { shown: ReviewThemes; initial: ThemeChoi
   };
 }
 
+type Parts = ReturnType<typeof mapCaptureParts>;
+
 /**
  * What a file holds as the review shows it, all ticked as the capture chose, with what it makes. A
  * device set lists its captures; a lone page lists only its themes.
  */
 async function reviewContents(
   set: VersionSet,
-  plans: ReadonlyMap<LoadedFile, Plan>,
+  parts: ReadonlyMap<LoadedFile, Parts>,
   limit: number | null,
-  replan: (v: LoadedFile, themes: ThemeChoice) => Plan,
+  replan: (v: LoadedFile, themes: ThemeChoice) => Parts,
   deviceSet: boolean
 ): Promise<ReviewContents> {
   await yieldToPaint();
@@ -1234,11 +1385,13 @@ async function reviewContents(
     : [];
   const extras = deviceSet ? set.versions.filter(isExtra) : [];
   const { shown, initial } = themeTicks((set.versions[0] as LoadedFile).capture);
-  const none = { collections: "", overLimit: [] };
-  const replanned = new Map<string, Plan>();
-  /** A capture's plan under these themes: the one made for the review, or made again. */
-  const planUnder = (v: LoadedFile, themes: ThemeChoice): Plan => {
-    if (themes.light === initial.light && themes.dark === initial.dark) return plans.get(v) as Plan;
+  const none = { collections: "", components: "", overLimit: [] };
+  const replanned = new Map<string, Parts>();
+  /** A capture's plan and components under these themes: made for the review, or made again. */
+  const planUnder = (v: LoadedFile, themes: ThemeChoice): Parts => {
+    if (themes.light === initial.light && themes.dark === initial.dark) {
+      return parts.get(v) as Parts;
+    }
     const key = `${set.versions.indexOf(v)}:${themes.light}:${themes.dark}`;
     let plan = replanned.get(key);
     if (!plan) {
@@ -1254,15 +1407,24 @@ async function reviewContents(
     languages?: string[]
   ): ContentsSummary => {
     if (!deviceSet) {
-      const layers = planUnder(set.versions[0] as LoadedFile, themes).tokens.layers;
-      return layers ? summarizeLayers(layers, limit) : none;
+      const { plan, components } = planUnder(set.versions[0] as LoadedFile, themes);
+      const layers = plan.tokens.layers;
+      // The sets the plan was made with; with variables off there are no collections to list.
+      const line = components ? summarizeComponents(components.sets, components.plain) : "";
+      return { ...(layers ? summarizeLayers(layers, limit) : none), components: line };
     }
     const kept = keptVersions(set.versions, deviceTicks, extraTicks, languages);
     if (!kept.some((v) => !isExtra(v))) return none;
-    const entries = kept.map(
-      (v): DeviceEntry => ({ capture: v.capture, plan: planUnder(v, themes) })
-    );
-    return summarizeLayers(mergeDevices(entries).layers, limit);
+    const entries = kept.map((v): DeviceEntry => {
+      const { plan, components } = planUnder(v, themes);
+      return { capture: v.capture, plan, components };
+    });
+    // One merge gives the layers and the components the frames share.
+    const merge = mergeDevices(entries);
+    return {
+      ...summarizeLayers(merge.layers, limit),
+      components: summarizeComponents(merge.sets, merge.plain),
+    };
   };
   return {
     devices: devices.map((v) => ({

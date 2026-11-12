@@ -1,9 +1,31 @@
 import { type HoverPatch, inheritedRanges } from "./hover";
-import type { PlanHoverPatch, PlanLayout, PlanOp, PlanOverride, PlanRun } from "./plan";
+import type {
+  PlanComponentProperty,
+  PlanHoverPatch,
+  PlanLayout,
+  PlanOp,
+  PlanOverride,
+  PlanPropertyValues,
+  PlanRun,
+} from "./plan";
 
-type Component = { key: string; name: string; tag: string; occurrences: Tree[] };
+export type Component = {
+  key: string;
+  name: string;
+  tag: string;
+  occurrences: Tree[];
+  /** A variant of a component set, with its value of each variant property. */
+  set?: { key: string; name: string; values: [string, string][] };
+  properties?: PlanComponentProperty[];
+  /** The main's text the `Label` property shows, which an instance then needs no override for. */
+  label?: number[];
+  /** The main's icon child, which an occurrence without it (`iconless`) leaves out. */
+  iconAt?: number;
+  /** Made from a component the page's code or markers name: a set's variant or a plain one. */
+  named?: boolean;
+};
 
-type Tree = {
+export type Tree = {
   op: PlanOp;
   parent: Tree | null;
   children: Tree[];
@@ -15,6 +37,10 @@ type Tree = {
   signature: number;
   /** Set on every occurrence, so that a node with this set is an instance. */
   component?: Component;
+  /** An occurrence of a set's variant: its property values. */
+  properties?: PlanPropertyValues;
+  /** An occurrence without its main's icon. */
+  iconless?: boolean;
 };
 
 /**
@@ -30,23 +56,24 @@ const CONTENT: Partial<Record<PlanOp["op"], string[]>> = {
  * Fields excluded wherever they sit in an op. Token keys follow the value beside them; a run's
  * range and link are content, which a text override carries.
  */
-const INNER = new Set(["colorKey", "styleKey", "start", "end", "href"]);
+export const INNER = new Set(["colorKey", "styleKey", "start", "end", "href"]);
 
-const withoutInner = (key: string, value: unknown) => (INNER.has(key) ? undefined : value);
+const without = (inner: Set<string>) => (key: string, value: unknown) =>
+  inner.has(key) ? undefined : value;
 
 /** Runs that differ only by something excluded read as one run. */
-function runLooks(runs: PlanRun[]): string[] {
-  const looks = runs.map((r) => JSON.stringify(r, withoutInner));
+function runLooks(runs: PlanRun[], inner: Set<string>): string[] {
+  const looks = runs.map((r) => JSON.stringify(r, without(inner)));
   return looks.filter((look, i) => look !== looks[i - 1]);
 }
 
-/** Everything in the op that compares, leaving out `skip` as well. */
-function ownLook(op: PlanOp, skip: string[] = []): string {
+/** Everything in the op that compares, leaving out `skip` as well, and `inner` at any depth. */
+export function ownLook(op: PlanOp, skip: string[] = [], inner = INNER): string {
   const excluded = new Set([...PLACEMENT, ...(CONTENT[op.op] ?? []), ...skip]);
   if (op.op === "text" && !op.wrap) excluded.add("w");
   const kept = Object.entries(op).filter(([key]) => !excluded.has(key));
-  const look = op.op === "text" ? [...kept, ["runs", runLooks(op.runs)]] : kept;
-  return JSON.stringify(look, withoutInner);
+  const look = op.op === "text" ? [...kept, ["runs", runLooks(op.runs, inner)]] : kept;
+  return JSON.stringify(look, without(inner));
 }
 
 type AutoLayout = Extract<PlanLayout, { sizingH: unknown }>;
@@ -55,7 +82,7 @@ const isAuto = (layout: PlanLayout): layout is AutoLayout =>
   layout.mode === "HORIZONTAL" || layout.mode === "VERTICAL";
 
 /** Sizes that follow the content, at any depth: the instance hugs again, so they never compare. */
-function hugged(op: PlanOp): string[] {
+export function hugged(op: PlanOp): string[] {
   if (op.op !== "frame" || !isAuto(op.layout)) return [];
   const { sizingH, sizingV } = op.layout;
   return [...(sizingH === "HUG" ? ["w"] : []), ...(sizingV === "HUG" ? ["h"] : [])];
@@ -65,7 +92,7 @@ function hugged(op: PlanOp): string[] {
  * What a definition's root leaves out. Auto layout moves the children, so `resize` takes care of any
  * size; without it, a resize would not move them.
  */
-function rootSize({ op, children }: Tree): string[] {
+export function rootSize({ op, children }: Tree): string[] {
   if (op.op !== "frame") return [];
   return isAuto(op.layout) || children.length === 0 ? ["w", "h"] : [];
 }
@@ -81,7 +108,7 @@ function anchorX(op: PlanOp): number {
 }
 
 /** How a child sits in its parent. `x` and `y` count only where the parent's layout does not set them. */
-function placement({ op }: Tree, parent: Tree): string {
+export function placement({ op }: Tree, parent: Tree): string {
   const free =
     (parent.op.op === "frame" && parent.op.layout.mode === "NONE") ||
     op.childLayout?.positioning === "ABSOLUTE";
@@ -93,7 +120,7 @@ function placement({ op }: Tree, parent: Tree): string {
  * What a repeated child adds: its tag, so it can be swapped, and any size an instance won't take on
  * its own. No override holds a size, so a child of another fixed size is another component.
  */
-function bareTag(tag: string, { op }: Tree): string {
+export function bareTag(tag: string, { op }: Tree): string {
   const follows = hugged(op);
   const free = (axis: "w" | "h", sizing: "sizingH" | "sizingV") =>
     follows.includes(axis) || op.childLayout?.[sizing] === "FILL";
@@ -102,7 +129,16 @@ function bareTag(tag: string, { op }: Tree): string {
   return `tag:${tag}:${w}x${h}`;
 }
 
-function buildForest(ops: PlanOp[]): Tree[] {
+/**
+ * What an instance op adds to a signature: the set it is a variant of, or its component, and a size
+ * it is set to. Its variant, label and other values are overrides of whatever holds it.
+ */
+function instanceLook(op: Extract<PlanOp, { op: "instance" }>): string {
+  const of = op.key.startsWith("set:") ? op.key.slice(0, op.key.indexOf("|")) : op.key;
+  return `instance:${of}:${op.resize ? `${op.w}x${op.h}` : ""}`;
+}
+
+export function buildForest(ops: PlanOp[]): Tree[] {
   const byId = new Map<string, Tree>();
   const nodes: Tree[] = [];
   for (const op of ops) {
@@ -155,7 +191,9 @@ function findComponents(nodes: Tree[], tags: Map<string, string>): Component[] {
           return `${placement(c, node)}${look}`;
         })
         .join(",");
-      node.signature = intern(`${ownLook(node.op, hugged(node.op))}|${below}`);
+      const own =
+        node.op.op === "instance" ? instanceLook(node.op) : ownLook(node.op, hugged(node.op));
+      node.signature = intern(`${own}|${below}`);
       const tag = tags.get(node.op.id);
       if (!tag?.includes("-") || node.op.op !== "frame" || !node.parent || node.rotated) continue;
       const group = `${tag}\0${ownLook(node.op, rootSize(node))}|${below}`;
@@ -182,6 +220,23 @@ function findComponents(nodes: Tree[], tags: Map<string, string>): Component[] {
 const childAt = (children: Tree[], i: number) => children[i] as Tree;
 
 /**
+ * Each child of `node` beside the child of `base` it stands for, with that one's index, which is its
+ * index down the expanded tree. An occurrence without its main's icon leaves that child out.
+ */
+function besides(base: Tree, node: Tree): { base: Tree; node: Tree; at: number }[] {
+  const icon = node.component?.iconAt;
+  const skip =
+    icon !== undefined && node.iconless && base === node.component?.occurrences[0] ? icon : -1;
+  return node.children.map((child, i) => {
+    const at = skip >= 0 && i >= skip ? i + 1 : i;
+    return { base: childAt(base.children, at), node: child, at };
+  });
+}
+
+const samePath = (p: number[], q: number[]) =>
+  p.length === q.length && p.every((n, i) => n === q[i]);
+
+/**
  * How `occurrence` differs from its component's first occurrence, parents before children. With
  * `sources`, every text is an override that names its captured text, so it can bind on its own.
  */
@@ -193,28 +248,60 @@ function overridesOf(occurrence: Tree, sources: boolean): PlanOverride[] {
   for (let at = stack.pop(); at; at = stack.pop()) {
     const { node, path } = at;
     let { base, swapped } = at;
+    const shown = base;
     if (node.component && base.component !== node.component) {
       overrides.push({ path, kind: "swap", key: node.component.key });
       base = node.component.occurrences[0] as Tree;
       // A swap may keep or drop what was set below it, so nothing there can be taken as read.
       swapped = true;
+    } else if (
+      node !== occurrence &&
+      node.component?.named &&
+      base !== node.component.occurrences[0]
+    ) {
+      // Another occurrence of the same variant may lack the icon, so the walk goes on beside the
+      // main, which is what the expanded tree holds; what that occurrence set is no longer known.
+      base = node.component.occurrences[0] as Tree;
+      swapped = true;
+    }
+    if (node !== occurrence && node.properties) {
+      const same = JSON.stringify(node.properties) === JSON.stringify(shown.properties);
+      if (swapped || !same)
+        overrides.push({ path, kind: "properties", properties: node.properties });
     }
     if (base.op.op === "text" && node.op.op === "text") {
       const { text, runs } = node.op;
       const same = text === base.op.text && JSON.stringify(runs) === JSON.stringify(base.op.runs);
       if (sources) overrides.push({ path, kind: "text", text, runs, source: node.op.id });
       else if (swapped || !same) overrides.push({ path, kind: "text", text, runs });
+    } else if (base.op.op === "svg" && node.op.op === "svg") {
+      // Only a set's icon can differ in size from its main's: a look compares any other's.
+      const { w, h } = node.op;
+      if (w !== base.op.w || h !== base.op.h) overrides.push({ path, kind: "size", w, h });
     } else if (base.op.op === "image" && node.op.op === "image") {
       const { hash } = node.op;
       if (swapped || hash !== base.op.hash) overrides.push({ path, kind: "image", hash });
+    } else if (base.op.op === "instance" && node.op.op === "instance") {
+      // An instance op holding its own variant and values, as a set's instance does in a
+      // structural component: the copy swaps to its variant and sets its values below.
+      const { key, properties, overrides: own } = node.op;
+      const other = key !== base.op.key;
+      if (other) overrides.push({ path, kind: "swap", key });
+      const fresh = swapped || other;
+      if (
+        properties &&
+        (fresh || JSON.stringify(properties) !== JSON.stringify(base.op.properties))
+      ) {
+        overrides.push({ path, kind: "properties", properties });
+      }
+      if (fresh || JSON.stringify(own) !== JSON.stringify(base.op.overrides)) {
+        for (const o of own) overrides.push({ ...o, path: [...path, ...o.path] });
+      }
     }
-    for (let i = node.children.length - 1; i >= 0; i--) {
-      stack.push({
-        base: childAt(base.children, i),
-        node: childAt(node.children, i),
-        path: [...path, i],
-        swapped,
-      });
+    const pairs = besides(base, node);
+    for (let i = pairs.length - 1; i >= 0; i--) {
+      const pair = pairs[i] as (typeof pairs)[number];
+      stack.push({ base: pair.base, node: pair.node, path: [...path, pair.at], swapped });
     }
   }
   return overrides;
@@ -228,6 +315,11 @@ function instanceOp(node: Tree, id: string, parent: string, sources: boolean): P
   const first = (component.occurrences[0] as Tree).op;
   const { name, x, y, w, h, childLayout } = node.op;
   const layout = first.op === "frame" ? first.layout : { mode: "NONE" as const };
+  const { label } = component;
+  // An instance's Label property shows its text; with `sources` the override stays, to bind it.
+  const overrides = overridesOf(node, sources).filter(
+    (o) => sources || !label || o.kind !== "text" || !samePath(o.path, label)
+  );
   return {
     op: "instance",
     id,
@@ -241,13 +333,14 @@ function instanceOp(node: Tree, id: string, parent: string, sources: boolean): P
     resize:
       (isFixed(layout, "sizingH") && w !== first.w) ||
       (isFixed(layout, "sizingV") && h !== first.h),
-    overrides: overridesOf(node, sources),
+    overrides,
+    ...(node.properties ? { properties: node.properties } : {}),
     ...(childLayout ? { childLayout } : {}),
   };
 }
 
 /** The ops of a subtree, in order, with a repeated element below `top` as one instance op. */
-function flatten(top: Tree, rename: (id: string) => string, sources: boolean): PlanOp[] {
+export function flatten(top: Tree, rename: (id: string) => string, sources: boolean): PlanOp[] {
   const out: PlanOp[] = [];
   const stack = [top];
   for (let node = stack.pop(); node; node = stack.pop()) {
@@ -291,23 +384,23 @@ function hoverOf(top: Tree, hovers: Map<string, HoverPatch>): OccurrenceHover {
   const out: OccurrenceHover = { patches: [], capped: false, swapped: 0 };
   const stack = [{ node: top, base: first, path: [] as number[] }];
   for (let at = stack.pop(); at; at = stack.pop()) {
-    const { node, base, path } = at;
+    const { node, path } = at;
+    let { base } = at;
     if (node.component && base.component !== node.component) {
       out.swapped += hoversBelow(node, hovers);
       continue;
     }
+    if (node !== top && node.component?.named) base = node.component.occurrences[0] as Tree;
     const hover = hovers.get(node.op.id);
     const patch = hover && forMain(hover, path, base);
     if (patch) {
       if (out.patches.length >= MAX_HOVER_PATCHES) return { ...out, capped: true };
       out.patches.push(patch);
     }
-    for (let i = node.children.length - 1; i >= 0; i--) {
-      stack.push({
-        node: childAt(node.children, i),
-        base: childAt(base.children, i),
-        path: [...path, i],
-      });
+    const pairs = besides(base, node);
+    for (let i = pairs.length - 1; i >= 0; i--) {
+      const pair = pairs[i] as (typeof pairs)[number];
+      stack.push({ node: pair.node, base: pair.base, path: [...path, pair.at] });
     }
   }
   return out;
@@ -324,9 +417,9 @@ function hoversBelow(top: Tree, hovers: Map<string, HoverPatch>): number {
   return count;
 }
 
-type HoverNotes = { capped: number; swapped: number };
+export type HoverNotes = { capped: number; swapped: number };
 
-function definition(
+export function definition(
   component: Component,
   hovers: Map<string, HoverPatch>,
   notes: HoverNotes,
@@ -349,29 +442,42 @@ function definition(
       }
     }
   }
-  const info = { key, name, ...(hover.length > 0 ? { hover } : {}) };
+  const { set, properties } = component;
+  const info = {
+    key,
+    name,
+    ...(hover.length > 0 ? { hover } : {}),
+    ...(set ? { set } : {}),
+    ...(properties && properties.length > 0 ? { properties } : {}),
+  };
   return [{ ...own, parent: null, name, x: 0, y: 0, component: info }, ...rest];
 }
 
 /**
- * Every instance on the canvas. An instance inside a definition exists once in the main and once
- * in each copy of it, and `found` is inner-first, so going backwards each copy count is final.
+ * Every instance on the canvas of a finished `ops`. An instance inside a definition exists once in
+ * the main and once in each copy of it, and definitions come inner-first, so going backwards each
+ * copy count is final.
  */
-function canvasInstances(found: Component[], definitions: PlanOp[][], page: PlanOp[]): number {
-  const copies = new Map(found.map((c) => [c.key, 1]));
-  const count = (ops: PlanOp[], times: number): number => {
-    let total = 0;
-    for (const op of ops) {
+export function canvasInstances(ops: PlanOp[]): number {
+  // Each root's subtree follows it, parents first.
+  const roots: PlanOp[][] = [];
+  for (const op of ops) {
+    const last = roots[roots.length - 1];
+    if (op.parent === null || !last) roots.push([op]);
+    else last.push(op);
+  }
+  const copies = new Map<string, number>();
+  let total = 0;
+  for (let i = roots.length - 1; i >= 0; i--) {
+    const subtree = roots[i] as PlanOp[];
+    const root = subtree[0] as PlanOp;
+    const key = root.op === "frame" ? root.component?.key : undefined;
+    const times = key === undefined ? 1 : (copies.get(key) ?? 1);
+    for (const op of subtree) {
       if (op.op !== "instance") continue;
       copies.set(op.key, (copies.get(op.key) ?? 1) + times);
       total += times;
     }
-    return total;
-  };
-  let total = count(page, 1);
-  for (let i = found.length - 1; i >= 0; i--) {
-    const { key } = found[i] as Component;
-    total += count(definitions[i] as PlanOp[], copies.get(key) ?? 1);
   }
   return total;
 }
@@ -379,9 +485,10 @@ function canvasInstances(found: Component[], definitions: PlanOp[][], page: Plan
 /**
  * Hoists repeated custom elements to definitions at the front of `ops`, inner-first, and turns each
  * occurrence, the first too, into an `instance` op. A component is one tag and one signature used
- * at least twice. `tags` maps a node id to its tag. `instances` counts them on the canvas, so it
- * can exceed the `instance` ops. `hovers` maps a node id to what `:hover` changes there; a
- * definition carries those of the first occurrence that has any.
+ * at least twice. `tags` maps a node id to its tag. Definitions already at the front of `ops`, a
+ * set's variants, stay there. `instances` counts them on the canvas, so it can exceed the
+ * `instance` ops. `hovers` maps a node id to what `:hover` changes there; a definition carries
+ * those of the first occurrence that has any.
  */
 export function extractComponents(
   ops: PlanOp[],
@@ -398,15 +505,27 @@ export function extractComponents(
 } {
   const nodes = buildForest(ops);
   const found = findComponents(nodes, tags);
-  if (found.length === 0) return { ops, components: 0, instances: 0 };
-  const roots = nodes.filter((n) => n.parent === null);
+  if (found.length === 0) return { ops, components: 0, instances: canvasInstances(ops) };
+  // Definitions already in `ops`, such as a set's variants, stay in front as they are.
+  const made = new Set<Tree>();
+  for (const node of nodes) {
+    if (node.parent ? made.has(node.parent) : node.op.op === "frame" && node.op.component) {
+      made.add(node);
+    }
+  }
+  const roots = nodes.filter((n) => n.parent === null && !made.has(n));
   const notes: HoverNotes = { capped: 0, swapped: 0 };
   const definitions = found.map((c) => definition(c, hovers, notes, sources));
   const page = roots.flatMap((r) => flatten(r, (id) => id, sources));
+  const out = [
+    ...nodes.filter((n) => made.has(n)).map((n) => n.op),
+    ...definitions.flat(),
+    ...page,
+  ];
   return {
-    ops: [...definitions.flat(), ...page],
+    ops: out,
     components: found.length,
-    instances: canvasInstances(found, definitions, page),
+    instances: canvasInstances(out),
     ...(notes.capped > 0 ? { hoverCapped: notes.capped } : {}),
     ...(notes.swapped > 0 ? { hoverSwapped: notes.swapped } : {}),
   };

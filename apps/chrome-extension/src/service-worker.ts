@@ -3,6 +3,7 @@
 
 import type { PageLanguage } from "@repo/capture-schema";
 import { serveImagePort } from "./image-fetch";
+import { injectCapture } from "./inject";
 import {
   CAPTURE_PORT,
   IMAGE_PORT,
@@ -162,7 +163,7 @@ async function startCapture(
         language ?? null,
       ],
     });
-    await chrome.scripting.executeScript({ target: { tabId }, files: ["capture-entry.js"] });
+    await injectCapture(chrome.scripting, tabId);
     return { ok: true };
   } catch (error) {
     const detail = errorText(error);

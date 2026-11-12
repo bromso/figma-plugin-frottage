@@ -135,7 +135,8 @@ export function repeatedFile(count: number, language?: Capture["language"]): Fil
  */
 export function themedFile(
   tokens: Capture["tokens"],
-  fills: (string | [string, string])[] = []
+  fills: (string | [string, string])[] = [],
+  edit?: (capture: Capture) => void
 ): File {
   const capture = captureWithTexts(1);
   capture.tokens = tokens;
@@ -157,6 +158,7 @@ export function themedFile(
   });
   const root = capture.root as { children: CaptureNode[] };
   capture.root = element("root", [...root.children, ...frames]);
+  edit?.(capture);
   return new File([packFrottage(capture, new Map()) as BlobPart], "page.frottage");
 }
 
@@ -430,6 +432,20 @@ export function setFileWithImage(widths: number[], good = true, name = "set.frot
   });
 }
 
+/** Two buttons the page's code names `Button`, each with a label, added to the capture's root. */
+export function addButtons(capture: Capture): void {
+  if (capture.root.kind !== "element") return;
+  for (const n of [1, 2]) {
+    const button = element(`button${n}`, [text(`label${n}`)]) as Extract<
+      CaptureNode,
+      { kind: "element" }
+    >;
+    button.semantic = { tag: "button" };
+    button.component = { source: "react", name: "Button", props: {} };
+    capture.root.children.push(button);
+  }
+}
+
 /**
  * A File of one page captured on devices, plus extra captures for breakpoint ranges no device
  * covers. Every capture records the page's breakpoint boundaries.
@@ -512,4 +528,25 @@ export function languageSetFile(phoneTexts = 0, phone = true): File {
     new Map()
   );
   return new File([bytes as BlobPart], "languages.frottage");
+}
+
+/** Three buttons the page's code names `Button`, which differ by `variant` and by their look. */
+export function addVariantButtons(capture: Capture): void {
+  const { root } = capture;
+  if (root.kind !== "element") return;
+  const looks = [
+    ["outline", { r: 1, g: 1, b: 1, a: 1 }],
+    ["default", { r: 0, g: 0, b: 0, a: 1 }],
+    ["ghost", { r: 1, g: 0, b: 0, a: 1 }],
+  ] as const;
+  looks.forEach(([variant, color], n) => {
+    const button = element(`variant${n}`, [text(`variantlabel${n}`)]) as Extract<
+      CaptureNode,
+      { kind: "element" }
+    >;
+    button.semantic = { tag: "button" };
+    button.style.backgroundColor = color;
+    button.component = { source: "react", name: "Button", props: { variant } };
+    root.children.push(button);
+  });
 }

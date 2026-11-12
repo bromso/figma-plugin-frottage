@@ -31,6 +31,12 @@ import type {
 import { extractTokens } from "./tokens";
 import { readMotion } from "./transform";
 import { unrotateTree } from "./unrotate";
+import {
+  type ComponentInput,
+  componentLines,
+  extractVariantSets,
+  type FoundComponent,
+} from "./variants";
 
 type Fit = "FILL" | "FIT" | "CROP" | "TILE";
 type Color = { r: number; g: number; b: number; a: number };
@@ -386,6 +392,18 @@ function settle(layout: PlanLayout, childLayout: PlanChildLayout | undefined): P
   };
 }
 
+/** The component each element is the root of, by node id, as the probe found it. */
+function namedOf(root: CaptureNode): Map<string, FoundComponent> {
+  const named = new Map<string, FoundComponent>();
+  const stack = [root];
+  for (let node = stack.pop(); node; node = stack.pop()) {
+    if (node.kind !== "element") continue;
+    if (node.component) named.set(node.id, node.component);
+    stack.push(...node.children);
+  }
+  return named;
+}
+
 /** Each element's tag by node id; iterative, like the walk, so depth is no limit. */
 function tagsOf(root: CaptureNode): Map<string, string> {
   const tags = new Map<string, string>();
@@ -404,6 +422,21 @@ export function mapCapture(
   /** Missing family to the available family the user chose for it. */
   fontOverrides: Readonly<Record<string, string>> = {}
 ): LayerPlan {
+  return mapCaptureParts(capture, available, options, fontOverrides).plan;
+}
+
+/**
+ * A plan, and what its named components were made from, which a device merge takes beside the
+ * plan to make them again across its frames (`DeviceEntry.components`). Null with components off
+ * or none named. The input stays out of the plan, which crosses postMessage.
+ */
+export function mapCaptureParts(
+  capture: Capture,
+  available: FontRef[],
+  options: PlanOptions = DEFAULT_IMPORT_OPTIONS,
+  /** Missing family to the available family the user chose for it. */
+  fontOverrides: Readonly<Record<string, string>> = {}
+): { plan: LayerPlan; components: ComponentInput | null } {
   const ops: PlanOp[] = [];
   const fonts = new Map<string, FontRef>();
   const hashes = new Set<string>();
@@ -821,24 +854,34 @@ export function mapCapture(
     );
   }
   let finished = ops;
+  let input: ComponentInput | null = null;
   if (options.components) {
     let lostHovers = 0;
-    const found = extractComponents(
-      ops,
-      tagsOf(pageRoot),
-      options.hoverComponents
-        ? hoverPatches(pageRoot, ops, () => {
-            lostHovers++;
-          })
-        : undefined,
-      capture.language !== undefined
-    );
+    const hovers = options.hoverComponents
+      ? hoverPatches(pageRoot, ops, () => {
+          lostHovers++;
+        })
+      : undefined;
+    const sources = capture.language !== undefined;
+    const named = namedOf(pageRoot);
+    const tags = tagsOf(pageRoot);
+    const sets = extractVariantSets(ops, named, hovers, sources);
+    const found = extractComponents(sets.ops, tags, hovers, sources);
     finished = found.ops;
-    report.components = found.components;
+    const variants = sets.ops.filter((op) => op.op === "frame" && op.component).length;
+    report.components = found.components + variants;
     report.instances = found.instances;
-    if (found.hoverCapped) {
+    const lines = componentLines(sets);
+    for (const line of lines) warn(line);
+    if (named.size > 0) {
+      const made = { sets: sets.sets, plain: sets.plain };
+      input = { ops, named, tags, ...(hovers ? { hovers } : {}), sources, lines, ...made };
+    }
+    const hoverCapped = (sets.hoverCapped ?? 0) + (found.hoverCapped ?? 0);
+    const hoverSwapped = (sets.hoverSwapped ?? 0) + (found.hoverSwapped ?? 0);
+    if (hoverCapped > 0) {
       warn(
-        `Hover changes on ${found.hoverCapped} component${found.hoverCapped === 1 ? "" : "s"} were cut off at ${MAX_HOVER_PATCHES} layers each.`
+        `Hover changes on ${hoverCapped} component${hoverCapped === 1 ? "" : "s"} were cut off at ${MAX_HOVER_PATCHES} layers each.`
       );
     }
     if (lostHovers > 0) {
@@ -846,13 +889,20 @@ export function mapCapture(
         `Hover changes on ${lostHovers} layer${lostHovers === 1 ? "" : "s"} have no place in Figma and were left out.`
       );
     }
-    if (found.hoverSwapped) {
+    if (hoverSwapped > 0) {
       warn(
-        `Hover changes on ${found.hoverSwapped} layer${found.hoverSwapped === 1 ? "" : "s"} inside a swapped component were left out.`
+        `Hover changes on ${hoverSwapped} layer${hoverSwapped === 1 ? "" : "s"} inside a swapped component were left out.`
       );
     }
   }
-  return { ops: finished, tokens, fonts: [...fonts.values()], assetHashes: [...hashes], report };
+  const plan = {
+    ops: finished,
+    tokens,
+    fonts: [...fonts.values()],
+    assetHashes: [...hashes],
+    report,
+  };
+  return { plan, components: input };
 }
 
 export function batchOps(ops: PlanOp[], size = 50): PlanOp[][] {

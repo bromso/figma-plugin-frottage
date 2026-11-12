@@ -1643,3 +1643,21 @@ describe("a rotated layer with nothing to rotate", () => {
     expect(warningsFor(blocked)).toEqual([]);
   });
 });
+
+describe("a capture without named components", () => {
+  /** Repeated custom elements, one of them hovered: what today's structural pass is made of. */
+  const page = () => {
+    const card = (id: string, text: string) =>
+      el(id, [0, 0], [textNode(`${id}-t`, { text, runs: [run({ end: text.length })] })], {
+        semantic: { tag: "x-card" },
+        hover: { backgroundColor: { r: 1, g: 0, b: 0, a: 1 } },
+      });
+    return cap(el("root", [0, 0], [card("a", "One"), card("b", "Two"), card("c", "Three")]));
+  };
+
+  test("maps as it did before variant sets", () => {
+    const options = { ...DEFAULT_IMPORT_OPTIONS, components: true, hoverComponents: true };
+    const { ops, report } = mapCapture(page(), inter, options);
+    expect({ ops, report }).toMatchSnapshot();
+  });
+});

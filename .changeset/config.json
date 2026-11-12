@@ -9,7 +9,8 @@
       "@repo/chrome-extension",
       "@repo/capture-schema",
       "@repo/capture-dom",
-      "@repo/figma-mapper"
+      "@repo/figma-mapper",
+      "@repo/component-probe"
     ]
   ],
   "linked": [],

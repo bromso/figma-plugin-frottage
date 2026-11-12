@@ -9,6 +9,7 @@ import type {
 } from "@repo/capture-schema";
 import { readBreakpoints } from "./breakpoints";
 import type { Rgba } from "./color";
+import { readComponents } from "./component";
 import { flatChildren, insideEditable, isEditable, shadowRootOf } from "./flatten";
 import { authoredTracksReader } from "./grid";
 import { type Hover, type HoverDeps, hoverCandidates, readHover, resolveVars } from "./hover";
@@ -222,6 +223,7 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   const installedCache = new Map<string, boolean>();
   const mergeable = new WeakMap<Element, boolean>();
   const authoredTracks = authoredTracksReader(win);
+  const components = readComponents(doc);
   let counter = 0;
   let limitHit = false;
   /** Ids and node budget in one: nothing is emitted once MAX_NODES ids have been handed out. */
@@ -1195,6 +1197,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
   function wrappedChild(el: Element, s: CSSStyleDeclaration): Element | null {
     if (el === root || el === doc.body || el.namespaceURI !== XHTML) return null;
     if (KEPT_WRAPPER_TAGS.has(el.localName) || isEditable(el) || hovers.has(el)) return null;
+    // The root of a component that can become a set is that set's frame.
+    if (components.repeats(el)) return null;
     if (!/^(block|flex|grid|flow-root)$/.test(s.display)) return null;
     if (s.position !== "static" || s.zIndex !== "auto" || s.visibility !== "visible") return null;
     if (s.transform !== "none" || s.filter !== "none" || s.mixBlendMode !== "normal") return null;
@@ -1386,6 +1390,8 @@ export function captureDocument(doc: Document, env: CaptureEnv): Capture {
     if (hover || lifted) element.hover = { ...hover, ...lifted };
     const refs = refsOf(el);
     if (refs) element.tokenRefs = refs;
+    const component = components.of(el);
+    if (component) element.component = component;
 
     const leafControl = tag === "input" || tag === "textarea" || tag === "select";
     if (isEditable(el)) {

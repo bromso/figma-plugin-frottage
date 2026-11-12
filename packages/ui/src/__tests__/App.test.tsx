@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import App from "../app";
 import {
+  addVariantButtons,
   deviceSetFile,
   downscaledFile,
   type FakePort,
@@ -613,6 +614,39 @@ describe("App (a device set)", () => {
     expect(screen.getByRole("radio", { name: "New page" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Current page" })).not.toBeChecked();
     expect(port.log).not.toContain("beginDeviceSet");
+  });
+
+  it("lists the components the page's code names, with their variants", async () => {
+    const file = deviceSetFile({
+      devices: [
+        { name: "Laptop", width: 1512, height: 982 },
+        { name: "Phone portrait", width: 390, height: 844 },
+      ],
+      edit: addVariantButtons,
+    });
+    await chosen(undefined, file);
+    expect(await screen.findByText("Components: Button (3 variants)")).toBeInTheDocument();
+  });
+
+  it("lists a lone page's components in its review, with variables off too", async () => {
+    const port = fakePort();
+    port.prefs.set("options:example.com", { tokens: false });
+    const user = userEvent.setup();
+    render(<App port={port} />);
+    const dark = {
+      cssCustomProperties: { "--surface": "#ffffff" },
+      themes: [{ context: ".dark", mode: "Dark", properties: { "--surface": "#000000" } }],
+    };
+    await user.upload(
+      screen.getByLabelText("Choose .frottage files"),
+      themedFile(dark, ["#ffffff"], addVariantButtons)
+    );
+    expect(await screen.findByText("Components: Button (3 variants)")).toBeInTheDocument();
+  });
+
+  it("shows no components line when the page names none", async () => {
+    await chosen();
+    expect(screen.queryByText(/^Components:/)).toBeNull();
   });
 
   it("groups devices, then breakpoints with the note, before Themes", async () => {

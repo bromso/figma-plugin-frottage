@@ -39,6 +39,10 @@ type Options = LayoutOptions &
     failLayout?: string;
     /** `setExplicitVariableModeForCollection` throws, or does from this call on, counting from 1. */
     failExplicitMode?: boolean | number;
+    /** `combineAsVariants` throws, as Figma does for nodes it can't combine. */
+    combineThrows?: boolean;
+    /** `addComponentProperty` throws for a property of this name. */
+    failProperty?: string;
   };
 
 const AUTO_LAYOUT_FIELDS = [
@@ -50,6 +54,15 @@ const AUTO_LAYOUT_FIELDS = [
   "paddingBottom",
   "paddingLeft",
 ];
+
+/** A component property, as `componentPropertyDefinitions` gives it. */
+type PropertyDef = {
+  type: string;
+  defaultValue: string | boolean;
+  preferredValues?: { type: string; key: string }[];
+  variantOptions?: string[];
+};
+type PropertyValue = string | boolean;
 
 const fontId = (f: { family: string; style: string }) => `${f.family}|${f.style}`;
 
@@ -94,6 +107,8 @@ export function fakeFigma(opts: Options = {}) {
     return out;
   }
   page.findAll = findAll;
+  page.findAllWithCriteria = ({ types }: { types: string[] }) =>
+    findAll((n) => types.includes(n.type));
   page.name = "Page 1";
   /** Every page in the file, the first the one open; `createPage` adds one, unloaded. */
   const pages: FakeNode[] = [page];
@@ -110,6 +125,17 @@ export function fakeFigma(opts: Options = {}) {
       },
       selection: [],
       removed: false,
+      findAllWithCriteria({ types }: { types: string[] }) {
+        if (!loaded) throw new Error("page not loaded");
+        const out: FakeNode[] = [];
+        const stack = [...kids];
+        while (stack.length > 0) {
+          const n = stack.pop() as FakeNode;
+          if (types.includes(n.type)) out.push(n);
+          stack.push(...(n.kids ?? []));
+        }
+        return out;
+      },
       async loadAsync() {
         calls.push("page.loadAsync");
         await held("page.loadAsync");
@@ -161,11 +187,110 @@ export function fakeFigma(opts: Options = {}) {
     return false;
   };
 
+  /** A variant name's values, `Size=sm, State=Hover` as `{ Size: "sm", State: "Hover" }`. */
+  const variantValues = (name: string): Record<string, string> =>
+    Object.fromEntries(
+      name.split(",").flatMap((part) => {
+        const [key, value] = part.split("=").map((x) => x.trim());
+        return key && value !== undefined ? [[key, value]] : [];
+      })
+    );
+
+  /** As in Figma, a variant name can't give one property two values. */
+  const checkVariantName = (name: string) => {
+    const keys = name.split(",").map((part) => part.split("=")[0]?.trim());
+    if (new Set(keys).size !== keys.length) throw new Error(`ambiguous variant name: ${name}`);
+  };
+
+  /** The node whose properties a main's layers and instances use: its set, or itself. */
+  const ownerOf = (main: FakeNode): FakeNode =>
+    main.parent?.type === "COMPONENT_SET" ? main.parent : main;
+
+  /** The component or set whose properties `node`, a layer of a main, may reference. */
+  function referenceOwner(node: FakeNode): FakeNode {
+    for (let n = node.parent; n; n = n.parent) {
+      if (n.type === "INSTANCE") throw new Error("a layer inside an instance can't reference");
+      if (n.type === "COMPONENT") return ownerOf(n);
+    }
+    throw new Error("componentPropertyReferences needs a component sublayer");
+  }
+
+  const REFERENCE_TYPES: Record<string, string> = {
+    characters: "TEXT",
+    visible: "BOOLEAN",
+    mainComponent: "INSTANCE_SWAP",
+  };
+
+  /** Component properties on a component or a set, as Figma's `ComponentPropertiesMixin`. */
+  function installProperties(node: FakeNode) {
+    const defs = new Map<string, PropertyDef>();
+    node.propDefs = defs;
+    const isVariant = () => node.type === "COMPONENT" && node.parent?.type === "COMPONENT_SET";
+    Object.defineProperty(node, "componentPropertyDefinitions", {
+      get() {
+        if (isVariant()) throw new Error("a variant has no definitions of its own; read its set's");
+        const out: Record<string, PropertyDef & { variantOptions?: string[] }> = {};
+        if (node.type === "COMPONENT_SET") {
+          for (const kid of node.kids as FakeNode[]) {
+            for (const [key, value] of Object.entries(variantValues(kid.name))) {
+              out[key] ??= { type: "VARIANT", defaultValue: value, variantOptions: [] };
+              const options = out[key].variantOptions as string[];
+              if (!options.includes(value)) options.push(value);
+            }
+          }
+        }
+        for (const [name, def] of defs) out[name] = { ...def };
+        return out;
+      },
+    });
+    node.addComponentProperty = (
+      name: string,
+      type: string,
+      value: PropertyValue,
+      options?: { preferredValues?: PropertyDef["preferredValues"] }
+    ) => {
+      calls.push("addComponentProperty");
+      if (isVariant()) throw new Error("add the property to the variant's set");
+      if (opts.failProperty === name) throw new Error(`property ${name} refused`);
+      if (node.type === "COMPONENT_SET") {
+        const taken = (node.kids as FakeNode[]).some((kid) => name in variantValues(kid.name));
+        if (taken) throw new Error(`a variant property is named ${name}`);
+      }
+      if (type === "TEXT" && typeof value !== "string") throw new Error("TEXT needs a string");
+      if (type === "BOOLEAN" && typeof value !== "boolean")
+        throw new Error("BOOLEAN needs a boolean");
+      if (type === "INSTANCE_SWAP" && nodes.get(value as string)?.type !== "COMPONENT") {
+        throw new Error("INSTANCE_SWAP needs a component id");
+      }
+      if (!["TEXT", "BOOLEAN", "INSTANCE_SWAP"].includes(type)) throw new Error(`no ${type}`);
+      const full = `${name}#${++seq}:0`;
+      defs.set(full, {
+        type,
+        defaultValue: value,
+        ...(options?.preferredValues ? { preferredValues: options.preferredValues } : {}),
+      });
+      return full;
+    };
+    node.deleteComponentProperty = (full: string) => {
+      calls.push("deleteComponentProperty");
+      if (!defs.delete(full)) throw new Error(`no property ${full}`);
+    };
+    node.editComponentProperty = (full: string, next: Partial<PropertyDef>) => {
+      calls.push("editComponentProperty");
+      const def = defs.get(full);
+      if (!def) throw new Error(`no property ${full}`);
+      if (next.preferredValues) def.preferredValues = next.preferredValues;
+      if (next.defaultValue !== undefined) def.defaultValue = next.defaultValue;
+      return full;
+    };
+  }
+
   function makeNode(type: string): FakeNode {
     const id = `n${++seq}`;
     let name = "";
     let effects: any[] = [];
     const kids: FakeNode[] = [];
+    const pluginData = new Map<string, string>();
     const node: FakeNode = {
       id,
       type,
@@ -233,6 +358,11 @@ export function fakeFigma(opts: Options = {}) {
         model.reflow(node);
         if (model.isLaidOut(node.parent)) model.reflow(node.parent);
       },
+      getSharedPluginData: (ns: string, key: string) => pluginData.get(`${ns}/${key}`) ?? "",
+      setSharedPluginData(ns: string, key: string, value: string) {
+        calls.push("node.setSharedPluginData");
+        pluginData.set(`${ns}/${key}`, value);
+      },
       remove() {
         const parent = node.parent;
         calls.push(`remove:${type}`);
@@ -242,6 +372,7 @@ export function fakeFigma(opts: Options = {}) {
       },
     };
     const join = (child: FakeNode, cell: [number, number] | null) => {
+      if (type === "COMPONENT_SET") checkVariantName(child.name);
       if (child.type === "COMPONENT" && insideComponent(node)) {
         throw new Error("a component cannot go inside a component or an instance");
       }
@@ -276,6 +407,28 @@ export function fakeFigma(opts: Options = {}) {
         get: () => (-turn * 180) / Math.PI,
       },
     });
+    // A layer's references to its component's properties, checked as Figma checks them.
+    Object.defineProperty(node, "componentPropertyReferences", {
+      configurable: true,
+      get: () => node.propRefs ?? null,
+      set(refs: Record<string, string> | null) {
+        calls.push("componentPropertyReferences");
+        const owner = referenceOwner(node);
+        const defs = owner.componentPropertyDefinitions;
+        for (const [field, name] of Object.entries(refs ?? {})) {
+          if (defs[name]?.type !== REFERENCE_TYPES[field])
+            throw new Error(`no ${field} property ${name}`);
+          if (field === "characters" && node.type !== "TEXT") throw new Error("not text");
+          if (field === "mainComponent" && node.type !== "INSTANCE")
+            throw new Error("not an instance");
+        }
+        node.propRefs = refs ? { ...refs } : undefined;
+      },
+    });
+    if (type === "COMPONENT" || type === "COMPONENT_SET") {
+      installProperties(node);
+      node.key = `key-${id}`;
+    }
     tokens.installNode(node);
     if (type === "FRAME" || type === "COMPONENT" || type === "INSTANCE") {
       model.installFrame(node, () => calls.push("layoutMode"));
@@ -338,8 +491,20 @@ export function fakeFigma(opts: Options = {}) {
 
   /** A copy of a main's or an instance's child, as an instance holds it. */
   function copyChild(from: FakeNode): FakeNode {
+    const copy = copyNode(from);
+    // As in Figma, a copy keeps the layer's references and whether it shows.
+    if (from.propRefs) copy.propRefs = { ...from.propRefs };
+    if (from.visible !== undefined) copy.visible = from.visible;
+    return copy;
+  }
+
+  function copyNode(from: FakeNode): FakeNode {
     if (from.type === "TEXT") return copyLook(from, copyText(from));
-    if (from.type === "INSTANCE") return copyLook(from, copyBody(from, instanceShell(from.main)));
+    if (from.type === "INSTANCE") {
+      const shell = instanceShell(from.main);
+      shell.propValues = { ...from.propValues };
+      return copyLook(from, copyBody(from, shell));
+    }
     const n = makeNode(from.type);
     n.fills = from.fills;
     copyLook(from, n);
@@ -413,6 +578,75 @@ export function fakeFigma(opts: Options = {}) {
       n.height = height;
       if (model.isLaidOut(n.parent)) model.reflow(n.parent);
     };
+    n.propValues = {};
+    /** The layers under the instance that reference `name`, nested instances' included. */
+    const referencing = (field: string, name: string): FakeNode[] => {
+      const out: FakeNode[] = [];
+      const stack = [...(n.kids as FakeNode[])];
+      while (stack.length > 0) {
+        const kid = stack.pop() as FakeNode;
+        if (kid.propRefs?.[field] === name) out.push(kid);
+        stack.push(...(kid.kids ?? []));
+      }
+      return out;
+    };
+    const show = (name: string, type: string, value: PropertyValue) => {
+      if (type === "TEXT") for (const t of referencing("characters", name)) t.characters = value;
+      if (type === "BOOLEAN") for (const l of referencing("visible", name)) l.visible = value;
+      if (type === "INSTANCE_SWAP") {
+        const next = nodes.get(value as string);
+        if (next?.type !== "COMPONENT") throw new Error("INSTANCE_SWAP needs a component id");
+        for (const l of referencing("mainComponent", name)) l.swapComponent(next);
+      }
+    };
+    Object.defineProperty(n, "componentProperties", {
+      get() {
+        const owner = ownerOf(n.main);
+        const out: Record<string, { type: string; value: PropertyValue }> = {};
+        if (owner.type === "COMPONENT_SET") {
+          for (const [key, value] of Object.entries(variantValues(n.main.name))) {
+            out[key] = { type: "VARIANT", value };
+          }
+        }
+        for (const [name, def] of owner.propDefs as Map<string, PropertyDef>) {
+          out[name] = { type: def.type, value: n.propValues[name] ?? def.defaultValue };
+        }
+        return out;
+      },
+    });
+    n.setProperties = (values: Record<string, string | boolean>) => {
+      calls.push("setProperties");
+      const owner = ownerOf(n.main);
+      const defs = owner.propDefs as Map<string, PropertyDef>;
+      const variant = { ...(owner.type === "COMPONENT_SET" ? variantValues(n.main.name) : {}) };
+      for (const [name, value] of Object.entries(values)) {
+        const def = defs.get(name);
+        if (name in variant) variant[name] = value as string;
+        else if (!def) throw new Error(`Could not find a component property with name: '${name}'`);
+        else if (def.type === "BOOLEAN" ? typeof value !== "boolean" : typeof value !== "string") {
+          throw new Error(`${name} takes a ${def.type} value`);
+        }
+      }
+      if (owner.type === "COMPONENT_SET") {
+        const same = (kid: FakeNode) =>
+          JSON.stringify(variantValues(kid.name)) === JSON.stringify(variant);
+        const next = (owner.kids as FakeNode[]).find(same);
+        if (!next) throw new Error("no variant with those values");
+        if (next !== n.main) {
+          n.main = next;
+          copyBody(next, n);
+          for (const [name, value] of Object.entries(n.propValues)) {
+            show(name, (defs.get(name) as PropertyDef).type, value as PropertyValue);
+          }
+        }
+      }
+      for (const [name, value] of Object.entries(values)) {
+        const def = defs.get(name);
+        if (!def) continue;
+        show(name, def.type, value);
+        n.propValues[name] = value;
+      }
+    };
     return n;
   }
 
@@ -480,6 +714,8 @@ export function fakeFigma(opts: Options = {}) {
     },
     combineAsVariants(variants: FakeNode[], parent: FakeNode) {
       calls.push("combineAsVariants");
+      if (opts.combineThrows) throw new Error("combineAsVariants refused");
+      for (const v of variants) checkVariantName(v.name);
       if (variants.length < 1 || variants.some((v) => v.type !== "COMPONENT")) {
         throw new Error("combineAsVariants needs components");
       }
@@ -675,9 +911,25 @@ export function fakeFigma(opts: Options = {}) {
     },
   };
 
+  /**
+   * The mode a node reads for a collection, as Figma resolves it: its own explicit mode; for an
+   * instance with none, the explicit mode its main has (Figma help, "Modes for variables"); else
+   * its parent's.
+   */
+  function modeOf(node: FakeNode | null | undefined, collectionId: string): string | undefined {
+    for (let n = node; n; n = n.parent) {
+      const own = n.explicitModes?.[collectionId];
+      if (own !== undefined) return own;
+      const main = n.type === "INSTANCE" ? n.main?.explicitModes?.[collectionId] : undefined;
+      if (main !== undefined) return main;
+    }
+    return undefined;
+  }
+
   return {
     figma: figma as unknown as PluginAPI,
     calls,
+    modeOf,
     count: (c: string) => calls.filter((x) => x === c).length,
     node: (id: string) => nodes.get(id) as FakeNode,
     hashOf: (bytes: Uint8Array) => hashes.get(Array.from(bytes).join(",")),

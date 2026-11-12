@@ -15,10 +15,11 @@
     },
     "apps/chrome-extension": {
       "name": "@repo/chrome-extension",
-      "version": "0.3.0",
+      "version": "0.5.0",
       "dependencies": {
         "@repo/capture-dom": "workspace:*",
         "@repo/capture-schema": "workspace:*",
+        "@repo/component-probe": "workspace:*",
         "@repo/ui": "workspace:*",
         "react": "^19.3.1",
         "react-dom": "^19.3.1",
@@ -36,7 +37,7 @@
     },
     "apps/design-plugin": {
       "name": "@repo/design-plugin",
-      "version": "0.3.0",
+      "version": "0.5.0",
       "dependencies": {
         "@repo/common": "workspace:*",
         "@repo/ui": "workspace:*",
@@ -111,9 +112,10 @@
     },
     "packages/capture-dom": {
       "name": "@repo/capture-dom",
-      "version": "0.3.0",
+      "version": "0.5.0",
       "dependencies": {
         "@repo/capture-schema": "workspace:*",
+        "@repo/component-probe": "workspace:*",
       },
       "devDependencies": {
         "@playwright/test": "1.64.1",
@@ -125,7 +127,7 @@
     },
     "packages/capture-schema": {
       "name": "@repo/capture-schema",
-      "version": "0.3.0",
+      "version": "0.5.0",
       "dependencies": {
         "@noble/hashes": "2.4.0",
         "fflate": "0.8.3",
@@ -138,7 +140,7 @@
     },
     "packages/common": {
       "name": "@repo/common",
-      "version": "2.2.0",
+      "version": "2.4.0",
       "dependencies": {
         "monorepo-networker": "^2.1.0",
       },
@@ -148,9 +150,21 @@
         "typescript": "^7.0.2",
       },
     },
+    "packages/component-probe": {
+      "name": "@repo/component-probe",
+      "version": "0.5.0",
+      "dependencies": {
+        "@repo/capture-schema": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.4",
+        "happy-dom": "21.0.4",
+        "typescript": "^7.0.2",
+      },
+    },
     "packages/figma-mapper": {
       "name": "@repo/figma-mapper",
-      "version": "0.3.0",
+      "version": "0.5.0",
       "dependencies": {
         "@repo/capture-schema": "workspace:*",
       },
@@ -161,7 +175,7 @@
     },
     "packages/ui": {
       "name": "@repo/ui",
-      "version": "2.2.0",
+      "version": "2.4.0",
       "dependencies": {
         "@daypicker/react": "^10.0.2",
         "@iconify-json/lucide": "^1.2.149",
@@ -804,6 +818,8 @@
     "@repo/chrome-extension": ["@repo/chrome-extension@workspace:apps/chrome-extension"],
 
     "@repo/common": ["@repo/common@workspace:packages/common"],
+
+    "@repo/component-probe": ["@repo/component-probe@workspace:packages/component-probe"],
 
     "@repo/design-plugin": ["@repo/design-plugin@workspace:apps/design-plugin"],
 

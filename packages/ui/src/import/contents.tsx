@@ -144,6 +144,7 @@ export function ContentsSection({
         </fieldset>
       )}
       {summary.collections && <p>{summary.collections}</p>}
+      {summary.components && <p>{summary.components}</p>}
       {summary.overLimit.map((line) => (
         <p key={line} className="text-figma-text-danger">
           {line}

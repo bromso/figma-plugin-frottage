@@ -44,6 +44,11 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     version?: { index: number; label: string };
     /** A device set's frame: its Device mode, and its Breakpoint mode when the page has any. */
     device?: { mode: string; breakpoint: string | null };
+    /**
+     * A device set's shared definitions, by key, which this frame's ops bring first: made once,
+     * below the frames, on the widest frame's modes.
+     */
+    components?: { keys: string[]; device: { mode: string; breakpoint: string | null } };
   }): void;
   importTokens(tokens: PlanTokens, options: ImportOptions): void;
   importModes(tokens: PlanVersionTokens, options: ImportOptions): { droppedVersions: number[] };
@@ -68,6 +73,8 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     hoverFailures: number;
     paintFailures: number;
     resizedFallbacks: number;
+    /** What Figma made of the component sets: sets it wouldn't combine, properties it refused. */
+    componentNotes: string[];
     stylesCreated: number;
     stylesReused: number;
     variablesCreated: number;
@@ -92,6 +99,8 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
     layoutFailures: number;
     /** A device set's versions left plain, unbound: their Device or Breakpoint mode wasn't set. */
     plainVersions: number[];
+    /** A device set's shared definitions: what Figma made of their sets and Hover variants. */
+    components?: { notes: string[]; hoverVariants: number; hoverFailures: number };
     stylesCreated: number;
     stylesReused: number;
     variablesCreated: number;

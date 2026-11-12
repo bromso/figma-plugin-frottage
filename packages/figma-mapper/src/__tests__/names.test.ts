@@ -120,7 +120,8 @@ describe("from the page text", () => {
     expect(layerName(words("x".repeat(80)), [], o).length).toBe(40);
   });
   test("a name that ends exactly at a word keeps it", () => {
-    expect(layerName(words("a".repeat(36) + " bcd"), [], o)).toBe("a".repeat(36) + " bcd");
+    const name = `${"a".repeat(36)} bcd`;
+    expect(layerName(words(name), [], o)).toBe(name);
   });
 });
 

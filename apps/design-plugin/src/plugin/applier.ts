@@ -14,7 +14,14 @@ import type {
   PlanTrack,
   PlanVersionTokens,
 } from "@repo/figma-mapper";
-import { type ComponentSet, childAt, createComponentSet } from "./components";
+import {
+  type ComponentSet,
+  childAt,
+  createComponentSet,
+  type Definition,
+  type HoverPaint,
+  setInstanceProperties,
+} from "./components";
 import {
   alignedX,
   type Built,
@@ -45,6 +52,11 @@ export type ImportMeta = {
   version?: { index: number; label: string };
   /** In a device set, the version's Device mode and, for a page with breakpoints, its Breakpoint mode. */
   device?: { mode: string; breakpoint: string | null };
+  /**
+   * A device set's shared definitions, by key, which this version's ops bring first: they are made
+   * once for every frame, in a section below the frames, on the widest frame's `device` modes.
+   */
+  components?: { keys: string[]; device: { mode: string; breakpoint: string | null } };
 };
 
 /** A page captured on several devices, imported as one frame per device in one section. */
@@ -85,6 +97,8 @@ export type EndResult = TokenCounts & {
   paintFailures: number;
   /** Instances resized from a main that lost its auto layout, whose content did not move with them. */
   resizedFallbacks: number;
+  /** Report lines about component sets: those Figma wouldn't combine, properties it refused. */
+  componentNotes: string[];
 };
 
 /** What a set of versions leaves. Each version's own counts come from its `end`. */
@@ -95,6 +109,8 @@ export type SetResult = TokenCounts & {
   layoutFailures: number;
   /** A device set's versions left plain, unbound: their Device or Breakpoint mode wasn't set. */
   plainVersions: number[];
+  /** What a device set's shared definitions came to, which no one frame reports. */
+  components?: { notes: string[]; hoverVariants: number; hoverFailures: number };
 };
 
 /** A set of versions under way. Its finished frames and sections are held until `endSet`. */
@@ -115,6 +131,16 @@ type HeldSet = {
   previousPage?: PageNode;
   /** Device versions left plain: Figma had no room for, or refused, their modes. */
   plain: number[];
+  /** A device set's shared definitions, made by its first version and used by every frame. */
+  shared?: {
+    components: ComponentSet;
+    keys: Set<string>;
+    device: NonNullable<ImportMeta["device"]>;
+    /** Shared mains that lost layers. */
+    broken: Set<string>;
+    /** Figma refused the widest frame's modes, so the shared mains stay plain from then on. */
+    modeRefused: boolean;
+  };
 };
 
 type Corners = [number, number, number, number];
@@ -155,6 +181,7 @@ const CANCELLED: EndResult = {
   hoverFailures: 0,
   paintFailures: 0,
   resizedFallbacks: 0,
+  componentNotes: [],
   ...NO_TOKENS,
 };
 
@@ -231,6 +258,16 @@ export function createApplier(api: PluginAPI) {
   let modeRefused = false;
   /** This version's Device and Breakpoint modes, in a device set. */
   let deviceModes: ImportMeta["device"] | null = null;
+  /** This version makes its device set's shared definitions, and reports on them. */
+  let buildsShared = false;
+  /** The page's host, from its tokens, which tags its component sets. */
+  let host = "";
+  /** The component sets this import made, which none of its later versions adds to. */
+  let madeSets = new Set<string>();
+  /** Ops of a shared definition an earlier frame made already, which this one passes over. */
+  let skipped = new Set<string>();
+  /** Set while a shared set's Hover variant is painted, which binds as the shared mains do. */
+  let paintingShared = false;
 
   /** Clears the version in hand and removes what it left. The set around it, if any, stays. */
   function clearVersion() {
@@ -275,6 +312,8 @@ export function createApplier(api: PluginAPI) {
     versionIndex = null;
     modeRefused = false;
     deviceModes = null;
+    buildsShared = false;
+    skipped = new Set();
   }
 
   function reset() {
@@ -287,6 +326,7 @@ export function createApplier(api: PluginAPI) {
       }
       section.discard();
     }
+    held?.shared?.components.discard();
     try {
       held?.section?.remove(); // emptied above
     } catch {
@@ -300,6 +340,8 @@ export function createApplier(api: PluginAPI) {
     // After the mains: one would keep what it uses in use.
     if (tokens) cleaning = Promise.all([cleaning, tokens.discard()]);
     tokens = null;
+    host = "";
+    madeSets = new Set();
   }
 
   async function loadFont(f: FontRef): Promise<void> {
@@ -369,6 +411,7 @@ export function createApplier(api: PluginAPI) {
     if (run !== generation) return;
     if (stale) api.commitUndo();
     const { hostname } = meta.layers;
+    host = hostname;
     const previousPage = api.currentPage;
     let createdPage: PageNode | undefined;
     if (meta.placement === "new-page") {
@@ -472,19 +515,46 @@ export function createApplier(api: PluginAPI) {
     deviceModes = set ? (meta.device ?? null) : null;
     rootName = meta.version ? `${meta.name} — ${meta.version.label}` : meta.name;
     page = set?.page ?? api.currentPage;
-    components = createComponentSet(
-      api,
-      rootName,
-      {
-        paints: (list) => paints(list, false),
+    const target = page;
+    const hoverPaint = (device: ImportMeta["device"] | null, shared = false): HoverPaint => {
+      const as = <T>(paint: () => T): T => {
+        paintingShared = shared;
+        try {
+          return paint();
+        } finally {
+          paintingShared = false;
+        }
+      };
+      return {
+        paints: (list) => as(() => paints(list, false)),
         effects,
-        solid: (color, opacity) => solidPaint(color, opacity),
-        mode: setMode,
-      },
-      page,
+        solid: (color, opacity) => as(() => solidPaint(color, opacity)),
+        mode: (node) => setMode(node, device),
+      };
+    };
+    const options = {
       // A device set's mains read the modes their frame's section opens on, as their instances do.
-      set?.section ? (section) => openSection(section, set.language) : undefined
-    );
+      ...(set?.section ? { prepare: (s: SectionNode) => openSection(s, set.language) } : {}),
+      isBroken,
+      lookup: mainOf,
+      host: () => host,
+      made: madeSets,
+    };
+    components = createComponentSet(api, rootName, hoverPaint(deviceModes), target, options);
+    // The first frame brings the shared definitions; if it fails, the next brings them again, and
+    // only those not made yet are made.
+    if (set?.section && meta.components) {
+      const { keys, device } = meta.components;
+      set.shared ??= {
+        components: createComponentSet(api, meta.name, hoverPaint(device, true), target, options),
+        keys: new Set(),
+        device,
+        broken: new Set(),
+        modeRefused: false,
+      };
+      for (const key of keys) set.shared.keys.add(key);
+      buildsShared = true;
+    }
     await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
     fallbackOk = loadedFonts.has(fontKey(FALLBACK));
     container = set?.section ?? page;
@@ -497,13 +567,19 @@ export function createApplier(api: PluginAPI) {
    * be true to, and what it builds from then on stays plain. A version's mains are built first, so
    * that catches it before anything binds, or leaves a main already made as it is.
    */
-  function setMode(node: FrameNode | ComponentNode): void {
-    if (versionIndex === null || modeRefused) return;
+  function setMode(node: FrameNode | ComponentNode | InstanceNode, device = deviceModes): void {
+    // The shared mains open on the widest frame's modes, so a refusal of those is theirs alone.
+    const shared = held?.shared && device === held.shared.device ? held.shared : null;
+    const refuse = () => {
+      if (shared) shared.modeRefused = true;
+      else modeRefused = true;
+    };
+    if (versionIndex === null || (shared ? shared.modeRefused : modeRefused)) return;
     // With tokens off nothing binds, so no mode is missed.
-    if (deviceModes && !tokens?.hasLayers()) return;
-    const modes = deviceModes ? deviceSetModes(deviceModes) : [tokens?.modeOf(versionIndex)];
+    if (device && !tokens?.hasLayers()) return;
+    const modes = device ? deviceSetModes(device) : [tokens?.modeOf(versionIndex)];
     if (!modes) {
-      modeRefused = true;
+      refuse();
       return;
     }
     try {
@@ -511,7 +587,7 @@ export function createApplier(api: PluginAPI) {
         if (mode) node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
       }
     } catch {
-      modeRefused = true;
+      refuse();
       tokens?.failed();
     }
   }
@@ -532,7 +608,12 @@ export function createApplier(api: PluginAPI) {
   }
 
   /** The tokens this version may bind to: none once its mode was refused. */
-  const bindable = () => (modeRefused ? undefined : tokens);
+  const bindable = () => {
+    // A shared definition's layers bind as its main's modes allow, whatever this frame's are.
+    const shared = held?.shared;
+    const inShared = paintingShared || (definition !== null && shared?.keys.has(definition));
+    return (inShared ? shared?.modeRefused : modeRefused) ? undefined : tokens;
+  };
 
   /**
    * Opens a page, not a version, on the Color Mode mode it was captured in: Dark for a page
@@ -553,6 +634,7 @@ export function createApplier(api: PluginAPI) {
   /** Settles the plan's tokens against the file. Comes before any batch that uses them. */
   async function importTokens(plan: PlanTokens, options: ImportOptions): Promise<void> {
     if (!active) throw new Error("import not started");
+    host ||= plan.collection;
     tokens ??= createTokenSet(api);
     await tokens.resolve(plan, options, tokenRuntime());
   }
@@ -566,6 +648,7 @@ export function createApplier(api: PluginAPI) {
     options: ImportOptions
   ): Promise<{ droppedVersions: number[] }> {
     if (!active && !held) throw new Error("import not started");
+    host ||= plan.collection;
     tokens ??= createTokenSet(api);
     const set = tokens;
     await set.resolveModes(plan, options, tokenRuntime());
@@ -985,10 +1068,10 @@ export function createApplier(api: PluginAPI) {
     if (op.childLayout?.sizingV === "FILL") node.layoutSizingVertical = "FILL";
   }
 
-  function buildFrame(op: FrameOp, parent: FrameNode | null) {
+  function buildFrame(op: FrameOp, parent: FrameNode | null, device = deviceModes) {
     const name = parent || op.component ? op.name : rootName || op.name;
     const node = createFrame(parent, op, name);
-    if (!parent) setMode(node);
+    if (!parent) setMode(node, device);
     if (!parent && !op.component) setOpeningMode(node);
     setLayout(node, op);
     node.clipsContent = op.clips;
@@ -1123,10 +1206,18 @@ export function createApplier(api: PluginAPI) {
 
   async function applyOverride(instance: InstanceNode, override: PlanOverride) {
     const node = childAt(instance, override.path);
-    if (override.kind === "image") {
+    if (override.kind === "properties") {
+      if (node.type !== "INSTANCE") throw new Error("not an instance");
+      if (!setInstanceProperties(node, override.properties, [], mainOf)) {
+        throw new Error("properties refused");
+      }
+    } else if (override.kind === "image") {
       setImage(node, override.hash);
+    } else if (override.kind === "size") {
+      if (!("resize" in node)) throw new Error("nothing to resize");
+      node.resize(clampSize(override.w), clampSize(override.h));
     } else if (override.kind === "swap") {
-      const main = components?.main(override.key);
+      const main = mainOf(override.key);
       if (!main || node.type !== "INSTANCE") throw new Error("nothing to swap");
       const { layoutSizingHorizontal: sizingH, layoutSizingVertical: sizingV } = node;
       node.swapComponent(main);
@@ -1172,7 +1263,7 @@ export function createApplier(api: PluginAPI) {
         if (override.kind !== "swap") continue;
         lost.push(override.path);
         // Paths from outside walk through this instance into a component it never became.
-        if (definition) broken.add(definition);
+        if (definition) markBroken(definition);
       }
     }
   }
@@ -1187,18 +1278,52 @@ export function createApplier(api: PluginAPI) {
     if (op.resize || lostHug) sizeLike(node, main, op.w, op.h);
   }
 
+  /** A main of this version's, or of its device set's shared definitions. */
+  function mainOf(key: string): ComponentNode | undefined {
+    return components?.main(key) ?? held?.shared?.components.main(key);
+  }
+
+  /** The mains that hold `key`. */
+  const holderOf = (key: string): ComponentSet | null =>
+    held?.shared?.keys.has(key) ? held.shared.components : components;
+
+  function isBroken(key: string): boolean {
+    return broken.has(key) || (held?.shared?.broken.has(key) ?? false);
+  }
+
+  /** A shared main stays broken for the frames after the one that made it. */
+  function markBroken(key: string) {
+    if (held?.shared?.keys.has(key)) held.shared.broken.add(key);
+    else broken.add(key);
+  }
+
+  /**
+   * An instance with no mode of its own reads its main's explicit modes, so one of a shared main
+   * (on the widest frame's modes) in another frame is given its own frame's Device and Breakpoint.
+   * Inside a shared main it reads that main's modes, which are the same.
+   */
+  function readsOwnModes(key: string): boolean {
+    const shared = held?.shared;
+    if (!shared?.keys.has(key) || deviceModes === null) return false;
+    return definition === null || !shared.keys.has(definition);
+  }
+
   async function buildInstance(op: InstanceOp, parent: FrameNode): Promise<InstanceNode> {
-    const main = components?.main(op.key);
+    const main = mainOf(op.key);
     if (!main) throw new Error(`no component ${op.key}`);
     const node = main.createInstance();
     pending = node;
     join(parent, node, op);
     node.name = op.name;
-    const swapsBroken = op.overrides.some((o) => o.kind === "swap" && broken.has(o.key));
-    if (broken.has(op.key) || swapsBroken) {
+    // Before its properties and overrides, so that what they size reads this frame's values.
+    if (readsOwnModes(op.key)) setMode(node);
+    const swapsBroken = op.overrides.some((o) => o.kind === "swap" && isBroken(o.key));
+    if (isBroken(op.key) || swapsBroken) {
       noteOverrideFailures(op.overrides.length);
-      if (definition) broken.add(definition);
+      if (definition) markBroken(definition);
     } else {
+      // First, so that an icon this swaps in takes the size an override then gives it.
+      if (op.properties) holderOf(op.key)?.setProperties(op.key, node, op.properties);
       await applyOverrides(node, op.overrides);
     }
     sizeInstance(node, main, op);
@@ -1210,8 +1335,10 @@ export function createApplier(api: PluginAPI) {
 
   function buildMain(op: FrameOp, key: string): Built {
     definition = key;
-    const node = buildFrame(op, null);
-    (components as ComponentSet).adopt(key, node as unknown as ComponentNode, op.component?.hover);
+    const shared = held?.shared?.keys.has(key) ? held.shared : null;
+    const node = buildFrame(op, null, shared ? shared.device : deviceModes);
+    const holder = shared?.components ?? (components as ComponentSet);
+    holder.adopt(key, node as unknown as ComponentNode, op.component as Definition);
     componentsCreated++;
     return node;
   }
@@ -1305,6 +1432,13 @@ export function createApplier(api: PluginAPI) {
   }
 
   async function applyOp(op: PlanOp): Promise<void> {
+    // A shared definition an earlier frame made, brought again by this one: passed over, whole.
+    const again =
+      op.op === "frame" && op.component && held?.shared?.components.has(op.component.key);
+    if (again || (op.parent !== null && skipped.has(op.parent))) {
+      skipped.add(op.id);
+      return;
+    }
     const run = generation;
     pending = null;
     fillFit = null;
@@ -1318,7 +1452,7 @@ export function createApplier(api: PluginAPI) {
       styleLinks = [];
       failed.add(op.id);
       failedOps++;
-      if (definition) broken.add(definition);
+      if (definition) markBroken(definition);
       const partial = pending as SceneNode | null;
       if (partial && root === partial) root = null;
       try {
@@ -1366,6 +1500,7 @@ export function createApplier(api: PluginAPI) {
 
   /** A set's tokens are the whole set's, so `endSet` gives them and no version does. */
   const tokenCounts = () => (held ? NO_TOKENS : (tokens?.counts() ?? NO_TOKENS));
+  /** A device set's shared definitions report with the set, in `endSet`. */
   const componentCounts = () => ({
     componentsCreated,
     instancesCreated,
@@ -1375,13 +1510,25 @@ export function createApplier(api: PluginAPI) {
     paintFailures,
     resizedFallbacks,
     ...(components?.hoverCounts() ?? { hoverVariants: 0, hoverFailures: 0 }),
+    componentNotes: components?.notes() ?? [],
   });
+
+  /** Makes the shared sets once the frame that brought them is done, before the next uses them. */
+  function finishShared() {
+    if (!buildsShared) return;
+    try {
+      held?.shared?.components.finish();
+    } catch {
+      layoutFailures++;
+    }
+  }
 
   async function end(): Promise<EndResult> {
     if (!active) throw new Error("import not started");
     const run = generation;
     try {
       const done = root;
+      finishShared();
       if (!done) {
         // The root op failed (already counted) or never arrived (count it now).
         if (!rootAttempted) failedOps++;
@@ -1407,7 +1554,7 @@ export function createApplier(api: PluginAPI) {
       try {
         // A device set's frames sit in its section; their mains go under it, on the page.
         const under = box ? { x: box.x + done.x, y: box.y + box.height + VERSION_GAP } : undefined;
-        components?.layOut(done, broken, under);
+        components?.layOut(done, under);
       } catch {
         layoutFailures++;
       }
@@ -1455,7 +1602,8 @@ export function createApplier(api: PluginAPI) {
    * One row of sections under the tallest frame, each at its frame's x, or further right when the
    * section before it runs on past there: a section can be wider than its frame.
    */
-  function placeSections({ finished, section: box }: HeldSet): number {
+  function placeSections({ finished, section: box, shared }: HeldSet): number {
+    let failures = 0;
     try {
       // A device set's frames sit in its section, so its mains go under that.
       const bottom = box
@@ -1463,13 +1611,24 @@ export function createApplier(api: PluginAPI) {
         : Math.max(...finished.map(({ root: r }) => r.y + r.height));
       const offset = box ? box.x : 0;
       let left = Number.NEGATIVE_INFINITY;
+      // The definitions every frame shares come first, under the section's left edge.
+      if (shared) {
+        const at = { x: offset, y: bottom + VERSION_GAP };
+        try {
+          shared.components.layOut({ ...at, width: 0 }, at);
+        } catch {
+          failures++;
+        }
+        const right = shared.components.moveTo(at.x, at.y);
+        if (right !== null) left = right + VERSION_GAP;
+      }
       for (const { root: frame, components: section } of finished) {
         const right = section.moveTo(Math.max(offset + frame.x, left), bottom + VERSION_GAP);
         if (right !== null) left = right + VERSION_GAP;
       }
-      return 0;
+      return failures;
     } catch {
-      return 1;
+      return failures + 1;
     }
   }
 
@@ -1499,11 +1658,13 @@ export function createApplier(api: PluginAPI) {
     layoutFailures += placeSections(held);
     api.commitUndo();
     select(target, section ? [section] : frames);
+    const shared = held.shared?.components;
     const result = {
       ...(tokens?.counts() ?? NO_TOKENS),
       rootIds: frames.map((f) => f.id),
       layoutFailures,
       plainVersions: [...held.plain],
+      ...(shared ? { components: { notes: shared.notes(), ...shared.hoverCounts() } } : {}),
     };
     held = null; // keep the frames and the sections
     tokens = null; // and the tokens they use

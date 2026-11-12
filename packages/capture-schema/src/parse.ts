@@ -83,7 +83,7 @@ function checkNode(raw: Record<string, unknown>, where: string): Record<string, 
       const out = check<Record<string, unknown>>(
         parts.element,
         {
-          ...rest(raw, "children", "hover"),
+          ...rest(raw, "children", "hover", "component"),
           style: style && rest(style, "backgroundImages", "boxShadows", "filters"),
           ...(raw.hover === undefined
             ? {}
@@ -102,6 +102,7 @@ function checkNode(raw: Record<string, unknown>, where: string): Record<string, 
           `${where}.hover.boxShadows`
         );
       }
+      if (raw.component !== undefined) out.component = checkComponent(raw.component, where);
       const styleOut = out.style as Record<string, unknown>;
       styleOut.backgroundImages = checkBackgrounds(
         style?.backgroundImages,
@@ -130,6 +131,15 @@ function checkNode(raw: Record<string, unknown>, where: string): Record<string, 
     default:
       throw new Reject("invalid", `${where}.kind: unknown node kind`);
   }
+}
+
+/** The props are counted before Zod reads them, so a huge record can't build a list of issues. */
+function checkComponent(input: unknown, where: string): unknown {
+  const props = isRecord(input) ? input.props : undefined;
+  if (isRecord(props) && Object.keys(props).length > parts.maxComponentProps) {
+    throw new Reject("invalid", `${where}.component.props: more than ${parts.maxComponentProps}`);
+  }
+  return check(parts.component, input, `${where}.component`);
 }
 
 function checkBackgrounds(input: unknown, where: string): unknown[] {
