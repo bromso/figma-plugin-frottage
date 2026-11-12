@@ -1216,6 +1216,22 @@ describe("binding to the layered collections", () => {
     }
   });
 
+  test("a gradient's stops bind one by one, even where no style holds the gradient", async () => {
+    const fills = [
+      {
+        ...gradientPaint,
+        stops: [
+          { position: 0, color: WHITE, colorKey: card.key },
+          { position: 1, color: { ...BLACK, a: 1 } },
+        ],
+      },
+    ];
+    const { f, root } = await layered([frame("a", null, { fills })]);
+    const [first, second] = root.fills[0].gradientStops;
+    expect(first.boundVariables.color.id).toBe(variableNamed(f, "color/card").id);
+    expect(second.boundVariables).toBeUndefined();
+  });
+
   test("a paint whose binding fails keeps its captured opacity", async () => {
     const fills = [{ type: "SOLID", color: BLACK, opacity: 0.5, colorKey: card.key }];
     const { root, r } = await layered([frame("a", null, { fills })], {
@@ -1306,11 +1322,12 @@ describe("binding to the layered collections", () => {
     }
   });
 
-  test("the imported root opens on Color Mode's Light mode", async () => {
+  test("a page captured in Light, the collection's default, sets no mode, so the page's applies", async () => {
     const { f, root } = await layered([frame("a", null, { childCount: 1 }), frame("b", "a")]);
     const theme = collectionNamed(f, "Color Mode");
     const light = theme.modes.find((m: { name: string }) => m.name === "Light").modeId;
-    expect(root.explicitModes).toEqual({ [theme.id]: light });
+    expect(theme.defaultModeId).toBe(light);
+    expect(root.explicitModes).toEqual({});
     expect(root.children[0].explicitModes).toEqual({});
   });
 
@@ -1322,16 +1339,15 @@ describe("binding to the layered collections", () => {
     expect(root.explicitModes).toEqual({ [theme.id]: mode });
   });
 
-  test("an active mode the file had no room for opens on Light", async () => {
+  test("an active mode the file had no room for opens on Light, the default, so sets none", async () => {
     const sepia = { ...plan, layers: { ...layers, activeMode: "Sepia" } };
-    const { f, root } = await layered([frame("a")], {}, true, sepia);
-    const theme = collectionNamed(f, "Color Mode");
-    const light = theme.modes.find((m: { name: string }) => m.name === "Light").modeId;
-    expect(root.explicitModes).toEqual({ [theme.id]: light });
+    const { root } = await layered([frame("a")], {}, true, sepia);
+    expect(root.explicitModes).toEqual({});
   });
 
-  test("a refused Light mode counts and the page still imports", async () => {
-    const { root, r } = await layered([frame("a")], { failExplicitMode: true });
+  test("a refused opening mode counts and the page still imports", async () => {
+    const dark = { ...plan, layers: { ...layers, activeMode: "Dark" } };
+    const { root, r } = await layered([frame("a")], { failExplicitMode: true }, true, dark);
     expect(root.explicitModes).toEqual({});
     expect(r.tokenFailures).toBe(1);
   });
@@ -1525,7 +1541,7 @@ describe("a device set", () => {
     expect(f.pages).toHaveLength(1);
   });
 
-  test("each frame takes its Device and Breakpoint modes; the section takes Color Mode", async () => {
+  test("each frame takes its Device and Breakpoint modes; a Light section stays on Auto", async () => {
     const f = fakeFigma();
     await importDevices(f);
     const device = collectionNamed(f, "Device");
@@ -1540,7 +1556,9 @@ describe("a device set", () => {
       });
       expect(n.children[0].explicitModes).toEqual({});
     }
-    expect(section.explicitModes).toEqual({ [colorMode.id]: modeIn(colorMode, "Light") });
+    // Light is Color Mode's default, so the section follows the page's mode.
+    expect(colorMode.defaultModeId).toBe(modeIn(colorMode, "Light"));
+    expect(section.explicitModes).toEqual({});
   });
 
   test("a page captured in Dark opens its section on Dark", async () => {
@@ -1814,8 +1832,8 @@ describe("a device set", () => {
   });
 
   test("a refused Device mode leaves the frame plain and counts", async () => {
-    // The section's Color Mode is the first explicit mode; Desktop's Device mode the second.
-    const f = fakeFigma({ failExplicitMode: 2 });
+    // A Light section sets no mode, so Desktop's Device mode is the first explicit one.
+    const f = fakeFigma({ failExplicitMode: 1 });
     const { r } = await importDevices(f, {
       plan: flat,
       devices: DEVICES.map((d) => ({ ...d, breakpoint: null })),
@@ -2014,15 +2032,13 @@ describe("a device set", () => {
       }
     });
 
-    test("the section opens on the page's own language beside Color Mode", async () => {
+    test("a section in the default Color Mode and language sets neither, so the page's apply", async () => {
       const f = fakeFigma();
       await importLanguages(f);
-      const colorMode = collectionNamed(f, "Color Mode");
-      const language = collectionNamed(f, "Language");
-      expect(sectionNamed(f, PAGE).explicitModes).toEqual({
-        [colorMode.id]: modeIn(colorMode, "Light"),
-        [language.id]: modeIn(language, "English"),
-      });
+      expect(collectionNamed(f, "Language").defaultModeId).toBe(
+        modeIn(collectionNamed(f, "Language"), "English")
+      );
+      expect(sectionNamed(f, PAGE).explicitModes).toEqual({});
     });
 
     test("a main opens on its frame's language, though the collection's default is another", async () => {

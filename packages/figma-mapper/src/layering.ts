@@ -125,6 +125,8 @@ function free(name: string, taken: Set<string>): string {
 type Rekey = (key: string) => string | undefined;
 
 function rekeyPaint(paint: PlanPaint | { colorKey?: string }, rekey: Rekey) {
+  // A gradient's stops each carry their own key.
+  if ("stops" in paint) for (const stop of paint.stops) rekeyPaint(stop, rekey);
   if (!("colorKey" in paint) || paint.colorKey === undefined) return;
   const key = rekey(paint.colorKey);
   if (key === undefined) delete paint.colorKey;
