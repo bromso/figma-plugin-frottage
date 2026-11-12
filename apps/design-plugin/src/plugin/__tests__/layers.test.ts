@@ -294,6 +294,26 @@ describe("createLayerSet", () => {
     expect(last.boundVariables).toBeUndefined();
   });
 
+  test("a gradient style whose stops name their variable is made, the key not passed to Figma", async () => {
+    // The mapper's stops carry the key each one binds to; Figma refuses a paint with fields it lacks.
+    const keyed: PlanGradientStyle = {
+      ...gradient,
+      paint: {
+        ...gradient.paint,
+        stops: gradient.paint.stops.map((stop, i) => ({
+          ...stop,
+          ...(i === 0 ? { colorKey: gradient.stopKeys[0] as string } : {}),
+        })),
+      },
+    };
+    const f = fakeFigma();
+    const set = await settle(f, layers({ gradientStyles: [keyed] }));
+    const paint: any = [...f.tokens.paintStyles.values()].find((s) => s.name === "gradient/hero");
+    expect(set.gradientStyleId(keyed.key)).toBe(paint?.id);
+    const [first] = paint?.paints[0].gradientStops ?? [];
+    expect(Object.keys(first).sort()).toEqual(["boundVariables", "color", "position"]);
+  });
+
   test("PR #7's collections for the host are left untouched and reported", async () => {
     const f = fakeFigma();
     const old = f.tokens.seedCollection("example.com · Theme", ["Light", "Dark"]);

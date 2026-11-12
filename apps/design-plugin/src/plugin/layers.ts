@@ -640,10 +640,12 @@ export function createLayerSet(api: PluginAPI) {
       type: paint.type,
       gradientTransform: paint.transform,
       gradientStops: paint.stops.map((stop, i): ColorStop => {
+        // Only what Figma knows: a stop's own key is the mapper's, and Figma refuses the paint.
+        const plain: ColorStop = { position: stop.position, color: stop.color };
         const key = stopKeys[i];
         const variable = key ? variables.get(key) : undefined;
-        if (!variable) return stop;
-        return { ...stop, boundVariables: { color: api.variables.createVariableAlias(variable) } };
+        if (!variable) return plain;
+        return { ...plain, boundVariables: { color: api.variables.createVariableAlias(variable) } };
       }),
     });
 

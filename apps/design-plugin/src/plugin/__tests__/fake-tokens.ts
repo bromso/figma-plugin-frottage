@@ -203,6 +203,15 @@ export function tokenModel(
       },
       set paints(v: any[]) {
         writes.push(`${name}: paints`);
+        // As in Figma, a paint with a field it doesn't know is refused.
+        for (const paint of v) {
+          for (const stop of paint.gradientStops ?? []) {
+            const extra = Object.keys(stop).filter(
+              (k) => !["position", "color", "boundVariables"].includes(k)
+            );
+            if (extra.length > 0) throw new Error(`Property "${extra[0]}" not allowed`);
+          }
+        }
         paints = v;
       },
     };
