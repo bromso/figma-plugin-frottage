@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type ContentsChoice, ContentsSection } from "./import/contents";
 import { FontTable } from "./import/font-table";
 import {
@@ -279,7 +279,7 @@ function Review({
 }) {
   const [options, setOptions] = useState(state.options);
   const headingRef = useRef<HTMLParagraphElement>(null);
-  useEffect(() => headingRef.current?.focus(), []);
+  useLayoutEffect(() => headingRef.current?.focus(), []);
   const [choices, setChoices] = useState<ReadonlyMap<string, string>>(new Map());
   const { contents } = state;
   const [picked, setPicked] = useState<ContentsChoice | null>(() =>
@@ -439,8 +439,9 @@ function App({ port }: { port?: ImportPort }) {
     };
   }, []);
 
-  // The picker unmounts when an import finishes, so move focus to the outcome.
-  useEffect(() => {
+  // The picker unmounts when an import finishes, so move focus to the outcome, in the same
+  // commit that shows it so nothing sees the outcome before it has focus.
+  useLayoutEffect(() => {
     if (state.step === "error") errorRef.current?.focus();
     if (state.step === "done") headingRef.current?.focus();
   }, [state.step]);
