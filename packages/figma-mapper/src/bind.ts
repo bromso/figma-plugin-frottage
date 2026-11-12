@@ -42,7 +42,15 @@ const PX = 0.01;
 const EPSILON = 1e-9;
 
 type Field =
-  | { kind: "colors"; scope: string; value: Rgba; ref?: string; bind(key: string): void }
+  | {
+      kind: "colors";
+      scope: string;
+      value: Rgba;
+      ref?: string;
+      /** A gradient stop: it may bind to a theme color at its own strength. */
+      stop?: boolean;
+      bind(key: string): void;
+    }
   | {
       kind: "radii" | "spacing";
       scope: string;
@@ -79,6 +87,19 @@ function colourField(
     ref,
     bind(key) {
       paint.colorKey = key;
+    },
+  };
+}
+
+/** A gradient stop to bind: no ref says which variable it came from, so it binds by value. */
+function stopField(stop: { color: PlanRgb & { a: number }; colorKey?: string }): Field {
+  return {
+    kind: "colors",
+    scope: "ALL_FILLS",
+    value: stop.color,
+    stop: true,
+    bind(key) {
+      stop.colorKey = key;
     },
   };
 }
@@ -181,6 +202,8 @@ function fieldsOf(op: PlanOp, out: Field[], catalogue: Catalogue, followed: Foll
     case "frame": {
       for (const paint of op.fills) {
         if (paint.type === "SOLID") out.push(colourField(paint, "ALL_FILLS", refs?.background));
+        // A gradient's stops bind one by one, so a gradient used once still switches by mode.
+        else if (paint.type !== "IMAGE") for (const stop of paint.stops) out.push(stopField(stop));
       }
       if (op.strokes) out.push(colourField(op.strokes, "STROKE_COLOR", refs?.border));
       cornerFields(op, out);
@@ -334,15 +357,70 @@ export function bindLayers(
     unbound = unbound.filter((field) => !made.has(field));
   }
 
+  // A gradient's stops name no variable: one that equals several theme colors binds to the first
+  // only when they hold the same color in every mode, and one that is a theme color at partial
+  // strength (`from-primary/50`) binds to that color made translucent in every mode.
+  const modeCount = catalogue.modes.length;
+  const everyMode = (v: StagedVariable) =>
+    Array.from({ length: modeCount }, (_, m) => followed(v.values[m] ?? v.values[0]) ?? null);
+  const alike = (vs: StagedVariable[]) =>
+    vs.every(
+      (v) => JSON.stringify(everyMode(v)) === JSON.stringify(everyMode(vs[0] as StagedVariable))
+    );
+  const themeOfStop = (value: Rgba): StagedVariable | null => {
+    const translucent = value.a < 1 - EPSILON;
+    // An opaque stop equals the color; a translucent one is an opaque theme color at its strength.
+    const equal = theme.filter((v) => {
+      const held = followed(v.values[active] ?? v.values[0]);
+      if (held === null || !isColour(held)) return false;
+      if (!translucent) return sameColour(held, value);
+      return held.a >= 1 - EPSILON && sameColour(held, { ...value, a: 1 });
+    });
+    if (equal.length === 0 || !alike(equal)) return null;
+    const base = equal[0] as StagedVariable;
+    if (value.a >= 1 - EPSILON) return base;
+    const pct = Math.round(value.a * 100);
+    const name = `${base.name}-a${pct}`;
+    const key = `theme:${name}`;
+    const have = theme.find((v) => v.key === key);
+    if (have) return have;
+    if (catalogue.variables.length >= MAX_VARIABLES) {
+      catalogue.dropped++;
+      return null;
+    }
+    const values = everyMode(base).map((held) =>
+      held !== null && isColour(held)
+        ? { ...held, a: Math.round(held.a * value.a * 1000) / 1000 }
+        : held
+    ) as PlanVarValue[];
+    // A mode with no color to hold makes no translucent version of it.
+    if (values.some((held) => held === null)) return null;
+    const made: StagedVariable = {
+      key,
+      name,
+      collection: "theme",
+      type: "COLOR",
+      values,
+      description: `Inferred: ${base.name} at ${pct}%`,
+      scopes: COLOR_SCOPES,
+    };
+    catalogue.variables.push(made);
+    theme.push(made);
+    return made;
+  };
+
   // Pages repeat few values, so each is looked up once.
   const matches = new Map<string, StagedVariable | null>();
   const raw: RawCounts = { colors: 0, radii: 0, spacing: 0 };
   const stayed: Field[] = [];
   for (const field of unbound) {
-    const at = `${field.kind}|${field.scope}|${JSON.stringify(field.value)}`;
+    const at = `${field.kind}|${field.scope}|${field.kind === "colors" && field.stop ? "stop|" : ""}${JSON.stringify(field.value)}`;
     let v = matches.get(at);
     if (v === undefined) {
       v = match(field);
+      if (!v && field.kind === "colors" && field.stop && catalogue.modes.length > 1) {
+        v = themeOfStop(field.value);
+      }
       matches.set(at, v);
     }
     if (v) bind(field, v);

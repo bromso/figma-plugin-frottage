@@ -19,8 +19,8 @@ export type PlanPaint =
       type: "GRADIENT_LINEAR" | "GRADIENT_RADIAL" | "GRADIENT_ANGULAR";
       /** Figma's `gradientTransform`: the node's unit square to gradient space. */
       transform: [[number, number, number], [number, number, number]];
-      /** Positions run 0 to 1 along the gradient. */
-      stops: { position: number; color: PlanRgb & { a: number } }[];
+      /** Positions run 0 to 1 along the gradient; a stop's `colorKey` is the variable it binds to. */
+      stops: { position: number; color: PlanRgb & { a: number }; colorKey?: string }[];
       /** The paint style to link, when this gradient became one. */
       gradientStyleKey?: string;
     };

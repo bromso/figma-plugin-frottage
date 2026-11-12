@@ -485,13 +485,25 @@ export function createApplier(api: PluginAPI) {
    * was captured in and on the Language mode of `language`, which every frame and main in it then
    * reads.
    */
+  /**
+   * Whether a mode is its collection's default, which a node reads with no mode of its own. A
+   * section or page opened on it is left on Auto, so switching the page's mode switches it too.
+   */
+  function isDefault(mode: { collection: VariableCollection; modeId: string }): boolean {
+    try {
+      return mode.collection.defaultModeId === mode.modeId;
+    } catch {
+      return false;
+    }
+  }
+
   function openSection(node: SectionNode, language: string | undefined): void {
     const modes = [
       tokens?.openingMode(),
       language === undefined ? null : tokens?.layerMode("language", language),
     ];
     for (const mode of modes) {
-      if (!mode) continue;
+      if (!mode || isDefault(mode)) continue;
       try {
         node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
       } catch {
@@ -623,7 +635,7 @@ export function createApplier(api: PluginAPI) {
   function setOpeningMode(node: FrameNode): void {
     if (versionIndex !== null) return;
     const mode = bindable()?.openingMode();
-    if (!mode) return;
+    if (!mode || isDefault(mode)) return;
     try {
       node.setExplicitVariableModeForCollection(mode.collection, mode.modeId);
     } catch {
@@ -700,6 +712,24 @@ export function createApplier(api: PluginAPI) {
     }
   }
 
+  /** A gradient stop, bound to its variable where it has one, which then holds its alpha. */
+  function gradientStop(stop: {
+    position: number;
+    color: PlanRgb & { a: number };
+    colorKey?: string;
+  }): ColorStop {
+    const plain: ColorStop = { position: stop.position, color: stop.color };
+    const binding = bindable()?.color(stop.colorKey);
+    if (!binding || !("variable" in binding)) return plain;
+    try {
+      const alias = api.variables.createVariableAlias(binding.variable);
+      return { ...plain, boundVariables: { color: alias } };
+    } catch {
+      tokens?.failed();
+      return plain;
+    }
+  }
+
   function paintStyleId(colorKey?: string): string | undefined {
     const binding = bindable()?.color(colorKey);
     return binding && "paintStyleId" in binding ? binding.paintStyleId : undefined;
@@ -722,7 +752,7 @@ export function createApplier(api: PluginAPI) {
         out.push({
           type: p.type,
           gradientTransform: p.transform,
-          gradientStops: p.stops.map((s) => ({ position: s.position, color: s.color })),
+          gradientStops: p.stops.map((s) => gradientStop(s)),
         });
       }
     }

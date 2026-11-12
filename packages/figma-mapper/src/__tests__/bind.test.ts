@@ -630,3 +630,115 @@ describe("radii named by the site's classes", () => {
     });
   });
 });
+
+describe("gradient stops", () => {
+  /** shadcn with a primary and a muted color, Light and Dark, as Mainline has them. */
+  function themed(): Capture["tokens"] {
+    const t = shadcnTokens();
+    t.cssCustomProperties["--primary"] = "oklch(0.92 0.04 86.47)";
+    t.cssCustomProperties["--muted"] = "oklch(0.97 0 0)";
+    t.cssCustomProperties["--color-primary"] = "oklch(0.92 0.04 86.47)";
+    t.cssCustomProperties["--color-muted"] = "oklch(0.97 0 0)";
+    t.authored = {
+      ...t.authored,
+      "--color-primary": "var(--primary)",
+      "--color-muted": "var(--muted)",
+    };
+    const dark = t.themes?.[0]?.properties as Record<string, string>;
+    dark["--primary"] = "oklch(0.922 0 0)";
+    dark["--muted"] = "oklch(0.269 0 0)";
+    return t;
+  }
+  /** `bg-linear-to-b from-primary/50 via-muted to-muted/80`, as the browser computes it. */
+  function hero(id: string) {
+    const base = el(id, [0, 0]);
+    const primary = rgba("oklch(0.92 0.04 86.47)");
+    const muted = rgba("oklch(0.97 0 0)");
+    return {
+      ...base,
+      style: {
+        ...base.style,
+        backgroundImages: [
+          {
+            type: "linear-gradient" as const,
+            css: "linear-gradient(180deg, x 0%, y 20%, z 100%)",
+            angle: 180,
+            stops: [
+              { color: { ...primary, a: 0.5 }, position: 0 },
+              { color: muted, position: 0.2 },
+              { color: { ...muted, a: 0.8 }, position: 1 },
+            ],
+          },
+        ],
+      },
+    };
+  }
+  type Stop = { colorKey?: string };
+  const gradientOf = (p: LayerPlan, id: string) =>
+    frame(p, id).fills.find((f) => f.type === "GRADIENT_LINEAR") as unknown as { stops: Stop[] };
+
+  test("a gradient used once binds each stop to its theme color", () => {
+    const p = plan([hero("h")], themed());
+    const stops = gradientOf(p, "h").stops;
+    expect(stops[1]?.colorKey).toBe("theme:color/muted");
+  });
+
+  test("a theme color at partial strength binds to a translucent version, Light and Dark", () => {
+    const p = plan([hero("h")], themed());
+    const stops = gradientOf(p, "h").stops;
+    expect(stops.map((s) => s.colorKey)).toEqual([
+      "theme:color/primary-a50",
+      "theme:color/muted",
+      "theme:color/muted-a80",
+    ]);
+    const layers = p.tokens.layers;
+    // Layered, it is a Color Mode variable that Theme's token aliases, as other theme colors are.
+    const half = layers?.variables.find(
+      (v) => v.collection === "colorMode" && v.name === "color/primary-a50"
+    );
+    expect(half).toBeDefined();
+    // Every mode holds the theme color at half strength: Dark is the dark primary at 50%.
+    const resolve = (value: unknown): unknown => {
+      const alias = (value as { alias?: string })?.alias;
+      if (!alias) return value;
+      const target = layers?.variables.find((v) => v.key === alias);
+      return resolve(target?.values[0]);
+    };
+    const [light, dark] = (half?.values ?? []).map(resolve) as { a: number; r: number }[];
+    expect(light?.a).toBeCloseTo(0.5, 2);
+    expect(dark?.a).toBeCloseTo(0.5, 2);
+    expect(dark?.r).toBeCloseTo(rgba("oklch(0.922 0 0)").r, 2);
+  });
+
+  test("a stop equal to theme colors that differ in Dark stays raw", () => {
+    const t = themed();
+    // Card is white in Light like the background, but differs from it in Dark.
+    const p = plan([hero("h")], t);
+    const white = { ...rgba("oklch(1 0 0)"), a: 0.5 };
+    const h = gradientOf(p, "h");
+    expect(h).toBeDefined();
+    const q = plan(
+      [
+        {
+          ...hero("w"),
+          style: {
+            ...hero("w").style,
+            backgroundImages: [
+              {
+                type: "linear-gradient" as const,
+                css: "x",
+                angle: 180,
+                stops: [
+                  { color: white, position: 0 },
+                  { color: white, position: 1 },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+      t
+    );
+    expect(gradientOf(q, "w").stops.map((s) => s.colorKey)).toEqual([undefined, undefined]);
+  });
+});
