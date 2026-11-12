@@ -1,5 +1,15 @@
 # @repo/figma-mapper
 
+## 0.6.1
+
+### Patch Changes
+
+- [#20](https://github.com/bromso/figma-plugin-frottage/pull/20) [`1d83ffe`](https://github.com/bromso/figma-plugin-frottage/commit/1d83ffea1d3e277935424e6ec7534275f0225b8d) Thanks [@bromso](https://github.com/bromso)! - Gradients now switch with Color Mode: every gradient's stops bind to theme colors, a theme color at partial strength binds to a translucent version of it, and a page captured in Light no longer pins its Section to Light, so switching the page to Dark switches it.
+
+- [#18](https://github.com/bromso/figma-plugin-frottage/pull/18) [`fb65578`](https://github.com/bromso/figma-plugin-frottage/commit/fb65578bf2002fdb566d79014b163b637f827da6) Thanks [@bromso](https://github.com/bromso)! - Components nested inside another component's instance now follow their device frame's modes, and a component set's Label shows the component's name instead of the first label found.
+- Updated dependencies []:
+  - @repo/capture-schema@0.6.1
+
 ## 0.6.0
 
 ### Minor Changes
