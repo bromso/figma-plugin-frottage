@@ -569,8 +569,9 @@ function buildSet(
     const entry = winner.side.entry;
     const iconComponent = swaps && icon ? icons.of(icon.op as SvgOp, entry) : undefined;
     const properties: PlanComponentProperty[] = [];
-    if (label)
-      properties.push({ type: "TEXT", name: "Label", path: label.path, default: label.text });
+    // A text property has one default for the whole set, which every variant then shows; the
+    // component's name reads right on each, where the first label found would not.
+    if (label) properties.push({ type: "TEXT", name: "Label", path: label.path, default: name });
     if (showIcon)
       properties.push({ type: "BOOLEAN", name: "Show icon", path: [iconAt], default: true });
     if (iconComponent) {

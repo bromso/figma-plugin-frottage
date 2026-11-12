@@ -2247,6 +2247,9 @@ describe("a device set", () => {
     f?: ReturnType<typeof fakeFigma>;
     /** The breakpoint the shared mains open on, the widest frame's. */
     sharedBreakpoint?: string;
+    /** Shared keys beyond the Button's, and a frame's own ops in place of its two buttons. */
+    moreKeys?: string[];
+    ops?: (index: number) => PlanOp[];
   };
   async function importShared(run_: SharedRun) {
     const f = run_.f ?? fakeFigma();
@@ -2263,7 +2266,7 @@ describe("a device set", () => {
         ...(brought
           ? {
               components: {
-                keys: SHARED_KEYS,
+                keys: [...SHARED_KEYS, ...(run_.moreKeys ?? [])],
                 device: { mode: "Desktop", breakpoint: run_.sharedBreakpoint ?? "lg" },
               },
             }
@@ -2275,9 +2278,11 @@ describe("a device set", () => {
       );
       await a.applyBatch([
         ...(brought ?? []),
-        frame("a", null, { w: d.w, h: 800, fills, childCount: 2 }),
-        buttonOn(`b1-${index}`, "default"),
-        buttonOn(`b2-${index}`, "outline"),
+        ...(run_.ops?.(index) ?? [
+          frame("a", null, { w: d.w, h: 800, fills, childCount: 2 }),
+          buttonOn(`b1-${index}`, "default"),
+          buttonOn(`b2-${index}`, "outline"),
+        ]),
       ]);
       if (run_.fails?.includes(index)) continue;
       ends.push(await a.end());
@@ -2381,6 +2386,52 @@ describe("a device set", () => {
     const [buttons] = liveSets(f) as [FakeNode];
     for (const v of buttons.children as FakeNode[])
       expect(v.explicitModes[breakpoint.id]).toBe(modeIn(breakpoint, "lg"));
+  });
+
+  test("a shared main nested in another's instance reads its frame's modes, not its main's", async () => {
+    // A Card holding a Button, both shared: on the Phone the Card's Button must read the Phone.
+    const card: PlanOp[] = [
+      frame("component:Card/n", null, {
+        name: "Card",
+        w: 200,
+        h: 100,
+        fills,
+        childCount: 1,
+        component: { key: "component:Card", name: "Card" },
+      }),
+      { ...buttonOn("component:Card/b", "default"), parent: "component:Card/n" },
+    ];
+    const { f } = await importShared({
+      devices: [
+        { device: "Desktop", breakpoint: "lg", w: 1440 },
+        { device: "Phone", breakpoint: "base", w: 390 },
+      ],
+      brings: [[...sharedButtons(), ...card], null],
+      moreKeys: ["component:Card"],
+      ops: (index) => [
+        frame("a", null, { w: 400, h: 800, fills, childCount: 1 }),
+        {
+          op: "instance",
+          id: `card-${index}`,
+          parent: "a",
+          name: "Card",
+          x: 0,
+          y: 0,
+          w: 200,
+          h: 100,
+          key: "component:Card",
+          resize: false,
+          overrides: [],
+        },
+      ],
+    });
+    const breakpoint = collectionNamed(f, "Breakpoint");
+    const [, phone] = sectionOf(f).children as [FakeNode, FakeNode];
+    const [cardOnPhone] = phone.children as [FakeNode];
+    const [nested] = cardOnPhone.children as [FakeNode];
+    expect(nested.type).toBe("INSTANCE");
+    expect(f.modeOf(cardOnPhone, breakpoint.id)).toBe(modeIn(breakpoint, "base"));
+    expect(f.modeOf(nested, breakpoint.id)).toBe(modeIn(breakpoint, "base"));
   });
 
   test("the shared sets report with the set, not with the frame that made them", async () => {

@@ -148,7 +148,8 @@ describe("a set from the page's components", () => {
     // The label is a property, so no text override says it again.
     expect(instance(p, "d")?.overrides).toEqual([]);
     expect(main(p, "set:Button|Variant=outline, Size=icon")?.component?.properties).toEqual([
-      { type: "TEXT", name: "Label", path: [0], default: "A" },
+      // A text property has one default for the whole set, which every variant shows: its name.
+      { type: "TEXT", name: "Label", path: [0], default: "Button" },
     ]);
   });
 
@@ -314,7 +315,7 @@ describe("icons", () => {
     ]);
     const variant = main(p, "component:Button") as FrameOp;
     expect(variant.component?.properties).toEqual([
-      { type: "TEXT", name: "Label", path: [1], default: "B" },
+      { type: "TEXT", name: "Label", path: [1], default: "Button" },
       { type: "BOOLEAN", name: "Show icon", path: [0], default: true },
     ]);
     expect(below(p, variant.id).filter((o) => o.parent === variant.id)).toHaveLength(2);

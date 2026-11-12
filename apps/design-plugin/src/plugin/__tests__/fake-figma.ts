@@ -298,6 +298,17 @@ export function fakeFigma(opts: Options = {}) {
       get children() {
         return [...kids];
       },
+      // As in Figma: every node with children can be searched, below itself only.
+      findAllWithCriteria({ types }: { types: string[] }) {
+        const out: FakeNode[] = [];
+        const stack = [...kids];
+        while (stack.length > 0) {
+          const n = stack.pop() as FakeNode;
+          if (types.includes(n.type)) out.push(n);
+          stack.push(...(n.kids ?? []));
+        }
+        return out;
+      },
       parent: page,
       x: 0,
       y: 0,
