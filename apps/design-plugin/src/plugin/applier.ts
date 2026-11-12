@@ -1308,6 +1308,15 @@ export function createApplier(api: PluginAPI) {
     return definition === null || !shared.keys.has(definition);
   }
 
+  /** Every instance inside `node`, at any depth. */
+  function nestedInstances(node: InstanceNode): InstanceNode[] {
+    try {
+      return node.findAllWithCriteria({ types: ["INSTANCE"] });
+    } catch {
+      return [];
+    }
+  }
+
   async function buildInstance(op: InstanceOp, parent: FrameNode): Promise<InstanceNode> {
     const main = mainOf(op.key);
     if (!main) throw new Error(`no component ${op.key}`);
@@ -1316,7 +1325,11 @@ export function createApplier(api: PluginAPI) {
     join(parent, node, op);
     node.name = op.name;
     // Before its properties and overrides, so that what they size reads this frame's values.
-    if (readsOwnModes(op.key)) setMode(node);
+    if (readsOwnModes(op.key)) {
+      setMode(node);
+      // A nested instance reads its own main's modes before its parent's, so it gets them too.
+      for (const nested of nestedInstances(node)) setMode(nested);
+    }
     const swapsBroken = op.overrides.some((o) => o.kind === "swap" && isBroken(o.key));
     if (isBroken(op.key) || swapsBroken) {
       noteOverrideFailures(op.overrides.length);
