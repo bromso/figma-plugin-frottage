@@ -1,5 +1,14 @@
 # @repo/design-plugin
 
+## 0.6.2
+
+### Patch Changes
+
+- [#22](https://github.com/bromso/figma-plugin-frottage/pull/22) [`e0cf63c`](https://github.com/bromso/figma-plugin-frottage/commit/e0cf63c7ca68b98692b9600acbf6b15b33253694) Thanks [@bromso](https://github.com/bromso)! - A named component whose picture, icon or empty box has another fixed size, such as a card's picture on Tablet or Phone, is now an instance of the same component with that layer resized, instead of staying a plain frame counted as looking different.
+- Updated dependencies []:
+  - @repo/common@2.5.2
+  - @repo/ui@2.5.2
+
 ## 0.6.1
 
 ### Patch Changes
