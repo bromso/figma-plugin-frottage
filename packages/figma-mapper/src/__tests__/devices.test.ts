@@ -1361,7 +1361,7 @@ describe("components across devices", () => {
   });
 
   /** A coded Card: a column with a fixed-size picture above its title. */
-  function card(id: string, picture: number): ElementNode {
+  function card(id: string, picture: number, framed = false): ElementNode {
     const base = el(id, [0, 0]);
     const image = {
       id: `${id}-img`,
@@ -1377,6 +1377,20 @@ describe("components across devices", () => {
       objectPosition: "50% 50%",
       ...imageStyle,
     } as CaptureNode;
+    // A carousel item's picture sits in a box of its own size, which clips it.
+    const shown = framed
+      ? el(
+          `${id}-box`,
+          [0, 0],
+          // As a Next.js image that fills its box.
+          [{ ...image, position: "absolute" } as CaptureNode],
+          {
+            style: { ...base.style, overflow: "hidden" },
+            layout: { ...base.layout, position: "relative" },
+          },
+          [300, picture]
+        )
+      : image;
     const title = textNode(`${id}-t`, {
       text: id,
       box: { x: 0, y: picture, w: 40, h: 16 },
@@ -1386,7 +1400,7 @@ describe("components across devices", () => {
     return el(
       id,
       [0, 0],
-      [image, title],
+      [shown, title],
       {
         layout: {
           display: "flex",
@@ -1432,6 +1446,20 @@ describe("components across devices", () => {
     const laptop = instancesOf(merge.plans[0] as LayerPlan);
     expect(laptop.map((o) => o.id)).toEqual(["la", "lb", "lc"]);
     expect(laptop[2]?.overrides).toContainEqual({ path: [0], kind: "size", w: 300, h: 200 });
+  });
+
+  test("a card whose picture's box is another fixed size is the same card, box and picture resized", () => {
+    const merge = mergeDevices([
+      on("Laptop", [card("la", 328, true), card("lb", 328, true)]),
+      on("Phone", [card("pa", 288, true), card("pb", 288, true)]),
+    ]);
+    const phone = instancesOf(merge.plans[1] as LayerPlan);
+    expect(phone.map((o) => o.key)).toEqual(["component:Card", "component:Card"]);
+    for (const o of phone) {
+      expect(o.overrides).toContainEqual({ path: [0], kind: "size", w: 300, h: 288 });
+      expect(o.overrides).toContainEqual({ path: [0, 0], kind: "size", w: 300, h: 288 });
+    }
+    expect(merge.report.some((line) => line.includes("look different"))).toBe(false);
   });
 
   test("an extra makes no frame, so its buttons neither count nor make a variant", () => {
