@@ -10,6 +10,7 @@ import {
   INNER,
   ownLook,
   placement,
+  resizesAlone,
   rootSize,
   type Tree,
 } from "./components";
@@ -158,7 +159,8 @@ function innerLook(top: Tree, looks: Looks): number {
   for (let i = order.length - 1; i >= 0; i--) {
     const node = order[i] as Tree;
     const below = node.children.map((c) => childLook(c, node, looks)).join(",");
-    const own = ownLook(looks.norm(node.op), follows(node.op), TOKENS);
+    const skip = [...follows(node.op), ...(resizesAlone(node) ? ["w", "h"] : [])];
+    const own = ownLook(looks.norm(node.op), skip, TOKENS);
     looks.inner.set(node, looks.intern(`${own}|${below}`));
   }
   return looks.inner.get(top) as number;

@@ -12,7 +12,7 @@ import { type DeviceEntry, MAX_LANGUAGE_VARIABLES, mergeDevices } from "../devic
 import { mapCapture, mapCaptureParts } from "../map";
 import { DEFAULT_IMPORT_OPTIONS } from "../options";
 import type { LayerPlan, PlanLayers, PlanOp, PlanVariable, PlanVarValue } from "../plan";
-import { cap, el, inter, run, textNode } from "./fixtures";
+import { cap, el, imageStyle, inter, run, textNode } from "./fixtures";
 
 const LAYERED = { ...DEFAULT_IMPORT_OPTIONS, components: false, layers: true };
 const BOUNDARIES = [640, 768, 1024, 1280, 1400];
@@ -1358,6 +1358,80 @@ describe("components across devices", () => {
     }
     for (const o of laptop ?? []) expect(o.overrides.some((v) => v.kind === "size")).toBe(false);
     expect(merge.report.some((line) => line.includes("different"))).toBe(false);
+  });
+
+  /** A coded Card: a column with a fixed-size picture above its title. */
+  function card(id: string, picture: number): ElementNode {
+    const base = el(id, [0, 0]);
+    const image = {
+      id: `${id}-img`,
+      kind: "image",
+      box: { x: 0, y: 0, w: 300, h: picture },
+      paintOrder: 0,
+      visible: true,
+      opacity: 1,
+      blendMode: "normal",
+      semantic: { tag: "img" },
+      assetHash: `hash-${id}`,
+      fit: "cover",
+      objectPosition: "50% 50%",
+      ...imageStyle,
+    } as CaptureNode;
+    const title = textNode(`${id}-t`, {
+      text: id,
+      box: { x: 0, y: picture, w: 40, h: 16 },
+      lines: [{ x: 0, y: picture, w: 40, h: 16 }],
+      runs: [run({ end: id.length })],
+    });
+    return el(
+      id,
+      [0, 0],
+      [image, title],
+      {
+        layout: {
+          display: "flex",
+          flexDirection: "column",
+          flexWrap: "nowrap",
+          justifyContent: "normal",
+          alignItems: "flex-start",
+          gap: [0, 0],
+          position: "static",
+          padding: [0, 0, 0, 0],
+          margin: [0, 0, 0, 0],
+          order: 0,
+          grow: 0,
+          shrink: 1,
+        },
+        style: { ...base.style, backgroundColor: white },
+        component: { source: "react", name: "Card", props: {} },
+      },
+      [300, picture + 16]
+    );
+  }
+
+  test("a card whose picture is another fixed size on the Phone is the same card, resized", () => {
+    const merge = mergeDevices([
+      on("Laptop", [card("la", 328), card("lb", 328)]),
+      on("Phone", [card("pa", 288), card("pb", 288)]),
+    ]);
+    const [laptop, phone] = merge.plans.map((plan) => instancesOf(plan));
+    expect(laptop?.map((o) => o.key)).toEqual(["component:Card", "component:Card"]);
+    expect(phone?.map((o) => o.key)).toEqual(["component:Card", "component:Card"]);
+    for (const o of phone ?? []) {
+      expect(o.overrides).toContainEqual({ path: [0], kind: "size", w: 300, h: 288 });
+    }
+    for (const o of laptop ?? []) expect(o.overrides.some((v) => v.kind === "size")).toBe(false);
+    expect(merge.report.some((line) => line.includes("look different"))).toBe(false);
+  });
+
+  test("a card whose picture is another fixed size on one frame is the same card, resized", () => {
+    const merge = mergeDevices([
+      on("Laptop", [card("la", 328), card("lb", 328), card("lc", 200)]),
+      on("Phone", [card("pa", 288), card("pb", 288)]),
+    ]);
+    const laptop = instancesOf(merge.plans[0] as LayerPlan);
+    expect(laptop.map((o) => o.id)).toEqual(["la", "lb", "lc"]);
+    expect(laptop[2]?.overrides).toContainEqual({ path: [0], kind: "size", w: 300, h: 200 });
   });
 
   test("an extra makes no frame, so its buttons neither count nor make a variant", () => {
