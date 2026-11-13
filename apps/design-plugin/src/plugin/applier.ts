@@ -27,6 +27,7 @@ import {
   type Built,
   clampSize,
   createLayoutTracker,
+  type LaidMains,
   type TextFit,
   turnAbout,
   widenToLines,
@@ -140,6 +141,8 @@ type HeldSet = {
     broken: Set<string>;
     /** Figma refused the widest frame's modes, so the shared mains stay plain from then on. */
     modeRefused: boolean;
+    /** Which shared mains hold text, as the frame that laid them out found: every frame reads it. */
+    laid: LaidMains;
   };
 };
 
@@ -563,10 +566,13 @@ export function createApplier(api: PluginAPI) {
         device,
         broken: new Set(),
         modeRefused: false,
+        laid: new Map(),
       };
       for (const key of keys) set.shared.keys.add(key);
       buildsShared = true;
     }
+    // A later frame's instances of the shared mains hold text as those mains do.
+    if (set?.shared) tracker = createLayoutTracker(set.shared.laid);
     await Promise.all([loadFont(FALLBACK), ...meta.fonts.map(loadFont)]);
     fallbackOk = loadedFonts.has(fontKey(FALLBACK));
     container = set?.section ?? page;

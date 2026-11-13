@@ -104,7 +104,14 @@ export function widenToLines(node: TextNode, fit: TextFit): boolean {
   return node.height <= fit.limit;
 }
 
-export function createLayoutTracker() {
+/** Definitions in auto layout, by key, which say whether an instance of one holds text. */
+export type LaidMains = Map<string, { containsText: boolean }>;
+
+/**
+ * `mains` outlives one frame when a device set's frames share definitions: the first frame lays
+ * them out, and the others' instances of them read what it found.
+ */
+export function createLayoutTracker(mains: LaidMains = new Map()) {
   let rewrappedTexts = 0;
   let autoLayoutFrames = 0;
   let fallbackFrames = 0;
@@ -114,8 +121,6 @@ export function createLayoutTracker() {
   let open = new Map<string, LaidFrame>();
   /** Finished frames to verify, children before parents. */
   let ready: LaidFrame[] = [];
-  /** Definitions in auto layout, by key, which say whether an instance of one holds text. */
-  const mains = new Map<string, LaidFrame>();
 
   function noteReason(reason: string) {
     fallbackReasons[reason] = (fallbackReasons[reason] ?? 0) + 1;
