@@ -1,5 +1,14 @@
 # @repo/ui
 
+## 2.5.2
+
+### Patch Changes
+
+- Updated dependencies [[`e0cf63c`](https://github.com/bromso/figma-plugin-frottage/commit/e0cf63c7ca68b98692b9600acbf6b15b33253694)]:
+  - @repo/figma-mapper@0.6.2
+  - @repo/common@2.5.2
+  - @repo/capture-schema@0.6.2
+
 ## 2.5.1
 
 ### Patch Changes
