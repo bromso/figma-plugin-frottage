@@ -88,6 +88,16 @@ export function hugged(op: PlanOp): string[] {
   return [...(sizingH === "HUG" ? ["w"] : []), ...(sizingV === "HUG" ? ["h"] : [])];
 }
 
+/** The axes a layer's auto layout sizes, by hugging its content or filling its parent. */
+function followed(op: PlanOp): string[] {
+  const { sizingH, sizingV } = op.childLayout ?? {};
+  return [
+    ...hugged(op),
+    ...(sizingH === "FILL" ? ["w"] : []),
+    ...(sizingV === "FILL" ? ["h"] : []),
+  ];
+}
+
 /**
  * What a definition's root leaves out. Auto layout moves the children, so `resize` takes care of any
  * size; without it, a resize would not move them.
@@ -98,12 +108,13 @@ export function rootSize({ op, children }: Tree): string[] {
 }
 
 /**
- * A leaf an instance can resize on its own, by a size override, with nothing inside it to move: a
- * picture, an icon or an empty box. A named component's occurrence that differs from its main only
- * by such a size is the same component.
+ * A layer an instance can resize by a size override: a picture, an icon or a box. A box's children
+ * follow its auto layout, or keep their place in one without, where their places still compare; a
+ * fixed child has a size override of its own. A named component's occurrence that differs from its
+ * main only by such sizes is the same component: a carousel item whose picture's box is smaller on
+ * the Phone.
  */
-export function resizesAlone({ op, children }: Tree): boolean {
-  if (children.length > 0) return false;
+export function resizes({ op }: Tree): boolean {
   return op.op === "image" || op.op === "svg" || op.op === "frame";
 }
 
@@ -306,9 +317,12 @@ function overridesOf(occurrence: Tree, sources: boolean): PlanOverride[] {
     }
     // A named component's leaf can differ in size from its main's (a set's icon, a card's
     // picture on a smaller screen): a structural look compares any other's.
-    if (node !== occurrence && resizesAlone(node) && base.op.op === node.op.op) {
+    if (node !== occurrence && resizes(node) && base.op.op === node.op.op) {
       const { w, h } = node.op;
-      if (w !== base.op.w || h !== base.op.h) overrides.push({ path, kind: "size", w, h });
+      const loose = followed(node.op);
+      const wider = w !== base.op.w && !loose.includes("w");
+      if (wider || (h !== base.op.h && !loose.includes("h")))
+        overrides.push({ path, kind: "size", w, h });
     }
     const pairs = besides(base, node);
     for (let i = pairs.length - 1; i >= 0; i--) {
