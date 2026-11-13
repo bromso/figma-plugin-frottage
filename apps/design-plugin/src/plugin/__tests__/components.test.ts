@@ -562,6 +562,36 @@ test("a swap keeps a FILL its instance had in an auto layout parent", async () =
   expect(r.overrideFailures).toBe(0);
 });
 
+test("a size override keeps a FILL its layer has in the main's auto layout", async () => {
+  // A card's divider: an empty box as wide as the card, thinner on the smaller screen.
+  const { r, root } = await imported([
+    main("x-card", {
+      w: 300,
+      h: 2,
+      layout: hStack({ sizingH: "FIXED", sizingV: "FIXED" }),
+      childCount: 1,
+    }),
+    frame("x-card/d", "x-card/n", {
+      x: 0,
+      y: 0,
+      w: 300,
+      h: 2,
+      childLayout: { positioning: "AUTO", sizingH: "FILL", sizingV: "FIXED" },
+    }),
+    frame("root", null, { childCount: 1 }),
+    instance("a", "root", "x-card", {
+      w: 300,
+      h: 2,
+      overrides: [{ path: [0], kind: "size", w: 300, h: 1 }],
+    }),
+  ]);
+  const divider = root.children[0].children[0] as FakeNode;
+  expect(divider.layoutSizingHorizontal).toBe("FILL");
+  expect(divider.layoutSizingVertical).toBe("FIXED");
+  expect([divider.width, divider.height]).toEqual([300, 1]);
+  expect(r.overrideFailures).toBe(0);
+});
+
 test("a resize that fails after a swap counts once, and what is below still applies", async () => {
   const { r, root } = await imported(
     nested(
@@ -1177,7 +1207,7 @@ test("the set is named after the component and sits in the section", async () =>
 });
 
 test("instances keep their overrides and now point into the set", async () => {
-  const { f, r, root } = await imported([
+  const { r, root } = await imported([
     ...hovered(0),
     instance("a", "root", "x-card", { overrides: [textOver([0], "Buy now")] }),
   ]);

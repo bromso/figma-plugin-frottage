@@ -97,6 +97,16 @@ export function rootSize({ op, children }: Tree): string[] {
   return isAuto(op.layout) || children.length === 0 ? ["w", "h"] : [];
 }
 
+/**
+ * A leaf an instance can resize on its own, by a size override, with nothing inside it to move: a
+ * picture, an icon or an empty box. A named component's occurrence that differs from its main only
+ * by such a size is the same component.
+ */
+export function resizesAlone({ op, children }: Tree): boolean {
+  if (children.length > 0) return false;
+  return op.op === "image" || op.op === "svg" || op.op === "frame";
+}
+
 /** Positions come from subtracting page coordinates, so they carry rounding noise. */
 const tenth = (n: number) => Math.round(n * 10) / 10;
 
@@ -274,10 +284,6 @@ function overridesOf(occurrence: Tree, sources: boolean): PlanOverride[] {
       const same = text === base.op.text && JSON.stringify(runs) === JSON.stringify(base.op.runs);
       if (sources) overrides.push({ path, kind: "text", text, runs, source: node.op.id });
       else if (swapped || !same) overrides.push({ path, kind: "text", text, runs });
-    } else if (base.op.op === "svg" && node.op.op === "svg") {
-      // Only a set's icon can differ in size from its main's: a look compares any other's.
-      const { w, h } = node.op;
-      if (w !== base.op.w || h !== base.op.h) overrides.push({ path, kind: "size", w, h });
     } else if (base.op.op === "image" && node.op.op === "image") {
       const { hash } = node.op;
       if (swapped || hash !== base.op.hash) overrides.push({ path, kind: "image", hash });
@@ -297,6 +303,12 @@ function overridesOf(occurrence: Tree, sources: boolean): PlanOverride[] {
       if (fresh || JSON.stringify(own) !== JSON.stringify(base.op.overrides)) {
         for (const o of own) overrides.push({ ...o, path: [...path, ...o.path] });
       }
+    }
+    // A named component's leaf can differ in size from its main's (a set's icon, a card's
+    // picture on a smaller screen): a structural look compares any other's.
+    if (node !== occurrence && resizesAlone(node) && base.op.op === node.op.op) {
+      const { w, h } = node.op;
+      if (w !== base.op.w || h !== base.op.h) overrides.push({ path, kind: "size", w, h });
     }
     const pairs = besides(base, node);
     for (let i = pairs.length - 1; i >= 0; i--) {

@@ -1245,7 +1245,15 @@ export function createApplier(api: PluginAPI) {
       setImage(node, override.hash);
     } else if (override.kind === "size") {
       if (!("resize" in node)) throw new Error("nothing to resize");
+      // `resize` fixes both axes: an axis that fills its parent or hugs goes back to doing so.
+      if (!("layoutSizingHorizontal" in node)) {
+        node.resize(clampSize(override.w), clampSize(override.h));
+        return;
+      }
+      const { layoutSizingHorizontal: sizingH, layoutSizingVertical: sizingV } = node;
       node.resize(clampSize(override.w), clampSize(override.h));
+      if (sizingH !== "FIXED") node.layoutSizingHorizontal = sizingH;
+      if (sizingV !== "FIXED") node.layoutSizingVertical = sizingV;
     } else if (override.kind === "swap") {
       const main = mainOf(override.key);
       if (!main || node.type !== "INSTANCE") throw new Error("nothing to swap");
