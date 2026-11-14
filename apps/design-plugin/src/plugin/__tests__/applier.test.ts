@@ -2376,6 +2376,40 @@ describe("a device set", () => {
     expect(desktop.fills[0].boundVariables.color.id).toBe(id);
   });
 
+  test("a later frame's row of a shared main's instances verifies, though their text drifts", async () => {
+    // Tablet's card is plain and holds the Laptop's Button: Figma's text is wider than captured.
+    const row = {
+      mode: "HORIZONTAL" as const,
+      wrap: false,
+      itemSpacing: 0,
+      counterSpacing: null,
+      padding: [0, 0, 0, 0] as [number, number, number, number],
+      primaryAlign: "MIN" as const,
+      counterAlign: "MIN" as const,
+      sizingH: "HUG" as const,
+      sizingV: "HUG" as const,
+    };
+    const hugs = { positioning: "AUTO" as const, sizingH: "HUG" as const, sizingV: "HUG" as const };
+    const buttons = sharedButtons().map((op) =>
+      op.op === "frame"
+        ? { ...op, w: 25, h: 12, layout: row }
+        : { ...op, x: 0, y: 0, w: 25, h: 12, childLayout: hugs }
+    );
+    const { ends } = await importShared({
+      f: fakeFigma({ textWiderBy: 0.1 }),
+      devices: [
+        { device: "Laptop", breakpoint: "lg", w: 1440 },
+        { device: "Tablet", breakpoint: "md", w: 834 },
+      ],
+      brings: [buttons, null],
+      ops: (index) => [
+        frame("a", null, { w: 25, h: 12, fills, layout: row, childCount: 1 }),
+        { ...buttonOn(`b-${index}`, "default"), w: 25, h: 12, childLayout: hugs },
+      ],
+    });
+    expect(ends.map((r) => r.fallbackFrames)).toEqual([0, 0]);
+  });
+
   test("a frame's instances of the shared mains read its own Device and Breakpoint modes", async () => {
     const { f } = await importShared({
       devices: [
