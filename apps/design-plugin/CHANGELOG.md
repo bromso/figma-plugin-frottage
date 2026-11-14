@@ -1,5 +1,14 @@
 # @repo/design-plugin
 
+## 0.6.3
+
+### Patch Changes
+
+- [#26](https://github.com/bromso/figma-plugin-frottage/pull/26) [`59e16ff`](https://github.com/bromso/figma-plugin-frottage/commit/59e16ff185b856fce333a1f4c95e0e27357fd541) Thanks [@bromso](https://github.com/bromso)! - On Tablet, Phone and every other frame after the first, a frame holding instances of the page's shared components (a card with its Button) keeps its auto layout when Figma's text comes out a little wider than the browser's, as it already did on the first frame. Before, the plugin did not know those instances held text, so such frames fell back to fixed positions.
+- Updated dependencies []:
+  - @repo/common@2.5.3
+  - @repo/ui@2.5.3
+
 ## 0.6.2
 
 ### Patch Changes
