@@ -1,5 +1,13 @@
 # @repo/capture-dom
 
+## 0.6.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @repo/capture-schema@0.6.3
+  - @repo/component-probe@0.6.3
+
 ## 0.6.2
 
 ### Patch Changes

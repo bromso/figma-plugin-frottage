@@ -1,5 +1,14 @@
 # @repo/ui
 
+## 2.5.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @repo/figma-mapper@0.6.3
+  - @repo/common@2.5.3
+  - @repo/capture-schema@0.6.3
+
 ## 2.5.2
 
 ### Patch Changes
