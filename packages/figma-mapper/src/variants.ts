@@ -8,6 +8,7 @@ import {
   type HoverNotes,
   hugged,
   INNER,
+  nodeAt,
   ownLook,
   placement,
   resizes,
@@ -182,10 +183,98 @@ function rootLook(node: Tree, looks: Looks, bare: boolean, sized = false): strin
     // Nor does its size: an instance resizes it.
     return [`${placement(c, node)}${ownLook(looks.norm(c.op), ["markup", "w", "h"], TOKENS)}`];
   });
+  return `${rootOwn(node, looks, sized)}|${below.join(",")}`;
+}
+
+/** An occurrence's root as its look compares it, without its children. */
+function rootOwn(node: Tree, looks: Looks, sized: boolean): string {
   // The children say how many there are, the icon or not.
   const skip = [...(sized ? hugged(node.op) : rootSize(node)), "childCount"];
   const op = sized ? node.op : resizable(node.op);
-  return `${ownLook(looks.norm(op), skip, TOKENS)}|${below.join(",")}`;
+  return ownLook(looks.norm(op), skip, TOKENS);
+}
+
+/** A layer below the root as its look compares it, without its children. */
+function innerOwn(node: Tree, looks: Looks): string {
+  // How many children it has is for its children to say.
+  const skip = [...follows(node.op), ...(resizes(node) ? ["w", "h"] : []), "childCount"];
+  return ownLook(looks.norm(node.op), skip, TOKENS);
+}
+
+const SAME = "same" as const;
+
+/**
+ * Where `b` differs from `a` only below one layer, the path to that layer: the slot whose children
+ * each instance holds as its own. Each layer above it, and its placement, compares as its look
+ * does; a nested component compares by its set. At a layer whose children differ in number, or
+ * where two of them differ, or one whose own look differs, the slot is that layer; with only one
+ * differing child like it in itself, the slot is further in. Null when no slot makes them alike:
+ * a layer differs in itself, the slot would not be in horizontal or vertical auto layout, or the
+ * component has an icon, which its own properties handle.
+ */
+function slotPath(a: Tree, b: Tree, looks: Looks, sized: boolean): number[] | null {
+  if (iconOf(a) || iconOf(b) || !nests(a)) return null;
+  if (rootOwn(a, looks, sized) !== rootOwn(b, looks, sized)) return null;
+  const found = below(a, b, [], looks);
+  return found === SAME ? null : found;
+}
+
+function below(a: Tree, b: Tree, path: number[], looks: Looks): number[] | null | typeof SAME {
+  const here = holds(a) ? path : null;
+  if (a.children.length !== b.children.length) return here;
+  const differ: number[] = [];
+  for (const [i, ca] of a.children.entries()) {
+    const cb = b.children[i] as Tree;
+    if (childLook(ca, a, looks) !== childLook(cb, b, looks)) differ.push(i);
+  }
+  if (differ.length === 0) return SAME;
+  if (differ.length > 1) return here;
+  const i = differ[0] as number;
+  const [ca, cb] = [a.children[i] as Tree, b.children[i] as Tree];
+  const alike =
+    !ca.component &&
+    !cb.component &&
+    placement(ca, a) === placement(cb, b) &&
+    innerOwn(ca, looks) === innerOwn(cb, looks);
+  // One layer styled otherwise is a different look; one that holds something else is content.
+  if (!alike) return shape(ca) === shape(cb) ? null : here;
+  const inner = below(ca, cb, [...path, i], looks);
+  return inner === null || inner === SAME ? here : inner;
+}
+
+/** What layers a subtree holds, by kind, whatever they look like. */
+function shape({ op, children, component }: Tree): string {
+  if (component) return component.tag;
+  return `${op.op}(${children.map(shape).join(",")})`;
+}
+
+/**
+ * Whether a component holds a frame of its own below its root: one of only a label and icons (a
+ * button) has its properties for what varies, and no slot.
+ */
+function nests(root: Tree): boolean {
+  return root.children.some((c) => c.op.op === "frame" || c.op.op === "instance" || c.component);
+}
+
+/** A layer that can hold a slot: a frame in horizontal or vertical auto layout. */
+function holds({ op }: Tree): boolean {
+  return op.op === "frame" && (op.layout.mode === "HORIZONTAL" || op.layout.mode === "VERTICAL");
+}
+
+/** The longest path both start with. */
+function common(p: number[], q: number[]): number[] {
+  const out: number[] = [];
+  for (const [i, n] of p.entries()) {
+    if (q[i] !== n) break;
+    out.push(n);
+  }
+  return out;
+}
+
+/** The slot every path is in: their common start; undefined for none. */
+function slotOf(paths: number[][]): number[] | undefined {
+  const [first, ...rest] = paths;
+  return first && rest.reduce(common, first);
 }
 
 /**
@@ -440,7 +529,14 @@ function axesOf(sides: Side[], decides: (side: Side) => boolean): Axes {
 }
 
 /** One entry's occurrences of one variant: its main, the ones that join it, and its values. */
-type Part = { side: Side; main: Tree; members: Tree[]; values: [string, string][] };
+type Part = {
+  side: Side;
+  main: Tree;
+  members: Tree[];
+  values: [string, string][];
+  /** Slot paths of the members that joined only with a slot. */
+  slots: number[][];
+};
 
 /** An entry's variants against fixed axes; occurrences that look different are counted. */
 function partsOf(side: Side, { kept, booleans }: Axes): { parts: Part[]; notJoined: number } {
@@ -448,12 +544,21 @@ function partsOf(side: Side, { kept, booleans }: Axes): { parts: Part[]; notJoin
   const combination = (node: Tree) => JSON.stringify(kept.map((k) => propValue(node, k)));
   let notJoined = 0;
   const groups = new Map<string, Tree[]>();
+  const slots = new Map<Tree[], number[][]>();
+  /** Joins `node` to `members` with a slot, when one makes it look like their first. */
+  const slotted = (members: Tree[], node: Tree, sized: boolean): boolean => {
+    const path = slotPath(members[0] as Tree, node, side.looks, sized);
+    if (!path) return false;
+    members.push(node);
+    slots.set(members, [...(slots.get(members) ?? []), path]);
+    return true;
+  };
   for (const node of side.coded) {
     const c = combination(node);
     const members = groups.get(c);
     if (!members) groups.set(c, [node]);
     else if (side.bareOf(members[0] as Tree) === side.bareOf(node)) members.push(node);
-    else notJoined++;
+    else if (!slotted(members, node, false)) notJoined++;
   }
   for (const node of side.late) {
     // Nothing but the look ties it to a variant, so its size must match too.
@@ -461,7 +566,7 @@ function partsOf(side: Side, { kept, booleans }: Axes): { parts: Part[]; notJoin
       (m) => side.sizedOf(m[0] as Tree) === side.sizedOf(node)
     );
     if (members) members.push(node);
-    else notJoined++;
+    else if (![...groups.values()].some((m) => slotted(m, node, true))) notJoined++;
   }
   // Each variant's main, and who joins it: with an icon, the same icon place as the main's.
   const parts: Part[] = [];
@@ -475,7 +580,7 @@ function partsOf(side: Side, { kept, booleans }: Axes): { parts: Part[]; notJoin
       else notJoined++;
     }
     const values = kept.map((k): [string, string] => [capital(k), propValue(main, k)]);
-    parts.push({ side, main, members: joined, values });
+    parts.push({ side, main, members: joined, values, slots: slots.get(members) ?? [] });
   }
   return { parts, notJoined };
 }
@@ -520,7 +625,7 @@ function buildSet(
   // Each variant's main entry, and the others that look like it.
   const cross = newLooks((op) => bound(op, switches));
   const crossLook = (part: Part, bare: boolean) => rootLook(part.main, cross, bare);
-  const variants: { name: string; parts: Part[] }[] = [];
+  const variants: { name: string; parts: Part[]; slot: number[] | undefined }[] = [];
   for (const [variantName, parts] of byVariant) {
     // The page's own language decides: a variant only another language shows is none, and the
     // main is a deciding entry's, with an icon when one has it.
@@ -528,6 +633,7 @@ function buildSet(
     const winner = deciding.find((p) => iconOf(p.main)) ?? deciding[0];
     if (!winner) continue;
     const joined = [winner];
+    const paths = [...winner.slots];
     for (const part of parts) {
       if (part === winner) continue;
       // A main without the icon has no place for it.
@@ -536,10 +642,18 @@ function buildSet(
         continue;
       }
       const bare = !iconOf(part.main) || !iconOf(winner.main);
-      if (crossLook(part, bare) === crossLook(winner, bare)) joined.push(part);
-      else if (decides(part.side)) notJoined += part.members.length;
+      if (crossLook(part, bare) === crossLook(winner, bare)) {
+        joined.push(part);
+        paths.push(...part.slots);
+        continue;
+      }
+      const path = slotPath(winner.main, part.main, cross, false);
+      if (path) {
+        joined.push(part);
+        paths.push(path, ...part.slots);
+      } else if (decides(part.side)) notJoined += part.members.length;
     }
-    variants.push({ name: variantName, parts: joined });
+    variants.push({ name: variantName, parts: joined, slot: slotOf(paths) });
   }
 
   const membersOf = (parts: Part[]) => parts.flatMap((p) => p.members);
@@ -559,7 +673,7 @@ function buildSet(
 
   const built: Component[] = [];
   const owners: number[] = [];
-  for (const { name: variantName, parts } of variants) {
+  for (const { name: variantName, parts, slot } of variants) {
     const winner = parts[0] as Part;
     const main = winner.main;
     const members = membersOf(parts);
@@ -567,7 +681,9 @@ function buildSet(
     const icon = iconOf(main);
     const iconAt = icon ? main.children.indexOf(icon) : -1;
     const showIcon = icon !== undefined && members.some((m) => !iconOf(m));
-    const label = labels.size > 1 ? labelOf(main) : undefined;
+    const found = labels.size > 1 ? labelOf(main) : undefined;
+    // A text in the slot is the instance's own, not a property.
+    const label = found && slot && within(found.path, slot) ? undefined : found;
     const entry = winner.side.entry;
     const iconComponent = swaps && icon ? icons.of(icon.op as SvgOp, entry) : undefined;
     const properties: PlanComponentProperty[] = [];
@@ -593,10 +709,13 @@ function buildSet(
       properties,
       ...(label ? { label: label.path } : {}),
       ...(icon ? { iconAt } : {}),
+      ...(slot ? { slot } : {}),
     };
     for (const part of parts) {
       for (const node of part.members) {
         node.component = component;
+        const holder = slot && nodeAt(node, slot);
+        if (holder) holder.slotted = true;
         const own = iconOf(node);
         if (icon && !own) node.iconless = true;
         const values: PlanPropertyValues = {};
@@ -613,6 +732,9 @@ function buildSet(
   }
   return { variants: built, owners, properties: kept.map(capital), notJoined };
 }
+
+/** Whether `path` is at or below `top`. */
+const within = (path: number[], top: number[]) => top.every((n, i) => path[i] === n);
 
 /** The sets each definition's main holds instances of, so it can come after them. */
 function usedBy(component: Component): Component[] {

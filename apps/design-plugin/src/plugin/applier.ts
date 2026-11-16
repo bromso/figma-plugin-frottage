@@ -790,10 +790,21 @@ export function createApplier(api: PluginAPI) {
   }
 
   /** Creates a frame under `parent`, or at the top of the page when `parent` is null. */
+  /** The component a layer is in, which makes its slots. */
+  function componentOf(node: BaseNode | null): ComponentNode {
+    for (let at = node; at; at = at.parent) if (at.type === "COMPONENT") return at;
+    throw new Error("a slot needs a component");
+  }
+
   function createFrame(parent: FrameNode | null, op: PlanOp, name: string): FrameNode {
     // Takes a frame's properties, which `buildFrame` sets whatever a main's defaults are.
     const isMain = op.op === "frame" && op.component;
-    const node = isMain ? (api.createComponent() as unknown as FrameNode) : api.createFrame();
+    const node =
+      op.op === "frame" && op.slot
+        ? (componentOf(parent).createSlot() as unknown as FrameNode)
+        : isMain
+          ? (api.createComponent() as unknown as FrameNode)
+          : api.createFrame();
     pending = node;
     if (parent) join(parent, node, op);
     else if (container && node.parent !== container) container.appendChild(node);
@@ -1382,12 +1393,30 @@ export function createApplier(api: PluginAPI) {
       // First, so that an icon this swaps in takes the size an override then gives it.
       if (op.properties) holderOf(op.key)?.setProperties(op.key, node, op.properties);
       await applyOverrides(node, op.overrides);
+      fillSlots(node, op);
     }
     sizeInstance(node, main, op);
     place(node, parent, op);
     fillParent(node, parent, op);
     instancesCreated++;
     return node;
+  }
+
+  /**
+   * Empties each slot the instance fills, and takes it as the parent its own layers go in. A path
+   * that finds no slot is an override that failed; what was to go there then has no parent.
+   */
+  function fillSlots(node: InstanceNode, op: InstanceOp) {
+    for (const { path, id } of op.slots ?? []) {
+      let at: SceneNode | undefined = node;
+      for (const i of path) at = at && "children" in at ? at.children[i] : undefined;
+      if (at?.type !== "SLOT") {
+        noteOverrideFailures(1);
+        continue;
+      }
+      for (const kid of at.children) kid.remove();
+      nodes.set(id, at as unknown as FrameNode);
+    }
   }
 
   function buildMain(op: FrameOp, key: string): Built {
@@ -1494,6 +1523,8 @@ export function createApplier(api: PluginAPI) {
       op.op === "frame" && op.component && held?.shared?.components.has(op.component.key);
     if (again || (op.parent !== null && skipped.has(op.parent))) {
       skipped.add(op.id);
+      // What an instance puts in its slots goes with it.
+      if (op.op === "instance") for (const slot of op.slots ?? []) skipped.add(slot.id);
       return;
     }
     const run = generation;

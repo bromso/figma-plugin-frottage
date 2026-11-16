@@ -203,6 +203,11 @@ export type PlanOp = (
       rotation?: number;
       /** Direct child ops that follow, so the applier knows when this frame is complete. */
       childCount: number;
+      /**
+       * A component's slot, made with its component's `createSlot()`: the place an instance fills
+       * with its own layers. Always the only child of a layer in a definition.
+       */
+      slot?: true;
       /** Set on the root of a definition, whose `parent` is null. */
       component?: {
         key: string;
@@ -300,6 +305,11 @@ export type PlanOp = (
       overrides: PlanOverride[];
       /** On an instance of a set's variant: its values of the variant's `properties`. */
       properties?: PlanPropertyValues;
+      /**
+       * The slots this instance fills, its own and its nested instances', by child-index path in
+       * its expanded tree: each is emptied, and the ops whose `parent` is its `id` go in it.
+       */
+      slots?: { path: number[]; id: string }[];
     }
 ) & {
   /** How the node sits in an auto layout parent; absent under a parent with mode NONE. */

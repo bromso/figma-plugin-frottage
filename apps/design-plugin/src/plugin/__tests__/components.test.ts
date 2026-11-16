@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import {
   DEFAULT_IMPORT_OPTIONS,
   extractComponents,
@@ -1694,4 +1694,84 @@ test("a re-import with hover adds no State to a set that has none", async () => 
   expect(own.children.map((v: FakeNode) => v.name)).toEqual(BUTTONS.map(variantName));
   expect(buttonSets(f)).toHaveLength(1);
   expect(r.failedOps).toBe(0);
+});
+
+describe("slots", () => {
+  const column = {
+    mode: "VERTICAL" as const,
+    wrap: false,
+    itemSpacing: 4,
+    counterSpacing: null,
+    padding: [0, 0, 0, 0] as [number, number, number, number],
+    primaryAlign: "MIN" as const,
+    counterAlign: "MIN" as const,
+    sizingH: "FIXED" as const,
+    sizingV: "HUG" as const,
+  };
+  const fills = { positioning: "AUTO" as const, sizingH: "FILL" as const, sizingV: "HUG" as const };
+  /** A card whose list is a slot holding two features. */
+  const card = (): PlanOp[] => [
+    main("x-card", { w: 100, h: 40, layout: column, childCount: 1 }),
+    frame("x-card/list", "x-card/n", {
+      w: 100,
+      h: 40,
+      layout: column,
+      childCount: 1,
+      childLayout: fills,
+    }),
+    frame("x-card/list#slot", "x-card/list", {
+      name: "Content",
+      w: 100,
+      h: 40,
+      fills: [],
+      layout: column,
+      childCount: 2,
+      slot: true,
+      childLayout: fills,
+    }),
+    text("x-card/f1", "x-card/list#slot", "one", { x: 0, y: 0 }),
+    text("x-card/f2", "x-card/list#slot", "two", { x: 0, y: 16 }),
+  ];
+  const row = (childCount: number): PlanOp =>
+    frame("root", null, { w: 400, h: 100, layout: { ...column, sizingV: "FIXED" }, childCount });
+
+  test("a slot op is its component's slot, inside the layer it belongs to", async () => {
+    const { f } = await imported([...card(), row(1), instance("a", "root", "x-card")]);
+    const [component] = ofType(f, "COMPONENT") as [FakeNode];
+    const slot = component.children[0].children[0] as FakeNode;
+    expect(slot.type).toBe("SLOT");
+    expect(slot.name).toBe("Content");
+    expect(slot.children.map((n: FakeNode) => n.characters)).toEqual(["one", "two"]);
+    expect(f.count("createSlot")).toBe(1);
+  });
+
+  test("an instance's slot holds its own layers, and the main keeps its own", async () => {
+    const { f, r } = await imported([
+      ...card(),
+      row(1),
+      instance("a", "root", "x-card", { slots: [{ path: [0, 0], id: "a#slot0" }] }),
+      text("a/f1", "a#slot0", "uno", { x: 0, y: 0 }),
+      text("a/f2", "a#slot0", "dos", { x: 0, y: 16 }),
+      text("a/f3", "a#slot0", "tres", { x: 0, y: 32 }),
+    ]);
+    const [inst] = ofType(f, "INSTANCE") as [FakeNode];
+    const slot = inst.children[0].children[0] as FakeNode;
+    expect(slot.type).toBe("SLOT");
+    expect(slot.children.map((n: FakeNode) => n.characters)).toEqual(["uno", "dos", "tres"]);
+    const [component] = ofType(f, "COMPONENT") as [FakeNode];
+    expect(component.children[0].children[0].children).toHaveLength(2);
+    expect(r.failedOps).toBe(0);
+    expect(r.overrideFailures).toBe(0);
+  });
+
+  test("a slot path that finds no slot counts a failure, and its content fails", async () => {
+    const { r } = await imported([
+      ...card(),
+      row(1),
+      instance("a", "root", "x-card", { slots: [{ path: [0], id: "a#slot0" }] }),
+      text("a/f1", "a#slot0", "uno"),
+    ]);
+    expect(r.overrideFailures).toBe(1);
+    expect(r.failedOps).toBe(1);
+  });
 });

@@ -23,6 +23,11 @@ export type Component = {
   iconAt?: number;
   /** Made from a component the page's code or markers name: a set's variant or a plain one. */
   named?: boolean;
+  /**
+   * The layer, by child-index path from the main's root, whose children are a slot: what each
+   * instance holds there is its own, not overrides of the main's.
+   */
+  slot?: number[];
 };
 
 export type Tree = {
@@ -41,7 +46,16 @@ export type Tree = {
   properties?: PlanPropertyValues;
   /** An occurrence without its main's icon. */
   iconless?: boolean;
+  /** The layer of an occurrence whose children fill its component's slot. */
+  slotted?: boolean;
 };
+
+/** The node at a child-index path below `top`. */
+export function nodeAt(top: Tree, path: number[]): Tree | undefined {
+  let node: Tree | undefined = top;
+  for (const i of path) node = node?.children[i];
+  return node;
+}
 
 /**
  * Top-level op fields a look does not depend on. Anything else compares, including new fields.
@@ -261,7 +275,12 @@ const samePath = (p: number[], q: number[]) =>
  * How `occurrence` differs from its component's first occurrence, parents before children. With
  * `sources`, every text is an override that names its captured text, so it can bind on its own.
  */
-function overridesOf(occurrence: Tree, sources: boolean): PlanOverride[] {
+function overridesOf(
+  occurrence: Tree,
+  sources: boolean,
+  /** Gets each slot layer below, its own and nested instances', with its path. */
+  slots: { path: number[]; node: Tree }[] = []
+): PlanOverride[] {
   const first = occurrence.component?.occurrences[0] as Tree;
   if (occurrence === first) return [];
   const overrides: PlanOverride[] = [];
@@ -324,6 +343,11 @@ function overridesOf(occurrence: Tree, sources: boolean): PlanOverride[] {
       if (wider || (h !== base.op.h && !loose.includes("h")))
         overrides.push({ path, kind: "size", w, h });
     }
+    // What fills a slot is the instance's own, not an override.
+    if (node.slotted) {
+      slots.push({ path, node });
+      continue;
+    }
     const pairs = besides(base, node);
     for (let i = pairs.length - 1; i >= 0; i--) {
       const pair = pairs[i] as (typeof pairs)[number];
@@ -336,14 +360,56 @@ function overridesOf(occurrence: Tree, sources: boolean): PlanOverride[] {
 const isFixed = (layout: PlanLayout, axis: "sizingH" | "sizingV"): boolean =>
   isAuto(layout) ? layout[axis] === "FIXED" : true;
 
-function instanceOp(node: Tree, id: string, parent: string, sources: boolean): PlanOp {
+/**
+ * An occurrence as an instance op, then what it puts in its slots: each slot layer's children,
+ * flattened as page layers are, moved into the slot, which starts inside the layer's padding.
+ */
+function instanceOps(
+  node: Tree,
+  id: string,
+  parent: string,
+  rename: (id: string) => string,
+  sources: boolean
+): PlanOp[] {
+  const found: { path: number[]; node: Tree }[] = [];
+  const op = instanceOp(node, id, parent, sources, found);
+  if (found.length === 0) return [op];
+  const slots = found.map((f, n) => ({ path: [...f.path, 0], id: `${id}#slot${n}` }));
+  const content = found.flatMap((f, n) => {
+    const into = `${id}#slot${n}`;
+    const [top, , , left] = paddingOf(f.node.op);
+    return f.node.children.flatMap((child) => {
+      const moved = { ...child, op: { ...child.op, x: child.op.x - left, y: child.op.y - top } };
+      const childId = rename(child.op.id);
+      if (child.component) {
+        return instanceOps(moved as Tree, childId, into, rename, sources);
+      }
+      const ops = flatten(moved as Tree, rename, sources);
+      return [{ ...(ops[0] as PlanOp), parent: into } as PlanOp, ...ops.slice(1)];
+    });
+  });
+  return [{ ...op, slots } as PlanOp, ...content];
+}
+
+/** A frame's padding, [top, right, bottom, left]; none without auto layout. */
+function paddingOf(op: PlanOp): [number, number, number, number] {
+  return op.op === "frame" && op.layout.mode !== "NONE" ? op.layout.padding : [0, 0, 0, 0];
+}
+
+function instanceOp(
+  node: Tree,
+  id: string,
+  parent: string,
+  sources: boolean,
+  slots: { path: number[]; node: Tree }[] = []
+): PlanOp {
   const component = node.component as Component;
   const first = (component.occurrences[0] as Tree).op;
   const { name, x, y, w, h, childLayout } = node.op;
   const layout = first.op === "frame" ? first.layout : { mode: "NONE" as const };
   const { label } = component;
   // An instance's Label property shows its text; with `sources` the override stays, to bind it.
-  const overrides = overridesOf(node, sources).filter(
+  const overrides = overridesOf(node, sources, slots).filter(
     (o) => sources || !label || o.kind !== "text" || !samePath(o.path, label)
   );
   return {
@@ -374,7 +440,7 @@ export function flatten(top: Tree, rename: (id: string) => string, sources: bool
     const id = rename(op.id);
     const parent = op.parent === null ? null : rename(op.parent);
     if (node !== top && node.component) {
-      out.push(instanceOp(node, id, parent as string, sources));
+      out.push(...instanceOps(node, id, parent as string, rename, sources));
       continue;
     }
     out.push({ ...op, id, parent } as PlanOp);
@@ -423,10 +489,13 @@ function hoverOf(top: Tree, hovers: Map<string, HoverPatch>): OccurrenceHover {
       if (out.patches.length >= MAX_HOVER_PATCHES) return { ...out, capped: true };
       out.patches.push(patch);
     }
+    // Another occurrence's slot holds its own layers; the main's are below its slot layer.
+    if (node.slotted && top !== first) continue;
+    const into = node.slotted ? [...path, 0] : path;
     const pairs = besides(base, node);
     for (let i = pairs.length - 1; i >= 0; i--) {
       const pair = pairs[i] as (typeof pairs)[number];
-      stack.push({ node: pair.node, base: pair.base, path: [...path, pair.at] });
+      stack.push({ node: pair.node, base: pair.base, path: [...into, pair.at] });
     }
   }
   return out;
@@ -445,6 +514,65 @@ function hoversBelow(top: Tree, hovers: Map<string, HoverPatch>): number {
 
 export type HoverNotes = { capped: number; swapped: number };
 
+/** The name of a component's slot layer, which Figma gives its slot property too. */
+export const SLOT_NAME = "Content";
+
+/**
+ * `ops` with a slot as the only child of the layer `holderId`: it lays out what the layer held as
+ * the layer did, inside its padding, filling it on each axis the layer does not hug.
+ */
+function withSlot(ops: PlanOp[], holderId: string): PlanOp[] {
+  const at = ops.findIndex((o) => o.id === holderId);
+  const holder = ops[at];
+  if (holder?.op !== "frame" || holder.layout.mode === "NONE") return ops;
+  if (holder.layout.mode === "GRID") return ops;
+  const { layout } = holder;
+  const [top, right, bottom, left] = layout.padding;
+  const id = `${holderId}#slot`;
+  const { padding: _padding, ...gaps } = layout.spacingKeys ?? {};
+  const follows = (sizing: "FIXED" | "HUG") => (sizing === "HUG" ? "HUG" : "FILL");
+  const slot: PlanOp = {
+    op: "frame",
+    id,
+    parent: holderId,
+    name: SLOT_NAME,
+    x: left,
+    y: top,
+    w: Math.max(0, holder.w - left - right),
+    h: Math.max(0, holder.h - top - bottom),
+    fills: [],
+    strokes: null,
+    radius: [0, 0, 0, 0],
+    opacity: 1,
+    effects: [],
+    clips: false,
+    layout: {
+      ...layout,
+      padding: [0, 0, 0, 0],
+      strokesIncluded: undefined,
+      ...(Object.keys(gaps).length > 0 ? { spacingKeys: gaps } : { spacingKeys: undefined }),
+    },
+    childCount: holder.childCount,
+    slot: true,
+    childLayout: {
+      positioning: "AUTO",
+      sizingH: follows(layout.sizingH),
+      sizingV: follows(layout.sizingV),
+    },
+  };
+  const clean = (o: PlanOp) => JSON.parse(JSON.stringify(o)) as PlanOp; // drops the undefined fields set above
+  return [
+    ...ops.slice(0, at),
+    { ...holder, childCount: 1 },
+    clean(slot),
+    ...ops
+      .slice(at + 1)
+      .map((o) =>
+        o.parent === holderId ? ({ ...o, parent: id, x: o.x - left, y: o.y - top } as PlanOp) : o
+      ),
+  ];
+}
+
 export function definition(
   component: Component,
   hovers: Map<string, HoverPatch>,
@@ -453,7 +581,9 @@ export function definition(
 ): PlanOp[] {
   const { key, name } = component;
   const first = component.occurrences[0] as Tree;
-  const [root, ...rest] = flatten(first, (id) => `${key}/${id}`, sources);
+  const flat = flatten(first, (id) => `${key}/${id}`, sources);
+  const holder = component.slot && nodeAt(first, component.slot);
+  const [root, ...rest] = holder ? withSlot(flat, `${key}/${holder.op.id}`) : flat;
   const { childLayout: _placedByInstances, ...own } = root as Extract<PlanOp, { op: "frame" }>;
   let hover: PlanHoverPatch[] = [];
   if (hovers.size > 0) {
