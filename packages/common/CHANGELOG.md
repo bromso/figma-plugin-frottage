@@ -1,5 +1,9 @@
 # @repo/common
 
+## 2.5.5
+
+No changes in this release.
+
 ## 2.5.4
 
 No changes in this release.

@@ -1,5 +1,15 @@
 # @repo/ui
 
+## 2.5.5
+
+### Patch Changes
+
+- [#31](https://github.com/bromso/figma-plugin-frottage/pull/31) [`d556be2`](https://github.com/bromso/figma-plugin-frottage/commit/d556be2a10c684ef7c52d4ddebcb8b8ed46c69d8) Thanks [@bromso](https://github.com/bromso)! - Update Tailwind CSS to 4.3.5.
+- Updated dependencies []:
+  - @repo/common@2.5.5
+  - @repo/capture-schema@0.7.1
+  - @repo/figma-mapper@0.7.1
+
 ## 2.5.4
 
 ### Patch Changes
