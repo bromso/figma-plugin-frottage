@@ -102,16 +102,6 @@ export function hugged(op: PlanOp): string[] {
   return [...(sizingH === "HUG" ? ["w"] : []), ...(sizingV === "HUG" ? ["h"] : [])];
 }
 
-/** The axes a layer's auto layout sizes, by hugging its content or filling its parent. */
-function followed(op: PlanOp): string[] {
-  const { sizingH, sizingV } = op.childLayout ?? {};
-  return [
-    ...hugged(op),
-    ...(sizingH === "FILL" ? ["w"] : []),
-    ...(sizingV === "FILL" ? ["h"] : []),
-  ];
-}
-
 /**
  * What a definition's root leaves out. Auto layout moves the children, so `resize` takes care of any
  * size; without it, a resize would not move them.
@@ -122,14 +112,15 @@ export function rootSize({ op, children }: Tree): string[] {
 }
 
 /**
- * A layer an instance can resize by a size override: a picture, an icon or a box. A box's children
- * follow its auto layout, or keep their place in one without, where their places still compare; a
- * fixed child has a size override of its own. A named component's occurrence that differs from its
- * main only by such sizes is the same component: a carousel item whose picture's box is smaller on
- * the Phone.
+ * A text in a row that either keeps to one line or wraps at the room the row leaves it: the same
+ * label at another width. An instance can switch it between the two, by `textAutoResize` and
+ * filling the row, though it cannot set a width; so its width, wrap and lines never compare.
  */
-export function resizes({ op }: Tree): boolean {
-  return op.op === "image" || op.op === "svg" || op.op === "frame";
+export function rewraps({ op, parent }: Tree): boolean {
+  if (op.op !== "text" || parent?.op.op !== "frame") return false;
+  if (parent.op.layout.mode !== "HORIZONTAL") return false;
+  const sizing = op.childLayout?.sizingH;
+  return op.wrap ? sizing === "FIXED" || sizing === "FILL" : sizing === "HUG";
 }
 
 /** Positions come from subtracting page coordinates, so they carry rounding noise. */
@@ -314,6 +305,11 @@ function overridesOf(
       const same = text === base.op.text && JSON.stringify(runs) === JSON.stringify(base.op.runs);
       if (sources) overrides.push({ path, kind: "text", text, runs, source: node.op.id });
       else if (swapped || !same) overrides.push({ path, kind: "text", text, runs });
+      // Figma cannot resize a layer inside an instance, but it can wrap a row's label again.
+      const { wrap } = node.op;
+      if (rewraps(node) && rewraps(base) && (swapped || wrap !== base.op.wrap)) {
+        overrides.push({ path, kind: "wrap", wraps: wrap });
+      }
     } else if (base.op.op === "image" && node.op.op === "image") {
       const { hash } = node.op;
       if (swapped || hash !== base.op.hash) overrides.push({ path, kind: "image", hash });
@@ -333,15 +329,6 @@ function overridesOf(
       if (fresh || JSON.stringify(own) !== JSON.stringify(base.op.overrides)) {
         for (const o of own) overrides.push({ ...o, path: [...path, ...o.path] });
       }
-    }
-    // A named component's leaf can differ in size from its main's (a set's icon, a card's
-    // picture on a smaller screen): a structural look compares any other's.
-    if (node !== occurrence && resizes(node) && base.op.op === node.op.op) {
-      const { w, h } = node.op;
-      const loose = followed(node.op);
-      const wider = w !== base.op.w && !loose.includes("w");
-      if (wider || (h !== base.op.h && !loose.includes("h")))
-        overrides.push({ path, kind: "size", w, h });
     }
     // What fills a slot is the instance's own, not an override.
     if (node.slotted) {
@@ -405,7 +392,10 @@ function instanceOp(
 ): PlanOp {
   const component = node.component as Component;
   const first = (component.occurrences[0] as Tree).op;
-  const { name, x, y, w, h, childLayout } = node.op;
+  const { x, y, w, h, childLayout } = node.op;
+  // A component the code names gives its instances its name, as Figma does; the captured layer's
+  // name is often a bare tag ("Div") or the occurrence's own text.
+  const name = component.named ? (component.set?.name ?? component.name) : node.op.name;
   const layout = first.op === "frame" ? first.layout : { mode: "NONE" as const };
   const { label } = component;
   // An instance's Label property shows its text; with `sources` the override stays, to bind it.

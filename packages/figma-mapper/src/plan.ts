@@ -143,8 +143,12 @@ export type PlanOverride =
     }
   | { path: number[]; kind: "image"; hash: string }
   | { path: number[]; kind: "swap"; key: string }
-  /** A set's icon at another size than its main's: the same icon, resized. */
-  | { path: number[]; kind: "size"; w: number; h: number }
+  /**
+   * A label in a row that wraps at the room the row leaves it, where its main's keeps to one line,
+   * or the other way round. (Figma cannot resize a layer inside an instance, so no override holds
+   * a size.)
+   */
+  | { path: number[]; kind: "wrap"; wraps: boolean }
   /** A nested instance of a set's variant: its `Label`, `Show icon` and `Icon` values. */
   | { path: number[]; kind: "properties"; properties: PlanPropertyValues };
 
