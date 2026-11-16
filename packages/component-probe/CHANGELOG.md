@@ -1,5 +1,12 @@
 # @repo/component-probe
 
+## 0.7.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @repo/capture-schema@0.7.0
+
 ## 0.6.3
 
 ### Patch Changes

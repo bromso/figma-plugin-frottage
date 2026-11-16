@@ -1,5 +1,15 @@
 # @repo/chrome-extension
 
+## 0.7.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @repo/capture-dom@0.7.0
+  - @repo/ui@2.5.4
+  - @repo/capture-schema@0.7.0
+  - @repo/component-probe@0.7.0
+
 ## 0.6.3
 
 ### Patch Changes
