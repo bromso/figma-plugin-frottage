@@ -981,17 +981,25 @@ function sameDevice(a: Capture, b: Capture): boolean {
 /** `<section>/<layer name>` when a text sits in a landmark or section, else its layer name. */
 function variableNameOf(op: TextOp, byId: Map<string, PlanOp>): string {
   const segment = (name: string) => name.replaceAll("/", "-");
-  for (let at = byId.get(op.parent), depth = 0; at && depth < 256; depth++) {
+  for (let at = parentOf(op.parent, byId), depth = 0; at && depth < 256; depth++) {
     if (isSectionName(at.name)) return `${segment(at.name)}/${segment(op.name)}`;
-    at = at.parent === null ? undefined : byId.get(at.parent);
+    at = parentOf(at.parent, byId);
   }
   return segment(op.name);
+}
+
+/** An op's parent; what fills a slot has the slot's id, which leads to the instance holding it. */
+function parentOf(id: string | null, byId: Map<string, PlanOp>): PlanOp | undefined {
+  if (id === null) return undefined;
+  return byId.get(id) ?? byId.get(id.replace(/#slot\d+$/, ""));
 }
 
 /** The top op above `op`, through its parents. */
 function rootOf(op: PlanOp, byId: Map<string, PlanOp>): PlanOp | undefined {
   let at: PlanOp | undefined = op;
-  for (let depth = 0; at && at.parent !== null && depth < 256; depth++) at = byId.get(at.parent);
+  for (let depth = 0; at && at.parent !== null && depth < 256; depth++) {
+    at = parentOf(at.parent, byId);
+  }
   return at;
 }
 

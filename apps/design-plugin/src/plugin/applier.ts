@@ -1260,17 +1260,12 @@ export function createApplier(api: PluginAPI) {
       }
     } else if (override.kind === "image") {
       setImage(node, override.hash);
-    } else if (override.kind === "size") {
-      if (!("resize" in node)) throw new Error("nothing to resize");
-      // `resize` fixes both axes: an axis that fills its parent or hugs goes back to doing so.
-      if (!("layoutSizingHorizontal" in node)) {
-        node.resize(clampSize(override.w), clampSize(override.h));
-        return;
-      }
-      const { layoutSizingHorizontal: sizingH, layoutSizingVertical: sizingV } = node;
-      node.resize(clampSize(override.w), clampSize(override.h));
-      if (sizingH !== "FIXED") node.layoutSizingHorizontal = sizingH;
-      if (sizingV !== "FIXED") node.layoutSizingVertical = sizingV;
+    } else if (override.kind === "wrap") {
+      // Figma ignores `resize` on a layer inside an instance, but takes these: a label that wraps
+      // fills the room its row leaves it, as the page's shrinking flex item did.
+      if (node.type !== "TEXT") throw new Error("not text");
+      node.textAutoResize = override.wraps ? "HEIGHT" : "WIDTH_AND_HEIGHT";
+      node.layoutSizingHorizontal = override.wraps ? "FILL" : "HUG";
     } else if (override.kind === "swap") {
       const main = mainOf(override.key);
       if (!main || node.type !== "INSTANCE") throw new Error("nothing to swap");

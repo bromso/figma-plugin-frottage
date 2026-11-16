@@ -1314,7 +1314,7 @@ describe("components across devices", () => {
     expect(instancesOf(merge.plans[1] as LayerPlan).map((o) => o.id)).toEqual(["sc", "sd"]);
   });
 
-  test("an icon at another size on the Phone is the same icon, resized (the carousel arrows)", () => {
+  test("an icon at another size on the Phone is the same icon, in a button that stays plain", () => {
     const left = '<svg width="32" height="32" viewBox="0 0 24 24"><path d="M15 18l-6-6"/></svg>';
     const right = '<svg width="32" height="32" viewBox="0 0 24 24"><path d="M9 18l6-6"/></svg>';
     const small = (markup: string) => markup.replaceAll('"32"', '"24"');
@@ -1347,17 +1347,13 @@ describe("components across devices", () => {
     ]);
     const icons = mainsOf(merge.components).filter((m) => m.component?.key.startsWith("icon:"));
     expect(icons).toHaveLength(2);
-    const [laptop, phone] = merge.plans.map((plan) => instancesOf(plan).slice(0, 2));
-    expect(phone?.map((o) => o.properties?.Icon)).toEqual(laptop?.map((o) => o.properties?.Icon));
-    const main = mainsOf(merge.components).find(
-      (m) => m.component?.name === "Variant=outline, Size=icon"
+    const [laptop, phone] = merge.plans.map((plan) => instancesOf(plan));
+    // Figma cannot resize the icon inside an instance, so the Phone's arrows stay as they are.
+    expect(laptop?.filter((o) => o.properties?.Icon)).toHaveLength(2);
+    expect(phone?.some((o) => o.properties?.Icon)).toBe(false);
+    expect(merge.report).toContain(
+      "2 buttons look different from their Button variant and stay as they are."
     );
-    const iconAt = main?.component?.properties?.find((p) => p.name === "Icon")?.path as number[];
-    for (const o of phone ?? []) {
-      expect(o.overrides).toContainEqual({ path: iconAt, kind: "size", w: 24, h: 24 });
-    }
-    for (const o of laptop ?? []) expect(o.overrides.some((v) => v.kind === "size")).toBe(false);
-    expect(merge.report.some((line) => line.includes("different"))).toBe(false);
   });
 
   /** A coded Card: a column with a fixed-size picture above its title. */
@@ -1423,43 +1419,33 @@ describe("components across devices", () => {
     );
   }
 
-  test("a card whose picture is another fixed size on the Phone is the same card, resized", () => {
+  // Figma cannot resize a layer inside an instance, so a card whose picture has another fixed size
+  // would show its main's picture: it stays as it is.
+  test("a card whose picture is another fixed size on the Phone stays as it is", () => {
     const merge = mergeDevices([
       on("Laptop", [card("la", 328), card("lb", 328)]),
       on("Phone", [card("pa", 288), card("pb", 288)]),
     ]);
     const [laptop, phone] = merge.plans.map((plan) => instancesOf(plan));
     expect(laptop?.map((o) => o.key)).toEqual(["component:Card", "component:Card"]);
-    expect(phone?.map((o) => o.key)).toEqual(["component:Card", "component:Card"]);
-    for (const o of phone ?? []) {
-      expect(o.overrides).toContainEqual({ path: [0], kind: "size", w: 300, h: 288 });
-    }
-    for (const o of laptop ?? []) expect(o.overrides.some((v) => v.kind === "size")).toBe(false);
-    expect(merge.report.some((line) => line.includes("look different"))).toBe(false);
+    expect(phone).toEqual([]);
+    expect(merge.report).toContain(
+      "2 cards look different from their Card component and stay as they are."
+    );
   });
 
-  test("a card whose picture is another fixed size on one frame is the same card, resized", () => {
-    const merge = mergeDevices([
-      on("Laptop", [card("la", 328), card("lb", 328), card("lc", 200)]),
-      on("Phone", [card("pa", 288), card("pb", 288)]),
-    ]);
+  test("a card whose picture is another fixed size on one frame stays as it is", () => {
+    const merge = mergeDevices([on("Laptop", [card("la", 328), card("lb", 328), card("lc", 200)])]);
     const laptop = instancesOf(merge.plans[0] as LayerPlan);
-    expect(laptop.map((o) => o.id)).toEqual(["la", "lb", "lc"]);
-    expect(laptop[2]?.overrides).toContainEqual({ path: [0], kind: "size", w: 300, h: 200 });
+    expect(laptop.map((o) => o.id)).toEqual(["la", "lb"]);
   });
 
-  test("a card whose picture's box is another fixed size is the same card, box and picture resized", () => {
+  test("a card whose picture's box is another fixed size stays as it is", () => {
     const merge = mergeDevices([
       on("Laptop", [card("la", 328, true), card("lb", 328, true)]),
       on("Phone", [card("pa", 288, true), card("pb", 288, true)]),
     ]);
-    const phone = instancesOf(merge.plans[1] as LayerPlan);
-    expect(phone.map((o) => o.key)).toEqual(["component:Card", "component:Card"]);
-    for (const o of phone) {
-      expect(o.overrides).toContainEqual({ path: [0], kind: "size", w: 300, h: 288 });
-      expect(o.overrides).toContainEqual({ path: [0, 0], kind: "size", w: 300, h: 288 });
-    }
-    expect(merge.report.some((line) => line.includes("look different"))).toBe(false);
+    expect(instancesOf(merge.plans[1] as LayerPlan)).toEqual([]);
   });
 
   test("an extra makes no frame, so its buttons neither count nor make a variant", () => {

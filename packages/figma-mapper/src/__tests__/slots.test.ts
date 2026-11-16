@@ -19,10 +19,15 @@ const device = (name: string, height: number): Capture["version"] => ({
   device: { id: name.toLowerCase().replaceAll(" ", "-"), name, height },
 });
 
-function on(name: keyof typeof SIZES, children: CaptureNode[]): DeviceEntry {
+function on(
+  name: keyof typeof SIZES,
+  children: CaptureNode[],
+  language?: Capture["language"]
+): DeviceEntry {
   const [width, height] = SIZES[name];
   const capture = cap(el("root", [0, 0], children, { semantic: { tag: "body" } }));
-  capture.source.url = "https://mainline.example.com/";
+  capture.source.url = language?.url ?? "https://mainline.example.com/";
+  if (language) capture.language = language;
   capture.source.viewport.w = width;
   capture.version = device(name, height);
   capture.breakpoints = { widths: [640, 768, 1024, 1280, 1400], unreadable: 0 };
@@ -190,6 +195,10 @@ describe("slots", () => {
     expect(b.slots).toEqual([{ path: [0, 1, 0], id: `${b.id}#slot0` }]);
     const filled = plan.ops.filter((o) => o.parent === `${b.id}#slot0`);
     expect(filled).toHaveLength(3);
+    // Instances of a named component carry its name, in the page and in another's main.
+    expect(cards.map((o) => o.name)).toEqual(["Card", "Card"]);
+    const nested = merge.components.find((o) => o.op === "instance");
+    expect(nested?.name).toBe("CardContent");
   });
 
   test("one layer styled differently is a different look, not content", () => {
@@ -228,5 +237,40 @@ describe("slots", () => {
     const phone = instancesOf(merge.plans[1] as LayerPlan);
     expect(phone.map((o) => o.key)).toEqual(["component:CardContent", "component:CardContent"]);
     expect(phone.every((o) => o.slots?.length === 1)).toBe(true);
+  });
+
+  test("in two languages, every text in a nested slot binds its Language variable", () => {
+    const en = {
+      code: "en",
+      name: "English",
+      url: "https://mainline.example.com/en",
+      current: true,
+    };
+    const sv = {
+      code: "sv",
+      name: "Svenska",
+      url: "https://mainline.example.com/sv",
+      current: false,
+    };
+    const card = (id: string, features: string[]) =>
+      column(id, [0, 0], [242, 200], [content(`${id}-c`, features)], {
+        over: { component: { source: "react", name: "Card", props: {} } },
+      });
+    // CardContent's main is the one standing alone, so the Card main's own fills its slot.
+    const page = (words: string[]) => [
+      content("s", words.slice(0, 1)),
+      card("a", words.slice(0, 2)),
+      card("b", words.slice(0, 3)),
+    ];
+    const merge = mergeDevices([
+      on("Laptop", page(["One", "Two", "Three"]), en),
+      on("Laptop", page(["Ett", "Två", "Tre"]), sv),
+    ]);
+    const texts = [...merge.components, ...(merge.plans[0] as LayerPlan).ops].filter(
+      (o): o is Extract<PlanOp, { op: "text" }> => o.op === "text"
+    );
+    const slotted = texts.filter((t) => t.parent.includes("#slot"));
+    expect(slotted.some((t) => merge.components.includes(t))).toBe(true);
+    for (const t of texts) expect(t.textKey).toBeDefined();
   });
 });

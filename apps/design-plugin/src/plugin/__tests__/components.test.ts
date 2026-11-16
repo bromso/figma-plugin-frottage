@@ -562,34 +562,41 @@ test("a swap keeps a FILL its instance had in an auto layout parent", async () =
   expect(r.overrideFailures).toBe(0);
 });
 
-test("a size override keeps a FILL its layer has in the main's auto layout", async () => {
-  // A card's divider: an empty box as wide as the card, thinner on the smaller screen.
+test("a wrap override wraps a row's label in the room the row leaves it", async () => {
   const { r, root } = await imported([
-    main("x-card", {
-      w: 300,
-      h: 2,
-      layout: hStack({ sizingH: "FIXED", sizingV: "FIXED" }),
-      childCount: 1,
-    }),
-    frame("x-card/d", "x-card/n", {
+    main("x-row", { w: 120, h: 12, layout: hStack({ sizingH: "FIXED" }), childCount: 1 }),
+    text("x-row/t", "x-row/n", "a long question", {
       x: 0,
       y: 0,
-      w: 300,
-      h: 2,
-      childLayout: { positioning: "AUTO", sizingH: "FILL", sizingV: "FIXED" },
+      childLayout: { positioning: "AUTO", sizingH: "HUG", sizingV: "HUG" },
     }),
-    frame("root", null, { childCount: 1 }),
-    instance("a", "root", "x-card", {
-      w: 300,
-      h: 2,
-      overrides: [{ path: [0], kind: "size", w: 300, h: 1 }],
+    frame("root", null, { childCount: 2 }),
+    instance("a", "root", "x-row", {
+      overrides: [{ path: [0], kind: "wrap", wraps: true }],
+    }),
+    instance("b", "root", "x-row", {
+      overrides: [
+        { path: [0], kind: "wrap", wraps: true },
+        { path: [0], kind: "wrap", wraps: false },
+      ],
     }),
   ]);
-  const divider = root.children[0].children[0] as FakeNode;
-  expect(divider.layoutSizingHorizontal).toBe("FILL");
-  expect(divider.layoutSizingVertical).toBe("FIXED");
-  expect([divider.width, divider.height]).toEqual([300, 1]);
+  const [a, b] = (root.children as FakeNode[]).map((i) => i.children[0] as FakeNode);
+  expect(a?.textAutoResize).toBe("HEIGHT");
+  expect(a?.layoutSizingHorizontal).toBe("FILL");
+  expect(b?.textAutoResize).toBe("WIDTH_AND_HEIGHT");
+  expect(b?.layoutSizingHorizontal).toBe("HUG");
   expect(r.overrideFailures).toBe(0);
+});
+
+test("a wrap override on a layer that is not text counts as a failure", async () => {
+  const { r } = await imported([
+    main("x-row", { layout: hStack(), childCount: 1 }),
+    frame("x-row/f", "x-row/n"),
+    frame("root", null, { childCount: 1 }),
+    instance("a", "root", "x-row", { overrides: [{ path: [0], kind: "wrap", wraps: true }] }),
+  ]);
+  expect(r.overrideFailures).toBe(1);
 });
 
 test("a resize that fails after a swap counts once, and what is below still applies", async () => {
@@ -1495,17 +1502,6 @@ test("every instance holds its variant's values, its label and its icon", async 
   expect(props(next)).toEqual({ Variant: "outline", Size: "icon", Label: "Next", Icon: minus.id });
   expect(back.children[1].characters).toBe("Back");
   expect(next.children[0].main).toBe(minus);
-});
-
-test("an icon's size override lands after its swap", async () => {
-  const ops = buttonPage();
-  const last = ops.at(-1) as Extract<PlanOp, { op: "instance" }>;
-  last.overrides = [{ path: [0], kind: "size", w: 24, h: 24 }];
-  const { f, root, r } = await importButtons(ops);
-  const icon = (root.children[2] as FakeNode).children[0] as FakeNode;
-  expect(icon.main).toBe(f.frame("Minus"));
-  expect([icon.width, icon.height]).toEqual([24, 24]);
-  expect(r.overrideFailures).toBe(0);
 });
 
 test("the variants sit in a grid: a column per first property, a row per the rest", async () => {

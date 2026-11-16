@@ -11,7 +11,7 @@ import {
   nodeAt,
   ownLook,
   placement,
-  resizes,
+  rewraps,
   rootSize,
   type Tree,
 } from "./components";
@@ -125,15 +125,27 @@ function bound(op: PlanOp, switches: (key: string) => boolean): PlanOp {
   return out as PlanOp;
 }
 
+/** How a child sits in its parent, where a row's label may keep to one line or wrap alike. */
+function placed(child: Tree, parent: Tree): string {
+  const { childLayout } = child.op;
+  if (!rewraps(child) || !childLayout) return placement(child, parent);
+  const op = { ...child.op, childLayout: { ...childLayout, sizingH: "FIXED" as const } };
+  return `rewraps:${placement({ ...child, op }, parent)}`;
+}
+
+/** What a label that wraps again leaves out of its own look. */
+const wrapped = (node: Tree): string[] => (rewraps(node) ? ["w", "h", "wrap", "lineCount"] : []);
+
 /** What a child adds to its parent's look: an occurrence of a set reads as that set, any variant. */
 function childLook(child: Tree, parent: Tree, looks: Looks): string {
-  if (child.component) return `${placement(child, parent)}${bareTag(child.component.tag, child)}`;
-  return `${placement(child, parent)}${innerLook(child, looks)}`;
+  if (child.component) return `${placed(child, parent)}${bareTag(child.component.tag, child)}`;
+  return `${placed(child, parent)}${innerLook(child, looks)}`;
 }
 
 /**
- * Sizes an instance lays out again: what the layer hugs, what fills its parent, the height of a
- * text that hugs its lines, and the width of one that wraps in auto layout.
+ * Sizes an instance lays out again: what the layer hugs, what fills its parent, and the height of a
+ * text that hugs its lines. Figma cannot resize a layer inside an instance, so any other size
+ * compares.
  */
 function follows(op: PlanOp): string[] {
   const { sizingH, sizingV } = op.childLayout ?? {};
@@ -142,8 +154,6 @@ function follows(op: PlanOp): string[] {
     ...(sizingH === "FILL" ? ["w"] : []),
     ...(sizingV === "FILL" ? ["h"] : []),
     ...(op.op === "text" && sizingV === "HUG" ? ["h", "lineCount"] : []),
-    // Text that wraps in auto layout is as wide as its words; the instance wraps it again.
-    ...(op.op === "text" && op.wrap && op.childLayout?.positioning === "AUTO" ? ["w"] : []),
   ];
 }
 
@@ -160,7 +170,7 @@ function innerLook(top: Tree, looks: Looks): number {
   for (let i = order.length - 1; i >= 0; i--) {
     const node = order[i] as Tree;
     const below = node.children.map((c) => childLook(c, node, looks)).join(",");
-    const skip = [...follows(node.op), ...(resizes(node) ? ["w", "h"] : [])];
+    const skip = [...follows(node.op), ...wrapped(node)];
     const own = ownLook(looks.norm(node.op), skip, TOKENS);
     looks.inner.set(node, looks.intern(`${own}|${below}`));
   }
@@ -180,8 +190,8 @@ function rootLook(node: Tree, looks: Looks, bare: boolean, sized = false): strin
   const below = node.children.flatMap((c) => {
     if (c !== icon) return [childLook(c, node, looks)];
     if (bare) return [];
-    // Nor does its size: an instance resizes it.
-    return [`${placement(c, node)}${ownLook(looks.norm(c.op), ["markup", "w", "h"], TOKENS)}`];
+    // Its size compares: Figma cannot resize a layer inside an instance.
+    return [`${placed(c, node)}${ownLook(looks.norm(c.op), ["markup"], TOKENS)}`];
   });
   return `${rootOwn(node, looks, sized)}|${below.join(",")}`;
 }
@@ -197,7 +207,7 @@ function rootOwn(node: Tree, looks: Looks, sized: boolean): string {
 /** A layer below the root as its look compares it, without its children. */
 function innerOwn(node: Tree, looks: Looks): string {
   // How many children it has is for its children to say.
-  const skip = [...follows(node.op), ...(resizes(node) ? ["w", "h"] : []), "childCount"];
+  const skip = [...follows(node.op), ...wrapped(node), "childCount"];
   return ownLook(looks.norm(node.op), skip, TOKENS);
 }
 
@@ -234,7 +244,7 @@ function below(a: Tree, b: Tree, path: number[], looks: Looks): number[] | null 
   const alike =
     !ca.component &&
     !cb.component &&
-    placement(ca, a) === placement(cb, b) &&
+    placed(ca, a) === placed(cb, b) &&
     innerOwn(ca, looks) === innerOwn(cb, looks);
   // One layer styled otherwise is a different look; one that holds something else is content.
   if (!alike) return shape(ca) === shape(cb) ? null : here;
@@ -330,7 +340,7 @@ function iconName(markup: string, n: number): string {
 
 /**
  * An icon's markup without the svg root's own `width` and `height`: the same icon at another size
- * is the same icon, which an instance resizes.
+ * is the same icon component.
  */
 function iconMarkup(markup: string): string {
   return markup.replace(/^(\s*<svg\b)([^>]*)>/i, (_, open: string, attributes: string) => {
