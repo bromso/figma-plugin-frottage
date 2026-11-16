@@ -1,5 +1,12 @@
 # @repo/figma-mapper
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @repo/capture-schema@0.7.1
+
 ## 0.7.0
 
 ### Minor Changes
