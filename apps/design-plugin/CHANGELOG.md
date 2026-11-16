@@ -1,5 +1,18 @@
 # @repo/design-plugin
 
+## 0.7.0
+
+### Minor Changes
+
+- [#27](https://github.com/bromso/figma-plugin-frottage/pull/27) [`cd56657`](https://github.com/bromso/figma-plugin-frottage/commit/cd56657d206ec615085be781c50594daca59f3b8) Thanks [@bromso](https://github.com/bromso)! - Components whose occurrences differ only in what they hold now join as instances with a slot. Mainline's pricing cards, card contents, accordions and collapsibles become one component each: the component gets a `Content` slot where its occurrences differ, and each instance fills it with its own layers, inside nested components too. Buttons and other label-and-icon components never get a slot.
+
+### Patch Changes
+
+- [#29](https://github.com/bromso/figma-plugin-frottage/pull/29) [`2e3091e`](https://github.com/bromso/figma-plugin-frottage/commit/2e3091e4c2786ae289e910e23974cb22a3392178) Thanks [@bromso](https://github.com/bromso)! - Components keep the look the page had. Figma ignores resizing a layer inside an instance, so occurrences whose picture, icon or box has another fixed size no longer join as instances that showed the main's size (the carousel on Tablet and Phone kept its Laptop pictures); a carousel item now holds its content in a slot instead. A row's label that wraps on a smaller screen, such as an FAQ question, now joins its component and wraps again in the instance. Instances of a component the code names carry its name, texts inside a nested slot bind their Language variable, and the report no longer counts the FAQ triggers as looking different.
+- Updated dependencies []:
+  - @repo/common@2.5.4
+  - @repo/ui@2.5.4
+
 ## 0.6.3
 
 ### Patch Changes
