@@ -524,7 +524,7 @@ export const SLOT_NAME = "Content";
 function withSlot(ops: PlanOp[], holderId: string): PlanOp[] {
   const at = ops.findIndex((o) => o.id === holderId);
   const holder = ops[at];
-  if (!holder || holder.op !== "frame" || holder.layout.mode === "NONE") return ops;
+  if (holder?.op !== "frame" || holder.layout.mode === "NONE") return ops;
   if (holder.layout.mode === "GRID") return ops;
   const { layout } = holder;
   const [top, right, bottom, left] = layout.padding;

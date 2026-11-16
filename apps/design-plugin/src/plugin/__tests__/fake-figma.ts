@@ -441,7 +441,7 @@ export function fakeFigma(opts: Options = {}) {
       node.key = `key-${id}`;
     }
     tokens.installNode(node);
-    if (type === "FRAME" || type === "COMPONENT" || type === "INSTANCE") {
+    if (type === "FRAME" || type === "COMPONENT" || type === "INSTANCE" || type === "SLOT") {
       model.installFrame(node, () => calls.push("layoutMode"));
       if (opts.failLayout) {
         const { get } = Object.getOwnPropertyDescriptor(
@@ -519,7 +519,9 @@ export function fakeFigma(opts: Options = {}) {
     const n = makeNode(from.type);
     n.fills = from.fills;
     copyLook(from, n);
-    return from.type === "FRAME" ? copyBody(from, n) : Object.assign(n, sizeOf(from));
+    return from.type === "FRAME" || from.type === "SLOT"
+      ? copyBody(from, n)
+      : Object.assign(n, sizeOf(from));
   }
 
   /** As in Figma, a clone of a main is a new main beside it. */
@@ -721,6 +723,16 @@ export function fakeFigma(opts: Options = {}) {
         return copyBody(n, instanceShell(n));
       };
       n.clone = () => cloneMain(n);
+      // As in Figma: a slot made in the component, which can then move into its layers.
+      n.createSlot = () => {
+        calls.push("createSlot");
+        const slot = makeNode("SLOT");
+        slot.fills = [];
+        slot.clipsContent = false;
+        slot.name = "Slot";
+        n.appendChild(slot);
+        return slot;
+      };
       return n;
     },
     combineAsVariants(variants: FakeNode[], parent: FakeNode) {
