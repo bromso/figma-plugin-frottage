@@ -21,7 +21,7 @@
     "@repo/figma-mapper": "workspace:*",
     "@types/bun": "^1.4.4",
     "bun-plugin-tailwind": "^0.1.2",
-    "tailwindcss": "^4.3.3",
+    "tailwindcss": "^4.3.5",
     "typescript": "^7.0.2"
   }
 }
