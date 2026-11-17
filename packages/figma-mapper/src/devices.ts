@@ -17,7 +17,13 @@ import type {
   PlanVarValue,
   SpacingKeys,
 } from "./plan";
-import { type ComponentInput, componentLines, shareVariantSets, type VariantSet } from "./variants";
+import {
+  type ComponentInput,
+  componentLines,
+  type SizeNeed,
+  shareVariantSets,
+  type VariantSet,
+} from "./variants";
 import { joinStyles, type StyleJoins, textsOf } from "./versions";
 
 /**
@@ -76,6 +82,17 @@ export type DeviceMerge = {
  * entry `like`'s. `inputs` are the entries' component inputs with keys into `layers`.
  */
 type SetMerge = Omit<DeviceMerge, "components" | "sets" | "plain"> & {
+  /** Per entry, its Breakpoint mode's index in the collection's modes; -1 when it has none. */
+  rangeAt: number[];
+  /** How many Breakpoint modes there are. */
+  modes: number;
+  /** How many more values could switch by breakpoint; 0 on a page with one range. */
+  sizeRoom: () => number;
+  /**
+   * Makes the Theme token `name` switch by breakpoint from one length per mode, as a type size
+   * that differs does, and returns its key; null without room. `layers` takes it in place.
+   */
+  bindSize: (name: string, perMode: number[], description: string) => string | null;
   adopt: (plan: LayerPlan, like: number) => LayerPlan;
   inputs: (ComponentInput | undefined)[];
   adoptInput: (entry: DeviceEntry, like: number) => ComponentInput | undefined;
@@ -695,27 +712,28 @@ function mergeSet(entries: DeviceEntry[], options: MergeOptions): SetMerge {
             "The device's nominal height; reference data only"
           ),
         ];
-  const breakpointVars = breakpoints
-    ? [
-        fixed(
-          "breakpoint",
-          "breakpoint/min-width",
-          ranges.map((r) => r.min),
-          "Where the range starts"
-        ),
-        fixed(
-          "breakpoint",
-          "breakpoint/max-width",
-          // Up to the next mode's start: a range with no capture leaves no gap.
-          ranges.map((r) => {
-            const next = Math.min(...ranges.map((o) => o.min).filter((min) => min > r.min));
-            return Number.isFinite(next) ? next - 1 : 0;
-          }),
-          "Where the range ends; 0 means it has no end"
-        ),
-        ...bpVariables,
-      ]
-    : [];
+  const breakpointVars = (): PlanVariable[] =>
+    breakpoints
+      ? [
+          fixed(
+            "breakpoint",
+            "breakpoint/min-width",
+            ranges.map((r) => r.min),
+            "Where the range starts"
+          ),
+          fixed(
+            "breakpoint",
+            "breakpoint/max-width",
+            // Up to the next mode's start: a range with no capture leaves no gap.
+            ranges.map((r) => {
+              const next = Math.min(...ranges.map((o) => o.min).filter((min) => min > r.min));
+              return Number.isFinite(next) ? next - 1 : 0;
+            }),
+            "Where the range ends; 0 means it has no end"
+          ),
+          ...bpVariables,
+        ]
+      : [];
 
   if (dropped > 0) {
     report.push(
@@ -725,10 +743,9 @@ function mergeSet(entries: DeviceEntry[], options: MergeOptions): SetMerge {
     );
   }
 
-  const variables = orderVariables(
-    [...merged.values(), ...deviceVars, ...breakpointVars, ...tokens],
-    modeNames
-  );
+  const allVariables = () =>
+    orderVariables([...merged.values(), ...deviceVars, ...breakpointVars(), ...tokens], modeNames);
+  const variables = allVariables();
   const modesOf = (kind: PlanCollectionKind): string[] => {
     switch (kind) {
       case "colorMode":
@@ -743,14 +760,16 @@ function mergeSet(entries: DeviceEntry[], options: MergeOptions): SetMerge {
         return [BASE_MODE];
     }
   };
-  const collections: PlanCollection[] = COLLECTION_ORDER.filter(
-    (kind) => kind === "theme" || variables.some((v) => v.collection === kind)
-  ).map((kind) => ({
-    kind,
-    name: COLLECTION_NAMES[kind],
-    modes: modesOf(kind),
-    ...(kind === "breakpoint" ? { priority } : {}),
-  }));
+  const collectionsOf = (all: PlanVariable[]): PlanCollection[] =>
+    COLLECTION_ORDER.filter(
+      (kind) => kind === "theme" || all.some((v) => v.collection === kind)
+    ).map((kind) => ({
+      kind,
+      name: COLLECTION_NAMES[kind],
+      modes: modesOf(kind),
+      ...(kind === "breakpoint" ? { priority } : {}),
+    }));
+  const collections = collectionsOf(variables);
 
   // Effect and gradient styles, and paint-style colors: one per key, the primary's first.
   const effectStyles: PlanLayers["effectStyles"] = [];
@@ -872,7 +891,55 @@ function mergeSet(entries: DeviceEntry[], options: MergeOptions): SetMerge {
     };
   });
 
-  return { layers, plans, frames, report, adopt, inputs, adoptInput };
+  const rangeAt = entries.map((_, i) => {
+    const range = rangeOf(i);
+    return range ? ranges.indexOf(range) : -1;
+  });
+  const sizeRoom = () => {
+    if (!breakpoints || ranges.length < 2) return 0;
+    const used = merged.size + tokens.length + bpVariables.length + reserved;
+    return Math.max(0, Math.floor((MAX_VARIABLES - used) / (ranges.length + 2)));
+  };
+  const bindSize = (name: string, perMode: number[], description: string): string | null => {
+    if (sizeRoom() < 1) return null;
+    const themeName = free(name, themeNames);
+    const bp = split(
+      themeName,
+      { type: "FLOAT", scopes: LENGTH_SCOPES },
+      perMode.map((value, m) => ({
+        kind: "spacing",
+        value,
+        description: `${description} (${modeNames[m]})`,
+      }))
+    );
+    const key = `theme:${themeName}`;
+    tokens.push({
+      key,
+      name: themeName,
+      collection: "theme",
+      type: "FLOAT",
+      values: [{ alias: bp }],
+      description: `Final theme token; source: ${COLLECTION_NAMES.breakpoint}`,
+      scopes: LENGTH_SCOPES,
+    });
+    layers.variables = allVariables();
+    layers.collections = collectionsOf(layers.variables);
+    return key;
+  };
+
+  return {
+    layers,
+    plans,
+    frames,
+    report,
+    adopt,
+    inputs,
+    adoptInput,
+    rangeAt,
+    modes: ranges.length,
+    sizeRoom,
+    bindSize,
+  };
 }
 
 type Shared = {
@@ -896,7 +963,9 @@ function shareComponents(
   inputs: (ComponentInput | undefined)[],
   decides: boolean[],
   widths: number[],
-  framed: boolean[]
+  framed: boolean[],
+  /** The merge's Breakpoint modes, where a main's fixed sizes may follow them. */
+  sizing?: Pick<SetMerge, "rangeAt" | "sizeRoom" | "bindSize"> & { modes: number }
 ): Shared {
   const none: Shared = { plans, components: [], owned: new Map(), lines: [], sets: [], plain: [] };
   const at = inputs.flatMap((input, i) => (input && input.named.size > 0 && framed[i] ? [i] : []));
@@ -918,10 +987,14 @@ function shareComponents(
   }
   const shared = shareVariantSets(
     at.map((i) => ({ ...(inputs[i] as ComponentInput), decides: decides[i] === true })),
-    (key) => switching.has(key)
+    (key) => switching.has(key),
+    sizing && sizing.sizeRoom() > 0
+      ? { rangeAt: at.map((i) => sizing.rangeAt[i] ?? -1), room: sizing.sizeRoom() }
+      : undefined
   );
   if (!shared) return none;
   const components = shared.definitions.flatMap((d) => d.ops);
+  const sizeLines = sizing ? bindSizes(shared.sizes, components, at, sizing) : [];
   const own = new Set(components);
   const owned = new Map<number, PlanOp[]>();
   for (const { owner, ops } of shared.definitions) {
@@ -959,10 +1032,87 @@ function shareComponents(
     plans: next,
     components,
     owned,
-    lines: componentLines(shared),
+    lines: [...componentLines(shared), ...sizeLines],
     sets: shared.sets,
     plain: shared.plain,
   };
+}
+
+/** A name's part in a variable's: lower case, dashes for what is neither a letter nor a digit. */
+const slug = (name: string) =>
+  name
+    .toLowerCase()
+    .replaceAll(/[^\p{L}\p{N}]+/gu, "-")
+    .replaceAll(/^-+|-+$/g, "") || "layer";
+
+/**
+ * Binds each size a main's layer needs to a Theme token that switches by breakpoint, on the
+ * definition's op, and returns the report's lines. A mode none of the inputs is in takes the size
+ * of the nearest wider mode that has one, else the nearest narrower. A layer as wide as it is
+ * high in every mode binds both to one `…/size`.
+ */
+function bindSizes(
+  needs: SizeNeed[],
+  components: PlanOp[],
+  at: number[],
+  sizing: Pick<SetMerge, "rangeAt" | "bindSize"> & { modes: number }
+): string[] {
+  const perMode = (need: SizeNeed): number[] | null => {
+    const known: (number | undefined)[] = Array.from({ length: sizing.modes });
+    for (const [k, value] of need.values.entries()) {
+      const mode = sizing.rangeAt[at[k] as number] ?? -1;
+      if (value !== undefined && mode >= 0) known[mode] ??= value;
+    }
+    const filled = known.map((value, m) => {
+      if (value !== undefined) return value;
+      const wider = known.slice(m + 1).find((v) => v !== undefined);
+      return (
+        wider ??
+        known
+          .slice(0, m)
+          .reverse()
+          .find((v) => v !== undefined)
+      );
+    });
+    return filled.every((v): v is number => v !== undefined) ? filled : null;
+  };
+  const byId = new Map<string, SizeNeed[]>();
+  for (const need of needs) byId.set(need.id, [...(byId.get(need.id) ?? []), need]);
+  const made = new Map<string, number>();
+  for (const [id, group] of byId) {
+    const op = components.find((o) => o.id === id);
+    const first = group[0] as SizeNeed;
+    const values = group.map((need) => ({ need, values: perMode(need) }));
+    if (!op || values.some((v) => v.values === null)) continue;
+    const [a, b] = values;
+    const square =
+      a && b && (a.values as number[]).every((v, m) => v === (b.values as number[])[m]);
+    const base = `size/${slug(first.component)}/${slug(first.layer)}`;
+    const what = `${first.component} ${first.layer}`;
+    const keys: { w?: string; h?: string } = {};
+    const count = (n: number) => made.set(first.component, (made.get(first.component) ?? 0) + n);
+    if (square && a) {
+      const key = sizing.bindSize(`${base}/size`, a.values as number[], `${what} size`);
+      if (key) {
+        keys.w = key;
+        keys.h = key;
+        count(1);
+      }
+    } else {
+      for (const { need, values: v } of values) {
+        const side = need.field === "w" ? "width" : "height";
+        const key = sizing.bindSize(`${base}/${side}`, v as number[], `${what} ${side}`);
+        if (key) {
+          keys[need.field] = key;
+          count(1);
+        }
+      }
+    }
+    if (keys.w || keys.h) op.sizeKeys = keys;
+  }
+  return [...made].map(
+    ([name, n]) => `${name}: ${n === 1 ? "1 size follows" : `${n} sizes follow`} the breakpoint.`
+  );
 }
 
 type TextOp = Extract<PlanOp, { op: "text" }>;
@@ -1039,13 +1189,23 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
   /** Entries that take part in sharing: device captures. */
   const framed = entries.map(isDevice);
   if (!current) {
-    const { adopt: _, inputs, adoptInput: __, ...merge } = mergeSet(entries, options);
+    const {
+      adopt: _,
+      inputs,
+      adoptInput: __,
+      rangeAt,
+      modes,
+      sizeRoom,
+      bindSize,
+      ...merge
+    } = mergeSet(entries, options);
     const shared = shareComponents(
       merge.plans,
       inputs,
       entries.map(() => true),
       widths,
-      framed
+      framed,
+      { rangeAt, modes, sizeRoom, bindSize }
     );
     dropSources([...shared.plans, { ops: shared.components }]);
     const report = [...merge.report, ...shared.lines];
@@ -1099,7 +1259,17 @@ export function mergeDevices(entries: DeviceEntry[], options: MergeOptions = {})
     }),
     entries.map((e) => codeOf(e) === current.code),
     widths,
-    framed
+    framed,
+    {
+      // Another language's entry is in the mode of the entry it is adopted like.
+      rangeAt: entries.map((e, i) => {
+        const at = baseAt.indexOf(i);
+        return set.rangeAt[at >= 0 ? at : likeOf(e)] ?? -1;
+      }),
+      modes: set.modes,
+      sizeRoom: set.sizeRoom,
+      bindSize: set.bindSize,
+    }
   );
   const { plans, components, sets, plain } = shared;
 

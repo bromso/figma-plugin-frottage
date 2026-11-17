@@ -12,6 +12,7 @@ import { type DeviceEntry, MAX_LANGUAGE_VARIABLES, mergeDevices } from "../devic
 import { mapCapture, mapCaptureParts } from "../map";
 import { DEFAULT_IMPORT_OPTIONS } from "../options";
 import type { LayerPlan, PlanLayers, PlanOp, PlanVariable, PlanVarValue } from "../plan";
+import { type ComponentInput, shareVariantSets } from "../variants";
 import { cap, el, imageStyle, inter, run, textNode } from "./fixtures";
 
 const LAYERED = { ...DEFAULT_IMPORT_OPTIONS, components: false, layers: true };
@@ -1314,7 +1315,7 @@ describe("components across devices", () => {
     expect(instancesOf(merge.plans[1] as LayerPlan).map((o) => o.id)).toEqual(["sc", "sd"]);
   });
 
-  test("an icon at another size on the Phone is the same icon, in a button that stays plain", () => {
+  test("an icon at another size on the Phone is the same icon, sized by the breakpoint", () => {
     const left = '<svg width="32" height="32" viewBox="0 0 24 24"><path d="M15 18l-6-6"/></svg>';
     const right = '<svg width="32" height="32" viewBox="0 0 24 24"><path d="M9 18l6-6"/></svg>';
     const small = (markup: string) => markup.replaceAll('"32"', '"24"');
@@ -1348,12 +1349,15 @@ describe("components across devices", () => {
     const icons = mainsOf(merge.components).filter((m) => m.component?.key.startsWith("icon:"));
     expect(icons).toHaveLength(2);
     const [laptop, phone] = merge.plans.map((plan) => instancesOf(plan));
-    // Figma cannot resize the icon inside an instance, so the Phone's arrows stay as they are.
+    // Figma cannot resize the icon inside an instance, so the main's icon binds its size.
     expect(laptop?.filter((o) => o.properties?.Icon)).toHaveLength(2);
-    expect(phone?.some((o) => o.properties?.Icon)).toBe(false);
-    expect(merge.report).toContain(
-      "2 buttons look different from their Button variant and stay as they are."
-    );
+    expect(phone?.filter((o) => o.properties?.Icon)).toHaveLength(2);
+    expect(merge.report.some((line) => line.includes("look different"))).toBe(false);
+    const icon = merge.components.find((o) => o.op === "instance" && o.sizeKeys);
+    expect(icon?.sizeKeys).toEqual({
+      w: "theme:size/button/icon/size",
+      h: "theme:size/button/icon/size",
+    });
   });
 
   /** A coded Card: a column with a fixed-size picture above its title. */
@@ -1419,19 +1423,26 @@ describe("components across devices", () => {
     );
   }
 
-  // Figma cannot resize a layer inside an instance, so a card whose picture has another fixed size
-  // would show its main's picture: it stays as it is.
-  test("a card whose picture is another fixed size on the Phone stays as it is", () => {
+  // Figma cannot resize a layer inside an instance, so the main's picture binds its height to a
+  // variable that holds each breakpoint's.
+  test("a card whose picture is another fixed size on the Phone follows the breakpoint", () => {
     const merge = mergeDevices([
       on("Laptop", [card("la", 328), card("lb", 328)]),
       on("Phone", [card("pa", 288), card("pb", 288)]),
     ]);
     const [laptop, phone] = merge.plans.map((plan) => instancesOf(plan));
     expect(laptop?.map((o) => o.key)).toEqual(["component:Card", "component:Card"]);
-    expect(phone).toEqual([]);
-    expect(merge.report).toContain(
-      "2 cards look different from their Card component and stay as they are."
-    );
+    expect(phone?.map((o) => o.key)).toEqual(["component:Card", "component:Card"]);
+    const name = "size/card/image/height";
+    expect(merge.components.find((o) => o.id === "component:Card/la-img")?.sizeKeys).toEqual({
+      h: `theme:${name}`,
+    });
+    expect(varOf(merge.layers, `breakpoint:${name}`)?.values).toEqual([
+      { alias: `spacing:base/${name}` },
+      { alias: `spacing:min 1400/${name}` },
+    ]);
+    expect(varOf(merge.layers, `spacing:base/${name}`)?.values).toEqual([288]);
+    expect(merge.report).toContain("Card: 1 size follows the breakpoint.");
   });
 
   test("a card whose picture is another fixed size on one frame stays as it is", () => {
@@ -1440,12 +1451,13 @@ describe("components across devices", () => {
     expect(laptop.map((o) => o.id)).toEqual(["la", "lb"]);
   });
 
-  test("a card whose picture's box is another fixed size stays as it is", () => {
+  test("a card whose picture's box is another fixed size follows the breakpoint too", () => {
     const merge = mergeDevices([
       on("Laptop", [card("la", 328, true), card("lb", 328, true)]),
       on("Phone", [card("pa", 288, true), card("pb", 288, true)]),
     ]);
-    expect(instancesOf(merge.plans[1] as LayerPlan)).toEqual([]);
+    expect(instancesOf(merge.plans[1] as LayerPlan).map((o) => o.id)).toEqual(["pa", "pb"]);
+    expect(merge.report).toContain("Card: 2 sizes follow the breakpoint.");
   });
 
   test("an extra makes no frame, so its buttons neither count nor make a variant", () => {
@@ -1505,5 +1517,124 @@ describe("components across devices", () => {
     expect(merge.report.filter((l) => l.startsWith("Button:"))).toEqual([
       "Button: 2 variants from the page's code (Variant, Size).",
     ]);
+  });
+
+  describe("sizes by breakpoint", () => {
+    const svg = (d: string, size: number) =>
+      `<svg width="${size}" height="${size}" viewBox="0 0 24 24"><path d="${d}"/></svg>`;
+    /** Two icon buttons whose icon is `size`, and two plain ones. */
+    const arrows = (prefix: string, size: number, label = 40) =>
+      [
+        ["a", "M15 18l-6-6"],
+        ["b", "M9 18l6-6"],
+      ]
+        .map(([n, d]) => {
+          const b = btn(
+            `${prefix}${n}`,
+            { variant: "outline", size: "icon" },
+            { pad: 4, icon: { markup: svg(d as string, size), size } }
+          );
+          const text = b.children[1] as TextNode;
+          text.box.w = label;
+          return b;
+        })
+        .concat([btn(`${prefix}c`, {}, { bg: black }), btn(`${prefix}d`, {}, { bg: black })]);
+    const inputs = (a: number, b: number, label = 40) =>
+      [on("Laptop", arrows("l", a)), on("Phone", arrows("p", b, label))].map(
+        (e) => e.components as ComponentInput
+      );
+    const joined = (ops: PlanOp[] | undefined) =>
+      (ops ?? []).filter((o) => o.op === "instance" && o.key.includes("Size=icon")).length;
+
+    test("an icon at another size in another breakpoint joins, and its size is named", () => {
+      const shared = shareVariantSets(inputs(32, 24), undefined, { rangeAt: [1, 0], room: 10 });
+      expect(shared?.notJoined.size).toBe(0);
+      expect(joined(shared?.pages[1])).toBe(2);
+      const id = expect.stringContaining("set:Button|Variant=outline, Size=icon/");
+      expect(shared?.sizes).toEqual([
+        { component: "Button", layer: expect.any(String), id, field: "w", values: [32, 24] },
+        { component: "Button", layer: expect.any(String), id, field: "h", values: [32, 24] },
+      ]);
+    });
+
+    test("in the same breakpoint the smaller icon's buttons stay as they are", () => {
+      const shared = shareVariantSets(inputs(32, 24), undefined, { rangeAt: [0, 0], room: 10 });
+      expect(shared?.notJoined.get("Button")).toBe(2);
+      expect(joined(shared?.pages[1])).toBe(0);
+      expect(shared?.sizes).toEqual([]);
+    });
+
+    test("a later device like the main, in a breakpoint that already has another size, stays plain", () => {
+      const three = [
+        on("Laptop", arrows("l", 32)),
+        on("Phone", arrows("t", 24)),
+        on("Phone", arrows("p", 32)),
+      ].map((e) => e.components as ComponentInput);
+      const shared = shareVariantSets(three, undefined, { rangeAt: [1, 0, 0], room: 10 });
+      expect(joined(shared?.pages[1])).toBe(2);
+      expect(joined(shared?.pages[2])).toBe(0);
+      expect(shared?.notJoined.get("Button")).toBe(2);
+      expect(shared?.sizes.map((need) => need.values)).toEqual([
+        [32, 24, undefined],
+        [32, 24, undefined],
+      ]);
+    });
+
+    test("without room for the variables they stay as they are", () => {
+      const shared = shareVariantSets(inputs(32, 24), undefined, { rangeAt: [1, 0], room: 1 });
+      expect(shared?.notJoined.get("Button")).toBe(2);
+      expect(shared?.sizes).toEqual([]);
+    });
+
+    test("without sizing nothing changes", () => {
+      const shared = shareVariantSets(inputs(32, 24));
+      expect(shared?.notJoined.get("Button")).toBe(2);
+      expect(shared?.sizes).toEqual([]);
+    });
+
+    const NAME = "size/button/icon/size";
+    const iconOfMain = (merge: ReturnType<typeof mergeDevices>) =>
+      merge.components.find((o) => o.id === "set:Button|Variant=outline, Size=icon/la-i");
+
+    test("an icon sized by breakpoint binds its size in the main, and both frames get instances", () => {
+      const merge = mergeDevices([on("Laptop", arrows("l", 32)), on("Phone", arrows("p", 24))]);
+      const { layers } = merge;
+      expect(modesOf(layers, "Breakpoint")).toEqual(["base", "min 1400"]);
+      expect(varOf(layers, `spacing:base/${NAME}`)?.values).toEqual([24]);
+      expect(varOf(layers, `spacing:min 1400/${NAME}`)?.values).toEqual([32]);
+      expect(varOf(layers, `breakpoint:${NAME}`)?.values).toEqual([
+        { alias: `spacing:base/${NAME}` },
+        { alias: `spacing:min 1400/${NAME}` },
+      ]);
+      expect(aliasOf(varOf(layers, `theme:${NAME}`)?.values[0])).toBe(`breakpoint:${NAME}`);
+      expect(iconOfMain(merge)?.sizeKeys).toEqual({ w: `theme:${NAME}`, h: `theme:${NAME}` });
+      for (const plan of merge.plans) expect(joined(plan.ops)).toBe(2);
+      expect(merge.report.some((line) => line.includes("look different"))).toBe(false);
+      expect(merge.report).toContain("Button: 1 size follows the breakpoint.");
+      expectResolves(layers, merge.plans);
+    });
+
+    test("a breakpoint with no such button takes the next wider one's size", () => {
+      const md = on("Laptop", []);
+      md.capture.version = extra("md");
+      md.capture.source.viewport.w = 800;
+      Object.assign(md, mapCaptureParts(md.capture, inter, ON));
+      const merge = mergeDevices([on("Laptop", arrows("l", 32)), on("Phone", arrows("p", 24)), md]);
+      expect(modesOf(merge.layers, "Breakpoint")).toEqual(["base", "md", "min 1400"]);
+      expect(varOf(merge.layers, `spacing:md/${NAME}`)?.values).toEqual([32]);
+    });
+
+    test("with one device nothing is bound", () => {
+      const merge = mergeDevices([on("Laptop", arrows("l", 32))]);
+      expect(merge.layers.variables.some((v) => v.name.includes("size/"))).toBe(false);
+      expect(merge.components.some((o) => o.sizeKeys)).toBe(false);
+      expect(merge.report.some((line) => line.includes("follows"))).toBe(false);
+    });
+
+    test("the same size everywhere names no size", () => {
+      const shared = shareVariantSets(inputs(32, 32), undefined, { rangeAt: [1, 0], room: 10 });
+      expect(joined(shared?.pages[1])).toBe(2);
+      expect(shared?.sizes).toEqual([]);
+    });
   });
 });

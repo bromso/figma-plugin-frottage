@@ -806,6 +806,44 @@ test("an svg shown at another size scales its vectors", async () => {
   expect([v.children[0].width, v.children[0].height]).toEqual([48, 12]);
 });
 
+const SCALES = { horizontal: "SCALE", vertical: "SCALE" };
+
+test("an svg whose size follows a variable scales its vectors, at its own size too", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a"),
+    svgOp("<svg/>", { w: 24, h: 24, sizeKeys: { w: "theme:size/x", h: "theme:size/x" } }),
+  ]);
+  const v = f.node((await a.end()).rootId).children[0];
+  expect(v.children[0].constraints).toEqual(SCALES);
+});
+
+test("an icon component's drawing scales with its instances", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const key = "icon:x";
+  await a.applyBatch([
+    frame(key, null, {
+      name: "Arrow",
+      w: 24,
+      h: 24,
+      childCount: 1,
+      component: { key, name: "Arrow" },
+    }),
+    svgOp("<svg/>", { id: `${key}/v`, parent: key, x: 0, y: 0, w: 24, h: 24 }),
+    frame("a"),
+  ]);
+  await a.end();
+  const drawing = f.created.find((n) => n.name === "Svg") as FakeNode;
+  // Measured in Figma: an icon instance sized by a variable keeps a 32 px drawing in a 24 px box
+  // unless the drawing and its vectors scale with the component.
+  expect(drawing.constraints).toEqual(SCALES);
+  expect(drawing.children[0].constraints).toEqual(SCALES);
+});
+
 test("an svg already at its size keeps its default constraints", async () => {
   const f = fakeFigma();
   const a = createApplier(f.figma);
@@ -2119,6 +2157,92 @@ describe("a device set", () => {
     expect(f.created.some((n) => n.type === "SECTION")).toBe(false);
     expect(r.rootIds.map((id) => f.node(id).parent)).toEqual([f.page, f.page]);
   });
+  /** Two frames with an instance each of a shared Tile whose icon box may bind its size. */
+  async function tiles(sizeKeys: PlanOp["sizeKeys"]) {
+    const f = fakeFigma();
+    const a = createApplier(f.figma);
+    await a.beginDeviceSet(open("current-page"));
+    const key = "component:Tile";
+    const components: PlanOp[] = [
+      frame(`${key}/n`, null, {
+        name: "Tile",
+        w: 80,
+        h: 80,
+        childCount: 1,
+        component: { key, name: "Tile" },
+      }),
+      frame(`${key}/i`, `${key}/n`, {
+        name: "Icon",
+        w: 32,
+        h: 32,
+        layout: { mode: "NONE" },
+        ...(sizeKeys ? { sizeKeys } : {}),
+      }),
+    ];
+    const devices = [
+      { device: "Desktop", breakpoint: "lg", w: 1440 },
+      { device: "Phone", breakpoint: "base", w: 390 },
+    ];
+    let failures = 0;
+    for (const [index, d] of devices.entries()) {
+      await a.begin({
+        ...meta,
+        name: TITLE,
+        version: { index, label: d.device },
+        device: { mode: d.device, breakpoint: d.breakpoint },
+        ...(index === 0
+          ? { components: { keys: [key], device: { mode: "Desktop", breakpoint: "lg" } } }
+          : {}),
+      });
+      await a.importTokens(
+        { textStyles: [], colors: [], collection: "example.com", layers },
+        DEFAULT_IMPORT_OPTIONS
+      );
+      await a.applyBatch([
+        ...(index === 0 ? components : []),
+        frame("a", null, { w: d.w, h: 800, fills, childCount: 1 }),
+        {
+          op: "instance",
+          id: "t",
+          parent: "a",
+          name: "Tile",
+          x: 0,
+          y: 0,
+          w: 80,
+          h: 80,
+          key,
+          resize: false,
+          overrides: [],
+        },
+      ]);
+      const r = await a.end();
+      failures += r.failedOps + r.tokenFailures;
+    }
+    await a.endSet();
+    const icons = (sectionOf(f).children as FakeNode[]).map(
+      (frameNode) => (frameNode.children[0] as FakeNode).children[0] as FakeNode
+    );
+    return { f, icons, failures };
+  }
+
+  test("a main's layer bound to a size by breakpoint shows each frame's size in its instances", async () => {
+    const { f, icons, failures } = await tiles({ w: themeGap.key, h: themeGap.key });
+    expect(failures).toBe(0);
+    // Breakpoint `gap` is 16, 24, 32 in base, md, lg.
+    expect(icons.map((icon) => f.sizeIn(icon))).toEqual([
+      { width: 32, height: 32 },
+      { width: 16, height: 16 },
+    ]);
+  });
+
+  test("a layer without size keys keeps its main's size in every frame", async () => {
+    const { f, icons } = await tiles(undefined);
+    expect(icons.map((icon) => f.sizeIn(icon))).toEqual([
+      { width: 32, height: 32 },
+      { width: 32, height: 32 },
+    ]);
+  });
+
   test("a page's shared components are built once, below its frames, on the widest device", async () => {
     const f = fakeFigma();
     const a = createApplier(f.figma);

@@ -53,9 +53,11 @@ type Looks = {
   intern: (text: string) => number;
   inner: Map<Tree, number>;
   norm: (op: PlanOp) => PlanOp;
+  /** Leaves out the size of every layer a Breakpoint variable can size. */
+  sizeless: boolean;
 };
 
-function newLooks(norm: (op: PlanOp) => PlanOp = (op) => op): Looks {
+function newLooks(norm: (op: PlanOp) => PlanOp = (op) => op, sizeless = false): Looks {
   const interned = new Map<string, number>();
   const intern = (text: string): number => {
     let n = interned.get(text);
@@ -65,7 +67,7 @@ function newLooks(norm: (op: PlanOp) => PlanOp = (op) => op): Looks {
     }
     return n;
   };
-  return { intern, inner: new Map(), norm };
+  return { intern, inner: new Map(), norm, sizeless };
 }
 
 const BOUND = (key: string) => `bound:${key}`;
@@ -136,6 +138,16 @@ function placed(child: Tree, parent: Tree): string {
 /** What a label that wraps again leaves out of its own look. */
 const wrapped = (node: Tree): string[] => (rewraps(node) ? ["w", "h", "wrap", "lineCount"] : []);
 
+/**
+ * Whether a layer in a main can take its size from a variable. A text's size is its lines', and a
+ * nested component's is its own main's.
+ */
+const sizable = (node: Tree) => node.op.op !== "text" && !node.component;
+
+/** What a layer a variable can size leaves out of a look without sizes. */
+const unsized = (node: Tree, looks: Looks): string[] =>
+  looks.sizeless && sizable(node) ? ["w", "h"] : [];
+
 /** What a child adds to its parent's look: an occurrence of a set reads as that set, any variant. */
 function childLook(child: Tree, parent: Tree, looks: Looks): string {
   if (child.component) return `${placed(child, parent)}${bareTag(child.component.tag, child)}`;
@@ -170,7 +182,7 @@ function innerLook(top: Tree, looks: Looks): number {
   for (let i = order.length - 1; i >= 0; i--) {
     const node = order[i] as Tree;
     const below = node.children.map((c) => childLook(c, node, looks)).join(",");
-    const skip = [...follows(node.op), ...wrapped(node)];
+    const skip = [...follows(node.op), ...wrapped(node), ...unsized(node, looks)];
     const own = ownLook(looks.norm(node.op), skip, TOKENS);
     looks.inner.set(node, looks.intern(`${own}|${below}`));
   }
@@ -191,7 +203,8 @@ function rootLook(node: Tree, looks: Looks, bare: boolean, sized = false): strin
     if (c !== icon) return [childLook(c, node, looks)];
     if (bare) return [];
     // Its size compares: Figma cannot resize a layer inside an instance.
-    return [`${placed(c, node)}${ownLook(looks.norm(c.op), ["markup"], TOKENS)}`];
+    const skip = ["markup", ...unsized(c, looks)];
+    return [`${placed(c, node)}${ownLook(looks.norm(c.op), skip, TOKENS)}`];
   });
   return `${rootOwn(node, looks, sized)}|${below.join(",")}`;
 }
@@ -601,7 +614,43 @@ type Built = {
   owners: number[];
   properties: string[];
   notJoined: number;
+  sizes: SizeNeed[];
 };
+
+type SizeAt = { path: number[]; field: "w" | "h" };
+const sizeId = ({ path, field }: SizeAt) => `${path.join(".")}|${field}`;
+const SIZE_EPSILON = 0.05;
+
+/** A layer's size along `field` when it is fixed: neither hugging nor filling. */
+function fixedSize({ op }: Tree, field: "w" | "h"): number | undefined {
+  const sizing = field === "w" ? op.childLayout?.sizingH : op.childLayout?.sizingV;
+  return sizing === "HUG" || sizing === "FILL" ? undefined : op[field];
+}
+
+/**
+ * The fixed sizes below `a`'s root that `b` has otherwise, for two occurrences that look alike
+ * without sizes: every layer a variable can size, down to nested components.
+ */
+function sizeDiffs(a: Tree, b: Tree): SizeAt[] {
+  const out: SizeAt[] = [];
+  const stack: { a: Tree; b: Tree; path: number[] }[] = [{ a, b, path: [] }];
+  for (let at = stack.pop(); at; at = stack.pop()) {
+    for (const [i, child] of at.a.children.entries()) {
+      const other = at.b.children[i];
+      if (!other || !sizable(child) || !sizable(other)) continue;
+      const path = [...at.path, i];
+      for (const field of ["w", "h"] as const) {
+        const [x, y] = [fixedSize(child, field), fixedSize(other, field)];
+        if (x !== undefined && y !== undefined && Math.abs(x - y) > SIZE_EPSILON) {
+          out.push({ path, field });
+        }
+      }
+      stack.push({ a: child, b: other, path });
+    }
+  }
+  const rank = (at: SizeAt) => `${at.path.join(".")}|${at.field === "w" ? 0 : 1}`;
+  return out.sort((p, q) => rank(p).localeCompare(rank(q)));
+}
 
 /**
  * One name's set across entries, the first the widest: a variant per combination of the props that
@@ -615,7 +664,9 @@ function buildSet(
   sides: Side[],
   decides: (side: Side) => boolean,
   icons: Icons,
-  switches: (key: string) => boolean
+  switches: (key: string) => boolean,
+  /** Room left for size variables, shared by every set; absent when no size may differ. */
+  sizing: { rangeAt: number[]; left: number; inputs: number } | undefined
 ): Built {
   const axes = axesOf(sides, decides);
   const { kept } = axes;
@@ -635,7 +686,9 @@ function buildSet(
   // Each variant's main entry, and the others that look like it.
   const cross = newLooks((op) => bound(op, switches));
   const crossLook = (part: Part, bare: boolean) => rootLook(part.main, cross, bare);
-  const variants: { name: string; parts: Part[]; slot: number[] | undefined }[] = [];
+  const sizeless = newLooks((op) => bound(op, switches), true);
+  type Variant = { name: string; parts: Part[]; slot: number[] | undefined; sized: SizeAt[] };
+  const variants: Variant[] = [];
   for (const [variantName, parts] of byVariant) {
     // The page's own language decides: a variant only another language shows is none, and the
     // main is a deciding entry's, with an icon when one has it.
@@ -644,6 +697,48 @@ function buildSet(
     if (!winner) continue;
     const joined = [winner];
     const paths = [...winner.slots];
+    const sized = new Map<string, SizeAt>();
+    /** A part's size at a place the winner has: undefined where its layers are not the winner's. */
+    const sizeOf = (part: Part, at: SizeAt): number | undefined => {
+      if (!iconOf(part.main) !== !iconOf(winner.main)) return undefined;
+      const node = nodeAt(part.main, at.path);
+      return node && sizable(node) ? fixedSize(node, at.field) : undefined;
+    };
+    /**
+     * Whether a joined part of `part`'s breakpoint shows another size at one of `places`: one
+     * variable holds one value per breakpoint, so both could not show their own.
+     */
+    const clashes = (part: Part, places: SizeAt[]): boolean => {
+      if (!sizing || places.length === 0) return false;
+      const range = sizing.rangeAt[part.side.entry];
+      return joined.some(
+        (other) =>
+          sizing.rangeAt[other.side.entry] === range &&
+          places.some((at) => {
+            const [x, y] = [sizeOf(other, at), sizeOf(part, at)];
+            return x !== undefined && y !== undefined && Math.abs(x - y) > SIZE_EPSILON;
+          })
+      );
+    };
+    /** Whether `part`, which looks like the winner, fits the sizes its breakpoint already has. */
+    const fits = (part: Part) => !clashes(part, [...sized.values()]);
+    /**
+     * Whether `part` looks like the winner but for fixed sizes a Breakpoint variable can hold:
+     * no joined part of its breakpoint shows another size, and the variables fit.
+     */
+    const joinsBySize = (part: Part): boolean => {
+      if (!sizing || !iconOf(part.main) !== !iconOf(winner.main)) return false;
+      if (rootLook(part.main, sizeless, false) !== rootLook(winner.main, sizeless, false)) {
+        return false;
+      }
+      const diffs = sizeDiffs(winner.main, part.main);
+      const fresh = diffs.filter((d) => !sized.has(sizeId(d)));
+      if (fresh.length > sizing.left) return false;
+      if (clashes(part, [...sized.values(), ...fresh])) return false;
+      for (const d of fresh) sized.set(sizeId(d), d);
+      sizing.left -= fresh.length;
+      return true;
+    };
     for (const part of parts) {
       if (part === winner) continue;
       // A main without the icon has no place for it.
@@ -653,17 +748,30 @@ function buildSet(
       }
       const bare = !iconOf(part.main) || !iconOf(winner.main);
       if (crossLook(part, bare) === crossLook(winner, bare)) {
+        // Like the main, but its breakpoint's size may already be another device's.
+        if (fits(part)) {
+          joined.push(part);
+          paths.push(...part.slots);
+        } else if (decides(part.side)) notJoined += part.members.length;
+        continue;
+      }
+      if (joinsBySize(part)) {
         joined.push(part);
         paths.push(...part.slots);
         continue;
       }
       const path = slotPath(winner.main, part.main, cross, false);
-      if (path) {
+      if (path && fits(part)) {
         joined.push(part);
         paths.push(path, ...part.slots);
       } else if (decides(part.side)) notJoined += part.members.length;
     }
-    variants.push({ name: variantName, parts: joined, slot: slotOf(paths) });
+    variants.push({
+      name: variantName,
+      parts: joined,
+      slot: slotOf(paths),
+      sized: [...sized.values()],
+    });
   }
 
   const membersOf = (parts: Part[]) => parts.flatMap((p) => p.members);
@@ -683,7 +791,8 @@ function buildSet(
 
   const built: Component[] = [];
   const owners: number[] = [];
-  for (const { name: variantName, parts, slot } of variants) {
+  const sizes: SizeNeed[] = [];
+  for (const { name: variantName, parts, slot, sized } of variants) {
     const winner = parts[0] as Part;
     const main = winner.main;
     const members = membersOf(parts);
@@ -721,6 +830,25 @@ function buildSet(
       ...(icon ? { iconAt } : {}),
       ...(slot ? { slot } : {}),
     };
+    // Read before the main's icon becomes an instance of its own component.
+    for (const at of sized) {
+      // What is below the slot's layer is each instance's own.
+      if (slot && at.path.length > slot.length && within(at.path, slot)) continue;
+      const layer = nodeAt(main, at.path) as Tree;
+      const values: (number | undefined)[] = Array.from({ length: sizing?.inputs ?? 0 });
+      for (const part of parts) {
+        const node = iconOf(part.main) || !icon ? nodeAt(part.main, at.path) : undefined;
+        const value = node && sizable(node) ? fixedSize(node, at.field) : undefined;
+        if (value !== undefined) values[part.side.entry] ??= value;
+      }
+      sizes.push({
+        component: name,
+        layer: layer.op.name,
+        id: `${component.key}/${layer.op.id}`,
+        field: at.field,
+        values,
+      });
+    }
     for (const part of parts) {
       for (const node of part.members) {
         node.component = component;
@@ -740,7 +868,7 @@ function buildSet(
     built.push(component);
     owners.push(entry);
   }
-  return { variants: built, owners, properties: kept.map(capital), notJoined };
+  return { variants: built, owners, properties: kept.map(capital), notJoined, sizes };
 }
 
 /** Whether `path` is at or below `top`. */
@@ -757,6 +885,26 @@ function usedBy(component: Component): Component[] {
   }
   return used;
 }
+
+/**
+ * A fixed size inside a main that differs by input: `values[input]`, undefined where that input
+ * has no occurrence like the main. `id` is the definition's op.
+ */
+export type SizeNeed = {
+  component: string;
+  layer: string;
+  id: string;
+  field: "w" | "h";
+  values: (number | undefined)[];
+};
+
+/** What lets occurrences join although a fixed size differs: a Breakpoint variable holds it. */
+export type Sizing = {
+  /** Per input, its Breakpoint mode's index. */
+  rangeAt: number[];
+  /** How many size variables may still be made. */
+  room: number;
+};
 
 /** One capture's ops before components, and what names them, as `shareVariantSets` takes it. */
 export type VariantInput = {
@@ -785,6 +933,8 @@ export type SharedSets = {
   fromMarkers: number;
   renamed: { from: string; to: string }[];
   notJoined: Map<string, number>;
+  /** The sizes the mains bind to Breakpoint variables. */
+  sizes: SizeNeed[];
   hoverCapped?: number;
   hoverSwapped?: number;
 };
@@ -798,7 +948,9 @@ export type SharedSets = {
 export function shareVariantSets(
   inputs: VariantInput[],
   /** Whether a token or text style key switches by Breakpoint, its value then each device's. */
-  switches: (key: string) => boolean = () => false
+  switches: (key: string) => boolean = () => false,
+  /** Given when the inputs are in Breakpoint modes, so a fixed size may differ between them. */
+  sizing?: Sizing
 ): SharedSets | null {
   const decidesAt = inputs.map((input) => input.decides !== false);
   const forests = inputs.map((input) => buildForest(input.ops));
@@ -835,6 +987,8 @@ export function shareVariantSets(
   const notJoined = new Map<string, number>();
   const renamed = new Map<string, { from: string; to: string }>();
   let fromMarkers = 0;
+  const budget = sizing && { rangeAt: sizing.rangeAt, left: sizing.room, inputs: inputs.length };
+  const sizes: SizeNeed[] = [];
   for (const { name, perEntry } of qualifying) {
     const sides = perEntry.flatMap((occurrences, entry) =>
       occurrences.length > 0
@@ -842,7 +996,8 @@ export function shareVariantSets(
         : []
     );
     const decides = (side: Side) => decidesAt[side.entry] === true;
-    const built = buildSet(name, sides, decides, icons, switches);
+    const built = buildSet(name, sides, decides, icons, switches, budget);
+    sizes.push(...built.sizes);
     variants.push(...built.variants);
     for (const [i, c] of built.variants.entries()) owners.set(c, built.owners[i] as number);
     const firstSide = sides.find(decides) as Side;
@@ -907,6 +1062,7 @@ export function shareVariantSets(
     fromMarkers,
     renamed: [...renamed.values()],
     notJoined,
+    sizes,
     ...(notes.capped > 0 ? { hoverCapped: notes.capped } : {}),
     ...(notes.swapped > 0 ? { hoverSwapped: notes.swapped } : {}),
   };
@@ -925,12 +1081,12 @@ export function extractVariantSets(
   hovers: Map<string, HoverPatch> = new Map(),
   /** Name each instance text's captured id, for a capture with a language. */
   sources = false
-): Omit<SharedSets, "definitions" | "pages"> & { ops: PlanOp[] } {
+): Omit<SharedSets, "definitions" | "pages" | "sizes"> & { ops: PlanOp[] } {
   const none = { ops, sets: [], plain: [], fromMarkers: 0, renamed: [], notJoined: new Map() };
   if (named.size === 0) return none;
   const shared = shareVariantSets([{ ops, named, hovers, sources }]);
   if (!shared) return none;
-  const { definitions, pages, ...rest } = shared;
+  const { definitions, pages, sizes: _none, ...rest } = shared;
   return { ...rest, ops: [...definitions.flatMap((d) => d.ops), ...(pages[0] ?? [])] };
 }
 

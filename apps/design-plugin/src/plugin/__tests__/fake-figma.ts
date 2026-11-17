@@ -506,6 +506,15 @@ export function fakeFigma(opts: Options = {}) {
     // As in Figma, a copy keeps the layer's references and whether it shows.
     if (from.propRefs) copy.propRefs = { ...from.propRefs };
     if (from.visible !== undefined) copy.visible = from.visible;
+    // As in Figma, a copy's size follows the variables its source's is bound to.
+    const { width, height } = from.boundVariables ?? {};
+    if (width || height) {
+      copy.boundVariables = {
+        ...copy.boundVariables,
+        ...(width ? { width } : {}),
+        ...(height ? { height } : {}),
+      };
+    }
     return copy;
   }
 
@@ -949,10 +958,31 @@ export function fakeFigma(opts: Options = {}) {
     return undefined;
   }
 
+  /**
+   * The size a node shows: a width or height bound to a variable reads the variable's value in the
+   * mode the node is in, through its aliases, which a layer inside an instance does as well.
+   * Without a mode for a collection, that is the collection's default.
+   */
+  function sizeIn(node: FakeNode): { width: number; height: number } {
+    const read = (field: "width" | "height"): number => {
+      let value: any = node.boundVariables?.[field];
+      for (let depth = 0; value?.type === "VARIABLE_ALIAS" && depth < 16; depth++) {
+        const variable = tokens.variables.get(value.id);
+        if (!variable) return node[field];
+        const collection = tokens.collections.get(variable.variableCollectionId);
+        const mode = modeOf(node, variable.variableCollectionId) ?? collection?.defaultModeId;
+        value = variable.valuesByMode[mode];
+      }
+      return typeof value === "number" ? value : node[field];
+    };
+    return { width: read("width"), height: read("height") };
+  }
+
   return {
     figma: figma as unknown as PluginAPI,
     calls,
     modeOf,
+    sizeIn,
     count: (c: string) => calls.filter((x) => x === c).length,
     node: (id: string) => nodes.get(id) as FakeNode,
     hashOf: (bytes: Uint8Array) => hashes.get(Array.from(bytes).join(",")),
