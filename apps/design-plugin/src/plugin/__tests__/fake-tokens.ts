@@ -34,6 +34,8 @@ const BINDABLE_LENGTHS = [
   "paddingLeft",
   "gridRowGap",
   "gridColumnGap",
+  "width",
+  "height",
 ];
 const CORNERS = ["topLeftRadius", "topRightRadius", "bottomRightRadius", "bottomLeftRadius"];
 /** Text style fields Figma binds, with the variable type each takes. */

@@ -894,6 +894,31 @@ export function createApplier(api: PluginAPI) {
     if (refused) set.failed();
   }
 
+  /**
+   * Binds a main's layer to the size variables its op names, once its plain size is set, so each
+   * instance shows the size of the Breakpoint mode it is in: Figma takes no resize inside an
+   * instance. A refused binding counts and leaves the plain size.
+   */
+  function bindSize(node: SceneNode, op: PlanOp) {
+    const keys = op.sizeKeys;
+    const set = bindable();
+    if (!keys || !set || !("setBoundVariable" in node)) return;
+    let refused = false;
+    for (const [field, key] of [
+      ["width", keys.w],
+      ["height", keys.h],
+    ] as const) {
+      const variable = set.spacing(key);
+      if (!variable) continue;
+      try {
+        node.setBoundVariable(field, variable);
+      } catch {
+        refused = true;
+      }
+    }
+    if (refused) set.failed();
+  }
+
   /** The stroke a frame counts in its layout, CSS's border-box, if it has one Figma will draw. */
   function strokeInset(op: FrameOp): PlanStroke["weights"] | null {
     const s = op.strokes;
@@ -1486,7 +1511,12 @@ export function createApplier(api: PluginAPI) {
         imported.name = op.name;
         // Resizing moves a frame's children only when they scale with it, so a CSS-scaled SVG
         // (rendered size different from its own) needs SCALE constraints first.
-        if (Math.abs(imported.width - op.w) > 0.5 || Math.abs(imported.height - op.h) > 0.5) {
+        // One whose size follows a variable is resized by it later, so it needs them too.
+        const scales =
+          op.sizeKeys !== undefined ||
+          Math.abs(imported.width - op.w) > 0.5 ||
+          Math.abs(imported.height - op.h) > 0.5;
+        if (scales) {
           for (const child of imported.children) {
             if ("constraints" in child) {
               child.constraints = { horizontal: "SCALE", vertical: "SCALE" };
@@ -1527,6 +1557,7 @@ export function createApplier(api: PluginAPI) {
     fillFit = null;
     try {
       const node = await build(op);
+      bindSize(node, op);
       nodes.set(op.id, node);
       tracker.track(op, node, fillFit);
     } catch {
