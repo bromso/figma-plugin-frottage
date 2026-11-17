@@ -705,6 +705,24 @@ function buildSet(
       return node && sizable(node) ? fixedSize(node, at.field) : undefined;
     };
     /**
+     * Whether a joined part of `part`'s breakpoint shows another size at one of `places`: one
+     * variable holds one value per breakpoint, so both could not show their own.
+     */
+    const clashes = (part: Part, places: SizeAt[]): boolean => {
+      if (!sizing || places.length === 0) return false;
+      const range = sizing.rangeAt[part.side.entry];
+      return joined.some(
+        (other) =>
+          sizing.rangeAt[other.side.entry] === range &&
+          places.some((at) => {
+            const [x, y] = [sizeOf(other, at), sizeOf(part, at)];
+            return x !== undefined && y !== undefined && Math.abs(x - y) > SIZE_EPSILON;
+          })
+      );
+    };
+    /** Whether `part`, which looks like the winner, fits the sizes its breakpoint already has. */
+    const fits = (part: Part) => !clashes(part, [...sized.values()]);
+    /**
      * Whether `part` looks like the winner but for fixed sizes a Breakpoint variable can hold:
      * no joined part of its breakpoint shows another size, and the variables fit.
      */
@@ -716,17 +734,7 @@ function buildSet(
       const diffs = sizeDiffs(winner.main, part.main);
       const fresh = diffs.filter((d) => !sized.has(sizeId(d)));
       if (fresh.length > sizing.left) return false;
-      const range = sizing.rangeAt[part.side.entry];
-      const all = [...sized.values(), ...fresh];
-      const clashes = joined.some(
-        (other) =>
-          sizing.rangeAt[other.side.entry] === range &&
-          all.some((at) => {
-            const [x, y] = [sizeOf(other, at), sizeOf(part, at)];
-            return x !== undefined && y !== undefined && Math.abs(x - y) > SIZE_EPSILON;
-          })
-      );
-      if (clashes) return false;
+      if (clashes(part, [...sized.values(), ...fresh])) return false;
       for (const d of fresh) sized.set(sizeId(d), d);
       sizing.left -= fresh.length;
       return true;
@@ -740,8 +748,11 @@ function buildSet(
       }
       const bare = !iconOf(part.main) || !iconOf(winner.main);
       if (crossLook(part, bare) === crossLook(winner, bare)) {
-        joined.push(part);
-        paths.push(...part.slots);
+        // Like the main, but its breakpoint's size may already be another device's.
+        if (fits(part)) {
+          joined.push(part);
+          paths.push(...part.slots);
+        } else if (decides(part.side)) notJoined += part.members.length;
         continue;
       }
       if (joinsBySize(part)) {
@@ -750,7 +761,7 @@ function buildSet(
         continue;
       }
       const path = slotPath(winner.main, part.main, cross, false);
-      if (path) {
+      if (path && fits(part)) {
         joined.push(part);
         paths.push(path, ...part.slots);
       } else if (decides(part.side)) notJoined += part.members.length;

@@ -24,6 +24,20 @@ Date: 2026-11-17. Design: `2026-11-17-frottage-breakpoint-sizes-design.md`. Plan
 
 Measured 2026-11-17 through the Desktop Bridge, before building: width and height bound on a main's rectangle and nested icon instance resolve per frame mode in instances. A full Mainline import with this change has not run; that check is the owner's re-import. Expected there: the carousel arrows are Button instances on every device with a 32 px icon on Laptop and 24 px on Tablet and Phone, and the carousel items keep each device's picture height with no `Content` slot.
 
+Measured again after an independent review of the branch: an icon that is an instance of an icon component, bound to 32 and 24 px, kept a 32 px drawing in a 24 px box until the drawing's frame and its vectors had SCALE constraints; with them it scales, a fresh instance and one whose `Icon` was swapped both show 24 px, and a later `resize` on the main's layer leaves the binding in place. The applier now gives every icon component's drawing those constraints.
+
+## Found by the review and fixed
+
+- A device that looks like the main could join after another device of the same breakpoint had joined with another size, and then showed that device's size. Every join now checks the sizes its breakpoint already has; the later device stays plain and is counted.
+- Icon component drawings did not scale (above).
+
+## Known limits
+
+- An extra breakpoint capture's own occurrences are not read: extras take no part in components, so their mode gets the nearest wider mode's size. The design said the mode's capture gives the value; no frame shows such a mode.
+- A frame that hugs its content under a parent without auto layout counts as fixed, so its width could get a variable when the occurrence also has a real size difference.
+- The room for variables is counted per width and height, so a square size that needs one variable reserves two; this only ever leaves an occurrence plain.
+- A size difference under 0.05 px joins without a variable.
+
 ## Not built, as designed
 
 - Visibility by breakpoint, sizes outside named components, and the single responsive frame.

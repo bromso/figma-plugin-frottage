@@ -806,6 +806,44 @@ test("an svg shown at another size scales its vectors", async () => {
   expect([v.children[0].width, v.children[0].height]).toEqual([48, 12]);
 });
 
+const SCALES = { horizontal: "SCALE", vertical: "SCALE" };
+
+test("an svg whose size follows a variable scales its vectors, at its own size too", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  await a.applyBatch([
+    frame("a"),
+    svgOp("<svg/>", { w: 24, h: 24, sizeKeys: { w: "theme:size/x", h: "theme:size/x" } }),
+  ]);
+  const v = f.node((await a.end()).rootId).children[0];
+  expect(v.children[0].constraints).toEqual(SCALES);
+});
+
+test("an icon component's drawing scales with its instances", async () => {
+  const f = fakeFigma();
+  const a = createApplier(f.figma);
+  await a.begin(meta);
+  const key = "icon:x";
+  await a.applyBatch([
+    frame(key, null, {
+      name: "Arrow",
+      w: 24,
+      h: 24,
+      childCount: 1,
+      component: { key, name: "Arrow" },
+    }),
+    svgOp("<svg/>", { id: `${key}/v`, parent: key, x: 0, y: 0, w: 24, h: 24 }),
+    frame("a"),
+  ]);
+  await a.end();
+  const drawing = f.created.find((n) => n.name === "Svg") as FakeNode;
+  // Measured in Figma: an icon instance sized by a variable keeps a 32 px drawing in a 24 px box
+  // unless the drawing and its vectors scale with the component.
+  expect(drawing.constraints).toEqual(SCALES);
+  expect(drawing.children[0].constraints).toEqual(SCALES);
+});
+
 test("an svg already at its size keeps its default constraints", async () => {
   const f = fakeFigma();
   const a = createApplier(f.figma);

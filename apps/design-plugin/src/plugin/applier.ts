@@ -1512,7 +1512,12 @@ export function createApplier(api: PluginAPI) {
         // Resizing moves a frame's children only when they scale with it, so a CSS-scaled SVG
         // (rendered size different from its own) needs SCALE constraints first.
         // One whose size follows a variable is resized by it later, so it needs them too.
+        // An icon component's drawing is resized through its instances, whose size a main may
+        // bind: without these the instance's box changes and the drawing keeps its size.
+        const inIcon = definition?.startsWith("icon:") === true;
+        if (inIcon) imported.constraints = { horizontal: "SCALE", vertical: "SCALE" };
         const scales =
+          inIcon ||
           op.sizeKeys !== undefined ||
           Math.abs(imported.width - op.w) > 0.5 ||
           Math.abs(imported.height - op.h) > 0.5;

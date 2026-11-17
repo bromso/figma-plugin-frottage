@@ -1564,6 +1564,22 @@ describe("components across devices", () => {
       expect(shared?.sizes).toEqual([]);
     });
 
+    test("a later device like the main, in a breakpoint that already has another size, stays plain", () => {
+      const three = [
+        on("Laptop", arrows("l", 32)),
+        on("Phone", arrows("t", 24)),
+        on("Phone", arrows("p", 32)),
+      ].map((e) => e.components as ComponentInput);
+      const shared = shareVariantSets(three, undefined, { rangeAt: [1, 0, 0], room: 10 });
+      expect(joined(shared?.pages[1])).toBe(2);
+      expect(joined(shared?.pages[2])).toBe(0);
+      expect(shared?.notJoined.get("Button")).toBe(2);
+      expect(shared?.sizes.map((need) => need.values)).toEqual([
+        [32, 24, undefined],
+        [32, 24, undefined],
+      ]);
+    });
+
     test("without room for the variables they stay as they are", () => {
       const shared = shareVariantSets(inputs(32, 24), undefined, { rangeAt: [1, 0], room: 1 });
       expect(shared?.notJoined.get("Button")).toBe(2);
