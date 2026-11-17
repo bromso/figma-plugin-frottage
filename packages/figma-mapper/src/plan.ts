@@ -320,6 +320,12 @@ export type PlanOp = (
   childLayout?: PlanChildLayout;
   /** The node's token refs, while tokens are extracted; never in a finished plan. */
   refs?: TokenRefs;
+  /**
+   * The Theme tokens the layer's width and height bind to, by `PlanVariable.key`: in a
+   * component's main, a fixed size that differs by Breakpoint. Each instance then shows the size
+   * of the frame it is in, which no override could give it.
+   */
+  sizeKeys?: { w?: string; h?: string };
 };
 
 export type ImportReport = {

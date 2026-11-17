@@ -12,6 +12,7 @@ import { type DeviceEntry, MAX_LANGUAGE_VARIABLES, mergeDevices } from "../devic
 import { mapCapture, mapCaptureParts } from "../map";
 import { DEFAULT_IMPORT_OPTIONS } from "../options";
 import type { LayerPlan, PlanLayers, PlanOp, PlanVariable, PlanVarValue } from "../plan";
+import { type ComponentInput, shareVariantSets } from "../variants";
 import { cap, el, imageStyle, inter, run, textNode } from "./fixtures";
 
 const LAYERED = { ...DEFAULT_IMPORT_OPTIONS, components: false, layers: true };
@@ -1505,5 +1506,69 @@ describe("components across devices", () => {
     expect(merge.report.filter((l) => l.startsWith("Button:"))).toEqual([
       "Button: 2 variants from the page's code (Variant, Size).",
     ]);
+  });
+
+  describe("sizes by breakpoint", () => {
+    const svg = (d: string, size: number) =>
+      `<svg width="${size}" height="${size}" viewBox="0 0 24 24"><path d="${d}"/></svg>`;
+    /** Two icon buttons whose icon is `size`, and two plain ones. */
+    const arrows = (prefix: string, size: number, label = 40) =>
+      [
+        ["a", "M15 18l-6-6"],
+        ["b", "M9 18l6-6"],
+      ]
+        .map(([n, d]) => {
+          const b = btn(
+            `${prefix}${n}`,
+            { variant: "outline", size: "icon" },
+            { pad: 4, icon: { markup: svg(d as string, size), size } }
+          );
+          const text = b.children[1] as TextNode;
+          text.box.w = label;
+          return b;
+        })
+        .concat([btn(`${prefix}c`, {}, { bg: black }), btn(`${prefix}d`, {}, { bg: black })]);
+    const inputs = (a: number, b: number, label = 40) =>
+      [on("Laptop", arrows("l", a)), on("Phone", arrows("p", b, label))].map(
+        (e) => e.components as ComponentInput
+      );
+    const joined = (ops: PlanOp[] | undefined) =>
+      (ops ?? []).filter((o) => o.op === "instance" && o.key.includes("Size=icon")).length;
+
+    test("an icon at another size in another breakpoint joins, and its size is named", () => {
+      const shared = shareVariantSets(inputs(32, 24), undefined, { rangeAt: [1, 0], room: 10 });
+      expect(shared?.notJoined.size).toBe(0);
+      expect(joined(shared?.pages[1])).toBe(2);
+      const id = expect.stringContaining("set:Button|Variant=outline, Size=icon/");
+      expect(shared?.sizes).toEqual([
+        { component: "Button", layer: expect.any(String), id, field: "w", values: [32, 24] },
+        { component: "Button", layer: expect.any(String), id, field: "h", values: [32, 24] },
+      ]);
+    });
+
+    test("in the same breakpoint the smaller icon's buttons stay as they are", () => {
+      const shared = shareVariantSets(inputs(32, 24), undefined, { rangeAt: [0, 0], room: 10 });
+      expect(shared?.notJoined.get("Button")).toBe(2);
+      expect(joined(shared?.pages[1])).toBe(0);
+      expect(shared?.sizes).toEqual([]);
+    });
+
+    test("without room for the variables they stay as they are", () => {
+      const shared = shareVariantSets(inputs(32, 24), undefined, { rangeAt: [1, 0], room: 1 });
+      expect(shared?.notJoined.get("Button")).toBe(2);
+      expect(shared?.sizes).toEqual([]);
+    });
+
+    test("without sizing nothing changes", () => {
+      const shared = shareVariantSets(inputs(32, 24));
+      expect(shared?.notJoined.get("Button")).toBe(2);
+      expect(shared?.sizes).toEqual([]);
+    });
+
+    test("the same size everywhere names no size", () => {
+      const shared = shareVariantSets(inputs(32, 32), undefined, { rangeAt: [1, 0], room: 10 });
+      expect(joined(shared?.pages[1])).toBe(2);
+      expect(shared?.sizes).toEqual([]);
+    });
   });
 });
