@@ -1,10 +1,10 @@
 # Frottage component sizes by breakpoint: design
 
-Date: 2026-11-17. Status: proposed, waiting for the owner's approval. First step of Stage 3 (responsive) in `2026-11-03-frottage-intent-design.md`. Follows the cleanup recorded in `2026-11-16-frottage-component-slots-results.md`.
+Date: 2026-11-17. Status: approved by the owner on 2026-11-17. First step of Stage 3 (responsive) in `2026-11-03-frottage-intent-design.md`. Follows the cleanup recorded in `2026-11-16-frottage-component-slots-results.md`.
 
 ## Why
 
-Figma ignores a resize of any layer inside an instance (measured 2026-11-16), so PR #29 removed size overrides. Since then an occurrence whose picture, icon or box has another fixed size on another device stays a plain layer. On Mainline that is the carousel's two arrow buttons on Tablet and Phone, whose icon is 24 px there and 16 px on Laptop: 4 of the 16 buttons the report lists as looking different.
+Figma ignores a resize of any layer inside an instance (measured 2026-11-16), so PR #29 removed size overrides. Since then an occurrence whose picture, icon or box has another fixed size on another device stays a plain layer. On Mainline that is the carousel's two arrow buttons on Tablet and Phone, whose icon is 24 px there and 32 px on Laptop: 4 of the 16 buttons the report lists as looking different.
 
 The owner chose to keep one frame per device for now and make the frames share more, before any single responsive frame. The same mechanism is what that later frame needs for the roughly 50 Mainline layers that differ between devices only in size.
 
@@ -56,4 +56,4 @@ The owner chose to keep one frame per device for now and make the frames share m
 
 ## Done means
 
-On Mainline with Laptop, Tablet portrait and Phone portrait: the carousel arrows are Button instances on every device, the icon shows 16 px on Laptop and 24 px on Tablet and Phone, the report lists 12 buttons as looking different, and nothing that was an instance before stops being one. Checked in real Figma through the Desktop Bridge.
+On Mainline with Laptop, Tablet portrait and Phone portrait: the carousel arrows are Button instances on every device, the icon shows 32 px on Laptop and 24 px on Tablet and Phone, the report lists 12 buttons as looking different, and nothing that was an instance before stops being one. Checked in real Figma through the Desktop Bridge.
